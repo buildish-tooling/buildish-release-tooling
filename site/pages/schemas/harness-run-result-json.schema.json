@@ -1,0 +1,178 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "HarnessInspectablePaths": {
+      "additionalProperties": false,
+      "description": "Stable inspectable workspace paths exposed by the harness CLI.",
+      "properties": {
+        "command_trace": {
+          "description": "Harness workspace path of the structured command-trace log emitted during the run.",
+          "title": "Command Trace",
+          "type": "string"
+        },
+        "generated_actions": {
+          "description": "Harness workspace path that contains generated helper scripts or wrapper actions.",
+          "title": "Generated Actions",
+          "type": "string"
+        },
+        "git_checkouts": {
+          "description": "Harness workspace path that contains generated Git working-copy checkouts.",
+          "title": "Git Checkouts",
+          "type": "string"
+        },
+        "git_origins": {
+          "description": "Harness workspace path that contains the origin repositories used to seed local Git checkouts.",
+          "title": "Git Origins",
+          "type": "string"
+        },
+        "harness_root": {
+          "description": "Harness workspace path that contains persisted harness state, rewritten workflows, and generated helper files.",
+          "title": "Harness Root",
+          "type": "string"
+        },
+        "job_statuses": {
+          "description": "Final per-job status map emitted by the harness for the reported workflow or sequence run.",
+          "title": "Job Statuses",
+          "type": "string"
+        },
+        "job_summaries": {
+          "description": "Harness workspace path that contains one rendered markdown or text summary per job.",
+          "title": "Job Summaries",
+          "type": "string"
+        },
+        "primary_git_checkout": {
+          "description": "Harness workspace path of the primary repository checkout used for the workflow-under-test.",
+          "title": "Primary Git Checkout",
+          "type": "string"
+        },
+        "repo_sources": {
+          "description": "Harness workspace path that contains repository source templates or seed inputs used to build fixture checkouts.",
+          "title": "Repo Sources",
+          "type": "string"
+        },
+        "rewritten_workflows": {
+          "description": "Harness workspace path that contains workflow YAML files rewritten for local execution.",
+          "title": "Rewritten Workflows",
+          "type": "string"
+        },
+        "self_git_origin": {
+          "description": "Harness workspace path of the local Git origin repository used to simulate GitHub-side mutations for the primary repository.",
+          "title": "Self Git Origin",
+          "type": "string"
+        },
+        "step_summaries": {
+          "description": "Harness workspace path that contains per-step summary files emitted during the run.",
+          "title": "Step Summaries",
+          "type": "string"
+        },
+        "svn_repository": {
+          "description": "Harness workspace path that contains the simulated backing SVN repository state.",
+          "title": "Svn Repository",
+          "type": "string"
+        },
+        "svn_root": {
+          "description": "Harness workspace path that contains all simulated SVN repository and working-copy state.",
+          "title": "Svn Root",
+          "type": "string"
+        },
+        "svn_working_copy": {
+          "description": "Harness workspace path of the simulated SVN working copy used during the run.",
+          "title": "Svn Working Copy",
+          "type": "string"
+        },
+        "workspace_root": {
+          "description": "Filesystem path of the harness workspace root used by the persisted shim state.",
+          "title": "Workspace Root",
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspace_root",
+        "primary_git_checkout",
+        "rewritten_workflows",
+        "harness_root",
+        "generated_actions",
+        "repo_sources",
+        "git_origins",
+        "self_git_origin",
+        "git_checkouts",
+        "svn_root",
+        "svn_repository",
+        "svn_working_copy",
+        "step_summaries",
+        "job_summaries",
+        "job_statuses",
+        "command_trace"
+      ],
+      "title": "HarnessInspectablePaths",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    }
+  },
+  "$id": "https://buildish.org/components/release-tooling/schemas/harness-run-result-json.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Machine-readable JSON payload for one harness run or rerun.",
+  "properties": {
+    "blocked_job_ids": {
+      "description": "Harness job ids that were not run because an upstream dependency failed or was blocked.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Blocked Job Ids",
+      "type": "array"
+    },
+    "failed_job_ids": {
+      "description": "Harness job ids that finished with a failure outcome in the reported run.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Failed Job Ids",
+      "type": "array"
+    },
+    "inspectable_paths": {
+      "$ref": "#/$defs/HarnessInspectablePaths",
+      "description": "Paths that a harness caller can inspect after the run to understand rewritten workflows, summaries, and persisted state."
+    },
+    "job_statuses": {
+      "additionalProperties": {
+        "enum": [
+          "success",
+          "failed",
+          "blocked"
+        ],
+        "type": "string"
+      },
+      "description": "Final per-job status map emitted by the harness for the reported workflow or sequence run.",
+      "title": "Job Statuses",
+      "type": "object"
+    },
+    "selected_job_ids": {
+      "description": "Harness job ids selected for execution in the reported run.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Selected Job Ids",
+      "type": "array"
+    },
+    "workspace": {
+      "description": "Filesystem path of the harness workspace directory for the related run.",
+      "title": "Workspace",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace",
+    "inspectable_paths"
+  ],
+  "title": "Buildish Release Tooling HarnessRunResultJson",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "runtime",
+    "ownership": "runtime-derived",
+    "summary": "Machine-readable JSON result for one harness scenario run."
+  }
+}

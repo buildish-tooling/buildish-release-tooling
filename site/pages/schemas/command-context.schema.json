@@ -1,0 +1,1384 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "ArtifactPolicyConfig": {
+      "additionalProperties": false,
+      "description": "Produced artifact families, integrity sidecars, and signing policy.",
+      "properties": {
+        "checksums": {
+          "description": "Checksums required for produced file artifacts.",
+          "items": {
+            "enum": [
+              "sha256",
+              "sha512"
+            ],
+            "type": "string"
+          },
+          "title": "Checksums",
+          "type": "array"
+        },
+        "produced": {
+          "description": "Artifact families produced by component-owned build jobs.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Produced",
+          "type": "array"
+        },
+        "signing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpenPgpSigningConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional detached-signature policy for produced file artifacts."
+        }
+      },
+      "title": "ArtifactPolicyConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "AsfAtrConfig": {
+      "additionalProperties": false,
+      "description": "Optional Apache Trusted Release integration policy and coordinates.",
+      "properties": {
+        "base_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Base URL used for ATR publication and status queries.",
+          "title": "Base Url"
+        },
+        "binary_artifact_paths": {
+          "description": "Path globs selecting binary artifacts for ATR.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Binary Artifact Paths",
+          "type": "array"
+        },
+        "committee": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ASF committee slug supplied to ATR.",
+          "title": "Committee"
+        },
+        "enabled": {
+          "default": false,
+          "description": "Whether ATR publication and check reporting are enabled.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "license_check_mode": {
+          "default": "both",
+          "description": "ATR license-check flavor requested for the candidate.",
+          "enum": [
+            "both",
+            "lightweight",
+            "rat"
+          ],
+          "title": "License Check Mode",
+          "type": "string"
+        },
+        "product_line": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ATR project or product-line identifier.",
+          "title": "Product Line"
+        },
+        "source_artifact_paths": {
+          "description": "Path globs selecting source artifacts for ATR.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Source Artifact Paths",
+          "type": "array"
+        },
+        "strict_checking": {
+          "default": false,
+          "description": "Whether ATR warnings or failures fail the command.",
+          "title": "Strict Checking",
+          "type": "boolean"
+        }
+      },
+      "title": "AsfAtrConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "AsfDistPublicationConfig": {
+      "additionalProperties": false,
+      "description": "ASF dist SVN authoritative publication target.",
+      "properties": {
+        "kind": {
+          "const": "asf-dist-svn",
+          "default": "asf-dist-svn",
+          "description": "Publication target discriminator.",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "AsfDistPublicationConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "AsfReleaseProfileConfig": {
+      "additionalProperties": false,
+      "description": "ASF project policy and trusted release infrastructure.",
+      "properties": {
+        "atr": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AsfAtrConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional ASF ATR integration policy."
+        },
+        "disclaimer_file": {
+          "default": "DISCLAIMER",
+          "description": "Repository-relative Incubator disclaimer file.",
+          "title": "Disclaimer File",
+          "type": "string"
+        },
+        "dist_dev_base": {
+          "description": "ASF dist/dev base URL for candidate materials.",
+          "title": "Dist Dev Base",
+          "type": "string"
+        },
+        "dist_release_base": {
+          "description": "ASF dist/release base URL for final releases.",
+          "title": "Dist Release Base",
+          "type": "string"
+        },
+        "keys_url": {
+          "description": "Authoritative ASF KEYS URL for signature verification.",
+          "title": "Keys Url",
+          "type": "string"
+        },
+        "project_status": {
+          "default": "tlp",
+          "description": "Project lifecycle status under ASF release policy.",
+          "enum": [
+            "tlp",
+            "incubating"
+          ],
+          "title": "Project Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dist_dev_base",
+        "dist_release_base",
+        "keys_url"
+      ],
+      "title": "AsfReleaseProfileConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "AsfVoteMaterialsConfig": {
+      "additionalProperties": false,
+      "description": "ASF candidate vote-material rendering policy.",
+      "properties": {
+        "instructions": {
+          "description": "Human-facing verification instructions for the exact candidate.",
+          "title": "Instructions",
+          "type": "string"
+        },
+        "profile": {
+          "const": "asf",
+          "default": "asf",
+          "description": "Vote-material profile discriminator.",
+          "title": "Profile",
+          "type": "string"
+        },
+        "release_name": {
+          "description": "Human-facing release name used in ASF vote text.",
+          "title": "Release Name",
+          "type": "string"
+        },
+        "verification_guide_url": {
+          "description": "User-facing release verification guide URL.",
+          "title": "Verification Guide Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "release_name",
+        "verification_guide_url",
+        "instructions"
+      ],
+      "title": "AsfVoteMaterialsConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "BuiltSourceSnapshotConfig": {
+      "additionalProperties": false,
+      "description": "Policy for a separately built source archive release asset.",
+      "properties": {
+        "archive_root_template": {
+          "description": "Template used for the archive's top-level directory.",
+          "title": "Archive Root Template",
+          "type": "string"
+        },
+        "filename_template": {
+          "description": "Template used to name the built source archive.",
+          "title": "Filename Template",
+          "type": "string"
+        },
+        "mode": {
+          "const": "built-asset",
+          "default": "built-asset",
+          "description": "Source snapshot policy discriminator.",
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "filename_template",
+        "archive_root_template"
+      ],
+      "title": "BuiltSourceSnapshotConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "CandidateConfig": {
+      "additionalProperties": false,
+      "description": "Candidate numbering, visibility, and retention policy.",
+      "properties": {
+        "label": {
+          "default": "rc",
+          "description": "Lowercase label placed before the numeric candidate suffix.",
+          "title": "Label",
+          "type": "string"
+        },
+        "retention": {
+          "default": "retain-published",
+          "description": "Retention policy for earlier candidate publications.",
+          "enum": [
+            "retain-published",
+            "retain-all"
+          ],
+          "title": "Retention",
+          "type": "string"
+        },
+        "start_number": {
+          "default": 1,
+          "description": "First candidate number when no matching candidate tag exists.",
+          "minimum": 0,
+          "title": "Start Number",
+          "type": "integer"
+        },
+        "visibility": {
+          "default": "public-prerelease",
+          "description": "Requested visibility after candidate publication is verified.",
+          "enum": [
+            "draft",
+            "public-prerelease"
+          ],
+          "title": "Visibility",
+          "type": "string"
+        }
+      },
+      "title": "CandidateConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "CandidateLifecycleConfig": {
+      "additionalProperties": false,
+      "description": "Release lifecycle that creates candidates and promotes one exact candidate.",
+      "properties": {
+        "mode": {
+          "const": "candidate",
+          "default": "candidate",
+          "description": "Release lifecycle discriminator.",
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "title": "CandidateLifecycleConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "ComponentIdentityConfig": {
+      "additionalProperties": false,
+      "description": "Stable machine and human identities for one released component.",
+      "properties": {
+        "display_name": {
+          "description": "Human-facing component name used in release text.",
+          "title": "Display Name",
+          "type": "string"
+        },
+        "id": {
+          "description": "Stable machine identifier used in release state and manifests.",
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "display_name"
+      ],
+      "title": "ComponentIdentityConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "DirectLifecycleConfig": {
+      "additionalProperties": false,
+      "description": "Release lifecycle that publishes a final release without a candidate.",
+      "properties": {
+        "mode": {
+          "const": "direct",
+          "default": "direct",
+          "description": "Release lifecycle discriminator.",
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "title": "DirectLifecycleConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "DockerHubPublicationConfig": {
+      "additionalProperties": false,
+      "description": "Secondary publication to Docker Hub.",
+      "properties": {
+        "kind": {
+          "const": "dockerhub",
+          "default": "dockerhub",
+          "description": "Secondary publication target discriminator.",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "DockerHubPublicationConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "GenericVoteMaterialsConfig": {
+      "additionalProperties": false,
+      "description": "Project-neutral vote-material rendering policy.",
+      "properties": {
+        "instructions": {
+          "description": "Human-facing verification instructions for the exact candidate.",
+          "title": "Instructions",
+          "type": "string"
+        },
+        "profile": {
+          "const": "generic",
+          "default": "generic",
+          "description": "Vote-material profile discriminator.",
+          "title": "Profile",
+          "type": "string"
+        },
+        "release_name": {
+          "description": "Human-facing name rendered in vote materials.",
+          "title": "Release Name",
+          "type": "string"
+        },
+        "verification_guide_url": {
+          "description": "User-facing release verification guide URL.",
+          "title": "Verification Guide Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "release_name",
+        "verification_guide_url",
+        "instructions"
+      ],
+      "title": "GenericVoteMaterialsConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "GitHubActionPublicationConfig": {
+      "additionalProperties": false,
+      "description": "Secondary publication of immutable and moving GitHub Action refs.",
+      "properties": {
+        "kind": {
+          "const": "github-action",
+          "default": "github-action",
+          "description": "Secondary publication target discriminator.",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "GitHubActionPublicationConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "GitHubReleaseAssetsPublicationConfig": {
+      "additionalProperties": false,
+      "description": "Secondary component-produced assets attached to a GitHub Release.",
+      "properties": {
+        "kind": {
+          "const": "github-release-assets",
+          "default": "github-release-assets",
+          "description": "Secondary publication target discriminator.",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "GitHubReleaseAssetsPublicationConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "GitHubReleasePublicationConfig": {
+      "additionalProperties": false,
+      "description": "GitHub Release authoritative or convenience publication target.",
+      "properties": {
+        "kind": {
+          "const": "github-release",
+          "default": "github-release",
+          "description": "Publication target discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "repository": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional explicit GitHub repository in owner/name form.",
+          "title": "Repository"
+        }
+      },
+      "title": "GitHubReleasePublicationConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "GitHubSourceChecksConfig": {
+      "additionalProperties": false,
+      "description": "GitHub check runs or status contexts required for one source revision.",
+      "properties": {
+        "platform": {
+          "const": "github",
+          "description": "Source-check hosting-platform discriminator.",
+          "title": "Platform",
+          "type": "string"
+        },
+        "required": {
+          "description": "Exact GitHub check-run or legacy status-context names required on the selected revision.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Required",
+          "type": "array"
+        }
+      },
+      "required": [
+        "platform",
+        "required"
+      ],
+      "title": "GitHubSourceChecksConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "NoSourceSnapshotConfig": {
+      "additionalProperties": false,
+      "description": "Policy for a release that intentionally publishes no source snapshot.",
+      "properties": {
+        "mode": {
+          "const": "none",
+          "default": "none",
+          "description": "Source snapshot policy discriminator.",
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "title": "NoSourceSnapshotConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "OpenPgpSigningConfig": {
+      "additionalProperties": false,
+      "description": "OpenPGP detached-signature policy and secret input names.",
+      "properties": {
+        "expected_fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional full OpenPGP fingerprint required for the imported signing key.",
+          "title": "Expected Fingerprint"
+        },
+        "kind": {
+          "const": "openpgp",
+          "default": "openpgp",
+          "description": "Artifact signing mechanism discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "passphrase_env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional environment variable containing the private-key passphrase. The variable may be absent when the configured key is unprotected.",
+          "title": "Passphrase Env"
+        },
+        "private_key_env": {
+          "description": "Environment variable containing the armored OpenPGP private key.",
+          "title": "Private Key Env",
+          "type": "string"
+        },
+        "signature_format": {
+          "const": "detached-ascii-armored",
+          "default": "detached-ascii-armored",
+          "description": "Detached signature format produced for signed file artifacts.",
+          "title": "Signature Format",
+          "type": "string"
+        }
+      },
+      "required": [
+        "private_key_env"
+      ],
+      "title": "OpenPgpSigningConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "PlatformGeneratedSourceSnapshotConfig": {
+      "additionalProperties": false,
+      "description": "Policy that relies on source snapshots generated by the hosting platform.",
+      "properties": {
+        "mode": {
+          "const": "platform-generated",
+          "default": "platform-generated",
+          "description": "Source snapshot policy discriminator.",
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "title": "PlatformGeneratedSourceSnapshotConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "PolicyProfilesConfig": {
+      "additionalProperties": false,
+      "description": "Explicit foundation policy profiles selected by a component.",
+      "properties": {
+        "asf": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AsfReleaseProfileConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional Apache Software Foundation release policy."
+        }
+      },
+      "title": "PolicyProfilesConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "PublicationConfig": {
+      "additionalProperties": false,
+      "description": "Authoritative, convenience, and secondary publication targets.",
+      "properties": {
+        "authoritative": {
+          "description": "Canonical publication target for the release.",
+          "discriminator": {
+            "mapping": {
+              "asf-dist-svn": "#/$defs/AsfDistPublicationConfig",
+              "github-release": "#/$defs/GitHubReleasePublicationConfig"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/GitHubReleasePublicationConfig"
+            },
+            {
+              "$ref": "#/$defs/AsfDistPublicationConfig"
+            }
+          ],
+          "title": "Authoritative"
+        },
+        "convenience": {
+          "description": "Non-authoritative release publication mirrors or pages.",
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "asf-dist-svn": "#/$defs/AsfDistPublicationConfig",
+                "github-release": "#/$defs/GitHubReleasePublicationConfig"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/GitHubReleasePublicationConfig"
+              },
+              {
+                "$ref": "#/$defs/AsfDistPublicationConfig"
+              }
+            ]
+          },
+          "title": "Convenience",
+          "type": "array"
+        },
+        "secondary": {
+          "description": "Additional package, image, action, or asset publication targets.",
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "dockerhub": "#/$defs/DockerHubPublicationConfig",
+                "github-action": "#/$defs/GitHubActionPublicationConfig",
+                "github-release-assets": "#/$defs/GitHubReleaseAssetsPublicationConfig",
+                "pypi": "#/$defs/PythonPackagePublicationConfig"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/GitHubActionPublicationConfig"
+              },
+              {
+                "$ref": "#/$defs/GitHubReleaseAssetsPublicationConfig"
+              },
+              {
+                "$ref": "#/$defs/PythonPackagePublicationConfig"
+              },
+              {
+                "$ref": "#/$defs/DockerHubPublicationConfig"
+              }
+            ]
+          },
+          "title": "Secondary",
+          "type": "array"
+        }
+      },
+      "required": [
+        "authoritative"
+      ],
+      "title": "PublicationConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "PythonPackagePublicationConfig": {
+      "additionalProperties": false,
+      "description": "Secondary publication to the configured Python package index.",
+      "properties": {
+        "kind": {
+          "const": "pypi",
+          "default": "pypi",
+          "description": "Secondary publication target discriminator.",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "PythonPackagePublicationConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "ReleaseConfig": {
+      "additionalProperties": false,
+      "description": "Component-authored release lifecycle and capability configuration.",
+      "properties": {
+        "artifacts": {
+          "$ref": "#/$defs/ArtifactPolicyConfig",
+          "description": "Produced artifact and checksum policy."
+        },
+        "candidate": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CandidateConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Candidate policy required only for the candidate lifecycle."
+        },
+        "component": {
+          "$ref": "#/$defs/ComponentIdentityConfig",
+          "description": "Stable component identity."
+        },
+        "lifecycle": {
+          "description": "Direct or candidate release lifecycle.",
+          "discriminator": {
+            "mapping": {
+              "candidate": "#/$defs/CandidateLifecycleConfig",
+              "direct": "#/$defs/DirectLifecycleConfig"
+            },
+            "propertyName": "mode"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/DirectLifecycleConfig"
+            },
+            {
+              "$ref": "#/$defs/CandidateLifecycleConfig"
+            }
+          ],
+          "title": "Lifecycle"
+        },
+        "policy_profiles": {
+          "$ref": "#/$defs/PolicyProfilesConfig",
+          "description": "Explicit foundation-specific policy profiles."
+        },
+        "publication": {
+          "$ref": "#/$defs/PublicationConfig",
+          "description": "Authoritative and additional publication targets."
+        },
+        "source": {
+          "$ref": "#/$defs/SourceConfig",
+          "description": "Source selection and snapshot policy."
+        },
+        "tags": {
+          "$ref": "#/$defs/TagPolicyConfig",
+          "description": "Immutable and moving tag policy."
+        },
+        "verification": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VerifyRcConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Artifact verification and reproducibility policy."
+        },
+        "versioning": {
+          "$ref": "#/$defs/VersioningConfig",
+          "description": "Version and final-tag naming policy."
+        },
+        "vote_materials": {
+          "anyOf": [
+            {
+              "discriminator": {
+                "mapping": {
+                  "asf": "#/$defs/AsfVoteMaterialsConfig",
+                  "generic": "#/$defs/GenericVoteMaterialsConfig"
+                },
+                "propertyName": "profile"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/$defs/GenericVoteMaterialsConfig"
+                },
+                {
+                  "$ref": "#/$defs/AsfVoteMaterialsConfig"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional vote-material policy for an exact candidate.",
+          "title": "Vote Materials"
+        }
+      },
+      "required": [
+        "component",
+        "source",
+        "lifecycle",
+        "publication"
+      ],
+      "title": "ReleaseConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "SourceConfig": {
+      "additionalProperties": false,
+      "description": "Source selection, snapshot, and optional hosting-platform check policy.",
+      "properties": {
+        "checks": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GitHubSourceChecksConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional hosting-platform checks required for the selected source revision. Component-owned same-run test jobs remain workflow concerns."
+        },
+        "default_branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional default branch used when source selection permits it.",
+          "title": "Default Branch"
+        },
+        "selection": {
+          "description": "Policy used to resolve the exact release source revision.",
+          "enum": [
+            "explicit-ref-or-default-branch",
+            "explicit-ref",
+            "release-branch"
+          ],
+          "title": "Selection",
+          "type": "string"
+        },
+        "snapshot": {
+          "description": "Policy for source material exposed to release consumers.",
+          "discriminator": {
+            "mapping": {
+              "built-asset": "#/$defs/BuiltSourceSnapshotConfig",
+              "none": "#/$defs/NoSourceSnapshotConfig",
+              "platform-generated": "#/$defs/PlatformGeneratedSourceSnapshotConfig"
+            },
+            "propertyName": "mode"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/PlatformGeneratedSourceSnapshotConfig"
+            },
+            {
+              "$ref": "#/$defs/BuiltSourceSnapshotConfig"
+            },
+            {
+              "$ref": "#/$defs/NoSourceSnapshotConfig"
+            }
+          ],
+          "title": "Snapshot"
+        }
+      },
+      "required": [
+        "selection",
+        "snapshot"
+      ],
+      "title": "SourceConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "TagPolicyConfig": {
+      "additionalProperties": false,
+      "description": "Immutable-tag materialization and optional moving-tag policy.",
+      "properties": {
+        "final_mode": {
+          "default": "exact-source-commit",
+          "description": "Commit policy used for the immutable final tag.",
+          "enum": [
+            "exact-source-commit",
+            "detached-materialization-commit"
+          ],
+          "title": "Final Mode",
+          "type": "string"
+        },
+        "include_final_mode_in_summary": {
+          "default": false,
+          "description": "Whether summaries render the selected final-tag materialization mode.",
+          "title": "Include Final Mode In Summary",
+          "type": "boolean"
+        },
+        "moving": {
+          "description": "Explicit moving tag or alias policies enabled for the component.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Moving",
+          "type": "array"
+        }
+      },
+      "title": "TagPolicyConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "VerifyRcBuildConfig": {
+      "additionalProperties": false,
+      "description": "Host-direct rebuild recipe configuration for one reproducibility profile.",
+      "properties": {
+        "command": {
+          "description": "Literal argv list that Buildish executed or recommends for the related step.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Command",
+          "type": "array"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Environment-variable mapping supplied to the related build, scenario, or command step.",
+          "title": "Env",
+          "type": "object"
+        },
+        "output_globs": {
+          "description": "Repository-root-relative glob patterns that identify expected outputs of the related build recipe.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Output Globs",
+          "type": "array"
+        },
+        "working_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Repository-root-relative working directory that Buildish should use when running the related build recipe.",
+          "title": "Working Dir"
+        }
+      },
+      "required": [
+        "command",
+        "output_globs"
+      ],
+      "title": "VerifyRcBuildConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "VerifyRcConfig": {
+      "additionalProperties": false,
+      "description": "Structured verify-rc configuration for rebuild recipes and profile selection.",
+      "properties": {
+        "profiles": {
+          "additionalProperties": {
+            "$ref": "#/$defs/VerifyRcProfileConfig"
+          },
+          "description": "Canonical reproducibility profiles keyed by profile identifier in the component configuration.",
+          "title": "Profiles",
+          "type": "object"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VerifyRcSourceConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Source-artifact-specific verify-rc policy block nested inside the component configuration."
+        }
+      },
+      "title": "VerifyRcConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "VerifyRcExactBytesComparisonConfig": {
+      "additionalProperties": false,
+      "description": "Exact-byte comparison policy for source and file-like reproducibility profiles.",
+      "properties": {
+        "mode": {
+          "const": "exact-bytes",
+          "default": "exact-bytes",
+          "description": "Comparison mode literal indicating that reproducibility succeeds only when the rebuilt artifact bytes match the staged bytes exactly.",
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "title": "VerifyRcExactBytesComparisonConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "VerifyRcMavenPathRuleConfig": {
+      "additionalProperties": false,
+      "description": "One regex-based per-path comparison override inside a Maven repository profile.",
+      "properties": {
+        "mode": {
+          "description": "Comparison mode that should apply to Maven repository paths matching this regex rule instead of the repository default.",
+          "enum": [
+            "exact-bytes",
+            "zip-normalized",
+            "content-only",
+            "remote-only"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "pattern": {
+          "description": "Regular-expression pattern used to match one family of repository paths.",
+          "title": "Pattern",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pattern",
+        "mode"
+      ],
+      "title": "VerifyRcMavenPathRuleConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "VerifyRcMavenRepositoryComparisonConfig": {
+      "additionalProperties": false,
+      "description": "Repository-tree comparison policy for Maven repository reproducibility profiles.",
+      "properties": {
+        "mode": {
+          "const": "repository-tree",
+          "default": "repository-tree",
+          "description": "Comparison mode literal indicating that this reproducibility profile compares a rebuilt Maven repository tree against the staged repository tree.",
+          "title": "Mode",
+          "type": "string"
+        },
+        "path_rules": {
+          "description": "Regex-based per-path comparison rules that specialize the default Maven repository comparison behavior.",
+          "items": {
+            "$ref": "#/$defs/VerifyRcMavenPathRuleConfig"
+          },
+          "title": "Path Rules",
+          "type": "array"
+        },
+        "repository_dir": {
+          "description": "Repository-root-relative rebuild output directory that should contain the local Maven repository tree.",
+          "title": "Repository Dir",
+          "type": "string"
+        },
+        "require_signatures": {
+          "default": false,
+          "description": "Whether Maven repository reproducibility should require detached signature files to exist and compare successfully.",
+          "title": "Require Signatures",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "repository_dir"
+      ],
+      "title": "VerifyRcMavenRepositoryComparisonConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "VerifyRcOciImageComparisonConfig": {
+      "additionalProperties": false,
+      "description": "Digest-based OCI image comparison policy for image reproducibility profiles.",
+      "properties": {
+        "image_ref": {
+          "description": "Fully qualified OCI image reference used for inspection or local rebuild comparison.",
+          "title": "Image Ref",
+          "type": "string"
+        },
+        "mode": {
+          "description": "Digest-comparison strategy used for OCI image reproducibility, either requiring matching platform digests or only provenance-level agreement.",
+          "enum": [
+            "platform-digest",
+            "provenance-only"
+          ],
+          "title": "Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "image_ref"
+      ],
+      "title": "VerifyRcOciImageComparisonConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "VerifyRcProfileConfig": {
+      "additionalProperties": false,
+      "description": "One canonical reproducibility profile selected by signed manifest metadata.",
+      "properties": {
+        "build": {
+          "$ref": "#/$defs/VerifyRcBuildConfig",
+          "description": "Nested build recipe or effective build execution block for one reproducibility contract."
+        },
+        "comparison": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VerifyRcExactBytesComparisonConfig"
+            },
+            {
+              "$ref": "#/$defs/VerifyRcMavenRepositoryComparisonConfig"
+            },
+            {
+              "$ref": "#/$defs/VerifyRcOciImageComparisonConfig"
+            }
+          ],
+          "description": "Artifact-kind-specific reproducibility comparison policy for the canonical profile.",
+          "title": "Comparison"
+        },
+        "kind": {
+          "description": "Artifact-kind discriminator that selects which canonical reproducibility profile shape applies.",
+          "enum": [
+            "source-artifact",
+            "generic-file",
+            "generic-file-with-openpgp",
+            "maven-repository",
+            "npm-package",
+            "oci-image",
+            "python-distribution"
+          ],
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "build",
+        "comparison"
+      ],
+      "title": "VerifyRcProfileConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "VerifyRcSelectionConfig": {
+      "additionalProperties": false,
+      "description": "One canonical reproducibility profile selection.",
+      "properties": {
+        "mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional future-facing mode hint recorded next to the selected reproducibility profile. When present, it narrows how the selected profile should be interpreted for this source-artifact policy block.",
+          "title": "Mode"
+        },
+        "profile_id": {
+          "description": "Reproducibility profile identifier selected for the related artifact or source verification.",
+          "title": "Profile Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile_id"
+      ],
+      "title": "VerifyRcSelectionConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "VerifyRcSourceConfig": {
+      "additionalProperties": false,
+      "description": "Source-artifact verification policy for verify-rc.",
+      "properties": {
+        "reproducibility": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/VerifyRcSelectionConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Reproducibility policy or result block associated with the related source or secondary artifact."
+        }
+      },
+      "title": "VerifyRcSourceConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "VersioningConfig": {
+      "additionalProperties": false,
+      "description": "Version syntax and immutable final-tag naming policy.",
+      "properties": {
+        "final_tag_template": {
+          "default": "v{version}",
+          "description": "Template used to derive the immutable final tag from a version.",
+          "title": "Final Tag Template",
+          "type": "string"
+        },
+        "scheme": {
+          "const": "semver",
+          "default": "semver",
+          "description": "Version syntax used by release state derivation.",
+          "title": "Scheme",
+          "type": "string"
+        }
+      },
+      "title": "VersioningConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    }
+  },
+  "$id": "https://buildish.org/components/release-tooling/schemas/command-context.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Common runtime context passed into command handlers.",
+  "properties": {
+    "release_config": {
+      "$ref": "#/$defs/ReleaseConfig",
+      "description": "Validated release configuration for the current command."
+    },
+    "release_config_path": {
+      "anyOf": [
+        {
+          "format": "path",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Filesystem path of the authored release configuration.",
+      "title": "Release Config Path"
+    }
+  },
+  "required": [
+    "release_config"
+  ],
+  "title": "Buildish Release Tooling CommandContext",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "runtime",
+    "ownership": "runtime-derived",
+    "summary": "Runtime command context built from validated release configuration."
+  }
+}

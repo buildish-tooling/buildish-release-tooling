@@ -1,0 +1,263 @@
+# Copyright 2026 The Buildish Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Release Promote Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact final version, such as 1.2.3
+        required: true
+        type: string
+      candidate_tag:
+        description: Exact candidate tag selected by the external gate
+        required: true
+        type: string
+      candidate_manifest_digest:
+        description: Exact lowercase SHA-256 of candidate-manifest.json
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: buildish-release-${{ github.repository }}-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  resolve-promotion:
+    runs-on: ubuntu-latest
+    outputs:
+      promotion_digest: ${{ steps.resolve.outputs.promotion_digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - run: uv python install 3.11
+      - run: git fetch --force --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
+      - id: resolve
+        env:
+          CANDIDATE_MANIFEST_DIGEST: ${{ inputs.candidate_manifest_digest }}
+          CANDIDATE_TAG: ${{ inputs.candidate_tag }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          bundle="${{ runner.temp }}/promotion-input"
+          mkdir -p "$bundle/assets"
+          MANIFEST_PATH="$bundle/candidate-verification.json" \
+            bash buildish-release-tooling/release-tooling.sh verify-github-candidate \
+              --candidate-tag "$CANDIDATE_TAG" \
+              --candidate-manifest-digest "$CANDIDATE_MANIFEST_DIGEST" \
+              --candidate-manifest-output "$bundle/candidate-manifest.json"
+          python3 - "$bundle/candidate-manifest.json" "$bundle/assets" <<'PY'
+          import hashlib
+          import json
+          import os
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          manifest_path, asset_dir = map(Path, sys.argv[1:])
+          manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+          candidate_tag = manifest["candidate"]["tag"]["name"]
+          for artifact in manifest["artifacts"]:
+              name = artifact["logical_name"]
+              if Path(name).name != name or not name or "\n" in name:
+                  raise SystemExit(f"unsafe candidate asset name: {name!r}")
+              subprocess.run(
+                  [
+                      "gh", "release", "download", candidate_tag,
+                      "--repo", os.environ["GITHUB_REPOSITORY"],
+                      "--pattern", name, "--dir", str(asset_dir),
+                  ],
+                  check=True,
+              )
+              path = asset_dir / name
+              if path.stat().st_size != artifact["size_bytes"]:
+                  raise SystemExit(f"candidate asset size mismatch: {name}")
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              if digest != artifact["digests"]["sha256"]:
+                  raise SystemExit(f"candidate asset digest mismatch: {name}")
+          PY
+          MANIFEST_PATH="$bundle/promotion-state.json" \
+            bash buildish-release-tooling/release-tooling.sh resolve-promotion \
+              --candidate-tag "$CANDIDATE_TAG" \
+              --candidate-manifest "$bundle/candidate-manifest.json" \
+              --candidate-manifest-digest "$CANDIDATE_MANIFEST_DIGEST" \
+              "$RELEASE_VERSION"
+          promotion_digest="$(sha256sum "$bundle/promotion-state.json" | cut -d' ' -f1)"
+          printf 'promotion_digest=%s\n' "$promotion_digest" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: promotion-input-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/promotion-input
+          retention-days: 1
+          if-no-files-found: error
+
+  create-final-tag:
+    needs: resolve-promotion
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: promotion-input-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/promotion-input
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - run: uv python install 3.11
+      - env:
+          EXPECTED_DIGEST: ${{ needs.resolve-promotion.outputs.promotion_digest }}
+          GH_TOKEN: ${{ github.token }}
+          STATE_PATH: ${{ runner.temp }}/promotion-input/promotion-state.json
+        run: |
+          printf '%s  %s\n' "$EXPECTED_DIGEST" "$STATE_PATH" | sha256sum --check --strict
+          git fetch --force --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
+          bash buildish-release-tooling/release-tooling.sh create-final-tag --promotion-state "$STATE_PATH"
+
+  stage:
+    needs: [resolve-promotion, create-final-tag]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: promotion-input-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/promotion-input
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - run: uv python install 3.11
+      - env:
+          EXPECTED_DIGEST: ${{ needs.resolve-promotion.outputs.promotion_digest }}
+          GH_TOKEN: ${{ github.token }}
+          STATE_PATH: ${{ runner.temp }}/promotion-input/promotion-state.json
+        run: |
+          printf '%s  %s\n' "$EXPECTED_DIGEST" "$STATE_PATH" | sha256sum --check --strict
+          args=(--release-state "$STATE_PATH")
+          while IFS= read -r -d '' asset; do args+=(--asset "$asset"); done \
+            < <(find "${{ runner.temp }}/promotion-input/assets" -maxdepth 1 -type f -print0 | sort -z)
+          bash buildish-release-tooling/release-tooling.sh stage-github-final-release "${args[@]}"
+
+  verify-final:
+    needs: [resolve-promotion, stage]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: promotion-input-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/promotion-input
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - run: uv python install 3.11
+      - env:
+          EXPECTED_DIGEST: ${{ needs.resolve-promotion.outputs.promotion_digest }}
+          GH_TOKEN: ${{ github.token }}
+          STATE_PATH: ${{ runner.temp }}/promotion-input/promotion-state.json
+        run: |
+          printf '%s  %s\n' "$EXPECTED_DIGEST" "$STATE_PATH" | sha256sum --check --strict
+          bash buildish-release-tooling/release-tooling.sh verify-github-final-release --release-state "$STATE_PATH"
+
+  publish:
+    needs: [resolve-promotion, verify-final]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      publication_digest: ${{ steps.publish.outputs.publication_digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: promotion-input-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/promotion-input
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - run: uv python install 3.11
+      - id: publish
+        env:
+          EXPECTED_DIGEST: ${{ needs.resolve-promotion.outputs.promotion_digest }}
+          GH_TOKEN: ${{ github.token }}
+          MANIFEST_PATH: ${{ runner.temp }}/publication/publication-result.json
+          STATE_PATH: ${{ runner.temp }}/promotion-input/promotion-state.json
+        run: |
+          printf '%s  %s\n' "$EXPECTED_DIGEST" "$STATE_PATH" | sha256sum --check --strict
+          mkdir -p "$(dirname "$MANIFEST_PATH")"
+          bash buildish-release-tooling/release-tooling.sh publish-github-final-release --release-state "$STATE_PATH"
+          printf 'publication_digest=%s\n' "$(sha256sum "$MANIFEST_PATH" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: promotion-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication
+          retention-days: 1
+          if-no-files-found: error
+
+  manifest:
+    needs: [resolve-promotion, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: promotion-input-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/promotion-input
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: promotion-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - run: uv python install 3.11
+      - env:
+          EXPECTED_PUBLICATION_DIGEST: ${{ needs.publish.outputs.publication_digest }}
+          EXPECTED_STATE_DIGEST: ${{ needs.resolve-promotion.outputs.promotion_digest }}
+          GH_TOKEN: ${{ github.token }}
+          MANIFEST_PATH: ${{ runner.temp }}/release-manifest/release-manifest-v1.json
+          PUBLICATION_PATH: ${{ runner.temp }}/publication/publication-result.json
+          STATE_PATH: ${{ runner.temp }}/promotion-input/promotion-state.json
+        run: |
+          printf '%s  %s\n' "$EXPECTED_STATE_DIGEST" "$STATE_PATH" | sha256sum --check --strict
+          printf '%s  %s\n' "$EXPECTED_PUBLICATION_DIGEST" "$PUBLICATION_PATH" | sha256sum --check --strict
+          mkdir -p "$(dirname "$MANIFEST_PATH")"
+          bash buildish-release-tooling/release-tooling.sh create-release-manifest \
+            --release-state "$STATE_PATH" \
+            --publication-result "$PUBLICATION_PATH"
+          bash buildish-release-tooling/release-tooling.sh attach-github-release-manifest \
+            --release-state "$STATE_PATH" \
+            --release-manifest "$MANIFEST_PATH"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: promoted-release-manifest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-manifest
+          retention-days: 30
+          if-no-files-found: error

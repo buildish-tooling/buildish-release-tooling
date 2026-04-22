@@ -1,0 +1,116 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.org/components/release-tooling/schemas/sync-draft-github-release-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after synchronizing the draft GitHub release with staged RC artifacts. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "sync-draft-github-release",
+      "default": "sync-draft-github-release",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "deleted_release_ids": {
+      "description": "GitHub draft release ids that Buildish deleted while converging on one selected release candidate.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Deleted Release Ids",
+      "type": "array"
+    },
+    "final_tag": {
+      "description": "Final immutable Git tag that Buildish intends to publish for the released version.",
+      "minLength": 1,
+      "title": "Final Tag",
+      "type": "string"
+    },
+    "rc_tag": {
+      "description": "Exact RC Git tag, including the leading `v` prefix and `-rcN` suffix.",
+      "minLength": 1,
+      "title": "Rc Tag",
+      "type": "string"
+    },
+    "release_id": {
+      "description": "GitHub release id associated with the related draft or final release record.",
+      "title": "Release Id",
+      "type": "string"
+    },
+    "release_name": {
+      "description": "Human-facing GitHub release title used for the related draft or final release.",
+      "title": "Release Name",
+      "type": "string"
+    },
+    "release_tag": {
+      "description": "GitHub release tag name as stored on the related release record.",
+      "title": "Release Tag",
+      "type": "string"
+    },
+    "release_url": {
+      "description": "Primary user-facing URL of the related GitHub release or published release artifact.",
+      "minLength": 1,
+      "title": "Release Url",
+      "type": "string"
+    },
+    "repository_slug": {
+      "description": "GitHub `owner/name` repository slug used for API calls and emitted release metadata.",
+      "minLength": 1,
+      "title": "Repository Slug",
+      "type": "string"
+    },
+    "resolved_source_ref": {
+      "description": "Resolved source Git commit SHA that Buildish selected for release production or verification.",
+      "minLength": 1,
+      "title": "Resolved Source Ref",
+      "type": "string"
+    },
+    "staging_url": {
+      "description": "ASF dev/dist staging directory URL selected for the current RC.",
+      "minLength": 1,
+      "title": "Staging Url",
+      "type": "string"
+    },
+    "sync_mode": {
+      "description": "Mode that Buildish used when reconciling the selected draft GitHub release with staged RC materials.",
+      "minLength": 1,
+      "title": "Sync Mode",
+      "type": "string"
+    },
+    "version": {
+      "description": "Release version string without a leading `v` prefix.",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "repository_slug",
+    "resolved_source_ref",
+    "rc_tag",
+    "final_tag",
+    "staging_url",
+    "deleted_release_ids",
+    "release_id",
+    "release_tag",
+    "release_name",
+    "release_url",
+    "sync_mode"
+  ],
+  "title": "Buildish Release Tooling SyncDraftGitHubReleaseManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `sync-draft-github-release`."
+  }
+}

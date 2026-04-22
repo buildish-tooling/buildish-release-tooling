@@ -1,0 +1,483 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "ArtifactReference": {
+      "additionalProperties": false,
+      "description": "Immutable logical artifact identity, digests, size, and locations.",
+      "properties": {
+        "digests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Immutable content digests keyed by algorithm.",
+          "title": "Digests",
+          "type": "object"
+        },
+        "kind": {
+          "description": "Artifact kind discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "locations": {
+          "description": "Known immutable or candidate publication locations.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Locations",
+          "type": "array"
+        },
+        "logical_name": {
+          "description": "Stable logical artifact name.",
+          "title": "Logical Name",
+          "type": "string"
+        },
+        "size_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Artifact size in bytes.",
+          "title": "Size Bytes"
+        }
+      },
+      "required": [
+        "kind",
+        "logical_name"
+      ],
+      "title": "ArtifactReference",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "CandidateIdentity": {
+      "additionalProperties": false,
+      "description": "Deterministic identity of one exact release candidate.",
+      "properties": {
+        "label": {
+          "description": "Candidate series label.",
+          "title": "Label",
+          "type": "string"
+        },
+        "number": {
+          "description": "Candidate sequence number.",
+          "minimum": 0,
+          "title": "Number",
+          "type": "integer"
+        },
+        "release": {
+          "$ref": "#/$defs/ReleaseIdentity",
+          "description": "Release version proposed by the candidate."
+        },
+        "stable_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Deterministic candidate identifier independent of provider object IDs.",
+          "title": "Stable Id"
+        },
+        "tag": {
+          "$ref": "#/$defs/TagIdentity",
+          "description": "Exact immutable candidate tag."
+        }
+      },
+      "required": [
+        "release",
+        "label",
+        "number",
+        "tag"
+      ],
+      "title": "CandidateIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "ComponentIdentity": {
+      "additionalProperties": false,
+      "description": "Stable machine and human identity of one released component.",
+      "properties": {
+        "display_name": {
+          "description": "Human-facing component name.",
+          "title": "Display Name",
+          "type": "string"
+        },
+        "id": {
+          "description": "Stable machine identifier of the component.",
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "display_name"
+      ],
+      "title": "ComponentIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "PublicationReference": {
+      "additionalProperties": false,
+      "description": "Reference to one provider or foundation publication result.",
+      "properties": {
+        "immutable_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional provider-issued immutable publication identifier.",
+          "title": "Immutable Id"
+        },
+        "target_kind": {
+          "description": "Selected publication target discriminator.",
+          "title": "Target Kind",
+          "type": "string"
+        },
+        "uri": {
+          "description": "Primary URI of the publication result.",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_kind",
+        "uri"
+      ],
+      "title": "PublicationReference",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "ReleaseIdentity": {
+      "additionalProperties": false,
+      "description": "Stable identity of one component version.",
+      "properties": {
+        "component": {
+          "$ref": "#/$defs/ComponentIdentity",
+          "description": "Released component identity."
+        },
+        "version": {
+          "description": "Exact component version.",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "version"
+      ],
+      "title": "ReleaseIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "SourceArtifactPlan": {
+      "additionalProperties": false,
+      "description": "Resolved built-source archive names for one release run.",
+      "properties": {
+        "archive_root": {
+          "description": "Resolved top-level archive directory.",
+          "title": "Archive Root",
+          "type": "string"
+        },
+        "filename": {
+          "description": "Resolved source archive filename.",
+          "title": "Filename",
+          "type": "string"
+        }
+      },
+      "required": [
+        "filename",
+        "archive_root"
+      ],
+      "title": "SourceArtifactPlan",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "SourceRevision": {
+      "additionalProperties": false,
+      "description": "Exact source repository revision selected for a release.",
+      "properties": {
+        "commit_sha": {
+          "description": "Exact source commit identifier.",
+          "title": "Commit Sha",
+          "type": "string"
+        },
+        "repository": {
+          "description": "Provider-neutral source repository identity or URL.",
+          "title": "Repository",
+          "type": "string"
+        },
+        "source_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional authored or resolved source ref that selected the commit.",
+          "title": "Source Ref"
+        }
+      },
+      "required": [
+        "repository",
+        "commit_sha"
+      ],
+      "title": "SourceRevision",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "TagIdentity": {
+      "additionalProperties": false,
+      "description": "Immutable identity of one Git tag and its exact target commit.",
+      "properties": {
+        "name": {
+          "description": "Exact tag name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "purpose": {
+          "description": "Provider-neutral purpose of the tag.",
+          "enum": [
+            "candidate",
+            "final",
+            "moving-alias"
+          ],
+          "title": "Purpose",
+          "type": "string"
+        },
+        "target_commit": {
+          "description": "Exact commit targeted by the tag.",
+          "title": "Target Commit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "target_commit",
+        "purpose"
+      ],
+      "title": "TagIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "ToolingInvocationProvenance": {
+      "additionalProperties": false,
+      "description": "Provider-neutral tooling revision and invocation metadata.",
+      "properties": {
+        "invocation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional workflow- or caller-issued invocation identifier.",
+          "title": "Invocation Id"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Exact tooling source revision.",
+          "title": "Revision"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Installed tooling version.",
+          "title": "Version"
+        }
+      },
+      "title": "ToolingInvocationProvenance",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "VerificationResultReference": {
+      "additionalProperties": false,
+      "description": "Reference to one machine-readable verification result.",
+      "properties": {
+        "digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional result document digest.",
+          "title": "Digest"
+        },
+        "kind": {
+          "description": "Verification result kind.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "uri": {
+          "description": "URI of the verification result.",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "uri"
+      ],
+      "title": "VerificationResultReference",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    }
+  },
+  "$id": "https://buildish.org/components/release-tooling/schemas/candidate-release-state.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Exact source, candidate, artifact naming, and publication state.",
+  "properties": {
+    "artifacts": {
+      "description": "Immutable candidate artifact references.",
+      "items": {
+        "$ref": "#/$defs/ArtifactReference"
+      },
+      "title": "Artifacts",
+      "type": "array"
+    },
+    "candidate": {
+      "$ref": "#/$defs/CandidateIdentity",
+      "description": "Exact candidate identity."
+    },
+    "final_tag_identity": {
+      "$ref": "#/$defs/TagIdentity",
+      "description": "Intended immutable final tag."
+    },
+    "publications": {
+      "description": "Candidate publication results.",
+      "items": {
+        "$ref": "#/$defs/PublicationReference"
+      },
+      "title": "Publications",
+      "type": "array"
+    },
+    "release": {
+      "$ref": "#/$defs/ReleaseIdentity",
+      "description": "Exact component release identity."
+    },
+    "source": {
+      "$ref": "#/$defs/SourceRevision",
+      "description": "Exact selected source revision."
+    },
+    "source_artifact": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SourceArtifactPlan"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional resolved built-source archive plan."
+    },
+    "source_date_epoch": {
+      "description": "Canonical selected-source timestamp.",
+      "minimum": 0,
+      "title": "Source Date Epoch",
+      "type": "integer"
+    },
+    "tooling": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ToolingInvocationProvenance"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Tooling revision and invocation provenance."
+    },
+    "verification_results": {
+      "description": "Verification results for candidate inputs.",
+      "items": {
+        "$ref": "#/$defs/VerificationResultReference"
+      },
+      "title": "Verification Results",
+      "type": "array"
+    }
+  },
+  "required": [
+    "release",
+    "source",
+    "source_date_epoch",
+    "candidate",
+    "final_tag_identity"
+  ],
+  "title": "Buildish Release Tooling CandidateReleaseState",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "runtime",
+    "ownership": "runtime-derived",
+    "summary": "Resolved provider-neutral state for one exact release candidate."
+  }
+}

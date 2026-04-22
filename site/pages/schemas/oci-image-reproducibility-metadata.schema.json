@@ -1,0 +1,440 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "ArtifactReproducibilityBuildOverrideReport": {
+      "additionalProperties": false,
+      "description": "Sparse local override delta applied to one canonical build recipe.",
+      "properties": {
+        "command": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Literal argv list that Buildish executed or recommends for the related step.",
+          "title": "Command"
+        },
+        "env_keys": {
+          "description": "Environment variable names referenced by the related recipe or override without exposing their values.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Env Keys",
+          "type": "array"
+        },
+        "output_globs": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Repository-root-relative glob patterns that identify expected outputs of the related build recipe.",
+          "title": "Output Globs"
+        },
+        "working_directory": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Repository-root-relative working directory that Buildish recorded in the related canonical recipe, effective execution, or local override block.",
+          "title": "Working Directory"
+        }
+      },
+      "title": "ArtifactReproducibilityBuildOverrideReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ArtifactReproducibilityCanonicalBuildRecipeReport": {
+      "additionalProperties": false,
+      "description": "Canonical build recipe declared by the verified source tree for one profile.",
+      "properties": {
+        "command": {
+          "description": "Literal argv list that Buildish executed or recommends for the related step.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Command",
+          "type": "array"
+        },
+        "env_keys": {
+          "description": "Environment variable names referenced by the related recipe or override without exposing their values.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Env Keys",
+          "type": "array"
+        },
+        "output_globs": {
+          "description": "Repository-root-relative glob patterns that identify expected outputs of the related build recipe.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Output Globs",
+          "type": "array"
+        },
+        "working_directory": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Repository-root-relative working directory that Buildish recorded in the related canonical recipe, effective execution, or local override block.",
+          "title": "Working Directory"
+        }
+      },
+      "title": "ArtifactReproducibilityCanonicalBuildRecipeReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ArtifactReproducibilityCanonicalRecipeReport": {
+      "additionalProperties": false,
+      "description": "Canonical repo-defined recipe for one reproducibility profile.",
+      "properties": {
+        "build": {
+          "$ref": "#/$defs/ArtifactReproducibilityCanonicalBuildRecipeReport",
+          "description": "Nested build recipe or effective build execution block for one reproducibility contract."
+        }
+      },
+      "required": [
+        "build"
+      ],
+      "title": "ArtifactReproducibilityCanonicalRecipeReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ArtifactReproducibilityEffectiveBuildExecutionReport": {
+      "additionalProperties": false,
+      "description": "Observed build invocation details for one executed reproducibility profile.",
+      "properties": {
+        "command": {
+          "description": "Literal argv list that Buildish executed or recommends for the related step.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Command",
+          "type": "array"
+        },
+        "injected_environment_keys": {
+          "description": "Environment variable names that Buildish injected into the effective rebuild subprocess.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Injected Environment Keys",
+          "type": "array"
+        },
+        "output_paths": {
+          "description": "Concrete output paths that Buildish observed from the effective rebuild execution.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Output Paths",
+          "type": "array"
+        },
+        "working_directory": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Repository-root-relative working directory that Buildish recorded in the related canonical recipe, effective execution, or local override block.",
+          "title": "Working Directory"
+        }
+      },
+      "title": "ArtifactReproducibilityEffectiveBuildExecutionReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ArtifactReproducibilityEffectiveExecutionReport": {
+      "additionalProperties": false,
+      "description": "Effective execution details for one reproducibility run.",
+      "properties": {
+        "backend": {
+          "const": "host-direct",
+          "default": "host-direct",
+          "description": "Execution backend name that performed the related Buildish action or reproducibility run.",
+          "title": "Backend",
+          "type": "string"
+        },
+        "build": {
+          "$ref": "#/$defs/ArtifactReproducibilityEffectiveBuildExecutionReport",
+          "description": "Nested build recipe or effective build execution block for one reproducibility contract."
+        }
+      },
+      "required": [
+        "build"
+      ],
+      "title": "ArtifactReproducibilityEffectiveExecutionReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ArtifactReproducibilityOverrideReport": {
+      "additionalProperties": false,
+      "description": "Structured local override metadata for one reproducibility run.",
+      "properties": {
+        "applied": {
+          "default": false,
+          "description": "Whether the related local override block was applied to the effective rebuild execution.",
+          "title": "Applied",
+          "type": "boolean"
+        },
+        "build": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactReproducibilityBuildOverrideReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Nested build recipe or effective build execution block for one reproducibility contract."
+        }
+      },
+      "title": "ArtifactReproducibilityOverrideReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "OciPlatformDigest": {
+      "additionalProperties": false,
+      "description": "One platform-specific digest declared for an OCI image.",
+      "properties": {
+        "digest": {
+          "description": "OCI content digest or similar immutable digest string for the related artifact.",
+          "title": "Digest",
+          "type": "string"
+        },
+        "platform": {
+          "description": "OCI platform identifier in `os/arch[/variant]` form.",
+          "minLength": 1,
+          "title": "Platform",
+          "type": "string"
+        }
+      },
+      "required": [
+        "platform",
+        "digest"
+      ],
+      "title": "OciPlatformDigest",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    }
+  },
+  "$id": "https://buildish.org/components/release-tooling/schemas/oci-image-reproducibility-metadata.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Retained comparison metadata for one OCI image reproducibility run.",
+  "properties": {
+    "artifact_id": {
+      "description": "Stable identifier for one source, secondary, or emitted artifact within Buildish release tooling.",
+      "minLength": 1,
+      "title": "Artifact Id",
+      "type": "string"
+    },
+    "canonical_recipe": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ArtifactReproducibilityCanonicalRecipeReport"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Canonical rebuild recipe resolved from the verified source tree or other authoritative Buildish configuration."
+    },
+    "comparison_mode": {
+      "description": "Declared reproducibility comparison mode used for the related artifact or profile.",
+      "enum": [
+        "platform-digest",
+        "provenance-only"
+      ],
+      "title": "Comparison Mode",
+      "type": "string"
+    },
+    "declared_digest": {
+      "description": "Signed or declared digest that the rebuilt value is compared against.",
+      "title": "Declared Digest",
+      "type": "string"
+    },
+    "effective_execution": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ArtifactReproducibilityEffectiveExecutionReport"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Effective build execution details that Buildish actually ran after applying local overrides or runtime defaults."
+    },
+    "expected_platform_digests": {
+      "description": "Platform-specific OCI digests that the reproducibility check expected to reproduce for the rebuilt image.",
+      "items": {
+        "$ref": "#/$defs/OciPlatformDigest"
+      },
+      "title": "Expected Platform Digests",
+      "type": "array"
+    },
+    "failure_class": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Structured failure classification that summarizes the main reason why verification or reproducibility failed.",
+      "title": "Failure Class"
+    },
+    "image_ref": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Fully qualified OCI image reference used for inspection or local rebuild comparison.",
+      "title": "Image Ref"
+    },
+    "issues": {
+      "description": "Collected human-readable issues observed for the related verification, inspection, or reproducibility subject.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Issues",
+      "type": "array"
+    },
+    "kind": {
+      "const": "oci-image",
+      "default": "oci-image",
+      "description": "Declared artifact or report kind discriminator.",
+      "title": "Kind",
+      "type": "string"
+    },
+    "matches_remote_bytes": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Whether the rebuilt artifact bytes matched the staged or signed remote bytes exactly.",
+      "title": "Matches Remote Bytes"
+    },
+    "override": {
+      "$ref": "#/$defs/ArtifactReproducibilityOverrideReport",
+      "description": "Explicit local reproducibility override details applied on top of the canonical recipe."
+    },
+    "profile_id": {
+      "description": "Reproducibility profile identifier selected for the related artifact or source verification.",
+      "minLength": 1,
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "rebuilt_digest": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Digest produced by rebuilding the related OCI image locally.",
+      "title": "Rebuilt Digest"
+    },
+    "rebuilt_platform_digests": {
+      "description": "Platform digests produced by rebuilding the related multi-platform OCI image.",
+      "items": {
+        "$ref": "#/$defs/OciPlatformDigest"
+      },
+      "title": "Rebuilt Platform Digests",
+      "type": "array"
+    }
+  },
+  "required": [
+    "artifact_id",
+    "profile_id",
+    "comparison_mode",
+    "declared_digest"
+  ],
+  "title": "Buildish Release Tooling OciImageReproducibilityMetadata",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Inspection-bundle metadata payload for OCI image reproducibility evidence."
+  }
+}

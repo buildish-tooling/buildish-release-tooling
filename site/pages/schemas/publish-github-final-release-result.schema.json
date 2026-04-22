@@ -1,0 +1,166 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "GitHubAssetIdentity": {
+      "additionalProperties": false,
+      "description": "Immutable observed identity of one GitHub Release asset.",
+      "properties": {
+        "asset_id": {
+          "description": "GitHub-issued numeric asset identifier.",
+          "minimum": 1,
+          "title": "Asset Id",
+          "type": "integer"
+        },
+        "digest": {
+          "description": "GitHub-observed SHA-256 asset digest.",
+          "title": "Digest",
+          "type": "string"
+        },
+        "name": {
+          "description": "GitHub Release asset filename.",
+          "title": "Name",
+          "type": "string"
+        },
+        "size_bytes": {
+          "description": "GitHub-observed release asset size in bytes.",
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "asset_id",
+        "size_bytes",
+        "digest"
+      ],
+      "title": "GitHubAssetIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "GitHubFinalPublication": {
+      "additionalProperties": false,
+      "description": "GitHub Release publication evidence for one final release.",
+      "properties": {
+        "assets": {
+          "description": "Observed final asset identities.",
+          "items": {
+            "$ref": "#/$defs/GitHubAssetIdentity"
+          },
+          "title": "Assets",
+          "type": "array"
+        },
+        "draft": {
+          "description": "Whether GitHub reports the release as a draft.",
+          "title": "Draft",
+          "type": "boolean"
+        },
+        "kind": {
+          "const": "github-final-publication",
+          "default": "github-final-publication",
+          "description": "Extension discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "prerelease": {
+          "description": "Whether GitHub reports a pre-release.",
+          "title": "Prerelease",
+          "type": "boolean"
+        },
+        "release_id": {
+          "description": "GitHub Release numeric identifier.",
+          "minimum": 1,
+          "title": "Release Id",
+          "type": "integer"
+        },
+        "release_url": {
+          "description": "User-facing GitHub Release URL.",
+          "title": "Release Url",
+          "type": "string"
+        },
+        "repository": {
+          "description": "GitHub repository in owner/name form.",
+          "title": "Repository",
+          "type": "string"
+        },
+        "tag": {
+          "description": "Exact immutable final tag attached to the release.",
+          "title": "Tag",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository",
+        "release_id",
+        "release_url",
+        "tag",
+        "draft",
+        "prerelease"
+      ],
+      "title": "GitHubFinalPublication",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    }
+  },
+  "$id": "https://buildish.org/components/release-tooling/schemas/publish-github-final-release-result.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Result of publishing or revalidating one exact GitHub final release.",
+  "properties": {
+    "action": {
+      "const": "publish-github-final-release",
+      "default": "publish-github-final-release",
+      "description": "Command action discriminator.",
+      "title": "Action",
+      "type": "string"
+    },
+    "component": {
+      "description": "Released Buildish component identifier.",
+      "title": "Component",
+      "type": "string"
+    },
+    "outcome": {
+      "description": "Idempotent final publication outcome.",
+      "enum": [
+        "published",
+        "already-complete"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "publication": {
+      "$ref": "#/$defs/GitHubFinalPublication",
+      "description": "Observed exact GitHub final-release publication state."
+    },
+    "source_commit": {
+      "description": "Exact source commit targeted by the final tag.",
+      "title": "Source Commit",
+      "type": "string"
+    },
+    "version": {
+      "description": "Exact released component version.",
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "source_commit",
+    "publication",
+    "outcome"
+  ],
+  "title": "Buildish Release Tooling PublishGitHubFinalReleaseResult",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Stable publication result for a direct GitHub final release."
+  }
+}
