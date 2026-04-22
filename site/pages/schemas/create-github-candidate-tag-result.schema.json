@@ -1,0 +1,198 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "CandidateIdentity": {
+      "additionalProperties": false,
+      "description": "Deterministic identity of one exact release candidate.",
+      "properties": {
+        "label": {
+          "description": "Candidate series label.",
+          "title": "Label",
+          "type": "string"
+        },
+        "number": {
+          "description": "Candidate sequence number.",
+          "minimum": 0,
+          "title": "Number",
+          "type": "integer"
+        },
+        "release": {
+          "$ref": "#/$defs/ReleaseIdentity",
+          "description": "Release version proposed by the candidate."
+        },
+        "stable_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Deterministic candidate identifier independent of provider object IDs.",
+          "title": "Stable Id"
+        },
+        "tag": {
+          "$ref": "#/$defs/TagIdentity",
+          "description": "Exact immutable candidate tag."
+        }
+      },
+      "required": [
+        "release",
+        "label",
+        "number",
+        "tag"
+      ],
+      "title": "CandidateIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "ComponentIdentity": {
+      "additionalProperties": false,
+      "description": "Stable machine and human identity of one released component.",
+      "properties": {
+        "display_name": {
+          "description": "Human-facing component name.",
+          "title": "Display Name",
+          "type": "string"
+        },
+        "id": {
+          "description": "Stable machine identifier of the component.",
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "display_name"
+      ],
+      "title": "ComponentIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "ReleaseIdentity": {
+      "additionalProperties": false,
+      "description": "Stable identity of one component version.",
+      "properties": {
+        "component": {
+          "$ref": "#/$defs/ComponentIdentity",
+          "description": "Released component identity."
+        },
+        "version": {
+          "description": "Exact component version.",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "version"
+      ],
+      "title": "ReleaseIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "TagIdentity": {
+      "additionalProperties": false,
+      "description": "Immutable identity of one Git tag and its exact target commit.",
+      "properties": {
+        "name": {
+          "description": "Exact tag name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "purpose": {
+          "description": "Provider-neutral purpose of the tag.",
+          "enum": [
+            "candidate",
+            "final",
+            "moving-alias"
+          ],
+          "title": "Purpose",
+          "type": "string"
+        },
+        "target_commit": {
+          "description": "Exact commit targeted by the tag.",
+          "title": "Target Commit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "target_commit",
+        "purpose"
+      ],
+      "title": "TagIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    }
+  },
+  "$id": "https://buildish.org/components/release-tooling/schemas/create-github-candidate-tag-result.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Result of creating or revalidating one immutable candidate tag.",
+  "properties": {
+    "action": {
+      "const": "create-candidate-tag",
+      "default": "create-candidate-tag",
+      "description": "Command action discriminator.",
+      "title": "Action",
+      "type": "string"
+    },
+    "candidate": {
+      "$ref": "#/$defs/CandidateIdentity",
+      "description": "Exact candidate identity."
+    },
+    "component": {
+      "description": "Released Buildish component identifier.",
+      "title": "Component",
+      "type": "string"
+    },
+    "outcome": {
+      "description": "Idempotent tag creation outcome.",
+      "enum": [
+        "created",
+        "already-complete"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "source_commit": {
+      "description": "Exact commit targeted by the candidate tag.",
+      "title": "Source Commit",
+      "type": "string"
+    },
+    "version": {
+      "description": "Exact candidate version.",
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "candidate",
+    "source_commit",
+    "outcome"
+  ],
+  "title": "Buildish Release Tooling CreateGitHubCandidateTagResult",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Stable result of creating one exact candidate tag."
+  }
+}

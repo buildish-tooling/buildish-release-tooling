@@ -1,0 +1,74 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.org/components/release-tooling/schemas/publish-source-release-svn-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after promoting a verified source artifact into dist/release. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "publish-source-release-svn",
+      "default": "publish-source-release-svn",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "publish_mode": {
+      "description": "Mode that Buildish used when publishing the verified source artifact to ASF `dist/release`.",
+      "minLength": 1,
+      "title": "Publish Mode",
+      "type": "string"
+    },
+    "selected_rc_tag": {
+      "description": "RC tag that Buildish selected as the winning release candidate for a final release action.",
+      "minLength": 1,
+      "title": "Selected Rc Tag",
+      "type": "string"
+    },
+    "source_url": {
+      "description": "Source URL that Buildish copied or verified during a publication action.",
+      "minLength": 1,
+      "title": "Source Url",
+      "type": "string"
+    },
+    "target_url": {
+      "description": "Destination URL that Buildish published or copied content to.",
+      "minLength": 1,
+      "title": "Target Url",
+      "type": "string"
+    },
+    "verified_source_artifact_sha512": {
+      "description": "Verified SHA-512 digest of the source release artifact promoted to ASF dist/release.",
+      "minLength": 1,
+      "title": "Verified Source Artifact Sha512",
+      "type": "string"
+    },
+    "version": {
+      "description": "Release version string without a leading `v` prefix.",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "selected_rc_tag",
+    "source_url",
+    "target_url",
+    "verified_source_artifact_sha512",
+    "publish_mode"
+  ],
+  "title": "Buildish Release Tooling PublishSourceReleaseSvnManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `publish-source-release-svn`."
+  }
+}

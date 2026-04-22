@@ -1,0 +1,1421 @@
+---
+title: "Release configuration and authored override types"
+description: "Consumer-owned and component-owned authored configuration models, including `release-config.yaml` and local verify-rc override payloads."
+---
+
+<!--
+Copyright 2026 The Buildish Authors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+Consumer-owned and component-owned authored configuration models, including `release-config.yaml` and local verify-rc override payloads.
+
+Back to the [reference overview](../release-model-schema-reference/).
+
+## Type index
+
+- [ArtifactPolicyConfig](#artifactpolicyconfig) — Produced artifact families, integrity sidecars, and signing policy.
+- [ArtifactReference](#artifactreference) — Immutable logical artifact identity, digests, size, and locations.
+- [AsfAtrConfig](#asfatrconfig) — Optional Apache Trusted Release integration policy and coordinates.
+- [AsfCandidatePublication](#asfcandidatepublication) — ASF dist/dev publication evidence for one exact candidate.
+- [AsfDistPublicationConfig](#asfdistpublicationconfig) — ASF dist SVN authoritative publication target.
+- [AsfFinalPublication](#asffinalpublication) — ASF dist/release publication evidence for one final release.
+- [AsfReleaseProfileConfig](#asfreleaseprofileconfig) — ASF project policy and trusted release infrastructure.
+- [AsfVoteExtension](#asfvoteextension) — ASF-specific vote rendering, trust-root, and disclaimer evidence.
+- [AsfVoteMaterialsConfig](#asfvotematerialsconfig) — ASF candidate vote-material rendering policy.
+- [AttachGitHubCandidateManifestResult](#attachgithubcandidatemanifestresult) — Result of attaching one exact durable candidate manifest.
+- [AttachGitHubReleaseManifestResult](#attachgithubreleasemanifestresult) — Result of attaching one exact durable final release manifest.
+- [AuthenticityReference](#authenticityreference) — Optional signature or attestation reference for a manifest or vote package.
+- [BuiltSourceSnapshotConfig](#builtsourcesnapshotconfig) — Policy for a separately built source archive release asset.
+- [ByteIdenticalPromotionEvidence](#byteidenticalpromotionevidence) — Evidence that candidate and final artifact bytes have identical digests.
+- [CandidateConfig](#candidateconfig) — Candidate numbering, visibility, and retention policy.
+- [CandidateIdentity](#candidateidentity) — Deterministic identity of one exact release candidate.
+- [CandidateLifecycleConfig](#candidatelifecycleconfig) — Release lifecycle that creates candidates and promotes one exact candidate.
+- [CandidateManifestV1](#candidatemanifestv1) — Stable manifest binding one exact candidate to source, artifacts, and publications.
+- [CandidateReleaseState](#candidatereleasestate) — Exact source, candidate, artifact naming, and publication state.
+- [CommandContext](#commandcontext) — Common runtime context passed into command handlers.
+- [ComponentIdentity](#componentidentity) — Stable machine and human identity of one released component.
+- [ComponentIdentityConfig](#componentidentityconfig) — Stable machine and human identities for one released component.
+- [CreateGitHubCandidateTagResult](#creategithubcandidatetagresult) — Result of creating or revalidating one immutable candidate tag.
+- [DirectLifecycleConfig](#directlifecycleconfig) — Release lifecycle that publishes a final release without a candidate.
+- [DirectReleaseState](#directreleasestate) — Exact source and final-tag state for a direct release.
+- [DockerHubPublicationConfig](#dockerhubpublicationconfig) — Secondary publication to Docker Hub.
+- [FinalizeGitHubCandidateResult](#finalizegithubcandidateresult) — Result of applying configured visibility to one verified candidate.
+- [GenericVoteMaterialsConfig](#genericvotematerialsconfig) — Project-neutral vote-material rendering policy.
+- [GitHubActionPublicationConfig](#githubactionpublicationconfig) — Secondary publication of immutable and moving GitHub Action refs.
+- [GitHubAssetIdentity](#githubassetidentity) — Immutable observed identity of one GitHub Release asset.
+- [GitHubCandidatePublication](#githubcandidatepublication) — GitHub Release publication evidence for one exact candidate.
+- [GitHubFinalPublication](#githubfinalpublication) — GitHub Release publication evidence for one final release.
+- [GitHubReleaseAssetsPublicationConfig](#githubreleaseassetspublicationconfig) — Secondary component-produced assets attached to a GitHub Release.
+- [GitHubReleasePublicationConfig](#githubreleasepublicationconfig) — GitHub Release authoritative or convenience publication target.
+- [GitHubSourceChecksConfig](#githubsourcechecksconfig) — GitHub check runs or status contexts required for one source revision.
+- [ManifestDigestReference](#manifestdigestreference) — URI and cryptographic digest binding one exact manifest document.
+- [NoSourceSnapshotConfig](#nosourcesnapshotconfig) — Policy for a release that intentionally publishes no source snapshot.
+- [OpenPgpSigningConfig](#openpgpsigningconfig) — OpenPGP detached-signature policy and secret input names.
+- [PlatformGeneratedSourceSnapshotConfig](#platformgeneratedsourcesnapshotconfig) — Policy that relies on source snapshots generated by the hosting platform.
+- [PolicyProfilesConfig](#policyprofilesconfig) — Explicit foundation policy profiles selected by a component.
+- [PromotedCandidateReference](#promotedcandidatereference) — Exact candidate identity and manifest selected for final promotion.
+- [PromotionState](#promotionstate) — Exact candidate evidence and final-tag state for promotion.
+- [PublicationConfig](#publicationconfig) — Authoritative, convenience, and secondary publication targets.
+- [PublicationReference](#publicationreference) — Reference to one provider or foundation publication result.
+- [PublishGitHubFinalReleaseResult](#publishgithubfinalreleaseresult) — Result of publishing or revalidating one exact GitHub final release.
+- [PythonPackagePublicationConfig](#pythonpackagepublicationconfig) — Secondary publication to the configured Python package index.
+- [ReadGitHubFinalReleaseResult](#readgithubfinalreleaseresult) — Exact observed state of one GitHub final release.
+- [RegistryIdentityPromotionEvidence](#registryidentitypromotionevidence) — Evidence that an immutable package or registry identity is unchanged.
+- [ReleaseConfig](#releaseconfig) — Component-authored release lifecycle and capability configuration.
+- [ReleaseIdentity](#releaseidentity) — Stable identity of one component version.
+- [ReleaseManifestV1](#releasemanifestv1) — Stable final release manifest for either direct publication or exact promotion.
+- [SameSourceRevisionPromotionEvidence](#samesourcerevisionpromotionevidence) — Evidence that candidate and final snapshots resolve to the same source commit.
+- [SourceArtifactPlan](#sourceartifactplan) — Resolved built-source archive names for one release run.
+- [SourceConfig](#sourceconfig) — Source selection, snapshot, and optional hosting-platform check policy.
+- [SourceRevision](#sourcerevision) — Exact source repository revision selected for a release.
+- [StageGitHubCandidateResult](#stagegithubcandidateresult) — Result of converging on one exact draft GitHub candidate release.
+- [StageGitHubFinalReleaseResult](#stagegithubfinalreleaseresult) — Result of converging on one exact draft GitHub final release.
+- [TagIdentity](#tagidentity) — Immutable identity of one Git tag and its exact target commit.
+- [TagPolicyConfig](#tagpolicyconfig) — Immutable-tag materialization and optional moving-tag policy.
+- [ToolingInvocationProvenance](#toolinginvocationprovenance) — Provider-neutral tooling revision and invocation metadata.
+- [VerificationResultReference](#verificationresultreference) — Reference to one machine-readable verification result.
+- [VerifyGitHubCandidateResult](#verifygithubcandidateresult) — Result of verifying one exact candidate and durable manifest.
+- [VerifyGitHubFinalReleaseResult](#verifygithubfinalreleaseresult) — Result of verifying one GitHub final release against direct-release state.
+- [VerifyRcBuildConfig](#verifyrcbuildconfig) — Host-direct rebuild recipe configuration for one reproducibility profile.
+- [VerifyRcBuildOverrideConfig](#verifyrcbuildoverrideconfig) — Local non-canonical rebuild overrides for one reproducibility profile.
+- [VerifyRcConfig](#verifyrcconfig) — Structured verify-rc configuration for rebuild recipes and profile selection.
+- [VerifyRcExactBytesComparisonConfig](#verifyrcexactbytescomparisonconfig) — Exact-byte comparison policy for source and file-like reproducibility profiles.
+- [VerifyRcMavenPathRuleConfig](#verifyrcmavenpathruleconfig) — One regex-based per-path comparison override inside a Maven repository profile.
+- [VerifyRcMavenRepositoryComparisonConfig](#verifyrcmavenrepositorycomparisonconfig) — Repository-tree comparison policy for Maven repository reproducibility profiles.
+- [VerifyRcOciImageComparisonConfig](#verifyrcociimagecomparisonconfig) — Digest-based OCI image comparison policy for image reproducibility profiles.
+- [VerifyRcOverrideConfig](#verifyrcoverrideconfig) — Top-level local reproducibility override mapping keyed by profile_id.
+- [VerifyRcOverrideFileConfig](#verifyrcoverridefileconfig) — Validated local override file for non-canonical reproducibility runs.
+- [VerifyRcProfileConfig](#verifyrcprofileconfig) — One canonical reproducibility profile selected by signed manifest metadata.
+- [VerifyRcProfileOverrideConfig](#verifyrcprofileoverrideconfig) — Local non-canonical override for one canonical reproducibility profile.
+- [VerifyRcSelectionConfig](#verifyrcselectionconfig) — One canonical reproducibility profile selection.
+- [VerifyRcSourceConfig](#verifyrcsourceconfig) — Source-artifact verification policy for verify-rc.
+- [VersioningConfig](#versioningconfig) — Version syntax and immutable final-tag naming policy.
+- [VotePackageV1](#votepackagev1) — Optional voting materials bound cryptographically to one exact candidate manifest.
+
+<a id="artifactpolicyconfig"></a>
+### ArtifactPolicyConfig
+
+Produced artifact families, integrity sidecars, and signing policy.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="artifactpolicyconfig-produced"></a>`produced` | list[str] | no | Artifact families produced by component-owned build jobs. |
+| <a id="artifactpolicyconfig-checksums"></a>`checksums` | list[Literal['sha256', 'sha512']] | no | Checksums required for produced file artifacts. |
+| <a id="artifactpolicyconfig-signing"></a>`signing` | [OpenPgpSigningConfig](#openpgpsigningconfig) | no | Optional detached-signature policy for produced file artifacts. |
+
+<a id="artifactreference"></a>
+### ArtifactReference
+
+Immutable logical artifact identity, digests, size, and locations.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="artifactreference-kind"></a>`kind` | str | yes | Artifact kind discriminator. |
+| <a id="artifactreference-logical-name"></a>`logical_name` | str | yes | Stable logical artifact name. |
+| <a id="artifactreference-digests"></a>`digests` | dict[str, str] | no | Immutable content digests keyed by algorithm. |
+| <a id="artifactreference-size-bytes"></a>`size_bytes` | int | no | Artifact size in bytes. |
+| <a id="artifactreference-locations"></a>`locations` | list[str] | no | Known immutable or candidate publication locations. |
+
+<a id="asfatrconfig"></a>
+### AsfAtrConfig
+
+Optional Apache Trusted Release integration policy and coordinates.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="asfatrconfig-enabled"></a>`enabled` | bool | no | Whether ATR publication and check reporting are enabled. |
+| <a id="asfatrconfig-base-url"></a>`base_url` | str | no | Base URL used for ATR publication and status queries. |
+| <a id="asfatrconfig-committee"></a>`committee` | str | no | ASF committee slug supplied to ATR. |
+| <a id="asfatrconfig-product-line"></a>`product_line` | str | no | ATR project or product-line identifier. |
+| <a id="asfatrconfig-source-artifact-paths"></a>`source_artifact_paths` | list[str] | no | Path globs selecting source artifacts for ATR. |
+| <a id="asfatrconfig-binary-artifact-paths"></a>`binary_artifact_paths` | list[str] | no | Path globs selecting binary artifacts for ATR. |
+| <a id="asfatrconfig-strict-checking"></a>`strict_checking` | bool | no | Whether ATR warnings or failures fail the command. |
+| <a id="asfatrconfig-license-check-mode"></a>`license_check_mode` | Literal['both', 'lightweight', 'rat'] | no | ATR license-check flavor requested for the candidate. |
+
+<a id="asfcandidatepublication"></a>
+### AsfCandidatePublication
+
+ASF dist/dev publication evidence for one exact candidate.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="asfcandidatepublication-kind"></a>`kind` | typing.Literal['asf-candidate-publication'] | no | Extension discriminator. |
+| <a id="asfcandidatepublication-dist-uri"></a>`dist_uri` | <class 'str'> | yes | Exact ASF dist/dev candidate directory URI. |
+| <a id="asfcandidatepublication-svn-revision"></a>`svn_revision` | <class 'int'> | yes | Committed ASF dist SVN revision. |
+
+<a id="asfdistpublicationconfig"></a>
+### AsfDistPublicationConfig
+
+ASF dist SVN authoritative publication target.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="asfdistpublicationconfig-kind"></a>`kind` | Literal['asf-dist-svn'] | no | Publication target discriminator. |
+
+<a id="asffinalpublication"></a>
+### AsfFinalPublication
+
+ASF dist/release publication evidence for one final release.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="asffinalpublication-kind"></a>`kind` | typing.Literal['asf-final-publication'] | no | Extension discriminator. |
+| <a id="asffinalpublication-dist-uri"></a>`dist_uri` | <class 'str'> | yes | Exact ASF dist/release version directory URI. |
+| <a id="asffinalpublication-svn-revision"></a>`svn_revision` | <class 'int'> | yes | Committed ASF dist SVN revision. |
+
+<a id="asfreleaseprofileconfig"></a>
+### AsfReleaseProfileConfig
+
+ASF project policy and trusted release infrastructure.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="asfreleaseprofileconfig-project-status"></a>`project_status` | Literal['tlp', 'incubating'] | no | Project lifecycle status under ASF release policy. |
+| <a id="asfreleaseprofileconfig-dist-dev-base"></a>`dist_dev_base` | str | yes | ASF dist/dev base URL for candidate materials. |
+| <a id="asfreleaseprofileconfig-dist-release-base"></a>`dist_release_base` | str | yes | ASF dist/release base URL for final releases. |
+| <a id="asfreleaseprofileconfig-keys-url"></a>`keys_url` | str | yes | Authoritative ASF KEYS URL for signature verification. |
+| <a id="asfreleaseprofileconfig-disclaimer-file"></a>`disclaimer_file` | str | no | Repository-relative Incubator disclaimer file. |
+| <a id="asfreleaseprofileconfig-atr"></a>`atr` | [AsfAtrConfig](#asfatrconfig) | no | Optional ASF ATR integration policy. |
+
+<a id="asfvoteextension"></a>
+### AsfVoteExtension
+
+ASF-specific vote rendering, trust-root, and disclaimer evidence.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="asfvoteextension-kind"></a>`kind` | typing.Literal['asf-vote'] | no | Vote extension discriminator. |
+| <a id="asfvoteextension-style"></a>`style` | typing.Literal['pmc', 'ppmc-ipmc'] | yes | ASF vote terminology style. |
+| <a id="asfvoteextension-keys"></a>`keys` | <class 'buildish_release_tooling.release.core.manifests.[AuthenticityReference](#authenticityreference)'> | yes | ASF KEYS trust-root reference. |
+| <a id="asfvoteextension-disclaimer-uri"></a>`disclaimer_uri` | str | no | Optional Incubator disclaimer evidence URI. |
+
+<a id="asfvotematerialsconfig"></a>
+### AsfVoteMaterialsConfig
+
+ASF candidate vote-material rendering policy.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="asfvotematerialsconfig-profile"></a>`profile` | Literal['asf'] | no | Vote-material profile discriminator. |
+| <a id="asfvotematerialsconfig-release-name"></a>`release_name` | str | yes | Human-facing release name used in ASF vote text. |
+| <a id="asfvotematerialsconfig-verification-guide-url"></a>`verification_guide_url` | str | yes | User-facing release verification guide URL. |
+| <a id="asfvotematerialsconfig-instructions"></a>`instructions` | str | yes | Human-facing verification instructions for the exact candidate. |
+
+<a id="attachgithubcandidatemanifestresult"></a>
+### AttachGitHubCandidateManifestResult
+
+Result of attaching one exact durable candidate manifest.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`attach-github-candidate-manifest-result.schema.json`](/components/release-tooling/schemas/attach-github-candidate-manifest-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="attachgithubcandidatemanifestresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="attachgithubcandidatemanifestresult-version"></a>`version` | <class 'str'> | yes | Exact candidate version. |
+| <a id="attachgithubcandidatemanifestresult-candidate"></a>`candidate` | <class 'buildish_release_tooling.release.core.models.[CandidateIdentity](#candidateidentity)'> | yes | Exact candidate identity. |
+| <a id="attachgithubcandidatemanifestresult-candidate-manifest"></a>`candidate_manifest` | <class 'buildish_release_tooling.release.core.manifests.[ManifestDigestReference](#manifestdigestreference)'> | yes | Exact attached candidate-manifest identity. |
+| <a id="attachgithubcandidatemanifestresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubCandidatePublication](#githubcandidatepublication)'> | yes | Observed GitHub candidate publication including the manifest asset. |
+| <a id="attachgithubcandidatemanifestresult-action"></a>`action` | typing.Literal['attach-github-candidate-manifest'] | no | Command action discriminator. |
+| <a id="attachgithubcandidatemanifestresult-outcome"></a>`outcome` | typing.Literal['attached', 'already-complete'] | yes | Idempotent manifest attachment outcome. |
+
+<a id="attachgithubreleasemanifestresult"></a>
+### AttachGitHubReleaseManifestResult
+
+Result of attaching one exact durable final release manifest.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`attach-github-release-manifest-result.schema.json`](/components/release-tooling/schemas/attach-github-release-manifest-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="attachgithubreleasemanifestresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="attachgithubreleasemanifestresult-version"></a>`version` | <class 'str'> | yes | Exact released component version. |
+| <a id="attachgithubreleasemanifestresult-release-manifest"></a>`release_manifest` | <class 'buildish_release_tooling.release.core.manifests.[ManifestDigestReference](#manifestdigestreference)'> | yes | Exact attached final release-manifest identity. |
+| <a id="attachgithubreleasemanifestresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubFinalPublication](#githubfinalpublication)'> | yes | Observed GitHub final publication containing the manifest asset. |
+| <a id="attachgithubreleasemanifestresult-action"></a>`action` | typing.Literal['attach-github-release-manifest'] | no | Command action discriminator. |
+| <a id="attachgithubreleasemanifestresult-outcome"></a>`outcome` | typing.Literal['attached', 'already-complete'] | yes | Idempotent manifest attachment outcome. |
+
+<a id="authenticityreference"></a>
+### AuthenticityReference
+
+Optional signature or attestation reference for a manifest or vote package.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="authenticityreference-kind"></a>`kind` | str | yes | Authenticity mechanism discriminator. |
+| <a id="authenticityreference-uri"></a>`uri` | str | yes | URI of the signature or attestation. |
+| <a id="authenticityreference-signer"></a>`signer` | str | no | Optional signer identity or key fingerprint. |
+
+<a id="builtsourcesnapshotconfig"></a>
+### BuiltSourceSnapshotConfig
+
+Policy for a separately built source archive release asset.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="builtsourcesnapshotconfig-mode"></a>`mode` | Literal['built-asset'] | no | Source snapshot policy discriminator. |
+| <a id="builtsourcesnapshotconfig-filename-template"></a>`filename_template` | str | yes | Template used to name the built source archive. |
+| <a id="builtsourcesnapshotconfig-archive-root-template"></a>`archive_root_template` | str | yes | Template used for the archive's top-level directory. |
+
+<a id="byteidenticalpromotionevidence"></a>
+### ByteIdenticalPromotionEvidence
+
+Evidence that candidate and final artifact bytes have identical digests.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="byteidenticalpromotionevidence-relation"></a>`relation` | Literal['byte-identical'] | no | Promotion evidence discriminator. |
+| <a id="byteidenticalpromotionevidence-artifact-name"></a>`artifact_name` | str | yes | Logical artifact name covered by the evidence. |
+| <a id="byteidenticalpromotionevidence-candidate-digests"></a>`candidate_digests` | dict[str, str] | yes | Candidate artifact digests keyed by algorithm. |
+| <a id="byteidenticalpromotionevidence-final-digests"></a>`final_digests` | dict[str, str] | yes | Final artifact digests keyed by algorithm. |
+
+<a id="candidateconfig"></a>
+### CandidateConfig
+
+Candidate numbering, visibility, and retention policy.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="candidateconfig-label"></a>`label` | str | no | Lowercase label placed before the numeric candidate suffix. |
+| <a id="candidateconfig-start-number"></a>`start_number` | int | no | First candidate number when no matching candidate tag exists. |
+| <a id="candidateconfig-visibility"></a>`visibility` | Literal['draft', 'public-prerelease'] | no | Requested visibility after candidate publication is verified. |
+| <a id="candidateconfig-retention"></a>`retention` | Literal['retain-published', 'retain-all'] | no | Retention policy for earlier candidate publications. |
+
+<a id="candidateidentity"></a>
+### CandidateIdentity
+
+Deterministic identity of one exact release candidate.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="candidateidentity-release"></a>`release` | [ReleaseIdentity](#releaseidentity) | yes | Release version proposed by the candidate. |
+| <a id="candidateidentity-label"></a>`label` | str | yes | Candidate series label. |
+| <a id="candidateidentity-number"></a>`number` | int | yes | Candidate sequence number. |
+| <a id="candidateidentity-tag"></a>`tag` | [TagIdentity](#tagidentity) | yes | Exact immutable candidate tag. |
+| <a id="candidateidentity-stable-id"></a>`stable_id` | str | no | Deterministic candidate identifier independent of provider object IDs. |
+
+<a id="candidatelifecycleconfig"></a>
+### CandidateLifecycleConfig
+
+Release lifecycle that creates candidates and promotes one exact candidate.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="candidatelifecycleconfig-mode"></a>`mode` | Literal['candidate'] | no | Release lifecycle discriminator. |
+
+<a id="candidatemanifestv1"></a>
+### CandidateManifestV1
+
+Stable manifest binding one exact candidate to source, artifacts, and publications.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`candidate-manifest-v1.schema.json`](/components/release-tooling/schemas/candidate-manifest-v1.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="candidatemanifestv1-schema-version"></a>`schema_version` | Literal['1'] | no | Manifest schema version. |
+| <a id="candidatemanifestv1-kind"></a>`kind` | Literal['candidate-manifest'] | no | Manifest kind discriminator. |
+| <a id="candidatemanifestv1-release"></a>`release` | [ReleaseIdentity](#releaseidentity) | yes | Exact component release identity. |
+| <a id="candidatemanifestv1-candidate"></a>`candidate` | [CandidateIdentity](#candidateidentity) | yes | Exact candidate identity. |
+| <a id="candidatemanifestv1-source"></a>`source` | [SourceRevision](#sourcerevision) | yes | Exact selected source revision. |
+| <a id="candidatemanifestv1-candidate-tag"></a>`candidate_tag` | [TagIdentity](#tagidentity) | yes | Exact immutable candidate tag identity. |
+| <a id="candidatemanifestv1-source-date-epoch"></a>`source_date_epoch` | int | no | Optional canonical selected-source timestamp. |
+| <a id="candidatemanifestv1-artifacts"></a>`artifacts` | list[[ArtifactReference](#artifactreference)] | no | Immutable candidate artifact inventory. |
+| <a id="candidatemanifestv1-verification-policy-selectors"></a>`verification_policy_selectors` | list[str] | no | Selected verification policy identifiers. |
+| <a id="candidatemanifestv1-verification-results"></a>`verification_results` | list[[VerificationResultReference](#verificationresultreference)] | no | Candidate verification result references. |
+| <a id="candidatemanifestv1-publications"></a>`publications` | list[[PublicationReference](#publicationreference)] | no | Provider-neutral candidate publication references. |
+| <a id="candidatemanifestv1-tooling"></a>`tooling` | [ToolingInvocationProvenance](#toolinginvocationprovenance) | yes | Tooling revision and invocation provenance. |
+| <a id="candidatemanifestv1-created-at"></a>`created_at` | str | yes | UTC creation timestamp in RFC 3339 form. |
+| <a id="candidatemanifestv1-extensions"></a>`extensions` | list[CandidateExtension] | no | Typed platform or foundation candidate extensions. |
+
+<a id="candidatereleasestate"></a>
+### CandidateReleaseState
+
+Exact source, candidate, artifact naming, and publication state.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- schema file: [`candidate-release-state.schema.json`](/components/release-tooling/schemas/candidate-release-state.schema.json)
+- audience: `internal`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="candidatereleasestate-release"></a>`release` | [ReleaseIdentity](#releaseidentity) | yes | Exact component release identity. |
+| <a id="candidatereleasestate-source"></a>`source` | [SourceRevision](#sourcerevision) | yes | Exact selected source revision. |
+| <a id="candidatereleasestate-source-date-epoch"></a>`source_date_epoch` | int | yes | Canonical selected-source timestamp. |
+| <a id="candidatereleasestate-candidate"></a>`candidate` | [CandidateIdentity](#candidateidentity) | yes | Exact candidate identity. |
+| <a id="candidatereleasestate-final-tag-identity"></a>`final_tag_identity` | [TagIdentity](#tagidentity) | yes | Intended immutable final tag. |
+| <a id="candidatereleasestate-source-artifact"></a>`source_artifact` | [SourceArtifactPlan](#sourceartifactplan) | no | Optional resolved built-source archive plan. |
+| <a id="candidatereleasestate-artifacts"></a>`artifacts` | list[[ArtifactReference](#artifactreference)] | no | Immutable candidate artifact references. |
+| <a id="candidatereleasestate-verification-results"></a>`verification_results` | list[[VerificationResultReference](#verificationresultreference)] | no | Verification results for candidate inputs. |
+| <a id="candidatereleasestate-publications"></a>`publications` | list[[PublicationReference](#publicationreference)] | no | Candidate publication results. |
+| <a id="candidatereleasestate-tooling"></a>`tooling` | [ToolingInvocationProvenance](#toolinginvocationprovenance) | no | Tooling revision and invocation provenance. |
+
+<a id="commandcontext"></a>
+### CommandContext
+
+Common runtime context passed into command handlers.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- schema file: [`command-context.schema.json`](/components/release-tooling/schemas/command-context.schema.json)
+- audience: `internal`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="commandcontext-release-config"></a>`release_config` | [ReleaseConfig](#releaseconfig) | yes | Validated release configuration for the current command. |
+| <a id="commandcontext-release-config-path"></a>`release_config_path` | Path | no | Filesystem path of the authored release configuration. |
+
+<a id="componentidentity"></a>
+### ComponentIdentity
+
+Stable machine and human identity of one released component.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="componentidentity-id"></a>`id` | str | yes | Stable machine identifier of the component. |
+| <a id="componentidentity-display-name"></a>`display_name` | str | yes | Human-facing component name. |
+
+<a id="componentidentityconfig"></a>
+### ComponentIdentityConfig
+
+Stable machine and human identities for one released component.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="componentidentityconfig-id"></a>`id` | str | yes | Stable machine identifier used in release state and manifests. |
+| <a id="componentidentityconfig-display-name"></a>`display_name` | str | yes | Human-facing component name used in release text. |
+
+<a id="creategithubcandidatetagresult"></a>
+### CreateGitHubCandidateTagResult
+
+Result of creating or revalidating one immutable candidate tag.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`create-github-candidate-tag-result.schema.json`](/components/release-tooling/schemas/create-github-candidate-tag-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="creategithubcandidatetagresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="creategithubcandidatetagresult-version"></a>`version` | <class 'str'> | yes | Exact candidate version. |
+| <a id="creategithubcandidatetagresult-candidate"></a>`candidate` | <class 'buildish_release_tooling.release.core.models.[CandidateIdentity](#candidateidentity)'> | yes | Exact candidate identity. |
+| <a id="creategithubcandidatetagresult-source-commit"></a>`source_commit` | <class 'str'> | yes | Exact commit targeted by the candidate tag. |
+| <a id="creategithubcandidatetagresult-action"></a>`action` | typing.Literal['create-candidate-tag'] | no | Command action discriminator. |
+| <a id="creategithubcandidatetagresult-outcome"></a>`outcome` | typing.Literal['created', 'already-complete'] | yes | Idempotent tag creation outcome. |
+
+<a id="directlifecycleconfig"></a>
+### DirectLifecycleConfig
+
+Release lifecycle that publishes a final release without a candidate.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="directlifecycleconfig-mode"></a>`mode` | Literal['direct'] | no | Release lifecycle discriminator. |
+
+<a id="directreleasestate"></a>
+### DirectReleaseState
+
+Exact source and final-tag state for a direct release.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- schema file: [`direct-release-state.schema.json`](/components/release-tooling/schemas/direct-release-state.schema.json)
+- audience: `internal`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="directreleasestate-release"></a>`release` | [ReleaseIdentity](#releaseidentity) | yes | Exact component release identity. |
+| <a id="directreleasestate-source"></a>`source` | [SourceRevision](#sourcerevision) | yes | Exact selected source revision. |
+| <a id="directreleasestate-final-tag"></a>`final_tag` | [TagIdentity](#tagidentity) | yes | Exact immutable final tag. |
+| <a id="directreleasestate-source-date-epoch"></a>`source_date_epoch` | int | no | Optional canonical source timestamp. |
+| <a id="directreleasestate-source-artifact"></a>`source_artifact` | [SourceArtifactPlan](#sourceartifactplan) | no | Optional resolved built-source archive plan. |
+| <a id="directreleasestate-artifacts"></a>`artifacts` | list[[ArtifactReference](#artifactreference)] | no | Immutable release artifact references. |
+| <a id="directreleasestate-verification-results"></a>`verification_results` | list[[VerificationResultReference](#verificationresultreference)] | no | Verification results for the release inputs. |
+| <a id="directreleasestate-publications"></a>`publications` | list[[PublicationReference](#publicationreference)] | no | Publication results for this release. |
+| <a id="directreleasestate-tooling"></a>`tooling` | [ToolingInvocationProvenance](#toolinginvocationprovenance) | no | Tooling revision and invocation provenance. |
+
+<a id="dockerhubpublicationconfig"></a>
+### DockerHubPublicationConfig
+
+Secondary publication to Docker Hub.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="dockerhubpublicationconfig-kind"></a>`kind` | Literal['dockerhub'] | no | Secondary publication target discriminator. |
+
+<a id="finalizegithubcandidateresult"></a>
+### FinalizeGitHubCandidateResult
+
+Result of applying configured visibility to one verified candidate.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`finalize-github-candidate-result.schema.json`](/components/release-tooling/schemas/finalize-github-candidate-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="finalizegithubcandidateresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="finalizegithubcandidateresult-version"></a>`version` | <class 'str'> | yes | Exact candidate version. |
+| <a id="finalizegithubcandidateresult-candidate"></a>`candidate` | <class 'buildish_release_tooling.release.core.models.[CandidateIdentity](#candidateidentity)'> | yes | Exact candidate identity. |
+| <a id="finalizegithubcandidateresult-candidate-manifest"></a>`candidate_manifest` | <class 'buildish_release_tooling.release.core.manifests.[ManifestDigestReference](#manifestdigestreference)'> | yes | Verified candidate-manifest identity. |
+| <a id="finalizegithubcandidateresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubCandidatePublication](#githubcandidatepublication)'> | yes | Observed finalized GitHub candidate publication state. |
+| <a id="finalizegithubcandidateresult-action"></a>`action` | typing.Literal['finalize-github-candidate'] | no | Command action discriminator. |
+| <a id="finalizegithubcandidateresult-outcome"></a>`outcome` | typing.Literal['published', 'retained-draft', 'already-complete'] | yes | Idempotent candidate finalization outcome. |
+
+<a id="genericvotematerialsconfig"></a>
+### GenericVoteMaterialsConfig
+
+Project-neutral vote-material rendering policy.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="genericvotematerialsconfig-profile"></a>`profile` | Literal['generic'] | no | Vote-material profile discriminator. |
+| <a id="genericvotematerialsconfig-release-name"></a>`release_name` | str | yes | Human-facing name rendered in vote materials. |
+| <a id="genericvotematerialsconfig-verification-guide-url"></a>`verification_guide_url` | str | yes | User-facing release verification guide URL. |
+| <a id="genericvotematerialsconfig-instructions"></a>`instructions` | str | yes | Human-facing verification instructions for the exact candidate. |
+
+<a id="githubactionpublicationconfig"></a>
+### GitHubActionPublicationConfig
+
+Secondary publication of immutable and moving GitHub Action refs.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="githubactionpublicationconfig-kind"></a>`kind` | Literal['github-action'] | no | Secondary publication target discriminator. |
+
+<a id="githubassetidentity"></a>
+### GitHubAssetIdentity
+
+Immutable observed identity of one GitHub Release asset.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="githubassetidentity-name"></a>`name` | <class 'str'> | yes | GitHub Release asset filename. |
+| <a id="githubassetidentity-asset-id"></a>`asset_id` | <class 'int'> | yes | GitHub-issued numeric asset identifier. |
+| <a id="githubassetidentity-size-bytes"></a>`size_bytes` | <class 'int'> | yes | GitHub-observed release asset size in bytes. |
+| <a id="githubassetidentity-digest"></a>`digest` | <class 'str'> | yes | GitHub-observed SHA-256 asset digest. |
+
+<a id="githubcandidatepublication"></a>
+### GitHubCandidatePublication
+
+GitHub Release publication evidence for one exact candidate.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="githubcandidatepublication-kind"></a>`kind` | typing.Literal['github-candidate-publication'] | no | Extension discriminator. |
+| <a id="githubcandidatepublication-repository"></a>`repository` | <class 'str'> | yes | GitHub repository in owner/name form. |
+| <a id="githubcandidatepublication-release-id"></a>`release_id` | <class 'int'> | yes | GitHub Release numeric identifier. |
+| <a id="githubcandidatepublication-release-url"></a>`release_url` | <class 'str'> | yes | User-facing GitHub Release URL. |
+| <a id="githubcandidatepublication-tag"></a>`tag` | <class 'str'> | yes | Exact candidate tag attached to the release. |
+| <a id="githubcandidatepublication-draft"></a>`draft` | <class 'bool'> | yes | Whether GitHub reports the release as a draft. |
+| <a id="githubcandidatepublication-prerelease"></a>`prerelease` | <class 'bool'> | yes | Whether GitHub reports a pre-release. |
+| <a id="githubcandidatepublication-assets"></a>`assets` | list[buildish_release_tooling.release.platforms.github.manifests.[GitHubAssetIdentity](#githubassetidentity)] | no | Observed candidate asset identities. |
+
+<a id="githubfinalpublication"></a>
+### GitHubFinalPublication
+
+GitHub Release publication evidence for one final release.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="githubfinalpublication-kind"></a>`kind` | typing.Literal['github-final-publication'] | no | Extension discriminator. |
+| <a id="githubfinalpublication-repository"></a>`repository` | <class 'str'> | yes | GitHub repository in owner/name form. |
+| <a id="githubfinalpublication-release-id"></a>`release_id` | <class 'int'> | yes | GitHub Release numeric identifier. |
+| <a id="githubfinalpublication-release-url"></a>`release_url` | <class 'str'> | yes | User-facing GitHub Release URL. |
+| <a id="githubfinalpublication-tag"></a>`tag` | <class 'str'> | yes | Exact immutable final tag attached to the release. |
+| <a id="githubfinalpublication-draft"></a>`draft` | <class 'bool'> | yes | Whether GitHub reports the release as a draft. |
+| <a id="githubfinalpublication-prerelease"></a>`prerelease` | <class 'bool'> | yes | Whether GitHub reports a pre-release. |
+| <a id="githubfinalpublication-assets"></a>`assets` | list[buildish_release_tooling.release.platforms.github.manifests.[GitHubAssetIdentity](#githubassetidentity)] | no | Observed final asset identities. |
+
+<a id="githubreleaseassetspublicationconfig"></a>
+### GitHubReleaseAssetsPublicationConfig
+
+Secondary component-produced assets attached to a GitHub Release.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="githubreleaseassetspublicationconfig-kind"></a>`kind` | Literal['github-release-assets'] | no | Secondary publication target discriminator. |
+
+<a id="githubreleasepublicationconfig"></a>
+### GitHubReleasePublicationConfig
+
+GitHub Release authoritative or convenience publication target.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="githubreleasepublicationconfig-kind"></a>`kind` | Literal['github-release'] | no | Publication target discriminator. |
+| <a id="githubreleasepublicationconfig-repository"></a>`repository` | str | no | Optional explicit GitHub repository in owner/name form. |
+
+<a id="githubsourcechecksconfig"></a>
+### GitHubSourceChecksConfig
+
+GitHub check runs or status contexts required for one source revision.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="githubsourcechecksconfig-platform"></a>`platform` | Literal['github'] | yes | Source-check hosting-platform discriminator. |
+| <a id="githubsourcechecksconfig-required"></a>`required` | list[str] | yes | Exact GitHub check-run or legacy status-context names required on the selected revision. |
+
+<a id="manifestdigestreference"></a>
+### ManifestDigestReference
+
+URI and cryptographic digest binding one exact manifest document.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="manifestdigestreference-uri"></a>`uri` | str | yes | URI of the exact manifest document. |
+| <a id="manifestdigestreference-algorithm"></a>`algorithm` | Literal['sha256', 'sha512'] | no | Digest algorithm. |
+| <a id="manifestdigestreference-digest"></a>`digest` | str | yes | Lowercase hexadecimal manifest digest. |
+
+<a id="nosourcesnapshotconfig"></a>
+### NoSourceSnapshotConfig
+
+Policy for a release that intentionally publishes no source snapshot.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="nosourcesnapshotconfig-mode"></a>`mode` | Literal['none'] | no | Source snapshot policy discriminator. |
+
+<a id="openpgpsigningconfig"></a>
+### OpenPgpSigningConfig
+
+OpenPGP detached-signature policy and secret input names.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="openpgpsigningconfig-kind"></a>`kind` | Literal['openpgp'] | no | Artifact signing mechanism discriminator. |
+| <a id="openpgpsigningconfig-private-key-env"></a>`private_key_env` | str | yes | Environment variable containing the armored OpenPGP private key. |
+| <a id="openpgpsigningconfig-passphrase-env"></a>`passphrase_env` | str | no | Optional environment variable containing the private-key passphrase. The variable may be absent when the configured key is unprotected. |
+| <a id="openpgpsigningconfig-expected-fingerprint"></a>`expected_fingerprint` | str | no | Optional full OpenPGP fingerprint required for the imported signing key. |
+| <a id="openpgpsigningconfig-signature-format"></a>`signature_format` | Literal['detached-ascii-armored'] | no | Detached signature format produced for signed file artifacts. |
+
+<a id="platformgeneratedsourcesnapshotconfig"></a>
+### PlatformGeneratedSourceSnapshotConfig
+
+Policy that relies on source snapshots generated by the hosting platform.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="platformgeneratedsourcesnapshotconfig-mode"></a>`mode` | Literal['platform-generated'] | no | Source snapshot policy discriminator. |
+
+<a id="policyprofilesconfig"></a>
+### PolicyProfilesConfig
+
+Explicit foundation policy profiles selected by a component.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="policyprofilesconfig-asf"></a>`asf` | [AsfReleaseProfileConfig](#asfreleaseprofileconfig) | no | Optional Apache Software Foundation release policy. |
+
+<a id="promotedcandidatereference"></a>
+### PromotedCandidateReference
+
+Exact candidate identity and manifest selected for final promotion.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="promotedcandidatereference-candidate"></a>`candidate` | [CandidateIdentity](#candidateidentity) | yes | Exact promoted candidate identity. |
+| <a id="promotedcandidatereference-manifest"></a>`manifest` | [ManifestDigestReference](#manifestdigestreference) | yes | Cryptographic reference to the exact candidate manifest. |
+
+<a id="promotionstate"></a>
+### PromotionState
+
+Exact candidate evidence and final-tag state for promotion.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- schema file: [`promotion-state.schema.json`](/components/release-tooling/schemas/promotion-state.schema.json)
+- audience: `internal`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="promotionstate-release"></a>`release` | [ReleaseIdentity](#releaseidentity) | yes | Exact component release identity. |
+| <a id="promotionstate-source"></a>`source` | [SourceRevision](#sourcerevision) | yes | Exact source revision proven by the candidate. |
+| <a id="promotionstate-candidate"></a>`candidate` | [CandidateIdentity](#candidateidentity) | yes | Exact candidate selected for promotion. |
+| <a id="promotionstate-candidate-manifest-digest"></a>`candidate_manifest_digest` | str | yes | Lowercase SHA-256 or SHA-512 digest of the exact candidate manifest. |
+| <a id="promotionstate-final-tag"></a>`final_tag` | [TagIdentity](#tagidentity) | yes | Exact immutable final tag. |
+| <a id="promotionstate-artifacts"></a>`artifacts` | list[[ArtifactReference](#artifactreference)] | no | Artifacts selected for final promotion. |
+| <a id="promotionstate-verification-results"></a>`verification_results` | list[[VerificationResultReference](#verificationresultreference)] | no | Verification results required for promotion. |
+| <a id="promotionstate-publications"></a>`publications` | list[[PublicationReference](#publicationreference)] | no | Final publication results. |
+| <a id="promotionstate-tooling"></a>`tooling` | [ToolingInvocationProvenance](#toolinginvocationprovenance) | no | Tooling revision and invocation provenance. |
+
+<a id="publicationconfig"></a>
+### PublicationConfig
+
+Authoritative, convenience, and secondary publication targets.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="publicationconfig-authoritative"></a>`authoritative` | PrimaryPublicationTargetConfig | yes | Canonical publication target for the release. |
+| <a id="publicationconfig-convenience"></a>`convenience` | list[PrimaryPublicationTargetConfig] | no | Non-authoritative release publication mirrors or pages. |
+| <a id="publicationconfig-secondary"></a>`secondary` | list[SecondaryPublicationTargetConfig] | no | Additional package, image, action, or asset publication targets. |
+
+<a id="publicationreference"></a>
+### PublicationReference
+
+Reference to one provider or foundation publication result.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="publicationreference-target-kind"></a>`target_kind` | str | yes | Selected publication target discriminator. |
+| <a id="publicationreference-uri"></a>`uri` | str | yes | Primary URI of the publication result. |
+| <a id="publicationreference-immutable-id"></a>`immutable_id` | str | no | Optional provider-issued immutable publication identifier. |
+
+<a id="publishgithubfinalreleaseresult"></a>
+### PublishGitHubFinalReleaseResult
+
+Result of publishing or revalidating one exact GitHub final release.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`publish-github-final-release-result.schema.json`](/components/release-tooling/schemas/publish-github-final-release-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="publishgithubfinalreleaseresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="publishgithubfinalreleaseresult-version"></a>`version` | <class 'str'> | yes | Exact released component version. |
+| <a id="publishgithubfinalreleaseresult-source-commit"></a>`source_commit` | <class 'str'> | yes | Exact source commit targeted by the final tag. |
+| <a id="publishgithubfinalreleaseresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubFinalPublication](#githubfinalpublication)'> | yes | Observed exact GitHub final-release publication state. |
+| <a id="publishgithubfinalreleaseresult-action"></a>`action` | typing.Literal['publish-github-final-release'] | no | Command action discriminator. |
+| <a id="publishgithubfinalreleaseresult-outcome"></a>`outcome` | typing.Literal['published', 'already-complete'] | yes | Idempotent final publication outcome. |
+
+<a id="pythonpackagepublicationconfig"></a>
+### PythonPackagePublicationConfig
+
+Secondary publication to the configured Python package index.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="pythonpackagepublicationconfig-kind"></a>`kind` | Literal['pypi'] | no | Secondary publication target discriminator. |
+
+<a id="readgithubfinalreleaseresult"></a>
+### ReadGitHubFinalReleaseResult
+
+Exact observed state of one GitHub final release.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`read-github-final-release-result.schema.json`](/components/release-tooling/schemas/read-github-final-release-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="readgithubfinalreleaseresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="readgithubfinalreleaseresult-version"></a>`version` | <class 'str'> | yes | Exact released component version. |
+| <a id="readgithubfinalreleaseresult-source-commit"></a>`source_commit` | <class 'str'> | yes | Exact source commit targeted by the final tag. |
+| <a id="readgithubfinalreleaseresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubFinalPublication](#githubfinalpublication)'> | yes | Observed exact GitHub final-release publication state. |
+| <a id="readgithubfinalreleaseresult-action"></a>`action` | typing.Literal['read-github-final-release'] | no | Command action discriminator. |
+| <a id="readgithubfinalreleaseresult-outcome"></a>`outcome` | typing.Literal['observed'] | no | Read-only observation outcome. |
+
+<a id="registryidentitypromotionevidence"></a>
+### RegistryIdentityPromotionEvidence
+
+Evidence that an immutable package or registry identity is unchanged.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="registryidentitypromotionevidence-relation"></a>`relation` | Literal['registry-identity'] | no | Promotion evidence discriminator. |
+| <a id="registryidentitypromotionevidence-artifact-name"></a>`artifact_name` | str | yes | Logical artifact name covered by the evidence. |
+| <a id="registryidentitypromotionevidence-registry-kind"></a>`registry_kind` | str | yes | Package or registry ecosystem discriminator. |
+| <a id="registryidentitypromotionevidence-immutable-identity"></a>`immutable_identity` | str | yes | Immutable digest or ecosystem coordinate retained by promotion. |
+
+<a id="releaseconfig"></a>
+### ReleaseConfig
+
+Component-authored release lifecycle and capability configuration.
+
+- category: `authored`
+- ownership: `component-owned`
+- schema file: [`component-config.schema.json`](/components/release-tooling/schemas/component-config.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: `release-config.yaml`
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="releaseconfig-component"></a>`component` | [ComponentIdentityConfig](#componentidentityconfig) | yes | Stable component identity. |
+| <a id="releaseconfig-versioning"></a>`versioning` | [VersioningConfig](#versioningconfig) | no | Version and final-tag naming policy. |
+| <a id="releaseconfig-source"></a>`source` | [SourceConfig](#sourceconfig) | yes | Source selection and snapshot policy. |
+| <a id="releaseconfig-lifecycle"></a>`lifecycle` | LifecycleConfig | yes | Direct or candidate release lifecycle. |
+| <a id="releaseconfig-candidate"></a>`candidate` | [CandidateConfig](#candidateconfig) | no | Candidate policy required only for the candidate lifecycle. |
+| <a id="releaseconfig-artifacts"></a>`artifacts` | [ArtifactPolicyConfig](#artifactpolicyconfig) | no | Produced artifact and checksum policy. |
+| <a id="releaseconfig-publication"></a>`publication` | [PublicationConfig](#publicationconfig) | yes | Authoritative and additional publication targets. |
+| <a id="releaseconfig-tags"></a>`tags` | [TagPolicyConfig](#tagpolicyconfig) | no | Immutable and moving tag policy. |
+| <a id="releaseconfig-vote-materials"></a>`vote_materials` | VoteMaterialsConfig | no | Optional vote-material policy for an exact candidate. |
+| <a id="releaseconfig-policy-profiles"></a>`policy_profiles` | [PolicyProfilesConfig](#policyprofilesconfig) | no | Explicit foundation-specific policy profiles. |
+| <a id="releaseconfig-verification"></a>`verification` | [VerifyRcConfig](#verifyrcconfig) | no | Artifact verification and reproducibility policy. |
+
+<a id="releaseidentity"></a>
+### ReleaseIdentity
+
+Stable identity of one component version.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="releaseidentity-component"></a>`component` | [ComponentIdentity](#componentidentity) | yes | Released component identity. |
+| <a id="releaseidentity-version"></a>`version` | str | yes | Exact component version. |
+
+<a id="releasemanifestv1"></a>
+### ReleaseManifestV1
+
+Stable final release manifest for either direct publication or exact promotion.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`release-manifest-v1.schema.json`](/components/release-tooling/schemas/release-manifest-v1.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="releasemanifestv1-schema-version"></a>`schema_version` | Literal['1'] | no | Manifest schema version. |
+| <a id="releasemanifestv1-kind"></a>`kind` | Literal['release-manifest'] | no | Manifest kind discriminator. |
+| <a id="releasemanifestv1-release"></a>`release` | [ReleaseIdentity](#releaseidentity) | yes | Exact component release identity. |
+| <a id="releasemanifestv1-source"></a>`source` | [SourceRevision](#sourcerevision) | yes | Exact final release source revision. |
+| <a id="releasemanifestv1-final-tag"></a>`final_tag` | [TagIdentity](#tagidentity) | yes | Exact immutable final tag identity. |
+| <a id="releasemanifestv1-artifacts"></a>`artifacts` | list[[ArtifactReference](#artifactreference)] | no | Immutable final artifact inventory. |
+| <a id="releasemanifestv1-publications"></a>`publications` | list[[PublicationReference](#publicationreference)] | no | Provider-neutral final publication references. |
+| <a id="releasemanifestv1-verification-results"></a>`verification_results` | list[[VerificationResultReference](#verificationresultreference)] | no | Final verification result references. |
+| <a id="releasemanifestv1-promoted-candidate"></a>`promoted_candidate` | [PromotedCandidateReference](#promotedcandidatereference) | no | Exact promoted candidate and manifest, absent for direct releases. |
+| <a id="releasemanifestv1-promotion-evidence"></a>`promotion_evidence` | list[PromotionEvidence] | no | Per-artifact typed promotion relations. |
+| <a id="releasemanifestv1-secondary-publications"></a>`secondary_publications` | list[[PublicationReference](#publicationreference)] | no | Secondary package or registry publication results. |
+| <a id="releasemanifestv1-moving-alias-results"></a>`moving_alias_results` | list[[PublicationReference](#publicationreference)] | no | Moving tag or alias update results. |
+| <a id="releasemanifestv1-tooling"></a>`tooling` | [ToolingInvocationProvenance](#toolinginvocationprovenance) | yes | Tooling revision and invocation provenance. |
+| <a id="releasemanifestv1-created-at"></a>`created_at` | str | yes | UTC creation timestamp in RFC 3339 form. |
+| <a id="releasemanifestv1-extensions"></a>`extensions` | list[ReleaseExtension] | no | Typed platform or foundation final extensions. |
+
+<a id="samesourcerevisionpromotionevidence"></a>
+### SameSourceRevisionPromotionEvidence
+
+Evidence that candidate and final snapshots resolve to the same source commit.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="samesourcerevisionpromotionevidence-relation"></a>`relation` | Literal['same-source-revision'] | no | Promotion evidence discriminator. |
+| <a id="samesourcerevisionpromotionevidence-artifact-name"></a>`artifact_name` | str | yes | Logical source snapshot name. |
+| <a id="samesourcerevisionpromotionevidence-candidate-tag"></a>`candidate_tag` | str | yes | Candidate tag used for the generated snapshot. |
+| <a id="samesourcerevisionpromotionevidence-final-tag"></a>`final_tag` | str | yes | Final tag used for the generated snapshot. |
+| <a id="samesourcerevisionpromotionevidence-source-commit-sha"></a>`source_commit_sha` | str | yes | Exact commit targeted by both candidate and final tags. |
+
+<a id="sourceartifactplan"></a>
+### SourceArtifactPlan
+
+Resolved built-source archive names for one release run.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="sourceartifactplan-filename"></a>`filename` | str | yes | Resolved source archive filename. |
+| <a id="sourceartifactplan-archive-root"></a>`archive_root` | str | yes | Resolved top-level archive directory. |
+
+<a id="sourceconfig"></a>
+### SourceConfig
+
+Source selection, snapshot, and optional hosting-platform check policy.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="sourceconfig-selection"></a>`selection` | Literal['explicit-ref-or-default-branch', 'explicit-ref', 'release-branch'] | yes | Policy used to resolve the exact release source revision. |
+| <a id="sourceconfig-default-branch"></a>`default_branch` | str | no | Optional default branch used when source selection permits it. |
+| <a id="sourceconfig-snapshot"></a>`snapshot` | SourceSnapshotConfig | yes | Policy for source material exposed to release consumers. |
+| <a id="sourceconfig-checks"></a>`checks` | [GitHubSourceChecksConfig](#githubsourcechecksconfig) | no | Optional hosting-platform checks required for the selected source revision. Component-owned same-run test jobs remain workflow concerns. |
+
+<a id="sourcerevision"></a>
+### SourceRevision
+
+Exact source repository revision selected for a release.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="sourcerevision-repository"></a>`repository` | str | yes | Provider-neutral source repository identity or URL. |
+| <a id="sourcerevision-commit-sha"></a>`commit_sha` | str | yes | Exact source commit identifier. |
+| <a id="sourcerevision-source-ref"></a>`source_ref` | str | no | Optional authored or resolved source ref that selected the commit. |
+
+<a id="stagegithubcandidateresult"></a>
+### StageGitHubCandidateResult
+
+Result of converging on one exact draft GitHub candidate release.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`stage-github-candidate-result.schema.json`](/components/release-tooling/schemas/stage-github-candidate-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="stagegithubcandidateresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="stagegithubcandidateresult-version"></a>`version` | <class 'str'> | yes | Exact candidate version. |
+| <a id="stagegithubcandidateresult-candidate"></a>`candidate` | <class 'buildish_release_tooling.release.core.models.[CandidateIdentity](#candidateidentity)'> | yes | Exact candidate identity. |
+| <a id="stagegithubcandidateresult-source-commit"></a>`source_commit` | <class 'str'> | yes | Exact source commit targeted by the candidate tag. |
+| <a id="stagegithubcandidateresult-artifacts"></a>`artifacts` | list[buildish_release_tooling.release.core.models.[ArtifactReference](#artifactreference)] | no | Immutable staged candidate artifact inventory. |
+| <a id="stagegithubcandidateresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubCandidatePublication](#githubcandidatepublication)'> | yes | Observed exact GitHub candidate publication state. |
+| <a id="stagegithubcandidateresult-action"></a>`action` | typing.Literal['stage-github-candidate'] | no | Command action discriminator. |
+| <a id="stagegithubcandidateresult-outcome"></a>`outcome` | typing.Literal['created', 'completed', 'already-complete'] | yes | Idempotent candidate staging outcome. |
+
+<a id="stagegithubfinalreleaseresult"></a>
+### StageGitHubFinalReleaseResult
+
+Result of converging on one exact draft GitHub final release.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`stage-github-final-release-result.schema.json`](/components/release-tooling/schemas/stage-github-final-release-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="stagegithubfinalreleaseresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="stagegithubfinalreleaseresult-version"></a>`version` | <class 'str'> | yes | Exact released component version. |
+| <a id="stagegithubfinalreleaseresult-source-commit"></a>`source_commit` | <class 'str'> | yes | Exact source commit targeted by the final tag. |
+| <a id="stagegithubfinalreleaseresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubFinalPublication](#githubfinalpublication)'> | yes | Observed exact GitHub final-release publication state. |
+| <a id="stagegithubfinalreleaseresult-action"></a>`action` | typing.Literal['stage-github-final-release'] | no | Command action discriminator. |
+| <a id="stagegithubfinalreleaseresult-outcome"></a>`outcome` | typing.Literal['created', 'completed', 'already-complete'] | yes | Idempotent staging outcome. |
+
+<a id="tagidentity"></a>
+### TagIdentity
+
+Immutable identity of one Git tag and its exact target commit.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="tagidentity-name"></a>`name` | str | yes | Exact tag name. |
+| <a id="tagidentity-target-commit"></a>`target_commit` | str | yes | Exact commit targeted by the tag. |
+| <a id="tagidentity-purpose"></a>`purpose` | Literal['candidate', 'final', 'moving-alias'] | yes | Provider-neutral purpose of the tag. |
+
+<a id="tagpolicyconfig"></a>
+### TagPolicyConfig
+
+Immutable-tag materialization and optional moving-tag policy.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="tagpolicyconfig-final-mode"></a>`final_mode` | Literal['exact-source-commit', 'detached-materialization-commit'] | no | Commit policy used for the immutable final tag. |
+| <a id="tagpolicyconfig-moving"></a>`moving` | list[str] | no | Explicit moving tag or alias policies enabled for the component. |
+| <a id="tagpolicyconfig-include-final-mode-in-summary"></a>`include_final_mode_in_summary` | bool | no | Whether summaries render the selected final-tag materialization mode. |
+
+<a id="toolinginvocationprovenance"></a>
+### ToolingInvocationProvenance
+
+Provider-neutral tooling revision and invocation metadata.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="toolinginvocationprovenance-version"></a>`version` | str | no | Installed tooling version. |
+| <a id="toolinginvocationprovenance-revision"></a>`revision` | str | no | Exact tooling source revision. |
+| <a id="toolinginvocationprovenance-invocation-id"></a>`invocation_id` | str | no | Optional workflow- or caller-issued invocation identifier. |
+
+<a id="verificationresultreference"></a>
+### VerificationResultReference
+
+Reference to one machine-readable verification result.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verificationresultreference-kind"></a>`kind` | str | yes | Verification result kind. |
+| <a id="verificationresultreference-uri"></a>`uri` | str | yes | URI of the verification result. |
+| <a id="verificationresultreference-digest"></a>`digest` | str | no | Optional result document digest. |
+
+<a id="verifygithubcandidateresult"></a>
+### VerifyGitHubCandidateResult
+
+Result of verifying one exact candidate and durable manifest.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`verify-github-candidate-result.schema.json`](/components/release-tooling/schemas/verify-github-candidate-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifygithubcandidateresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="verifygithubcandidateresult-version"></a>`version` | <class 'str'> | yes | Exact candidate version. |
+| <a id="verifygithubcandidateresult-candidate"></a>`candidate` | <class 'buildish_release_tooling.release.core.models.[CandidateIdentity](#candidateidentity)'> | yes | Exact candidate identity. |
+| <a id="verifygithubcandidateresult-candidate-manifest"></a>`candidate_manifest` | <class 'buildish_release_tooling.release.core.manifests.[ManifestDigestReference](#manifestdigestreference)'> | yes | Verified candidate-manifest identity. |
+| <a id="verifygithubcandidateresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubCandidatePublication](#githubcandidatepublication)'> | yes | Verified GitHub candidate publication state. |
+| <a id="verifygithubcandidateresult-action"></a>`action` | typing.Literal['verify-github-candidate'] | no | Command action discriminator. |
+| <a id="verifygithubcandidateresult-outcome"></a>`outcome` | typing.Literal['verified'] | no | Exact-state verification outcome. |
+
+<a id="verifygithubfinalreleaseresult"></a>
+### VerifyGitHubFinalReleaseResult
+
+Result of verifying one GitHub final release against direct-release state.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`verify-github-final-release-result.schema.json`](/components/release-tooling/schemas/verify-github-final-release-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifygithubfinalreleaseresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="verifygithubfinalreleaseresult-version"></a>`version` | <class 'str'> | yes | Exact released component version. |
+| <a id="verifygithubfinalreleaseresult-source-commit"></a>`source_commit` | <class 'str'> | yes | Exact source commit targeted by the final tag. |
+| <a id="verifygithubfinalreleaseresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubFinalPublication](#githubfinalpublication)'> | yes | Observed exact GitHub final-release publication state. |
+| <a id="verifygithubfinalreleaseresult-action"></a>`action` | typing.Literal['verify-github-final-release'] | no | Command action discriminator. |
+| <a id="verifygithubfinalreleaseresult-outcome"></a>`outcome` | typing.Literal['verified'] | no | Exact-state verification outcome. |
+
+<a id="verifyrcbuildconfig"></a>
+### VerifyRcBuildConfig
+
+Host-direct rebuild recipe configuration for one reproducibility profile.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifyrcbuildconfig-command"></a>`command` | list[str] | yes | Literal argv list that Buildish executed or recommends for the related step. |
+| <a id="verifyrcbuildconfig-working-dir"></a>`working_dir` | str | no | Repository-root-relative working directory that Buildish should use when running the related build recipe. |
+| <a id="verifyrcbuildconfig-env"></a>`env` | dict[str, str] | no | Environment-variable mapping supplied to the related build, scenario, or command step. |
+| <a id="verifyrcbuildconfig-output-globs"></a>`output_globs` | list[str] | yes | Repository-root-relative glob patterns that identify expected outputs of the related build recipe. |
+
+<a id="verifyrcbuildoverrideconfig"></a>
+### VerifyRcBuildOverrideConfig
+
+Local non-canonical rebuild overrides for one reproducibility profile.
+
+- category: `authored`
+- ownership: `consumer-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifyrcbuildoverrideconfig-command"></a>`command` | list[str] | no | Literal argv list that Buildish executed or recommends for the related step. |
+| <a id="verifyrcbuildoverrideconfig-working-dir"></a>`working_dir` | str | no | Repository-root-relative working directory that Buildish should use when running the related build recipe. |
+| <a id="verifyrcbuildoverrideconfig-env"></a>`env` | dict[str, str] | no | Environment-variable mapping supplied to the related build, scenario, or command step. |
+| <a id="verifyrcbuildoverrideconfig-output-globs"></a>`output_globs` | list[str] | no | Repository-root-relative glob patterns that identify expected outputs of the related build recipe. |
+
+<a id="verifyrcconfig"></a>
+### VerifyRcConfig
+
+Structured verify-rc configuration for rebuild recipes and profile selection.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifyrcconfig-source"></a>`source` | [VerifyRcSourceConfig](#verifyrcsourceconfig) | no | Source-artifact-specific verify-rc policy block nested inside the component configuration. |
+| <a id="verifyrcconfig-profiles"></a>`profiles` | dict[str, [VerifyRcProfileConfig](#verifyrcprofileconfig)] | no | Canonical reproducibility profiles keyed by profile identifier in the component configuration. |
+
+<a id="verifyrcexactbytescomparisonconfig"></a>
+### VerifyRcExactBytesComparisonConfig
+
+Exact-byte comparison policy for source and file-like reproducibility profiles.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifyrcexactbytescomparisonconfig-mode"></a>`mode` | Literal['exact-bytes'] | no | Comparison mode literal indicating that reproducibility succeeds only when the rebuilt artifact bytes match the staged bytes exactly. |
+
+<a id="verifyrcmavenpathruleconfig"></a>
+### VerifyRcMavenPathRuleConfig
+
+One regex-based per-path comparison override inside a Maven repository profile.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifyrcmavenpathruleconfig-pattern"></a>`pattern` | str | yes | Regular-expression pattern used to match one family of repository paths. |
+| <a id="verifyrcmavenpathruleconfig-mode"></a>`mode` | Literal['exact-bytes', 'zip-normalized', 'content-only', 'remote-only'] | yes | Comparison mode that should apply to Maven repository paths matching this regex rule instead of the repository default. |
+
+<a id="verifyrcmavenrepositorycomparisonconfig"></a>
+### VerifyRcMavenRepositoryComparisonConfig
+
+Repository-tree comparison policy for Maven repository reproducibility profiles.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifyrcmavenrepositorycomparisonconfig-mode"></a>`mode` | Literal['repository-tree'] | no | Comparison mode literal indicating that this reproducibility profile compares a rebuilt Maven repository tree against the staged repository tree. |
+| <a id="verifyrcmavenrepositorycomparisonconfig-repository-dir"></a>`repository_dir` | str | yes | Repository-root-relative rebuild output directory that should contain the local Maven repository tree. |
+| <a id="verifyrcmavenrepositorycomparisonconfig-require-signatures"></a>`require_signatures` | bool | no | Whether Maven repository reproducibility should require detached signature files to exist and compare successfully. |
+| <a id="verifyrcmavenrepositorycomparisonconfig-path-rules"></a>`path_rules` | list[[VerifyRcMavenPathRuleConfig](#verifyrcmavenpathruleconfig)] | no | Regex-based per-path comparison rules that specialize the default Maven repository comparison behavior. |
+
+<a id="verifyrcociimagecomparisonconfig"></a>
+### VerifyRcOciImageComparisonConfig
+
+Digest-based OCI image comparison policy for image reproducibility profiles.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifyrcociimagecomparisonconfig-mode"></a>`mode` | Literal['platform-digest', 'provenance-only'] | yes | Digest-comparison strategy used for OCI image reproducibility, either requiring matching platform digests or only provenance-level agreement. |
+| <a id="verifyrcociimagecomparisonconfig-image-ref"></a>`image_ref` | str | yes | Fully qualified OCI image reference used for inspection or local rebuild comparison. |
+
+<a id="verifyrcoverrideconfig"></a>
+### VerifyRcOverrideConfig
+
+Top-level local reproducibility override mapping keyed by profile_id.
+
+- category: `authored`
+- ownership: `consumer-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifyrcoverrideconfig-profile-overrides"></a>`profile_overrides` | dict[str, [VerifyRcProfileOverrideConfig](#verifyrcprofileoverrideconfig)] | no | Local non-canonical reproducibility overrides keyed by canonical profile identifier. |
+
+<a id="verifyrcoverridefileconfig"></a>
+### VerifyRcOverrideFileConfig
+
+Validated local override file for non-canonical reproducibility runs.
+
+- category: `authored`
+- ownership: `consumer-owned`
+- schema file: [`verify-rc-override-file-config.schema.json`](/components/release-tooling/schemas/verify-rc-override-file-config.schema.json)
+- audience: `internal`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifyrcoverridefileconfig-verify-rc"></a>`verify_rc` | [VerifyRcOverrideConfig](#verifyrcoverrideconfig) | yes | Nested verify-rc configuration block for the component or local override file. |
+
+<a id="verifyrcprofileconfig"></a>
+### VerifyRcProfileConfig
+
+One canonical reproducibility profile selected by signed manifest metadata.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifyrcprofileconfig-kind"></a>`kind` | Literal['source-artifact', 'generic-file', 'generic-file-with-openpgp', 'maven-repository', 'npm-package', 'oci-image', 'python-distribution'] | yes | Artifact-kind discriminator that selects which canonical reproducibility profile shape applies. |
+| <a id="verifyrcprofileconfig-build"></a>`build` | [VerifyRcBuildConfig](#verifyrcbuildconfig) | yes | Nested build recipe or effective build execution block for one reproducibility contract. |
+| <a id="verifyrcprofileconfig-comparison"></a>`comparison` | [VerifyRcExactBytesComparisonConfig](#verifyrcexactbytescomparisonconfig) \| [VerifyRcMavenRepositoryComparisonConfig](#verifyrcmavenrepositorycomparisonconfig) \| [VerifyRcOciImageComparisonConfig](#verifyrcociimagecomparisonconfig) | yes | Artifact-kind-specific reproducibility comparison policy for the canonical profile. |
+
+<a id="verifyrcprofileoverrideconfig"></a>
+### VerifyRcProfileOverrideConfig
+
+Local non-canonical override for one canonical reproducibility profile.
+
+- category: `authored`
+- ownership: `consumer-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifyrcprofileoverrideconfig-build"></a>`build` | [VerifyRcBuildOverrideConfig](#verifyrcbuildoverrideconfig) | yes | Nested build recipe or effective build execution block for one reproducibility contract. |
+
+<a id="verifyrcselectionconfig"></a>
+### VerifyRcSelectionConfig
+
+One canonical reproducibility profile selection.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifyrcselectionconfig-profile-id"></a>`profile_id` | str | yes | Reproducibility profile identifier selected for the related artifact or source verification. |
+| <a id="verifyrcselectionconfig-mode"></a>`mode` | str | no | Optional future-facing mode hint recorded next to the selected reproducibility profile. When present, it narrows how the selected profile should be interpreted for this source-artifact policy block. |
+
+<a id="verifyrcsourceconfig"></a>
+### VerifyRcSourceConfig
+
+Source-artifact verification policy for verify-rc.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifyrcsourceconfig-reproducibility"></a>`reproducibility` | [VerifyRcSelectionConfig](#verifyrcselectionconfig) | no | Reproducibility policy or result block associated with the related source or secondary artifact. |
+
+<a id="versioningconfig"></a>
+### VersioningConfig
+
+Version syntax and immutable final-tag naming policy.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="versioningconfig-scheme"></a>`scheme` | Literal['semver'] | no | Version syntax used by release state derivation. |
+| <a id="versioningconfig-final-tag-template"></a>`final_tag_template` | str | no | Template used to derive the immutable final tag from a version. |
+
+<a id="votepackagev1"></a>
+### VotePackageV1
+
+Optional voting materials bound cryptographically to one exact candidate manifest.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`vote-package-v1.schema.json`](/components/release-tooling/schemas/vote-package-v1.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="votepackagev1-schema-version"></a>`schema_version` | Literal['1'] | no | Manifest schema version. |
+| <a id="votepackagev1-kind"></a>`kind` | Literal['vote-package'] | no | Manifest kind discriminator. |
+| <a id="votepackagev1-subject"></a>`subject` | str | yes | Human-facing vote subject. |
+| <a id="votepackagev1-profile-selector"></a>`profile_selector` | str | yes | Selected vote rendering profile. |
+| <a id="votepackagev1-candidate-manifest"></a>`candidate_manifest` | [ManifestDigestReference](#manifestdigestreference) | yes | Cryptographic reference to the exact candidate manifest. |
+| <a id="votepackagev1-embedded-candidate-manifest"></a>`embedded_candidate_manifest` | [CandidateManifestV1](#candidatemanifestv1) | no | Optional embedded copy of the referenced candidate manifest. |
+| <a id="votepackagev1-verification-instructions"></a>`verification_instructions` | str | yes | Human-facing candidate verification instructions. |
+| <a id="votepackagev1-opening-template"></a>`opening_template` | str | yes | Rendered or renderable vote-opening text. |
+| <a id="votepackagev1-result-template"></a>`result_template` | str | yes | Rendered or renderable vote-result text. |
+| <a id="votepackagev1-authenticity"></a>`authenticity` | list[[AuthenticityReference](#authenticityreference)] | no | Optional signatures or attestations. |
+| <a id="votepackagev1-extensions"></a>`extensions` | list[[AsfVoteExtension](#asfvoteextension)] | no | Typed foundation vote extensions. |
+| <a id="votepackagev1-created-at"></a>`created_at` | str | yes | UTC creation timestamp in RFC 3339 form. |
+

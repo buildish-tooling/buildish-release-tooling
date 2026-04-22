@@ -1,0 +1,56 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.org/components/release-tooling/schemas/update-moving-image-aliases-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after resolving moving OCI image aliases for publication. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "update-moving-image-aliases",
+      "default": "update-moving-image-aliases",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "exact_image_tag": {
+      "description": "Exact released image tag that Buildish uses as the source for moving image aliases.",
+      "minLength": 1,
+      "title": "Exact Image Tag",
+      "type": "string"
+    },
+    "image_aliases": {
+      "description": "Derived moving container tags that should point at the exact released image tag.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Image Aliases",
+      "type": "array"
+    },
+    "version": {
+      "description": "Release version string without a leading `v` prefix.",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "exact_image_tag",
+    "image_aliases"
+  ],
+  "title": "Buildish Release Tooling UpdateMovingImageAliasesManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `update-moving-image-aliases`."
+  }
+}
