@@ -1,0 +1,130 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.org/components/release-tooling/schemas/prepare-rc-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after prepare-rc resolves one RC workflow state bundle. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "prepare-rc",
+      "default": "prepare-rc",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "cleanup_existing_rc_staging": {
+      "const": "true",
+      "default": "true",
+      "description": "Whether the prepare-rc flow cleaned up pre-existing same-version RC staging state before publishing new materials.",
+      "title": "Cleanup Existing Rc Staging",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "draft_release_action": {
+      "const": "recreate",
+      "default": "recreate",
+      "description": "Draft GitHub release convergence action that prepare-rc used when emitting new vote materials.",
+      "title": "Draft Release Action",
+      "type": "string"
+    },
+    "final_tag": {
+      "description": "Final immutable Git tag that Buildish intends to publish for the released version.",
+      "minLength": 1,
+      "title": "Final Tag",
+      "type": "string"
+    },
+    "final_tag_mode": {
+      "description": "Configured or recorded policy describing how the final immutable release tag should be created for this component or release run.",
+      "minLength": 1,
+      "title": "Final Tag Mode",
+      "type": "string"
+    },
+    "rc_number": {
+      "description": "Numeric RC sequence selected for the related version.",
+      "minLength": 1,
+      "title": "Rc Number",
+      "type": "string"
+    },
+    "rc_tag": {
+      "description": "Exact RC Git tag, including the leading `v` prefix and `-rcN` suffix.",
+      "minLength": 1,
+      "title": "Rc Tag",
+      "type": "string"
+    },
+    "resolved_release_branch": {
+      "description": "Release branch name that Buildish resolved for the selected version.",
+      "minLength": 1,
+      "title": "Resolved Release Branch",
+      "type": "string"
+    },
+    "resolved_source_ref": {
+      "description": "Resolved source Git commit SHA that Buildish selected for release production or verification.",
+      "minLength": 1,
+      "title": "Resolved Source Ref",
+      "type": "string"
+    },
+    "source_artifact_name": {
+      "description": "Filename of the staged source release artifact.",
+      "minLength": 1,
+      "title": "Source Artifact Name",
+      "type": "string"
+    },
+    "source_artifact_prefix_path": {
+      "description": "Top-level path prefix inside the source release archive.",
+      "minLength": 1,
+      "title": "Source Artifact Prefix Path",
+      "type": "string"
+    },
+    "source_artifact_root_name": {
+      "description": "Root directory name that the source release archive should unpack to.",
+      "minLength": 1,
+      "title": "Source Artifact Root Name",
+      "type": "string"
+    },
+    "source_date_epoch": {
+      "description": "Canonical `SOURCE_DATE_EPOCH` integer carried through RC production and verification.",
+      "minLength": 1,
+      "title": "Source Date Epoch",
+      "type": "string"
+    },
+    "staging_url": {
+      "description": "ASF dev/dist staging directory URL selected for the current RC.",
+      "minLength": 1,
+      "title": "Staging Url",
+      "type": "string"
+    },
+    "version": {
+      "description": "Release version string without a leading `v` prefix.",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "resolved_source_ref",
+    "source_date_epoch",
+    "resolved_release_branch",
+    "rc_number",
+    "rc_tag",
+    "final_tag",
+    "source_artifact_name",
+    "source_artifact_root_name",
+    "source_artifact_prefix_path",
+    "staging_url",
+    "final_tag_mode"
+  ],
+  "title": "Buildish Release Tooling PrepareRcManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `prepare-rc`."
+  }
+}

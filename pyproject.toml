@@ -1,0 +1,98 @@
+# Copyright 2026 The Buildish Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[project]
+name = "buildish-release-tooling"
+version = "0.1.0"
+description = "Shared release orchestration tooling for Buildish components"
+authors = [{ name = "Buildish", email = "dev@buildish.org" }]
+requires-python = ">=3.11"
+classifiers = [
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+]
+dependencies = [
+    "mistletoe>=1.6.0,<2",
+    "pydantic>=2.13.4,<3",
+    "pyyaml>=6.0.3",
+    "urllib3>=2.7.0",
+]
+license-files = [
+    "dist-release-legal/LICENSE",
+    "dist-release-legal/NOTICE",
+]
+
+[project.scripts]
+buildish-release-tooling = "buildish_release_tooling.release.cli:main"
+buildish-release-harness = "buildish_release_tooling.harness.cli:main"
+
+[build-system]
+requires = [
+    "setuptools>=83.0.0",
+    "wheel>=0.47.0",
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["buildish_release_tooling*"]
+
+[tool.setuptools.cmdclass]
+bdist_wheel = "buildish_release_tooling.legal.build_hooks.FlattenedLicenseFilesBdistWheel"
+
+[dependency-groups]
+dev = [
+    "mypy==2.3.0",
+    "pytest==9.1.1",
+    "pytest-xdist==3.8.0",
+    "ruff==0.16.1",
+]
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "A",
+    "B",
+    "DTZ",
+    "F",
+    "FA",
+    "G",
+    "ISC",
+    "LOG",
+    "PTH",
+    "RET",
+    "S",
+    "T20",
+    "UP",
+]
+ignore = [
+    "S603",
+    "S607",
+]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/buildish_release_tooling", "tests"]
+mypy_path = ["src"]
+explicit_package_bases = true
+warn_redundant_casts = true
+warn_unreachable = true
+warn_unused_ignores = true
+no_implicit_optional = true
+disable_error_code = ["import-untyped"]

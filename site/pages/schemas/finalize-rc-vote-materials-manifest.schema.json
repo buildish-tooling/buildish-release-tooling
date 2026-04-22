@@ -1,0 +1,133 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.org/components/release-tooling/schemas/finalize-rc-vote-materials-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after publishing and signing final RC vote materials. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "finalize-rc-vote-materials",
+      "default": "finalize-rc-vote-materials",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "authoritative_manifest_sha512": {
+      "description": "SHA-512 digest of the authoritative staged RC vote manifest.",
+      "minLength": 1,
+      "title": "Authoritative Manifest Sha512",
+      "type": "string"
+    },
+    "authoritative_manifest_url": {
+      "description": "Canonical staged URL of the signed RC vote manifest.",
+      "minLength": 1,
+      "title": "Authoritative Manifest Url",
+      "type": "string"
+    },
+    "bootstrap_script_sha512": {
+      "description": "SHA-512 digest of the emitted verify-rc bootstrap script.",
+      "minLength": 1,
+      "title": "Bootstrap Script Sha512",
+      "type": "string"
+    },
+    "bootstrap_script_url": {
+      "description": "Staged URL of the emitted verify-rc bootstrap helper script.",
+      "minLength": 1,
+      "title": "Bootstrap Script Url",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "draft_release_url": {
+      "description": "GitHub draft release URL associated with the current RC or final release workflow.",
+      "minLength": 1,
+      "title": "Draft Release Url",
+      "type": "string"
+    },
+    "final_tag": {
+      "description": "Final immutable Git tag that Buildish intends to publish for the released version.",
+      "minLength": 1,
+      "title": "Final Tag",
+      "type": "string"
+    },
+    "gpg_fingerprint": {
+      "description": "OpenPGP fingerprint of the signing key Buildish used or verified.",
+      "minLength": 1,
+      "title": "Gpg Fingerprint",
+      "type": "string"
+    },
+    "mirrored_asset_names": {
+      "description": "GitHub release asset names that Buildish mirrored from the staged vote materials into the draft release bundle.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Mirrored Asset Names",
+      "type": "array"
+    },
+    "rc_tag": {
+      "description": "Exact RC Git tag, including the leading `v` prefix and `-rcN` suffix.",
+      "minLength": 1,
+      "title": "Rc Tag",
+      "type": "string"
+    },
+    "rc_tag_target_commit": {
+      "description": "Git commit SHA that the RC tag resolved to during verification or publication.",
+      "minLength": 1,
+      "title": "Rc Tag Target Commit",
+      "type": "string"
+    },
+    "resolved_source_ref": {
+      "description": "Resolved source Git commit SHA that Buildish selected for release production or verification.",
+      "minLength": 1,
+      "title": "Resolved Source Ref",
+      "type": "string"
+    },
+    "secondary_artifact_count": {
+      "description": "Count of secondary artifacts associated with the related manifest or publication step.",
+      "minLength": 1,
+      "title": "Secondary Artifact Count",
+      "type": "string"
+    },
+    "source_artifact_url": {
+      "description": "Canonical staged download URL of the source release artifact referenced by the RC vote materials.",
+      "minLength": 1,
+      "title": "Source Artifact Url",
+      "type": "string"
+    },
+    "version": {
+      "description": "Release version string without a leading `v` prefix.",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "resolved_source_ref",
+    "rc_tag",
+    "final_tag",
+    "rc_tag_target_commit",
+    "source_artifact_url",
+    "authoritative_manifest_url",
+    "authoritative_manifest_sha512",
+    "bootstrap_script_url",
+    "bootstrap_script_sha512",
+    "draft_release_url",
+    "secondary_artifact_count",
+    "mirrored_asset_names",
+    "gpg_fingerprint"
+  ],
+  "title": "Buildish Release Tooling FinalizeRcVoteMaterialsManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `finalize-rc-vote-materials`."
+  }
+}

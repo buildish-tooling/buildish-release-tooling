@@ -1,0 +1,573 @@
+# Copyright 2026 The Buildish Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Handler for the `maven-repository` artifact-registration kind."""
+
+from __future__ import annotations
+
+import hashlib
+import posixpath
+import re
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
+from argparse import Namespace
+from dataclasses import dataclass
+from html.parser import HTMLParser
+from pathlib import Path
+from typing import BinaryIO
+from urllib.parse import unquote, urljoin, urlparse
+
+from buildish_release_tooling.shared.downloader import DownloadSession
+from buildish_release_tooling.shared.io import read_bytes_bounded
+from buildish_release_tooling.release.artifact_registration.common import (
+    common_artifact_metadata,
+)
+from buildish_release_tooling.release.artifact_registration.models import (
+    ArtifactRegistrationResult,
+)
+from buildish_release_tooling.release.contracts import (
+    MavenRepositoryInventoryEntry,
+    MavenRepositoryInventoryV1,
+    MavenRepositorySecondaryArtifact,
+    SupplementalInventoryReference,
+)
+from buildish_release_tooling.release.manifest import write_manifest
+from buildish_release_tooling.release.progress import ProgressReporter
+from buildish_release_tooling.release.source_artifact import sha512
+
+_SHA512_PATTERN = re.compile(r"^[0-9a-fA-F]{128}$")
+_DEFAULT_INVENTORY_WORKERS = 16
+_DEFAULT_NEXUS_STAGING_BASE_URL_PREFIX = "https://repository.apache.org/content/repositories/"
+_HASH_CHUNK_BYTES = 1024 * 1024
+_MAX_REMOTE_METADATA_BYTES = 25 * 1024 * 1024
+
+
+@dataclass(frozen=True)
+class _RepositoryFile:
+    relative_path: str
+    size_bytes: int
+    source_url: str | None = None
+    local_path: Path | None = None
+
+
+@dataclass(frozen=True)
+class _NexusIndexEntry:
+    href: str
+    name: str
+    size_bytes: int | None
+    is_directory: bool
+
+
+@dataclass(frozen=True)
+class _Sha512SidecarRecord:
+    file_sha512: str
+    declared_sha512: str
+
+
+class _NexusIndexParser(HTMLParser):
+    """Parse one Sonatype Nexus directory index page."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.entries: list[_NexusIndexEntry] = []
+        self._inside_td = False
+        self._current_cell_text: list[str] = []
+        self._current_cells: list[str] = []
+        self._current_href: str | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "tr":
+            self._current_cells = []
+            self._current_href = None
+            return
+        if tag == "td":
+            self._inside_td = True
+            self._current_cell_text = []
+            return
+        if tag == "a" and self._inside_td and self._current_href is None:
+            attributes = dict(attrs)
+            href = attributes.get("href")
+            if href is not None:
+                self._current_href = href
+
+    def handle_data(self, data: str) -> None:
+        if self._inside_td:
+            self._current_cell_text.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "td":
+            normalized = "".join(self._current_cell_text).strip()
+            self._current_cells.append(normalized)
+            self._inside_td = False
+            self._current_cell_text = []
+            return
+        if tag == "tr":
+            self._finish_row()
+
+    def _finish_row(self) -> None:
+        if self._current_href is None or not self._current_cells:
+            return
+        if self._current_href == "../" or self._current_cells[0] == "Parent Directory":
+            return
+        size_bytes: int | None = None
+        if len(self._current_cells) >= 3 and self._current_cells[2].isdigit():
+            size_bytes = int(self._current_cells[2])
+        name = self._current_cells[0]
+        self.entries.append(
+            _NexusIndexEntry(
+                href=self._current_href,
+                name=name,
+                size_bytes=size_bytes,
+                is_directory=name.endswith("/") or self._current_href.endswith("/"),
+            )
+        )
+
+
+def _default_nexus_staging_base_url(staging_repository_id: str) -> str:
+    return f"{_DEFAULT_NEXUS_STAGING_BASE_URL_PREFIX}{staging_repository_id}/"
+
+
+def _normalized_base_url(base_url_text: str | None, *, staging_repository_id: str) -> str:
+    if base_url_text is None or not base_url_text.strip():
+        normalized = _default_nexus_staging_base_url(staging_repository_id)
+    else:
+        normalized = base_url_text.strip()
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"file", "http", "https"}:
+        raise ValueError("maven-repository --base-url must use file://, http://, or https://")
+    if not normalized.endswith("/"):
+        normalized = f"{normalized}/"
+        parsed = urlparse(normalized)
+    repository_name = Path(parsed.path.rstrip("/")).name
+    if not repository_name:
+        raise ValueError(f"maven-repository base URL must end in the staging repository directory: {normalized}")
+    return normalized
+
+
+def _staging_repository_id(raw_value: str | None) -> str:
+    if raw_value is None:
+        raise ValueError("maven-repository requires --staging-repository-id")
+    normalized = raw_value.strip()
+    if not normalized:
+        raise ValueError("maven-repository requires --staging-repository-id")
+    if "/" in normalized:
+        raise ValueError("maven-repository --staging-repository-id must not contain slashes")
+    return normalized
+
+
+def _validated_repository_root(base_url: str, staging_repository_id: str) -> None:
+    repository_name = Path(urlparse(base_url).path.rstrip("/")).name
+    if repository_name != staging_repository_id:
+        raise ValueError(
+            "maven-repository --base-url must end in the same repository directory as "
+            f"--staging-repository-id: {base_url}"
+        )
+
+
+def _inventory_worker_count(raw_value: int | str | None) -> int:
+    if raw_value is None:
+        return _DEFAULT_INVENTORY_WORKERS
+    worker_count = int(raw_value)
+    if worker_count < 1:
+        raise ValueError("maven-repository --inventory-workers must be at least 1")
+    return worker_count
+
+
+def _normalized_inventory_filename(artifact_id: str) -> str:
+    return f"{artifact_id}-inventory.json"
+
+
+def _parse_nexus_index(listing_url: str, base_url: str, html_text: str) -> list[_NexusIndexEntry]:
+    parser = _NexusIndexParser()
+    parser.feed(html_text)
+    entries: list[_NexusIndexEntry] = []
+    for entry in parser.entries:
+        resolved_url = urljoin(listing_url, entry.href)
+        _relative_path_from_url(base_url, resolved_url)
+        entries.append(
+            _NexusIndexEntry(
+                href=resolved_url,
+                name=entry.name,
+                size_bytes=entry.size_bytes,
+                is_directory=entry.is_directory,
+            )
+        )
+    return entries
+
+
+def _relative_path_from_url(base_url: str, entry_url: str) -> str:
+    base = urlparse(base_url)
+    entry = urlparse(entry_url)
+    if (entry.scheme.lower(), entry.hostname, entry.port) != (base.scheme.lower(), base.hostname, base.port):
+        raise ValueError(f"maven-repository entry is outside the repository root: {entry_url}")
+    base_path = _normalized_url_path(base.path, directory=True)
+    resolved_path = _normalized_url_path(entry.path, directory=entry.path.endswith("/"))
+    if not resolved_path.startswith(base_path):
+        raise ValueError(f"maven-repository entry is outside the repository root: {entry_url}")
+    relative_path = resolved_path.removeprefix(base_path)
+    if Path(relative_path).is_absolute() or ".." in Path(relative_path).parts:
+        raise ValueError(f"maven-repository entry is outside the repository root: {entry_url}")
+    return relative_path
+
+
+def _normalized_url_path(path: str, *, directory: bool) -> str:
+    decoded_path = unquote(path)
+    normalized_path = posixpath.normpath(decoded_path)
+    if directory and not normalized_path.endswith("/"):
+        normalized_path = f"{normalized_path}/"
+    if decoded_path != normalized_path:
+        raise ValueError(f"maven-repository URL path is not normalized: {path}")
+    return normalized_path
+
+
+def _fetch_remote_listing(
+    directory_url: str,
+    base_url: str,
+    *,
+    remote_http_client: DownloadSession,
+) -> tuple[str, list[_NexusIndexEntry]]:
+    listing_html = remote_http_client.read_text(
+        directory_url,
+        max_bytes=_MAX_REMOTE_METADATA_BYTES,
+    )
+    return directory_url, _parse_nexus_index(directory_url, base_url, listing_html)
+
+
+def _enumerate_remote_repository(
+    base_url: str,
+    *,
+    worker_count: int,
+    remote_http_client: DownloadSession,
+    progress_reporter: ProgressReporter,
+) -> list[_RepositoryFile]:
+    seen_directories: set[str] = set()
+    files: list[_RepositoryFile] = []
+
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
+        pending_futures: dict[Future[tuple[str, list[_NexusIndexEntry]]], str] = {}
+
+        def submit_directory(directory_url: str) -> None:
+            directory_relative = _relative_path_from_url(base_url, directory_url)
+            if directory_relative in seen_directories:
+                return
+            seen_directories.add(directory_relative)
+            future = executor.submit(
+                _fetch_remote_listing,
+                directory_url,
+                base_url,
+                remote_http_client=remote_http_client,
+            )
+            pending_futures[future] = directory_url
+
+        submit_directory(base_url)
+        while pending_futures:
+            completed, _ = wait(tuple(pending_futures.keys()), return_when=FIRST_COMPLETED)
+            for future in completed:
+                pending_futures.pop(future)
+                _directory_url, entries = future.result()
+                for entry in entries:
+                    relative_path = _relative_path_from_url(base_url, entry.href)
+                    if entry.is_directory:
+                        submit_directory(entry.href)
+                        continue
+                    if entry.size_bytes is None:
+                        raise ValueError(f"maven-repository listing omitted the file size for {entry.href}")
+                    files.append(
+                        _RepositoryFile(
+                            relative_path=relative_path,
+                            size_bytes=entry.size_bytes,
+                            source_url=entry.href,
+                        )
+                    )
+                    progress_reporter.update(f"maven repository enumeration: {len(files)} files discovered")
+    return sorted(files, key=lambda entry: entry.relative_path)
+
+
+def _enumerate_local_repository(root_path: Path, *, progress_reporter: ProgressReporter) -> list[_RepositoryFile]:
+    files: list[_RepositoryFile] = []
+    for local_path in sorted(root_path.rglob("*")):
+        if local_path.is_symlink():
+            raise ValueError(
+                "maven-repository local repository must not contain symlinks: "
+                f"{local_path.relative_to(root_path).as_posix()}"
+            )
+        if not local_path.is_file():
+            continue
+        files.append(
+            _RepositoryFile(
+                relative_path=local_path.relative_to(root_path).as_posix(),
+                size_bytes=local_path.stat().st_size,
+                local_path=local_path,
+            )
+        )
+        progress_reporter.update(f"maven repository enumeration: {len(files)} files discovered")
+    return files
+
+
+def _repository_files(
+    base_url: str,
+    *,
+    worker_count: int,
+    remote_http_client: DownloadSession | None,
+    progress_reporter: ProgressReporter,
+) -> list[_RepositoryFile]:
+    parsed = urlparse(base_url)
+    if parsed.scheme == "file":
+        root_path = Path(unquote(parsed.path))
+        if not root_path.is_dir():
+            raise ValueError(f"maven-repository base URL does not point at a directory: {base_url}")
+        return _enumerate_local_repository(root_path, progress_reporter=progress_reporter)
+    if remote_http_client is None:
+        raise ValueError(f"remote repository enumeration requires an HTTP client: {base_url}")
+    return _enumerate_remote_repository(
+        base_url,
+        worker_count=worker_count,
+        remote_http_client=remote_http_client,
+        progress_reporter=progress_reporter,
+    )
+
+
+def _repository_file_bytes_bounded(
+    repository_file: _RepositoryFile,
+    *,
+    remote_http_client: DownloadSession | None,
+) -> bytes:
+    if repository_file.local_path is not None:
+        with repository_file.local_path.open("rb") as handle:
+            return read_bytes_bounded(handle, max_bytes=_MAX_REMOTE_METADATA_BYTES)
+    if repository_file.source_url is not None:
+        if remote_http_client is None:
+            raise ValueError(f"remote repository file requires an HTTP client: {repository_file.relative_path}")
+        return remote_http_client.read_bytes(
+            repository_file.source_url,
+            max_bytes=_MAX_REMOTE_METADATA_BYTES,
+        )
+    raise ValueError(f"repository file has no readable source: {repository_file.relative_path}")
+
+
+def _parsed_sidecar_sha512(sidecar_bytes: bytes, *, relative_path: str) -> str:
+    first_token = sidecar_bytes.decode("utf-8").strip().split()[0]
+    normalized = first_token.lower()
+    if not _SHA512_PATTERN.fullmatch(normalized):
+        raise ValueError(f"invalid SHA512 sidecar for {relative_path}")
+    return normalized
+
+
+def _inventory_entry_sha512(
+    repository_file: _RepositoryFile,
+    *,
+    files_by_relative_path: dict[str, _RepositoryFile],
+    sha512_by_relative_path: dict[str, str],
+    sha512_sidecars_by_relative_path: dict[str, _Sha512SidecarRecord],
+    remote_http_client: DownloadSession | None,
+) -> str:
+    actual_sha512 = _repository_file_sha512(
+        repository_file,
+        sha512_by_relative_path=sha512_by_relative_path,
+        sha512_sidecars_by_relative_path=sha512_sidecars_by_relative_path,
+        remote_http_client=remote_http_client,
+    )
+    sidecar_relative_path = f"{repository_file.relative_path}.sha512"
+    if not repository_file.relative_path.endswith(".sha512"):
+        sidecar_file = files_by_relative_path.get(sidecar_relative_path)
+        if sidecar_file is not None:
+            sidecar_record = _sha512_sidecar_record(
+                sidecar_file,
+                sha512_by_relative_path=sha512_by_relative_path,
+                sha512_sidecars_by_relative_path=sha512_sidecars_by_relative_path,
+                remote_http_client=remote_http_client,
+            )
+            if sidecar_record.declared_sha512 != actual_sha512:
+                raise ValueError(
+                    "maven-repository SHA512 sidecar does not match file bytes: "
+                    f"{repository_file.relative_path}"
+                )
+    return actual_sha512
+
+
+def _repository_file_sha512(
+    repository_file: _RepositoryFile,
+    *,
+    sha512_by_relative_path: dict[str, str],
+    sha512_sidecars_by_relative_path: dict[str, _Sha512SidecarRecord],
+    remote_http_client: DownloadSession | None,
+) -> str:
+    cached = sha512_by_relative_path.get(repository_file.relative_path)
+    if cached is not None:
+        return cached
+    if repository_file.relative_path.endswith(".sha512"):
+        return _sha512_sidecar_record(
+            repository_file,
+            sha512_by_relative_path=sha512_by_relative_path,
+            sha512_sidecars_by_relative_path=sha512_sidecars_by_relative_path,
+            remote_http_client=remote_http_client,
+        ).file_sha512
+    if repository_file.local_path is not None:
+        digest = _local_file_sha512(repository_file.local_path)
+        sha512_by_relative_path[repository_file.relative_path] = digest
+        return digest
+    if repository_file.source_url is not None:
+        if remote_http_client is None:
+            raise ValueError(f"remote repository file requires an HTTP client: {repository_file.relative_path}")
+        digest = remote_http_client.hash_uri(repository_file.source_url)
+        sha512_by_relative_path[repository_file.relative_path] = digest
+        return digest
+    raise ValueError(f"repository file has no readable source: {repository_file.relative_path}")
+
+
+def _sha512_sidecar_record(
+    repository_file: _RepositoryFile,
+    *,
+    sha512_by_relative_path: dict[str, str],
+    sha512_sidecars_by_relative_path: dict[str, _Sha512SidecarRecord],
+    remote_http_client: DownloadSession | None,
+) -> _Sha512SidecarRecord:
+    cached = sha512_sidecars_by_relative_path.get(repository_file.relative_path)
+    if cached is not None:
+        return cached
+    sidecar_bytes = _repository_file_bytes_bounded(
+        repository_file,
+        remote_http_client=remote_http_client,
+    )
+    record = _Sha512SidecarRecord(
+        file_sha512=hashlib.sha512(sidecar_bytes).hexdigest(),
+        declared_sha512=_parsed_sidecar_sha512(
+            sidecar_bytes,
+            relative_path=repository_file.relative_path,
+        ),
+    )
+    sha512_by_relative_path[repository_file.relative_path] = record.file_sha512
+    sha512_sidecars_by_relative_path[repository_file.relative_path] = record
+    return record
+
+
+def _local_file_sha512(path: Path) -> str:
+    with path.open("rb") as handle:
+        return _stream_sha512(handle)
+
+
+def _stream_sha512(stream: BinaryIO) -> str:
+    digest = hashlib.sha512()
+    while chunk := stream.read(_HASH_CHUNK_BYTES):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _inventory_payload(
+    *,
+    artifact_id: str,
+    staging_repository_id: str,
+    base_url: str,
+    repository_files: list[_RepositoryFile],
+    remote_http_client: DownloadSession | None,
+    progress_reporter: ProgressReporter,
+) -> tuple[MavenRepositoryInventoryV1, int]:
+    files_by_relative_path = {entry.relative_path: entry for entry in repository_files}
+    sha512_by_relative_path: dict[str, str] = {}
+    sha512_sidecars_by_relative_path: dict[str, _Sha512SidecarRecord] = {}
+    progress_reporter.emit(f"building maven repository inventory: 0/{len(repository_files)} entries")
+    entries: list[MavenRepositoryInventoryEntry] = []
+    total_size_bytes = 0
+    for repository_file in repository_files:
+        total_size_bytes += repository_file.size_bytes
+        entries.append(
+            MavenRepositoryInventoryEntry(
+                path=repository_file.relative_path,
+                size_bytes=repository_file.size_bytes,
+                sha512=_inventory_entry_sha512(
+                    repository_file,
+                    files_by_relative_path=files_by_relative_path,
+                    sha512_by_relative_path=sha512_by_relative_path,
+                    sha512_sidecars_by_relative_path=sha512_sidecars_by_relative_path,
+                    remote_http_client=remote_http_client,
+                ),
+            )
+        )
+        progress_reporter.update(
+            f"building maven repository inventory: {len(entries)}/{len(repository_files)} entries"
+        )
+    return (
+        MavenRepositoryInventoryV1(
+            artifact_id=artifact_id,
+            staging_repository_id=staging_repository_id,
+            base_url=base_url,
+            entries=entries,
+        ),
+        total_size_bytes,
+    )
+
+
+def build_maven_repository_registration(
+    args: Namespace,
+    bundle_dir: Path,
+) -> ArtifactRegistrationResult:
+    """Build one typed secondary-artifact fragment for the `maven-repository` kind."""
+
+    staging_repository_id = _staging_repository_id(getattr(args, "staging_repository_id", None))
+    base_url = _normalized_base_url(
+        getattr(args, "base_url", None),
+        staging_repository_id=staging_repository_id,
+    )
+    worker_count = _inventory_worker_count(getattr(args, "inventory_workers", None))
+    progress_reporter = ProgressReporter.from_mode(getattr(args, "progress", "auto"))
+    _validated_repository_root(base_url, staging_repository_id)
+    remote_http_client: DownloadSession | None = None
+    if urlparse(base_url).scheme in {"http", "https"}:
+        remote_http_client = DownloadSession.non_production(max_connections=worker_count)
+    try:
+        progress_reporter.emit(f"enumerating maven repository from {base_url}")
+        repository_files = _repository_files(
+            base_url,
+            worker_count=worker_count,
+            remote_http_client=remote_http_client,
+            progress_reporter=progress_reporter,
+        )
+        if not repository_files:
+            raise ValueError(f"maven-repository is empty: {base_url}")
+        inventory_payload, total_size_bytes = _inventory_payload(
+            artifact_id=args.artifact_id,
+            staging_repository_id=staging_repository_id,
+            base_url=base_url,
+            repository_files=repository_files,
+            remote_http_client=remote_http_client,
+            progress_reporter=progress_reporter,
+        )
+    finally:
+        if remote_http_client is not None:
+            remote_http_client.close()
+    inventory_filename = _normalized_inventory_filename(args.artifact_id)
+    inventory_path = bundle_dir / inventory_filename
+    write_manifest(inventory_path, inventory_payload)
+    inventory_sha512 = sha512(inventory_path)
+    common_metadata = common_artifact_metadata(args)
+    progress_reporter.emit(
+        f"wrote maven repository inventory: {len(repository_files)} entries, {total_size_bytes} bytes"
+    )
+    return ArtifactRegistrationResult(
+        secondary_artifact=MavenRepositorySecondaryArtifact(
+            artifact_id=args.artifact_id,
+            role=common_metadata.role,
+            artifact_origin=common_metadata.artifact_origin,
+            git_commit_sha=common_metadata.git_commit_sha,
+            reproducibility=common_metadata.reproducibility,
+            staging_repository_id=staging_repository_id,
+            base_url=base_url,
+            inventory=SupplementalInventoryReference(
+                filename=inventory_filename,
+                sha512=inventory_sha512,
+                entry_count=len(repository_files),
+                total_size_bytes=total_size_bytes,
+            ),
+        ),
+        inventory_paths=(inventory_path,),
+    )
