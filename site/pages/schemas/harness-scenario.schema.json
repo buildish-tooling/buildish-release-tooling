@@ -1,0 +1,735 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "FileWriteAction": {
+      "additionalProperties": false,
+      "description": "A file write that a mocked tool invocation should perform.",
+      "properties": {
+        "content": {
+          "description": "Literal file content that the harness should write or that the mocked tool should emit.",
+          "title": "Content",
+          "type": "string"
+        },
+        "executable": {
+          "default": false,
+          "description": "Whether the written file should have the executable bit set in the harness workspace.",
+          "title": "Executable",
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Filesystem path, relative artifact path, or retained evidence path associated with the related record.",
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "content"
+      ],
+      "title": "FileWriteAction",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    },
+    "GitRepositoryFixture": {
+      "additionalProperties": false,
+      "description": "A disposable Git repository that should be initialized inside the workspace.",
+      "properties": {
+        "commit_message": {
+          "default": "initial commit",
+          "description": "Commit message that the harness should use when creating the initial commit in the disposable Git repository fixture.",
+          "title": "Commit Message",
+          "type": "string"
+        },
+        "default_branch": {
+          "default": "main",
+          "description": "Branch name that the harness should create as the default branch in the disposable Git repository fixture.",
+          "title": "Default Branch",
+          "type": "string"
+        },
+        "files": {
+          "description": "Workspace files that the harness should create inside the related fixture repository before execution begins.",
+          "items": {
+            "$ref": "#/$defs/WorkspaceFile"
+          },
+          "title": "Files",
+          "type": "array"
+        },
+        "path": {
+          "description": "Filesystem path, relative artifact path, or retained evidence path associated with the related record.",
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "GitRepositoryFixture",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    },
+    "InvocationMatch": {
+      "additionalProperties": false,
+      "description": "A matcher for a single intercepted tool invocation.",
+      "properties": {
+        "argv": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Exact argv list that the harness should match or that it recorded for the related command invocation.",
+          "title": "Argv"
+        },
+        "argv_contains": {
+          "description": "Command-line fragments that must appear somewhere in the intercepted argv list before the harness behavior matches.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Argv Contains",
+          "type": "array"
+        },
+        "argv_prefix": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Command-line prefix that the intercepted argv list must start with before the harness behavior matches.",
+          "title": "Argv Prefix"
+        },
+        "cwd": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Working directory that the harness should use or that it observed for the related command invocation.",
+          "title": "Cwd"
+        },
+        "env_contains": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Subset of required environment entries that a harness tool matcher must observe.",
+          "title": "Env Contains",
+          "type": "object"
+        }
+      },
+      "title": "InvocationMatch",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    },
+    "JobScenario": {
+      "additionalProperties": false,
+      "description": "A job in the harness scenario.",
+      "properties": {
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Environment-variable mapping supplied to the related build, scenario, or command step.",
+          "title": "Env",
+          "type": "object"
+        },
+        "id": {
+          "description": "Stable identifier for the related harness job, step, or scenario element.",
+          "title": "Id",
+          "type": "string"
+        },
+        "needs": {
+          "description": "Job ids that must complete successfully before the related harness job is allowed to run.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Needs",
+          "type": "array"
+        },
+        "steps": {
+          "description": "Ordered shell steps that the harness should run for the related custom job.",
+          "items": {
+            "$ref": "#/$defs/StepScenario"
+          },
+          "title": "Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "steps"
+      ],
+      "title": "JobScenario",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    },
+    "StepScenario": {
+      "additionalProperties": false,
+      "description": "A single shell step in a harness job.",
+      "properties": {
+        "cwd": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Working directory that the harness should use or that it observed for the related command invocation.",
+          "title": "Cwd"
+        },
+        "env": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Environment-variable mapping supplied to the related build, scenario, or command step.",
+          "title": "Env",
+          "type": "object"
+        },
+        "id": {
+          "description": "Stable identifier for the related harness job, step, or scenario element.",
+          "title": "Id",
+          "type": "string"
+        },
+        "run": {
+          "description": "Shell command body that the harness should execute for the related step.",
+          "title": "Run",
+          "type": "string"
+        },
+        "shell": {
+          "default": "bash",
+          "description": "Shell executable name or mode that the harness should use for the related step.",
+          "title": "Shell",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "run"
+      ],
+      "title": "StepScenario",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    },
+    "SvnRepositoryFixture": {
+      "additionalProperties": false,
+      "description": "Initial ASF SVN state to create inside one harness `act` workspace.",
+      "properties": {
+        "dev_dist_entries": {
+          "description": "Initial SVN entries that the harness should create under the simulated ASF `dist/dev` tree.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Dev Dist Entries",
+          "type": "array"
+        },
+        "initial_state": {
+          "default": "absent",
+          "description": "Named SVN fixture preset that describes what ASF dist state the harness should create before the run begins.",
+          "enum": [
+            "absent",
+            "empty",
+            "preexisting-current-rc",
+            "preexisting-previous-rc",
+            "preexisting-future-rc",
+            "preexisting-other-version"
+          ],
+          "title": "Initial State",
+          "type": "string"
+        },
+        "other_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Additional release version that the SVN harness fixture should materialize for preset scenarios that require another version line.",
+          "title": "Other Version"
+        },
+        "rc_number": {
+          "default": 0,
+          "description": "Numeric RC sequence selected for the related version.",
+          "minimum": 0,
+          "title": "Rc Number",
+          "type": "integer"
+        },
+        "release_dist_entries": {
+          "description": "Initial SVN entries that the harness should create under the simulated ASF `dist/release` tree.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Release Dist Entries",
+          "type": "array"
+        },
+        "repository_files": {
+          "description": "Files that the harness should create inside the simulated SVN repository fixture before execution begins.",
+          "items": {
+            "$ref": "#/$defs/WorkspaceFile"
+          },
+          "title": "Repository Files",
+          "type": "array"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Release version string without a leading `v` prefix.",
+          "title": "Version"
+        }
+      },
+      "title": "SvnRepositoryFixture",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    },
+    "ToolBehavior": {
+      "additionalProperties": false,
+      "description": "A scripted behavior for an intercepted tool invocation.",
+      "properties": {
+        "match": {
+          "$ref": "#/$defs/InvocationMatch",
+          "description": "Tool-invocation matcher that decides when the related scripted harness behavior should be applied."
+        },
+        "result": {
+          "$ref": "#/$defs/ToolBehaviorResult",
+          "description": "Scripted harness tool result that should be returned when the matching invocation is observed."
+        },
+        "times": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum number of times that the harness should apply the scripted tool behavior before it stops matching.",
+          "title": "Times"
+        }
+      },
+      "title": "ToolBehavior",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    },
+    "ToolBehaviorResult": {
+      "additionalProperties": false,
+      "description": "The mocked result of an intercepted tool invocation.",
+      "properties": {
+        "append_stdout_to_summary": {
+          "default": false,
+          "description": "Whether the harness should append mocked stdout to the rendered step or job summary output.",
+          "title": "Append Stdout To Summary",
+          "type": "boolean"
+        },
+        "delegate_to_real_tool": {
+          "default": false,
+          "description": "Whether the harness should fall through to the real external tool instead of returning the mocked result directly.",
+          "title": "Delegate To Real Tool",
+          "type": "boolean"
+        },
+        "exit_code": {
+          "default": 0,
+          "description": "Process exit code that the harness recorded or should synthesize for the related tool invocation.",
+          "title": "Exit Code",
+          "type": "integer"
+        },
+        "stderr": {
+          "default": "",
+          "description": "Captured stderr that the harness recorded or should synthesize for the related tool invocation.",
+          "title": "Stderr",
+          "type": "string"
+        },
+        "stdout": {
+          "default": "",
+          "description": "Captured stdout that the harness recorded or should synthesize for the related tool invocation.",
+          "title": "Stdout",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "description": "Human-readable short summary for the related result or mocked tool behavior.",
+          "title": "Summary",
+          "type": "string"
+        },
+        "writes": {
+          "description": "Files that the mocked tool behavior should write when the invocation matches.",
+          "items": {
+            "$ref": "#/$defs/FileWriteAction"
+          },
+          "title": "Writes",
+          "type": "array"
+        }
+      },
+      "title": "ToolBehaviorResult",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    },
+    "WorkflowRepositoryBranchFixture": {
+      "additionalProperties": false,
+      "description": "A branch that should exist in the workflow repository checkout before execution.",
+      "properties": {
+        "name": {
+          "description": "Stable name for the related object, branch, tag, release, or harness step.",
+          "title": "Name",
+          "type": "string"
+        },
+        "start_point": {
+          "default": "HEAD",
+          "description": "Commit, ref, or symbolic start point that the harness should use when creating the related branch or tag.",
+          "title": "Start Point",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "WorkflowRepositoryBranchFixture",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    },
+    "WorkflowRepositoryFixture": {
+      "additionalProperties": false,
+      "description": "Git refs that should be created in the workflow repository checkout before execution.",
+      "properties": {
+        "branches": {
+          "description": "Git branches that the harness should create in the workflow repository fixture before execution begins.",
+          "items": {
+            "$ref": "#/$defs/WorkflowRepositoryBranchFixture"
+          },
+          "title": "Branches",
+          "type": "array"
+        },
+        "tags": {
+          "description": "Git tags that the harness should create in the workflow repository fixture before execution begins.",
+          "items": {
+            "$ref": "#/$defs/WorkflowRepositoryTagFixture"
+          },
+          "title": "Tags",
+          "type": "array"
+        }
+      },
+      "title": "WorkflowRepositoryFixture",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    },
+    "WorkflowRepositoryTagFixture": {
+      "additionalProperties": false,
+      "description": "A tag that should exist in the workflow repository checkout before execution.",
+      "properties": {
+        "annotated": {
+          "default": false,
+          "description": "Whether the related Git tag fixture should be created as an annotated tag instead of a lightweight tag.",
+          "title": "Annotated",
+          "type": "boolean"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Human-readable message body associated with the related verification failure, harness tag object, or fixture definition.",
+          "title": "Message"
+        },
+        "name": {
+          "description": "Stable name for the related object, branch, tag, release, or harness step.",
+          "title": "Name",
+          "type": "string"
+        },
+        "target": {
+          "default": "HEAD",
+          "description": "Target commit, ref, or identifier that the related fixture or release record should point at.",
+          "title": "Target",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "WorkflowRepositoryTagFixture",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    },
+    "WorkflowScenario": {
+      "additionalProperties": false,
+      "description": "A real workflow-YAML invocation executed by the `act` backend.",
+      "properties": {
+        "event": {
+          "const": "workflow_dispatch",
+          "default": "workflow_dispatch",
+          "description": "Workflow event name that the harness should simulate for the related workflow scenario.",
+          "title": "Event",
+          "type": "string"
+        },
+        "gpg_fixture": {
+          "default": "disabled",
+          "description": "GPG fixture mode that the harness should prepare for the related workflow scenario.",
+          "enum": [
+            "disabled",
+            "generated-signing-key"
+          ],
+          "title": "Gpg Fixture",
+          "type": "string"
+        },
+        "harness_config": {
+          "description": "Path to the harness configuration file that the `act` workflow scenario should load.",
+          "title": "Harness Config",
+          "type": "string"
+        },
+        "inputs": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Workflow-dispatch inputs that the harness should pass to the selected workflow invocation.",
+          "title": "Inputs",
+          "type": "object"
+        },
+        "path": {
+          "description": "Filesystem path, relative artifact path, or retained evidence path associated with the related record.",
+          "title": "Path",
+          "type": "string"
+        },
+        "real_cli_commands": {
+          "description": "External CLI command names that the `act` harness workflow may run directly instead of through shim wrappers.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Real Cli Commands",
+          "type": "array"
+        },
+        "release_config": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional complete release configuration used only inside the disposable workflow workspace.",
+          "title": "Release Config"
+        },
+        "repository_fixture": {
+          "$ref": "#/$defs/WorkflowRepositoryFixture",
+          "description": "Workflow-repository ref fixture that the harness should materialize before running the selected workflow."
+        },
+        "svn_fixture": {
+          "$ref": "#/$defs/SvnRepositoryFixture",
+          "description": "SVN fixture preset that the `act` workflow scenario should create before execution begins."
+        }
+      },
+      "required": [
+        "path",
+        "harness_config"
+      ],
+      "title": "WorkflowScenario",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    },
+    "WorkspaceFile": {
+      "additionalProperties": false,
+      "description": "A file that should exist in the scenario workspace before job execution starts.",
+      "properties": {
+        "content": {
+          "description": "Literal file content that the harness should write or that the mocked tool should emit.",
+          "title": "Content",
+          "type": "string"
+        },
+        "executable": {
+          "default": false,
+          "description": "Whether the written file should have the executable bit set in the harness workspace.",
+          "title": "Executable",
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Filesystem path, relative artifact path, or retained evidence path associated with the related record.",
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "content"
+      ],
+      "title": "WorkspaceFile",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    }
+  },
+  "$id": "https://buildish.org/components/release-tooling/schemas/harness-scenario.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A runner-agnostic integration-test scenario.",
+  "properties": {
+    "backend": {
+      "default": "custom",
+      "description": "Execution backend name that performed the related Buildish action or reproducibility run.",
+      "enum": [
+        "custom",
+        "act"
+      ],
+      "title": "Backend",
+      "type": "string"
+    },
+    "env": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Environment-variable mapping supplied to the related build, scenario, or command step.",
+      "title": "Env",
+      "type": "object"
+    },
+    "env_capture": {
+      "description": "Environment variable names that the harness shim should retain in trace output.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Env Capture",
+      "type": "array"
+    },
+    "git_repositories": {
+      "description": "Disposable Git repositories that the harness should create in the scenario workspace before execution begins.",
+      "items": {
+        "$ref": "#/$defs/GitRepositoryFixture"
+      },
+      "title": "Git Repositories",
+      "type": "array"
+    },
+    "jobs": {
+      "description": "Jobs that the harness should execute for the related custom scenario.",
+      "items": {
+        "$ref": "#/$defs/JobScenario"
+      },
+      "title": "Jobs",
+      "type": "array"
+    },
+    "name": {
+      "description": "Stable name for the related object, branch, tag, release, or harness step.",
+      "title": "Name",
+      "type": "string"
+    },
+    "secrets": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Secret environment variables that the harness should expose to the scenario while keeping them logically separate from ordinary environment variables.",
+      "title": "Secrets",
+      "type": "object"
+    },
+    "tool_behaviors": {
+      "additionalProperties": {
+        "items": {
+          "$ref": "#/$defs/ToolBehavior"
+        },
+        "type": "array"
+      },
+      "description": "Scripted intercepted-tool behaviors keyed by tool name in the related harness scenario or runtime state.",
+      "title": "Tool Behaviors",
+      "type": "object"
+    },
+    "workflow": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/WorkflowScenario"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Nested workflow block for an `act` harness scenario, or the workflow name recorded in provenance."
+    },
+    "workspace_files": {
+      "description": "Files that the harness should create directly in the scenario workspace before execution begins.",
+      "items": {
+        "$ref": "#/$defs/WorkspaceFile"
+      },
+      "title": "Workspace Files",
+      "type": "array"
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "title": "Buildish Release Tooling HarnessScenario",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "authored",
+    "filePath": "harness/scenarios/*.yaml",
+    "ownership": "consumer-owned",
+    "summary": "Harness scenario contract for synthetic or `act`-backed release-workflow integration tests."
+  }
+}

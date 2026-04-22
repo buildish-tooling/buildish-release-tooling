@@ -1,0 +1,84 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.org/components/release-tooling/schemas/materialize-rc-git-content-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after building detached RC materialization Git content. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "materialize-rc-git-content",
+      "default": "materialize-rc-git-content",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "materialized_commit_sha": {
+      "description": "Git commit SHA of the materialized tree that Buildish created for the RC tagging workflow.",
+      "minLength": 1,
+      "title": "Materialized Commit Sha",
+      "type": "string"
+    },
+    "materialized_paths": {
+      "description": "Filesystem paths that the materialization step created or refreshed for the current RC.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Materialized Paths",
+      "type": "array"
+    },
+    "materialized_ref_mode": {
+      "description": "Policy that Buildish used when creating or reusing the temporary materialization ref.",
+      "minLength": 1,
+      "title": "Materialized Ref Mode",
+      "type": "string"
+    },
+    "materialized_ref_name": {
+      "description": "Temporary Git ref name that Buildish created or reused for RC materialization.",
+      "minLength": 1,
+      "title": "Materialized Ref Name",
+      "type": "string"
+    },
+    "rc_tag": {
+      "description": "Exact RC Git tag, including the leading `v` prefix and `-rcN` suffix.",
+      "minLength": 1,
+      "title": "Rc Tag",
+      "type": "string"
+    },
+    "resolved_source_ref": {
+      "description": "Resolved source Git commit SHA that Buildish selected for release production or verification.",
+      "minLength": 1,
+      "title": "Resolved Source Ref",
+      "type": "string"
+    },
+    "version": {
+      "description": "Release version string without a leading `v` prefix.",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "resolved_source_ref",
+    "rc_tag",
+    "materialized_paths",
+    "materialized_commit_sha",
+    "materialized_ref_name",
+    "materialized_ref_mode"
+  ],
+  "title": "Buildish Release Tooling MaterializeRcGitContentManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `materialize-rc-git-content`."
+  }
+}
