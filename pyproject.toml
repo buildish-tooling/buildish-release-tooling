@@ -1,0 +1,86 @@
+# Copyright 2026 The Apache Software Foundation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+[project]
+name = "apache-buildish-release-tooling"
+version = "0.1.0"
+description = "Shared release orchestration tooling for Buildish components"
+requires-python = ">=3.13"
+classifiers = [
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "pydantic>=2.13.2,<3",
+    "pyyaml>=6.0.3",
+]
+
+[project.scripts]
+buildish-release-tooling = "apache_buildish_release_tooling.cli:main"
+buildish-release-harness = "apache_buildish_release_tooling.harness.cli:main"
+
+[build-system]
+requires = [
+    "setuptools>=82.0.1",
+    "wheel",
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["apache_buildish_release_tooling*"]
+
+[dependency-groups]
+dev = [
+    "mypy==1.20.1",
+    "ruff==0.15.11",
+]
+
+[tool.ruff]
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "A",
+    "B",
+    "DTZ",
+    "F",
+    "FA",
+    "G",
+    "ISC",
+    "LOG",
+    "PTH",
+    "RET",
+    "S",
+    "T20",
+    "UP",
+]
+ignore = [
+    "S603",
+    "S607",
+]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["src/apache_buildish_release_tooling", "tests"]
+mypy_path = ["src"]
+explicit_package_bases = true
+warn_redundant_casts = true
+warn_unreachable = true
+warn_unused_ignores = true
+no_implicit_optional = true
+disable_error_code = ["import-untyped"]

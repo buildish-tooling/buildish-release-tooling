@@ -1,0 +1,407 @@
+---
+title: Docs and Reference
+description: "This `docs/` tree now holds the material that belongs under the component's versioned docs root: stable reference pages today, and release-tied docs later."
+weight: 90
+---
+
+<!--
+Copyright 2026 The Apache Software Foundation
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+# CLI API Contract
+
+This page defines the supported external contract for `buildish-release-tooling`.
+
+The public contract is intentionally narrow:
+
+- the `buildish-release-tooling` CLI command surface
+- the required `release-config.yaml` schema
+- the manifest, summary, and exit-code behavior that workflows may rely on
+
+The Python module layout is not a public API. Buildish component workflows should consume this
+component through the CLI only, pinned to an exact immutable Git ref.
+
+## Versioning and compatibility
+
+`buildish-release-tooling` is intended to follow semantic versioning for its external contract.
+
+- major releases may change command names, arguments, manifest keys, or config schema in breaking
+  ways
+- minor releases may add commands, flags, manifest keys, or config fields in backward-compatible
+  ways
+- patch releases should keep the documented contract stable and only fix behavior
+
+Release-critical workflows should pin:
+
+- an exact immutable Git tag or commit of `buildish-release-tooling`
+- not a moving branch
+- not a package index lookup as the primary release path
+
+## Invocation contract
+
+The stable invocation model is:
+
+```bash
+uv run --project /path/to/buildish-release-tooling --frozen \
+  buildish-release-tooling <command> \
+  --component-config /path/to/release-config.yaml \
+  [command arguments...]
+```
+
+The current working directory must be the target component repository, or inside its Git worktree.
+
+Commands that inspect release branches or tags assume the workflow has already fetched:
+
+- remote heads into `refs/remotes/origin/*`
+- tags for the repository
+
+Example:
+
+```bash
+git fetch --force --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
+```
+
+## Detached materialization commit model
+
+Some components need release-only generated Git content that must not live in normal branch history,
+for example a git-ignored `dist/` payload used by a GitHub Action.
+
+For those components, the supported model is:
+
+- resolve the source commit from the release branch as usual
+- build the authoritative ASF source release from that source commit
+- create a detached materialization commit from that source commit in isolated Git state
+- keep that detached commit out of `release/<line>` history
+- place the RC tag on that detached materialization commit
+- place the final exact tag on that same detached materialization commit after release approval
+
+This is a component-policy exception, not the default behavior. Components that do not need
+release-only generated Git content should keep both RC and final tags on the plain source commit.
+
+## Stable inputs
+
+### Required flag
+
+All commands require:
+
+- `--component-config <path>`
+
+That file is the component policy contract between a Buildish component and this tool.
+
+### Positional arguments
+
+The stable interface uses explicit positional arguments such as:
+
+- `version`
+- `source_sha`
+- `release_line`
+- `source_ref`
+- `assets...`
+
+Environment fallbacks for positional arguments exist in a few places for workflow compatibility,
+but they are not part of the long-term stable contract and should not be the preferred integration
+path.
+
+### Runtime environment integration
+
+Environment variables are not the preferred public API surface for this tool. The preferred
+integration surface is:
+
+- explicit CLI arguments
+- checked-out Git state
+- `release-config.yaml`
+
+Only a small set of runtime environment hooks should be treated as stable integration points:
+
+- `MANIFEST_PATH`: override where the command writes its JSON manifest
+- `GITHUB_STEP_SUMMARY`: required path where Markdown summary output is appended
+
+The tool also interoperates with environment-based credentials and GitHub runner metadata when it
+talks to external systems, but those should be treated as operational wiring rather than semver
+stable CLI API:
+
+- `GH_TOKEN` or `GITHUB_TOKEN` for GitHub CLI authentication
+- `BUILDISH_SVN_DEV_USERNAME` and `BUILDISH_SVN_DEV_PASSWORD` for ASF SVN access
+- `BUILDISH_GPG_PRIVATE_KEY` for detached signing
+- `DOCKERHUB_USER` and `DOCKERHUB_TOKEN` for Docker Hub alias publication
+
+Those variables are common in GitHub Actions, but they expand the process environment and therefore
+should stay minimal. They are documented here because the current implementation uses them, not
+because environment-variable integration is the preferred design.
+
+GitHub API operations derive the repository slug from the checked-out worktree's `origin` remote
+URL rather than from a separate environment-variable hint.
+
+The following environment-variable hooks are implementation details and should not be relied on as
+public contract. New functionality should prefer explicit CLI arguments, checked-out repository
+state, or `release-config.yaml` over additional environment variables.
+
+## `release-config.yaml` contract
+
+The config file is a YAML object. The currently required fields are:
+
+```yaml
+component_id: buildish-example
+source_artifact_prefix: apache-buildish-example
+asf_dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example
+asf_dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example
+moving_tags_enabled: true
+latest_tag_enabled: false
+secondary_targets:
+  - github-action
+final_tag_mode: rc-source-commit
+vote_release_name: Apache Buildish Example
+incubator_vote_enabled: false
+release_summary_include_final_tag_mode: false
+release_verification_guide_url: https://buildish.apache.org/buildish-example/release-verification/
+verify_rc_instructions: |
+  Verify the RC on trusted hardware.
+prepare_rc_runs_tests: false
+release_branch_ci_required: true
+```
+
+Field meanings:
+
+- `component_id`: stable component identifier used in manifests and default output paths
+- `source_artifact_prefix`: root directory prefix for reproducible source archives
+- `asf_dist_dev_base`: ASF SVN `dist/dev` base URL for the component
+- `asf_dist_release_base`: ASF SVN `dist/release` base URL for the component
+- `moving_tags_enabled`: whether version-derived moving aliases are enabled
+- `latest_tag_enabled`: whether `latest` may be derived for supported targets
+- `secondary_targets`: convenience target families such as `github-action`, `github-release`,
+  `github-release-assets`, `dockerhub`, or `pypi`
+- `final_tag_mode`: final tag policy such as `rc-source-commit` or
+  `detached-materialization-commit`
+  - `rc-source-commit` means the RC and final tags point at the plain source commit
+  - `detached-materialization-commit` means the RC and final tags point at a detached commit derived
+    from the source commit, while the source release itself is still built from the source commit
+- `vote_release_name`: human-readable name used in mail subjects and release titles
+- `incubator_vote_enabled`: whether the incubator vote-mail block is emitted
+- `release_summary_include_final_tag_mode`: whether summaries explicitly repeat the final tag mode
+- `release_verification_guide_url`: authoritative verification-guide URL inserted into RC vote
+  email templates
+- `verify_rc_instructions`: authoritative RC verification text for humans
+- `prepare_rc_runs_tests`: whether `Prepare RC` runs tests itself
+- `release_branch_ci_required`: whether the component requires CI on `release/*` branches
+
+## Output contract
+
+### Exit status
+
+- `0` means success
+- non-zero means failure
+
+The CLI currently normalizes handled command failures to exit code `1`.
+
+### Stdout
+
+Commands that write manifests print the manifest path to stdout.
+
+Commands that exist only as gates or human-output steps may print nothing on success.
+
+### Manifest files
+
+Most commands emit a UTF-8 JSON object manifest.
+
+Default location:
+
+```text
+<cwd>/<component-id>-<action>.json
+```
+
+Override:
+
+```text
+$MANIFEST_PATH
+```
+
+Stable manifest conventions:
+
+- `component` is the component identifier
+- `action` is the command/action name
+- `version` is present when the command operates on an exact release version
+
+Additional keys are command-specific. Additive keys may be introduced in minor releases.
+
+### GitHub Summary
+
+Commands that emit human-facing workflow information append Markdown to `$GITHUB_STEP_SUMMARY`.
+That variable is required.
+
+Summaries are intended for:
+
+- vote-mail templates
+- vote-result templates
+- ANNOUNCE templates
+- checksum and signature material
+- resolved release state
+- GitHub release metadata
+- artifact upload lists
+
+## Command groups
+
+### Branch management
+
+- `create-release-branch <release_line> <source_ref>`
+
+### RC preparation and staging
+
+- `verify-source-ref-checks <version> [source_sha]`
+- `prepare-rc <version> [source_sha]`
+- `cleanup-dev-svn-rcs <version>`
+- `create-source-artifact <version> [source_sha]`
+- `build-source-rc [--rc-tag <tag>] <version> [source_sha]`
+- `create-rc-materialization-tag [--rc-tag <tag>] [--target-commit <sha>] <version> [source_sha]`
+- `sync-draft-github-release [--rc-tag <tag>] <version> [source_sha]`
+- `finalize-rc-vote-materials [--secondary-artifact-manifest <path>]... [--rc-tag <tag>] <version> [source_sha]`
+
+### Final release materialization
+
+- `release-version <version>`
+- `publish-source-release-svn [--selected-rc-tag <tag>] <version>`
+- `prune-older-line-releases <version>`
+- `create-final-tag [--selected-rc-tag <tag>] <version>`
+- `update-moving-tags <version>`
+- `update-moving-image-aliases <version>`
+- `publish-dockerhub-moving-tags <version> <source_image>`
+- `attach-github-release-assets [--sign] [--checksum sha256|sha512]... <version> <assets...>`
+- `finalize-draft-github-release [--selected-rc-tag <tag>] <version>`
+
+### Human verification support
+
+- `verify-rc <version>`
+
+## Selected command guarantees
+
+### `create-source-artifact`
+
+- builds from Git using a fixed mtime and reproducible gzip settings
+- creates a source tarball rooted at `source_artifact_prefix-<version>-incubating-src/`
+- emits the SHA512 line in the summary
+
+### `build-source-rc`
+
+- creates the reproducible source artifact
+- writes `.sha512`
+- creates a detached ASCII-armored signature
+- stages the artifact set into ASF SVN `dist/dev`
+- accepts `--rc-tag` so later reruns in one `Prepare RC` workflow stay bound to the same RC
+- does not by itself define where the RC Git tag must point; that remains component policy
+
+### `create-rc-materialization-tag`
+
+- creates the RC tag for the resolved version
+- tags the resolved source commit by default
+- requires `--target-commit` for components that use detached materialization commits
+- accepts `--rc-tag` so the tag-creation step can reuse the RC number resolved earlier in the workflow
+- fails if the RC tag already exists, even when it already points at the same commit
+- this prevents concurrent same-version `Prepare RC` runs from silently sharing one RC tag
+
+### `finalize-rc-vote-materials`
+
+- requires the RC tag and draft GitHub Release to already exist
+- builds `rc-vote-manifest.json` from resolved live Git/SVN/GitHub state
+- accepts `--secondary-artifact-manifest` inputs for generic voted secondary-artifact inventory
+- accepts `--rc-tag` so reruns keep using the already-selected RC
+- writes `.sha512`
+- creates a detached ASCII-armored signature for the manifest
+- stages the manifest set into ASF SVN `dist/dev`
+- mirrors the manifest set to the draft GitHub Release
+- emits the project RC vote email template alongside the machine-readable manifest
+- emits a later-use IPMC vote-request template for podlings, with human-fill thread placeholders
+
+### `release-version`
+
+- resolves the selected RC tag from the exact-version draft GitHub Release
+- derives the specific release line from the exact version
+- reads previously published versions from ASF SVN `dist/release`
+- computes same-line pruning and moving-tag plans
+- assumes the final exact tag should reuse the released RC commit, whether that RC commit is the
+  plain source commit or a detached materialization commit
+- emits a project vote-result email template with human-fill vote-count placeholders
+- should hand off `selected_rc_tag` to later `Release version` jobs in the same workflow
+
+### `create-final-tag`
+
+- creates the immutable exact final Git tag for the version
+- targets the same commit as the selected RC tag
+- accepts `--selected-rc-tag` so later jobs can fail if the draft GitHub Release drifts to a newer RC
+- prefers GitHub API tag creation when the repository slug is available
+- treats an already-existing final tag on the same target commit as a successful no-op
+
+### `update-moving-tags`
+
+- currently supports Git tag-backed aliases such as GitHub Action `v1` / `v1.2`
+- requires the immutable exact final tag to already exist
+- applies the documented no-backward-move policy before mutating any alias
+- updates an existing alias only when the new version is newer within that alias's scope
+- treats an alias that already points at the intended final release as a successful no-op
+
+### `attach-github-release-assets`
+
+- locates the existing GitHub Release by exact final tag
+- uploads one or more files through `gh release upload`
+- uses replace semantics through `--clobber`
+- may additionally generate detached `*.asc` signatures
+- may additionally generate `*.sha512` and `*.sha256` sidecars
+- rejects duplicate upload basenames before invoking GitHub
+
+GitHub release assets are convenience artifacts only. They are not the authoritative ASF release.
+
+### `publish-dockerhub-moving-tags`
+
+- derives moving Docker Hub aliases such as `1`, `1.2`, and optionally `latest`
+- requires an already-pushed exact source image reference
+- authenticates with `DOCKERHUB_USER` and `DOCKERHUB_TOKEN`
+- uses `docker buildx imagetools create --prefer-index=false` so one command path can alias both
+  normal single-platform images and multi-platform images already present in the registry
+- publishes only the derived aliases; it does not build or push the exact image itself
+
+### `finalize-draft-github-release`
+
+- removes draft-only RC vote-manifest assets when present
+- accepts `--selected-rc-tag` so the final publication step can fail if the draft GitHub Release
+  drifted to a different RC after `release-version` resolved it
+- publishes the draft GitHub Release for the final tag
+- treats an already-published final release as a successful no-op
+- emits the final ANNOUNCE email template with a human-fill placeholder for release-specific text
+
+## External tool requirements
+
+Depending on the command, the runtime expects these tools on `PATH`:
+
+- `git`
+- `svn`
+- `gh`
+- `gpg`
+- `gzip`
+
+Integration tests also use `svnadmin`.
+
+## Logging and secret handling
+
+Subprocess commands such as `git`, `svn`, `gh`, and `gpg` are logged with arguments for workflow
+debuggability.
+
+The documented secret-bearing values are redacted from command logs.
+
+## Non-contract details
+
+The following are intentionally not public API:
+
+- Python module names and function names
+- internal helper behavior that is not surfaced through the CLI
+- undocumented environment-variable fallbacks for positional arguments
+- exact Markdown wording in summaries, except where a workflow explicitly consumes it as human text

@@ -1,0 +1,51 @@
+# Copyright 2026 The Apache Software Foundation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Scenario loading helpers for the Buildish release harness."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from apache_buildish_release_tooling.harness.models import HarnessScenario
+
+
+def load_scenario(path: Path) -> HarnessScenario:
+    """Load a YAML scenario file into a validated harness model."""
+
+    payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(payload, dict):
+        raise ValueError(f"expected a YAML mapping in {path}")
+    _resolve_workflow_paths(payload, path.parent.resolve(strict=False))
+    return HarnessScenario.model_validate(payload)
+
+
+def _resolve_workflow_paths(payload: dict[str, Any], scenario_dir: Path) -> None:
+    """Resolve workflow-related file paths relative to the scenario file."""
+
+    workflow = payload.get("workflow")
+    if not isinstance(workflow, dict):
+        return
+    for key in ("path", "harness_config"):
+        raw_value = workflow.get(key)
+        if not isinstance(raw_value, str) or not raw_value:
+            continue
+        raw_path = Path(raw_value)
+        if raw_path.is_absolute():
+            workflow[key] = str(raw_path)
+        else:
+            workflow[key] = str((scenario_dir / raw_path).resolve(strict=False))

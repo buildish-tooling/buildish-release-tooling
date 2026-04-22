@@ -1,0 +1,251 @@
+# Copyright 2026 The Apache Software Foundation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Helpers for the signed RC vote-manifest artifact."""
+
+from __future__ import annotations
+
+import hashlib
+import os
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+from urllib.request import urlopen
+
+from apache_buildish_release_tooling.git_repo import GitRepository
+from apache_buildish_release_tooling.github_checks import resolve_repository_slug
+from apache_buildish_release_tooling.models import ComponentConfig, PrepareRcState
+from apache_buildish_release_tooling.process import run_logged_command
+from apache_buildish_release_tooling.release_state import derive_specific_release_line
+
+
+def _tooling_repo_root() -> Path:
+    """Resolve the checked-out repository root of `buildish-release-tooling`."""
+
+    return Path(__file__).resolve().parents[2]
+
+
+def _origin_repository_metadata(repo: GitRepository) -> tuple[str, str]:
+    """Resolve repository slug and normalized HTTPS URL from the `origin` remote."""
+
+    try:
+        repository_slug = resolve_repository_slug(repo.path)
+        return repository_slug, f"https://github.com/{repository_slug}"
+    except ValueError:
+        try:
+            remote_url = repo.remote_url()
+        except ValueError:
+            return repo.path.name, repo.path.as_uri()
+        normalized_url = remote_url.removesuffix(".git")
+        parsed = urlparse(normalized_url)
+        if parsed.scheme and parsed.netloc:
+            repository_slug = parsed.path.removeprefix("/")
+            return repository_slug, normalized_url
+        return repo.path.name, repo.path.as_uri()
+
+
+def _tooling_git_ref(repo: GitRepository) -> tuple[str | None, str | None]:
+    """Resolve the most descriptive Git ref and optional released version for tooling provenance."""
+
+    head_tags = sorted(tag for tag in repo.tags_pointing_at("HEAD") if tag.startswith("v"))
+    if head_tags:
+        tag_name = head_tags[0]
+        return f"refs/tags/{tag_name}", tag_name.removeprefix("v")
+    symbolic_ref = repo.current_symbolic_ref()
+    return symbolic_ref, None
+
+
+def tooling_provenance() -> dict[str, object]:
+    """Build provenance metadata for the checked-out release-tooling source tree."""
+
+    repo = GitRepository.from_current_worktree(_tooling_repo_root())
+    repository, repository_url = _origin_repository_metadata(repo)
+    git_ref, version = _tooling_git_ref(repo)
+    provenance: dict[str, object] = {
+        "repository": repository,
+        "repository_url": repository_url,
+        "git_commit_sha": repo.current_head_commit(),
+    }
+    if git_ref is not None:
+        provenance["git_ref"] = git_ref
+    if version is not None:
+        provenance["version"] = version
+    return provenance
+
+
+def github_workflow_provenance(default_repository: str) -> dict[str, object] | None:
+    """Build GitHub Actions workflow provenance when running inside GitHub Actions."""
+
+    repository = os.environ.get("GITHUB_REPOSITORY") or default_repository
+    run_id = os.environ.get("GITHUB_RUN_ID")
+    if not run_id:
+        return None
+    server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
+    provenance: dict[str, object] = {
+        "repository": repository,
+        "workflow": os.environ.get("GITHUB_WORKFLOW", ""),
+        "workflow_ref": os.environ.get("GITHUB_WORKFLOW_REF", ""),
+        "run_id": int(run_id),
+    }
+    run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT")
+    if run_attempt and run_attempt.isdigit():
+        provenance["run_attempt"] = int(run_attempt)
+    if repository:
+        provenance["run_url"] = f"{server_url.rstrip('/')}/{repository}/actions/runs/{run_id}"
+    return provenance
+
+
+def created_at_utc() -> str:
+    """Return the current UTC timestamp formatted for manifest provenance."""
+
+    return datetime.now(tz=UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def derive_asf_keys_uri(release_base_url: str) -> str:
+    """Derive the KEYS URL shared by all Buildish components from one component release base."""
+
+    release_parent = release_base_url.rstrip("/").rsplit("/", 1)[0]
+    if release_parent.startswith("https://dist.apache.org/repos/dist/release/"):
+        release_parent = release_parent.replace(
+            "https://dist.apache.org/repos/dist/release/",
+            "https://downloads.apache.org/",
+            1,
+        )
+    return f"{release_parent}/KEYS"
+
+
+def read_uri_bytes(uri: str) -> bytes:
+    """Read bytes from a `file://`, `http://`, or `https://` URI."""
+
+    parsed = urlparse(uri)
+    if parsed.scheme == "file":
+        local_path = Path(parsed.path)
+        if local_path.exists():
+            return local_path.read_bytes()
+        completed = run_logged_command(["svn", "cat", uri])
+        return completed.stdout.encode("utf-8")
+    if parsed.scheme in {"http", "https"}:
+        with urlopen(uri) as response:  # noqa: S310
+            return response.read()
+    raise ValueError(f"unsupported URI scheme: {uri}")
+
+
+def read_uri_text(uri: str) -> str:
+    """Read UTF-8 text from a supported URI."""
+
+    return read_uri_bytes(uri).decode("utf-8")
+
+
+def trust_root_metadata(release_base_url: str) -> dict[str, object]:
+    """Build the KEYS trust-root block for one component release base."""
+
+    keys_uri = derive_asf_keys_uri(release_base_url)
+    keys_payload = read_uri_bytes(keys_uri)
+    return {
+        "asf_keys": {
+            "uri": keys_uri,
+            "known_length_bytes": len(keys_payload),
+            "known_prefix_sha512": hashlib.sha512(keys_payload).hexdigest(),
+        }
+    }
+
+
+def build_rc_vote_manifest(
+    *,
+    component_config: ComponentConfig,
+    state: PrepareRcState,
+    repository_slug: str,
+    draft_release_url: str,
+    rc_tag_target_commit: str,
+    source_artifact_sha512: str,
+    secondary_artifacts: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Build the machine-readable RC inventory staged for vote."""
+
+    manifest_filename = "rc-vote-manifest.json"
+    staging_url = state.staging_url.rstrip("/")
+    source_artifact_url = f"{staging_url}/{state.source_artifact_name}"
+    manifest_url = f"{staging_url}/{manifest_filename}"
+    materialized_commit_sha: str | None = None
+    if component_config.final_tag_mode == "detached-materialization-commit":
+        materialized_commit_sha = rc_tag_target_commit
+
+    manifest: dict[str, Any] = {
+        "schema_version": "1",
+        "manifest_type": "rc-vote",
+        "component_id": component_config.component_id,
+        "version": state.final_tag.removeprefix("v"),
+        "release_line": derive_specific_release_line(state.final_tag.removeprefix("v")),
+        "release_branch": state.resolved_release_branch,
+        "source_commit_sha": state.resolved_source_ref,
+        "rc_tag": state.rc_tag,
+        "final_tag": state.final_tag,
+        "final_tag_mode": component_config.final_tag_mode,
+        "provenance": {
+            "created_at": created_at_utc(),
+            "tooling": tooling_provenance(),
+        },
+        "trust_roots": trust_root_metadata(component_config.asf_dist_release_base),
+        "draft_github_release": {
+            "repository": repository_slug,
+            "tag": state.final_tag,
+            "url": draft_release_url,
+        },
+        "vote_materials": {
+            "source_artifacts": [
+                {
+                    "role": "asf-source-release",
+                    "filename": state.source_artifact_name,
+                    "uri": source_artifact_url,
+                    "artifact_origin": "source-commit",
+                    "git_commit_sha": state.resolved_source_ref,
+                    "checksums": {
+                        "sha512": {
+                            "value": source_artifact_sha512,
+                            "uri": f"{source_artifact_url}.sha512",
+                        }
+                    },
+                    "signatures": [
+                        {
+                            "type": "openpgp-detached-ascii-armored",
+                            "uri": f"{source_artifact_url}.asc",
+                        }
+                    ],
+                }
+            ],
+            "secondary_artifacts": [dict(artifact) for artifact in secondary_artifacts],
+        },
+        "verification": {
+            "staging_svn_url": f"{staging_url}/",
+            "authoritative_manifest": {
+                "uri": manifest_url,
+                "checksum_uris": {
+                    "sha512": f"{manifest_url}.sha512",
+                },
+                "signatures": [
+                    {
+                        "type": "openpgp-detached-ascii-armored",
+                        "uri": f"{manifest_url}.asc",
+                    }
+                ],
+            }
+        },
+    }
+    if materialized_commit_sha is not None:
+        manifest["materialized_commit_sha"] = materialized_commit_sha
+    github_provenance = github_workflow_provenance(repository_slug)
+    if github_provenance is not None:
+        manifest["provenance"]["github"] = github_provenance
+    return manifest
