@@ -176,9 +176,12 @@ def run_scenario(
     scenario: HarnessScenario,
     *,
     workspace_root: Path | None = None,
+    seed_from: Path | None = None,
 ) -> HarnessRunResult:
     """Create a new workspace, initialize the scenario, and execute all jobs once."""
 
+    if seed_from is not None:
+        raise ValueError("custom harness backend does not support --seed-from")
     workspace = create_workspace(workspace_root)
     _bootstrap_workspace(workspace, scenario)
     selected_job_ids = [job.id for job in _topological_jobs(scenario)]

@@ -82,6 +82,51 @@ class CommandsIntegrationTest(unittest.TestCase):
             encoding="utf-8",
         )
 
+    @staticmethod
+    def _stage_source_release_files(
+        sandbox_dir: Path,
+        working_copy_dir: Path,
+        *,
+        component_id: str,
+        version: str,
+        rc_number: int,
+    ) -> None:
+        """Stage the minimal ASF source-release files in one SVN working copy RC directory."""
+
+        client = AsfSvnClient()
+        subprocess.run(["svn", "update", str(working_copy_dir)], check=True, capture_output=True, text=True)
+        artifact_name = f"apache-{component_id}-{version}-incubating-src.tar.gz"
+        artifact_path = sandbox_dir / artifact_name
+        artifact_path.write_bytes(b"dummy source payload\n")
+        sha512_path = sandbox_dir / f"{artifact_name}.sha512"
+        sha512_path.write_text(f"{'a' * 128}  {artifact_name}\n", encoding="utf-8")
+        asc_path = sandbox_dir / f"{artifact_name}.asc"
+        asc_path.write_text("-----BEGIN PGP SIGNATURE-----\n<dummy>\n-----END PGP SIGNATURE-----\n", encoding="utf-8")
+        target_dir = (
+            working_copy_dir
+            / "dist"
+            / "dev"
+            / "incubator"
+            / "buildish"
+            / component_id
+            / f"{version}-rc{rc_number}"
+        )
+        target_dir.mkdir(parents=True, exist_ok=True)
+        for source_path, destination_name in (
+            (artifact_path, artifact_name),
+            (sha512_path, f"{artifact_name}.sha512"),
+            (asc_path, f"{artifact_name}.asc"),
+        ):
+            destination_path = target_dir / destination_name
+            destination_path.write_bytes(source_path.read_bytes())
+            subprocess.run(
+                ["svn", "add", "--force", str(destination_path)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        client.commit_working_copy(working_copy_dir, "stage source release files")
+
     def test_prepare_rc_command_uses_yaml_component_config(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
@@ -336,6 +381,96 @@ class CommandsIntegrationTest(unittest.TestCase):
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
         origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
+        _repo_dir, repo_url, working_copy_dir = init_svn_repo_and_checkout(sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        manifest_path = sandbox_dir / "publish-source-release-svn.json"
+        client = AsfSvnClient()
+        component_id = "buildish-example"
+        dev_base_url = f"{repo_url}/dist/dev/incubator/buildish/{component_id}"
+        release_base_url = f"{repo_url}/dist/release/incubator/buildish/{component_id}"
+        git_create_branch(origin_dir, "release/1.x")
+        git_create_branch(origin_dir, "release/1.2.x")
+        git_create_annotated_tag(origin_dir, "v1.2.3-rc2")
+        fetch_git_origin_refs(clone_dir)
+        set_github_origin_url(clone_dir, "apache/buildish-example")
+        self._write_component_config(
+            config_path,
+            component_id=component_id,
+            dev_base_url=dev_base_url,
+            release_base_url=release_base_url,
+        )
+        gh_path, gh_state_dir = create_fake_gh_launcher(
+            sandbox_dir,
+            list_response=[
+                {
+                    "id": 42,
+                    "draft": True,
+                    "tag_name": "v1.2.3",
+                    "name": "Apache Buildish Example 1.2.3",
+                    "body": "\n".join(
+                        [
+                            "Draft GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "",
+                            "RC tag: v1.2.3-rc2",
+                            f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc2^{commit}')}",
+                        ]
+                    ),
+                }
+            ],
+        )
+        client.mkdir_url(dev_base_url, "create dev component path")
+        client.mkdir_url(release_base_url, "create release component path")
+        client.mkdir_url(f"{dev_base_url}/1.2.3-rc2", "create rc directory")
+        self._stage_source_release_files(
+            sandbox_dir,
+            working_copy_dir,
+            component_id=component_id,
+            version="1.2.3",
+            rc_number=2,
+        )
+        completed = run_cli(
+            [
+                "publish-source-release-svn",
+                "--component-config",
+                str(config_path),
+                "1.2.3",
+            ],
+            cwd=clone_dir,
+            env=cli_env(
+                manifest_path,
+                extra_env={"FAKE_GH_STATE_DIR": str(gh_state_dir)},
+                prepend_dirs=(gh_path.parent,),
+            ),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual("v1.2.3-rc2", manifest["selected_rc_tag"])
+        self.assertEqual(["1.2.3/"], client.list_entries(release_base_url))
+        self.assertEqual("copied", manifest["publish_mode"])
+        rerun = run_cli(
+            [
+                "publish-source-release-svn",
+                "--component-config",
+                str(config_path),
+                "1.2.3",
+            ],
+            cwd=clone_dir,
+            env=cli_env(
+                manifest_path,
+                extra_env={"FAKE_GH_STATE_DIR": str(gh_state_dir)},
+                prepend_dirs=(gh_path.parent,),
+            ),
+        )
+        self.assertEqual(0, rerun.returncode, msg=rerun.stderr)
+        rerun_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual("already-present", rerun_manifest["publish_mode"])
+
+    def test_publish_source_release_svn_command_rejects_missing_required_source_files(self) -> None:
+        if not command_available("svnadmin") or not command_available("svn"):
+            self.skipTest("svnadmin and svn are required for the SVN integration test")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
         _repo_dir, repo_url, _working_copy_dir = init_svn_repo_and_checkout(sandbox_dir)
         config_path = sandbox_dir / "component.yaml"
         manifest_path = sandbox_dir / "publish-source-release-svn.json"
@@ -390,28 +525,9 @@ class CommandsIntegrationTest(unittest.TestCase):
                 prepend_dirs=(gh_path.parent,),
             ),
         )
-        self.assertEqual(0, completed.returncode, msg=completed.stderr)
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        self.assertEqual("v1.2.3-rc2", manifest["selected_rc_tag"])
-        self.assertEqual(["1.2.3/"], client.list_entries(release_base_url))
-        self.assertEqual("copied", manifest["publish_mode"])
-        rerun = run_cli(
-            [
-                "publish-source-release-svn",
-                "--component-config",
-                str(config_path),
-                "1.2.3",
-            ],
-            cwd=clone_dir,
-            env=cli_env(
-                manifest_path,
-                extra_env={"FAKE_GH_STATE_DIR": str(gh_state_dir)},
-                prepend_dirs=(gh_path.parent,),
-            ),
-        )
-        self.assertEqual(0, rerun.returncode, msg=rerun.stderr)
-        rerun_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        self.assertEqual("already-present", rerun_manifest["publish_mode"])
+        self.assertNotEqual(0, completed.returncode)
+        self.assertIn("missing required source release files", completed.stderr)
+        self.assertEqual([], client.list_entries(release_base_url))
 
     def test_publish_source_release_svn_command_rejects_rc_drift(self) -> None:
         if not command_available("svnadmin") or not command_available("svn"):

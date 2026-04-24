@@ -34,7 +34,10 @@ from apache_buildish_release_tooling.harness.act_backend import (
     _resolve_act_command,
 )
 from apache_buildish_release_tooling.harness import runtime
-from apache_buildish_release_tooling.harness.backend import rerun_failed_jobs, run_scenario
+from apache_buildish_release_tooling.harness.backend import (
+    rerun_failed_jobs,
+    run_scenario,
+)
 from apache_buildish_release_tooling.harness.cli import main as harness_main
 from apache_buildish_release_tooling.harness.errors import HarnessExternalToolError
 from apache_buildish_release_tooling.harness.models import WorkflowScenario
@@ -209,6 +212,19 @@ class ActHarnessIntegrationTest(unittest.TestCase):
                 / "1.2.2"
             ).is_dir()
         )
+        artifact_path = (
+            result.workspace.svn_working_copy_dir
+            / "repos"
+            / "dist"
+            / "dev"
+            / "incubator"
+            / "buildish"
+            / "buildish-release-tooling"
+            / "1.2.3-rc1"
+            / "apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz"
+        )
+        self.assertTrue(artifact_path.is_file())
+        self.assertEqual("dummy source payload\n", artifact_path.read_text(encoding="utf-8"))
 
     def test_run_scenario_seeds_repository_relative_svn_files(self) -> None:
         """The `act` backend should seed repository-relative SVN files like shared KEYS."""
@@ -287,6 +303,105 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             rerun_invocation["selected_jobs"],
         )
 
+    def test_run_scenario_with_seed_from_carries_git_and_svn_state_forward(self) -> None:
+        """A seeded run should inherit mutable Git and SVN state from the prior workspace."""
+
+        act_path, state_dir = create_fake_act_launcher(self.sandbox_dir)
+        scenario = load_scenario(self._scenario_path("releasey-10-create-release-branch.yaml"))
+
+        with mock.patch.dict(
+            os.environ,
+            env_with_prepend_path(
+                {"FAKE_ACT_STATE_DIR": str(state_dir)},
+                prepend_dirs=(act_path,),
+            ),
+            clear=False,
+        ), mock.patch("sys.stderr", StringIO()):
+            first_result = run_scenario(scenario, workspace_root=self.sandbox_dir)
+
+            subprocess.run(
+                ["git", "-C", str(first_result.workspace.root), "tag", "-a", "vseed", "-m", "seed tag"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(first_result.workspace.git_origins_dir / "self"),
+                    "tag",
+                    "-a",
+                    "vseed",
+                    "-m",
+                    "seed tag",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            seeded_svn_file = (
+                first_result.workspace.svn_working_copy_dir
+                / "repos"
+                / "dist"
+                / "release"
+                / "incubator"
+                / "buildish"
+                / "seeded.txt"
+            )
+            seeded_svn_file.parent.mkdir(parents=True, exist_ok=True)
+            seeded_svn_file.write_text("seeded svn state\n", encoding="utf-8")
+            subprocess.run(
+                ["svn", "add", "--parents", "--force", str(seeded_svn_file)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [
+                    "svn",
+                    "commit",
+                    "-m",
+                    "seed svn state",
+                    str(first_result.workspace.svn_working_copy_dir),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            seeded_result = run_scenario(
+                scenario,
+                workspace_root=self.sandbox_dir,
+                seed_from=first_result.workspace.root,
+            )
+
+        root_tag = subprocess.run(
+            ["git", "-C", str(seeded_result.workspace.root), "tag", "--list", "vseed"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        origin_tag = subprocess.run(
+            ["git", "-C", str(seeded_result.workspace.git_origins_dir / "self"), "tag", "--list", "vseed"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual("vseed\n", root_tag.stdout)
+        self.assertEqual("vseed\n", origin_tag.stdout)
+        self.assertTrue(
+            (
+                seeded_result.workspace.svn_working_copy_dir
+                / "repos"
+                / "dist"
+                / "release"
+                / "incubator"
+                / "buildish"
+                / "seeded.txt"
+            ).is_file()
+        )
+
     def test_run_scenario_streams_act_output_to_stderr_and_logs(self) -> None:
         """The backend should tee `act` stdout and stderr into both log files and stderr."""
 
@@ -320,6 +435,47 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             "fake act stderr\n",
             (result.workspace.harness_dir / "act-stderr.log").read_text(encoding="utf-8"),
         )
+
+    def test_cli_run_sequence_seeds_each_run_from_the_previous_workspace(self) -> None:
+        """The CLI sequence runner should execute scenarios in order and return each workspace."""
+
+        act_path, state_dir = create_fake_act_launcher(self.sandbox_dir)
+        first_scenario_path = self._scenario_path("releasey-10-create-release-branch.yaml")
+        second_scenario_path = self._scenario_path("releasey-40-verify-rc.yaml")
+        stderr = StringIO()
+        stdout = StringIO()
+
+        with (
+            mock.patch.dict(
+                os.environ,
+                env_with_prepend_path(
+                    {
+                        "FAKE_ACT_STATE_DIR": str(state_dir),
+                    },
+                    prepend_dirs=(act_path,),
+                ),
+                clear=False,
+            ),
+            mock.patch("sys.stderr", stderr),
+            mock.patch("sys.stdout", stdout),
+        ):
+            with self.assertRaises(SystemExit) as exc_info:
+                harness_main(
+                    [
+                        "run-sequence",
+                        str(first_scenario_path),
+                        str(second_scenario_path),
+                        "--workspace-root",
+                        str(self.sandbox_dir),
+                    ]
+                )
+
+        self.assertEqual(0, exc_info.exception.code)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(2, len(payload["sequence"]))
+        self.assertEqual(payload["sequence"][-1]["workspace"], payload["final_workspace"])
+        self.assertIn(f"buildish-release-harness scenario: {first_scenario_path}", stderr.getvalue())
+        self.assertIn(f"buildish-release-harness scenario: {second_scenario_path}", stderr.getvalue())
 
     def test_resolve_act_command_prefers_act_then_gh_act_extension_binary(self) -> None:
         """The backend should prefer `act` and fall back to the installed gh-act binary."""

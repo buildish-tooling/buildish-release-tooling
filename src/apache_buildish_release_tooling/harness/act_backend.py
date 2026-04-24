@@ -111,16 +111,24 @@ def run_scenario(
     scenario: HarnessScenario,
     *,
     workspace_root: Path | None = None,
+    seed_from: Path | None = None,
 ) -> runtime.HarnessRunResult:
     """Run one `act`-backed harness scenario in a fresh disposable workspace."""
 
     workflow = _require_workflow(scenario)
     _progress(f"loading harness config {workflow.harness_config}")
     bindings = load_release_harness_config(Path(workflow.harness_config))
-    workspace = _create_workspace(bindings.self_repository.local_path, workspace_root)
+    seed_workspace = runtime.load_existing_workspace(seed_from) if seed_from is not None else None
+    if seed_workspace is not None:
+        _progress(f"seeding workspace state from {seed_workspace.root}")
+    workspace = _create_workspace(
+        bindings.self_repository.local_path,
+        workspace_root,
+        seed_workspace=seed_workspace,
+    )
     _progress(f"created workspace {workspace.root}")
     _progress(f"bootstrapping workspace for scenario {scenario.name}")
-    _bootstrap_workspace(workspace, scenario, bindings)
+    _bootstrap_workspace(workspace, scenario, bindings, seed_workspace=seed_workspace)
     job_definitions = _load_job_definitions(Path(workflow.path))
     selected_job_ids = _topological_job_ids(job_definitions)
     _progress(f"preparing rewritten workflow {workflow.path}")
@@ -182,28 +190,60 @@ def _require_workflow(scenario: HarnessScenario) -> WorkflowScenario:
     return scenario.workflow
 
 
-def _create_workspace(self_repository_root: Path, root_dir: Path | None) -> runtime.HarnessWorkspace:
+def _create_workspace(
+    self_repository_root: Path,
+    root_dir: Path | None,
+    *,
+    seed_workspace: runtime.HarnessWorkspace | None,
+) -> runtime.HarnessWorkspace:
     """Create one fresh workspace rooted at a local clone of the workflow repository."""
 
     workspace_root = runtime.create_workspace_root(root_dir)
-    _materialize_git_checkout(self_repository_root, workspace_root)
+    if seed_workspace is None:
+        _materialize_git_checkout(self_repository_root, workspace_root)
+    else:
+        _materialize_git_repository_state(seed_workspace.root, workspace_root)
     workspace = runtime.workspace_paths(workspace_root)
     runtime.ensure_workspace_directories(workspace)
+    if seed_workspace is not None:
+        _seed_workspace_state(seed_workspace, workspace)
     return workspace
+
+
+def _seed_workspace_state(
+    seed_workspace: runtime.HarnessWorkspace,
+    workspace: runtime.HarnessWorkspace,
+) -> None:
+    """Copy the mutable harness-owned state from a prior workspace into a fresh one."""
+
+    _copy_directory(seed_workspace.git_origins_dir, workspace.git_origins_dir)
+    _copy_directory(seed_workspace.svn_repository_dir, workspace.svn_repository_dir)
+
+
+def _copy_directory(source: Path, destination: Path) -> None:
+    """Copy one directory tree when the source exists."""
+
+    if not source.exists():
+        return
+    if destination.exists():
+        shutil.rmtree(destination)
+    shutil.copytree(source, destination)
 
 
 def _bootstrap_workspace(
     workspace: runtime.HarnessWorkspace,
     scenario: HarnessScenario,
     bindings: ResolvedReleaseHarnessConfig,
+    *,
+    seed_workspace: runtime.HarnessWorkspace | None,
 ) -> None:
     """Materialize repo bindings, workspace fixtures, and shims for an `act` run."""
 
-    _stage_repository_sources(workspace, bindings)
+    _stage_repository_sources(workspace, bindings, seed_workspace=seed_workspace)
     workflow = _require_workflow(scenario)
     if workflow.gpg_fixture == "generated-signing-key":
         _generated_gpg_private_key_path(workspace)
-    _prepare_local_svn_fixture(workspace, scenario)
+    _prepare_local_svn_fixture(workspace, scenario, seed_workspace=seed_workspace)
     _overlay_release_config_for_local_svn(workspace, scenario)
     _apply_workflow_repository_fixture(workspace, scenario)
     for file_fixture in scenario.workspace_files:
@@ -489,6 +529,8 @@ def _act_step_order_by_job(workspace: runtime.HarnessWorkspace) -> dict[str, lis
 def _stage_repository_sources(
     workspace: runtime.HarnessWorkspace,
     bindings: ResolvedReleaseHarnessConfig,
+    *,
+    seed_workspace: runtime.HarnessWorkspace | None,
 ) -> None:
     """Stage local repository sources inside the workspace for checkout overrides and imports."""
 
@@ -496,7 +538,14 @@ def _stage_repository_sources(
     self_origin_dir = workspace.git_origins_dir / "self"
     if self_origin_dir.exists():
         shutil.rmtree(self_origin_dir)
-    _materialize_git_checkout(bindings.self_repository.local_path, self_origin_dir)
+    if seed_workspace is None:
+        _materialize_git_checkout(bindings.self_repository.local_path, self_origin_dir)
+    else:
+        seed_self_origin = seed_workspace.git_origins_dir / "self"
+        if seed_self_origin.is_dir():
+            _materialize_git_repository_state(seed_self_origin, self_origin_dir)
+        else:
+            _materialize_git_repository_state(seed_workspace.root, self_origin_dir)
     self_source_dir = repo_sources_dir / _repository_slug(bindings.self_repository.repository_id)
     if self_source_dir.exists():
         shutil.rmtree(self_source_dir)
@@ -547,6 +596,22 @@ def _apply_workflow_repository_fixture(
     workflow = _require_workflow(scenario)
     fixture = workflow.repository_fixture
     for branch in fixture.branches:
+        existing_branch = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(workspace.root),
+                "show-ref",
+                "--verify",
+                "--quiet",
+                f"refs/heads/{branch.name}",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if existing_branch.returncode == 0:
+            continue
         subprocess.run(
             [
                 "git",
@@ -561,6 +626,22 @@ def _apply_workflow_repository_fixture(
             text=True,
         )
     for tag in fixture.tags:
+        existing_tag = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(workspace.root),
+                "show-ref",
+                "--verify",
+                "--quiet",
+                f"refs/tags/{tag.name}",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if existing_tag.returncode == 0:
+            continue
         command = [
             "git",
             "-C",
@@ -583,22 +664,25 @@ def _apply_workflow_repository_fixture(
 def _prepare_local_svn_fixture(
     workspace: runtime.HarnessWorkspace,
     scenario: HarnessScenario,
+    *,
+    seed_workspace: runtime.HarnessWorkspace | None,
 ) -> None:
     """Create a local inspectable ASF SVN repository and working copy for one workflow scenario."""
 
     workflow = _require_workflow(scenario)
     repository_dir = workspace.svn_repository_dir
     working_copy_dir = workspace.svn_working_copy_dir
-    if repository_dir.exists():
+    if seed_workspace is None and repository_dir.exists():
         shutil.rmtree(repository_dir)
     if working_copy_dir.exists():
         shutil.rmtree(working_copy_dir)
-    subprocess.run(
-        ["svnadmin", "create", str(repository_dir)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    if not repository_dir.exists():
+        subprocess.run(
+            ["svnadmin", "create", str(repository_dir)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
     component_config_path = _component_release_config_path(workspace)
     if not component_config_path.is_file():
         return
@@ -710,12 +794,26 @@ def _svn_mkdir_url(repo_url: str, relative_directory: Path) -> None:
     """Create one directory inside the harness local SVN repository when it does not exist yet."""
 
     directory_url = f"{repo_url.rstrip('/')}/{relative_directory.as_posix().lstrip('/')}"
+    if _svn_url_exists(directory_url):
+        return
     subprocess.run(
         ["svn", "mkdir", "-m", f"create {relative_directory.as_posix()}", directory_url],
         check=True,
         capture_output=True,
         text=True,
     )
+
+
+def _svn_url_exists(target_url: str) -> bool:
+    """Return whether one SVN repository URL currently exists."""
+
+    completed = subprocess.run(
+        ["svn", "info", target_url],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return completed.returncode == 0
 
 
 def _refresh_svn_working_copy(workspace: runtime.HarnessWorkspace) -> None:
@@ -751,11 +849,14 @@ def _apply_svn_repository_file_fixtures(
     if not file_fixtures:
         return
     working_copy_dir = workspace.svn_working_copy_dir
+    added_any = False
     for file_fixture in file_fixtures:
         relative_path = Path(file_fixture.path)
         if relative_path.is_absolute():
             raise ValueError(f"SVN fixture paths must be repository-relative: {file_fixture.path}")
         destination = working_copy_dir / relative_path
+        if destination.exists():
+            continue
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(file_fixture.content, encoding="utf-8")
         subprocess.run(
@@ -764,6 +865,9 @@ def _apply_svn_repository_file_fixtures(
             capture_output=True,
             text=True,
         )
+        added_any = True
+    if not added_any:
+        return
     subprocess.run(
         ["svn", "commit", "-m", "seed harness SVN repository files", str(working_copy_dir)],
         check=True,
@@ -789,6 +893,18 @@ def _materialize_git_checkout(source_root: Path, destination_root: Path) -> None
     )
     _configure_git_identity(destination_root)
     _overlay_working_tree(source_root, destination_root)
+
+
+def _materialize_git_repository_state(source_root: Path, destination_root: Path) -> None:
+    """Clone one local Git repository without copying untracked working-tree files."""
+
+    subprocess.run(
+        ["git", "clone", "--local", str(source_root), str(destination_root)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    _configure_git_identity(destination_root)
 
 
 def _materialize_source_tree(source_root: Path, destination_root: Path) -> None:

@@ -21,7 +21,11 @@ import json
 import sys
 from pathlib import Path
 
-from apache_buildish_release_tooling.harness.backend import rerun_failed_jobs, run_scenario
+from apache_buildish_release_tooling.harness.backend import (
+    rerun_failed_jobs,
+    run_scenario,
+    run_scenario_sequence,
+)
 from apache_buildish_release_tooling.harness.config import load_release_harness_config
 from apache_buildish_release_tooling.harness.errors import HarnessExternalToolError
 from apache_buildish_release_tooling.harness.runtime import HarnessRunResult, HarnessWorkspace
@@ -41,6 +45,24 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Optional parent directory for the disposable workspace.",
+    )
+    run_parser.add_argument(
+        "--seed-from",
+        type=Path,
+        default=None,
+        help="Optional prior harness workspace whose Git and SVN state should seed this run.",
+    )
+
+    sequence_parser = subparsers.add_parser(
+        "run-sequence",
+        help="Run multiple harness scenarios in order, seeding each run from the previous workspace.",
+    )
+    sequence_parser.add_argument("scenarios", nargs="+", type=Path, help="Scenario YAML files to run in order.")
+    sequence_parser.add_argument(
+        "--workspace-root",
+        type=Path,
+        default=None,
+        help="Optional parent directory for the disposable workspaces.",
     )
 
     rerun_parser = subparsers.add_parser(
@@ -69,22 +91,52 @@ def main(argv: list[str] | None = None) -> None:
         if args.command == "resolve-config":
             payload = load_release_harness_config(args.config).to_json_dict()
         else:
-            scenario = load_scenario(args.scenario)
-            if args.command == "run":
-                result = run_scenario(scenario, workspace_root=args.workspace_root)
+            if args.command == "run-sequence":
+                scenarios = [load_scenario(path) for path in args.scenarios]
+                results = run_scenario_sequence(scenarios, workspace_root=args.workspace_root)
+                payload = {
+                    "sequence": [
+                        {
+                            "scenario": str(path),
+                            "workspace": str(result.workspace.root),
+                            "inspectable_paths": result.workspace.inspectable_paths(),
+                            "selected_job_ids": result.selected_job_ids,
+                            "failed_job_ids": result.failed_job_ids,
+                            "blocked_job_ids": result.blocked_job_ids,
+                            "job_statuses": result.job_statuses,
+                        }
+                        for path, result in zip(args.scenarios, results, strict=False)
+                    ],
+                    "final_workspace": str(results[-1].workspace.root) if results else "",
+                }
+                for scenario_path, result in zip(args.scenarios, results, strict=False):
+                    sys.stderr.write(
+                        f"buildish-release-harness scenario: {scenario_path}\n"
+                    )
+                    _emit_run_diagnostics(result)
+                if any(result.failed_job_ids or result.blocked_job_ids for result in results):
+                    exit_code = 1
             else:
-                result = rerun_failed_jobs(scenario, args.workspace)
-            payload = {
-                "workspace": str(result.workspace.root),
-                "inspectable_paths": result.workspace.inspectable_paths(),
-                "selected_job_ids": result.selected_job_ids,
-                "failed_job_ids": result.failed_job_ids,
-                "blocked_job_ids": result.blocked_job_ids,
-                "job_statuses": result.job_statuses,
-            }
-            _emit_run_diagnostics(result)
-            if result.failed_job_ids or result.blocked_job_ids:
-                exit_code = 1
+                scenario = load_scenario(args.scenario)
+                if args.command == "run":
+                    result = run_scenario(
+                        scenario,
+                        workspace_root=args.workspace_root,
+                        seed_from=args.seed_from,
+                    )
+                else:
+                    result = rerun_failed_jobs(scenario, args.workspace)
+                payload = {
+                    "workspace": str(result.workspace.root),
+                    "inspectable_paths": result.workspace.inspectable_paths(),
+                    "selected_job_ids": result.selected_job_ids,
+                    "failed_job_ids": result.failed_job_ids,
+                    "blocked_job_ids": result.blocked_job_ids,
+                    "job_statuses": result.job_statuses,
+                }
+                _emit_run_diagnostics(result)
+                if result.failed_job_ids or result.blocked_job_ids:
+                    exit_code = 1
     except HarnessExternalToolError as exc:
         sys.stderr.write(f"{exc}\n")
         raise SystemExit(2) from None

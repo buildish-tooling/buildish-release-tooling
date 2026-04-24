@@ -18,53 +18,110 @@ secrets:
   BUILDISH_SVN_DEV_USERNAME: release-user
   BUILDISH_SVN_DEV_PASSWORD: release-password
 tool_behaviors:
-  buildish-release-tooling:
+  gh:
     - match:
         argv:
-          - release-version
-          - "1.2.3"
+          - api
+          - -H
+          - "Accept: application/vnd.github+json"
+          - repos/apache/buildish-release-tooling/releases?per_page=100
       result:
-        writes:
-          - path: ${MANIFEST_PATH}
-            content: |
-              {"selected_rc_tag":"v1.2.3-rc1"}
+        stdout: |
+          [
+            {
+              "id": 123,
+              "draft": true,
+              "name": "Apache Buildish Release Tooling 1.2.3",
+              "tag_name": "v1.2.3",
+              "html_url": "https://github.com/apache/buildish-release-tooling/releases/tag/v1.2.3",
+              "body": "Draft GitHub Release placeholder for Apache Buildish Release Tooling 1.2.3.\n\nRC tag: v1.2.3-rc1\nFinal tag: v1.2.3\nResolved source ref: d232c22\nASF SVN staging URL: file:///tmp/placeholder\nFinal tag mode: rc-source-commit\n",
+              "assets": [
+                {"id": 500, "name": "rc-vote-manifest.json"},
+                {"id": 501, "name": "rc-vote-manifest.json.asc"},
+                {"id": 502, "name": "rc-vote-manifest.json.sha512"}
+              ]
+            }
+          ]
     - match:
         argv:
-          - publish-source-release-svn
-          - --selected-rc-tag
-          - v1.2.3-rc1
-          - "1.2.3"
+          - api
+          - -X
+          - DELETE
+          - -H
+          - "Accept: application/vnd.github+json"
+          - repos/apache/buildish-release-tooling/releases/assets/500
       result:
-        stdout: "published source release\n"
+        stdout: ""
     - match:
         argv:
-          - prune-older-line-releases
-          - "1.2.3"
+          - api
+          - -X
+          - DELETE
+          - -H
+          - "Accept: application/vnd.github+json"
+          - repos/apache/buildish-release-tooling/releases/assets/501
       result:
-        stdout: "pruned older line releases\n"
+        stdout: ""
     - match:
         argv:
-          - create-final-tag
-          - --selected-rc-tag
-          - v1.2.3-rc1
-          - "1.2.3"
+          - api
+          - -X
+          - DELETE
+          - -H
+          - "Accept: application/vnd.github+json"
+          - repos/apache/buildish-release-tooling/releases/assets/502
       result:
-        stdout: "created final tag\n"
+        stdout: ""
     - match:
         argv:
-          - finalize-draft-github-release
-          - --selected-rc-tag
-          - v1.2.3-rc1
-          - "1.2.3"
+          - api
+          - -X
+          - PATCH
+          - -H
+          - "Accept: application/vnd.github+json"
+          - repos/apache/buildish-release-tooling/releases/123
+          - --input
+          - "-"
       result:
-        stdout: "finalized draft github release\n"
+        stdout: |
+          {
+            "id": 123,
+            "draft": false,
+            "name": "Apache Buildish Release Tooling 1.2.3",
+            "tag_name": "v1.2.3",
+            "html_url": "https://github.com/apache/buildish-release-tooling/releases/tag/v1.2.3",
+            "assets": []
+          }
 workflow:
   path: ../../../.github/workflows/releasey-30-release-version.yml
   harness_config: ../release-harness.yaml
   inputs:
     version: 1.2.3
+  real_cli_commands:
+    - release-version
+    - publish-source-release-svn
+    - prune-older-line-releases
+    - create-final-tag
+    - finalize-draft-github-release
+  repository_fixture:
+    branches:
+      - name: release/1.2.x
+    tags:
+      - name: v1.2.3-rc1
   svn_fixture:
     initial_state: preexisting-current-rc
     rc_number: 1
     release_dist_entries:
       - 1.2.2
+    repository_files:
+      - path: repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc1/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz
+        content: |
+          dummy source payload
+      - path: repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc1/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz.sha512
+        content: |
+          aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz
+      - path: repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc1/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz.asc
+        content: |
+          -----BEGIN PGP SIGNATURE-----
+          <dummy>
+          -----END PGP SIGNATURE-----

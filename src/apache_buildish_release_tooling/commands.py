@@ -64,7 +64,10 @@ from apache_buildish_release_tooling.gpg_signing import (
 )
 from apache_buildish_release_tooling.manifest import write_manifest
 from apache_buildish_release_tooling.models import CommandContext, PrepareRcState, ReleaseVersionState
-from apache_buildish_release_tooling.prepare_rc_state import resolve_prepare_rc_state
+from apache_buildish_release_tooling.prepare_rc_state import (
+    prepare_rc_source_artifact_name,
+    resolve_prepare_rc_state,
+)
 from apache_buildish_release_tooling.rc_vote_manifest import build_rc_vote_manifest, read_uri_text
 from apache_buildish_release_tooling.release_state import (
     compare_versions,
@@ -119,6 +122,17 @@ def _summary_optional_code(value: str | None) -> str:
 
 def _artifact_output_dir(component_id: str) -> Path:
     return Path.cwd() / "build" / "release-artifacts" / component_id
+
+
+def _required_source_release_file_names(source_artifact_prefix: str, version: str) -> list[str]:
+    """Return the mandatory ASF source-release files expected in one staged RC directory."""
+
+    artifact_name = prepare_rc_source_artifact_name(source_artifact_prefix, version)
+    return [
+        artifact_name,
+        f"{artifact_name}.sha512",
+        f"{artifact_name}.asc",
+    ]
 
 
 def _matching_dev_rc_entries(entries: Iterable[str], version: str) -> list[str]:
@@ -939,10 +953,22 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
     svn_client = AsfSvnClient.from_environment()
     if not svn_client.path_exists(source_url):
         raise ValueError(f"RC staging directory does not exist: {source_url}")
+    staged_entries = sorted(svn_client.list_entries(source_url, recursive=True))
+    required_file_names = _required_source_release_file_names(
+        context.component_config.source_artifact_prefix,
+        version,
+    )
+    missing_required_files = [
+        file_name for file_name in required_file_names if file_name not in staged_entries
+    ]
+    if missing_required_files:
+        raise ValueError(
+            "RC staging directory is missing required source release files: "
+            + ", ".join(missing_required_files)
+        )
     if svn_client.path_exists(target_url):
-        source_entries = sorted(svn_client.list_entries(source_url, recursive=True))
         target_entries = sorted(svn_client.list_entries(target_url, recursive=True))
-        if source_entries != target_entries:
+        if staged_entries != target_entries:
             raise ValueError(
                 f"final release directory already exists with different contents: {target_url}"
             )

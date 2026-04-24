@@ -50,6 +50,8 @@ The current repository contains the first working slice:
 - a generic shim entrypoint in `src/apache_buildish_release_tooling/harness/shim_entrypoint.py`
 - a CLI entrypoint:
   - `buildish-release-harness run <scenario.yaml>`
+  - `buildish-release-harness run <scenario.yaml> --seed-from <workspace>`
+  - `buildish-release-harness run-sequence <scenario-a.yaml> <scenario-b.yaml> ...`
   - `buildish-release-harness rerun-failed <scenario.yaml> <workspace>`
 
 The current custom backend supports:
@@ -203,6 +205,22 @@ uv run --frozen buildish-release-harness run \
   buildish-release-tooling/harness/scenarios/releasey-20-prepare-rc.yaml
 ```
 
+To seed one workflow run from a prior harness workspace's Git and SVN state:
+
+```bash
+uv run --frozen buildish-release-harness run \
+  buildish-release-tooling/harness/scenarios/releasey-30-release-version.yaml \
+  --seed-from /path/to/previous/workspace
+```
+
+To run multiple workflows in order, with each run seeded from the previous workspace:
+
+```bash
+uv run --frozen buildish-release-harness run-sequence \
+  buildish-release-tooling/harness/scenarios/releasey-20-prepare-rc.yaml \
+  buildish-release-tooling/harness/scenarios/releasey-30-release-version.yaml
+```
+
 That requires:
 
 - Docker
@@ -259,6 +277,20 @@ with a small preset-style initial state such as:
 Scenarios can also add explicit `dev_dist_entries` and `release_dist_entries` under the configured
 `asf_dist_dev_base` and `asf_dist_release_base` roots.
 
+Scenarios can seed repository-relative SVN files through `workflow.svn_fixture.repository_files`.
+This is useful for standalone workflows like `releasey-30-release-version`, which may need a
+minimal staged source RC payload even when they are not seeded from a previous `prepare-rc`
+workspace.
+
+When a run uses `--seed-from` or `run-sequence`, the harness applies SVN directories and
+`repository_files` additively:
+
+- existing carried-over SVN directories are kept
+- existing carried-over SVN files are not overwritten
+- missing fixture paths are still created
+
+That lets one scenario stay runnable both standalone and as part of a multi-workflow chain.
+
 ## Inspecting a workspace
 
 Every harness run prints the workspace root to `stderr` and includes an `inspectable_paths` object
@@ -296,7 +328,8 @@ Harness CLI exit codes:
 - `1` if the scenario ran but reported failed or blocked jobs
 - `2` if required local runner tooling such as `act` or the installed `gh-act` extension binary is unavailable
 
-For `run` and `rerun-failed`, the harness also writes human-facing diagnostics to `stderr`:
+For `run`, `run-sequence`, and `rerun-failed`, the harness also writes human-facing diagnostics to
+`stderr`:
 
 - the created workspace path under `build/harness/scenario.<timestamp>.<suffix>/`
 - backend progress lines such as config loading, workflow rewriting, and the final `act` command

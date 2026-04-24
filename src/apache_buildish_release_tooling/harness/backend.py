@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from apache_buildish_release_tooling.harness import act_backend, runtime
@@ -29,12 +30,17 @@ def run_scenario(
     scenario: HarnessScenario,
     *,
     workspace_root: Path | None = None,
+    seed_from: Path | None = None,
 ) -> HarnessRunResult:
     """Run a harness scenario through the selected execution backend."""
 
     if scenario.backend == "custom":
-        return runtime.run_scenario(scenario, workspace_root=workspace_root)
-    return act_backend.run_scenario(scenario, workspace_root=workspace_root)
+        return runtime.run_scenario(scenario, workspace_root=workspace_root, seed_from=seed_from)
+    return act_backend.run_scenario(
+        scenario,
+        workspace_root=workspace_root,
+        seed_from=seed_from,
+    )
 
 
 def rerun_failed_jobs(scenario: HarnessScenario, workspace_root: Path) -> HarnessRunResult:
@@ -43,6 +49,28 @@ def rerun_failed_jobs(scenario: HarnessScenario, workspace_root: Path) -> Harnes
     if scenario.backend == "custom":
         return runtime.rerun_failed_jobs(scenario, workspace_root)
     return act_backend.rerun_failed_jobs(scenario, workspace_root)
+
+
+def run_scenario_sequence(
+    scenarios: Sequence[HarnessScenario],
+    *,
+    workspace_root: Path | None = None,
+) -> list[HarnessRunResult]:
+    """Run multiple scenarios in order, seeding each run from the previous workspace."""
+
+    results: list[HarnessRunResult] = []
+    seed_from: Path | None = None
+    for scenario in scenarios:
+        result = run_scenario(
+            scenario,
+            workspace_root=workspace_root,
+            seed_from=seed_from,
+        )
+        results.append(result)
+        if result.failed_job_ids or result.blocked_job_ids:
+            break
+        seed_from = result.workspace.root
+    return results
 
 
 def supported_backends() -> tuple[HarnessBackendName, ...]:
