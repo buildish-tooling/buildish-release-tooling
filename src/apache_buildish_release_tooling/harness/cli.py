@@ -76,6 +76,7 @@ def main(argv: list[str] | None = None) -> None:
                 result = rerun_failed_jobs(scenario, args.workspace)
             payload = {
                 "workspace": str(result.workspace.root),
+                "inspectable_paths": result.workspace.inspectable_paths(),
                 "selected_job_ids": result.selected_job_ids,
                 "failed_job_ids": result.failed_job_ids,
                 "blocked_job_ids": result.blocked_job_ids,
@@ -96,6 +97,11 @@ def _emit_run_diagnostics(result: HarnessRunResult) -> None:
     """Emit human-facing stderr diagnostics for one run or rerun."""
 
     sys.stderr.write(f"buildish-release-harness workspace: {result.workspace.root}\n")
+    sys.stderr.write("buildish-release-harness inspectable paths:\n")
+    for label, path in result.workspace.inspectable_paths().items():
+        if label == "workspace_root":
+            continue
+        sys.stderr.write(f"  {label}: {path}\n")
     if not result.failed_job_ids and not result.blocked_job_ids:
         return
     sys.stderr.write("buildish-release-harness detected failed or blocked jobs.\n")

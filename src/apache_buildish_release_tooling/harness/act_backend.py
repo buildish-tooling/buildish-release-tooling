@@ -179,33 +179,9 @@ def _create_workspace(self_repository_root: Path, root_dir: Path | None) -> runt
 
     workspace_root = runtime.create_workspace_root(root_dir)
     _materialize_git_checkout(self_repository_root, workspace_root)
-    harness_dir = workspace_root / ".buildish-release-harness"
-    scripts_dir = harness_dir / "scripts"
-    summaries_dir = harness_dir / "summaries"
-    shims_dir = harness_dir / "shims"
-    for directory in (
-        harness_dir,
-        scripts_dir,
-        summaries_dir,
-        harness_dir / "job-summaries",
-        shims_dir,
-        harness_dir / "job-statuses",
-        harness_dir / "repo-sources",
-        harness_dir / "actions",
-    ):
-        directory.mkdir(parents=True, exist_ok=True)
-    return runtime.HarnessWorkspace(
-        root=workspace_root,
-        harness_dir=harness_dir,
-        scripts_dir=scripts_dir,
-        summaries_dir=summaries_dir,
-        job_summaries_dir=harness_dir / "job-summaries",
-        state_file=harness_dir / "shim-state.json",
-        job_status_file=harness_dir / "job-statuses.json",
-        trace_file=harness_dir / "command-trace.jsonl",
-        shims_dir=shims_dir,
-        bash_env_file=harness_dir / "bash-env.sh",
-    )
+    workspace = runtime.workspace_paths(workspace_root)
+    runtime.ensure_workspace_directories(workspace)
+    return workspace
 
 
 def _bootstrap_workspace(
@@ -436,7 +412,11 @@ def _stage_repository_sources(
 ) -> None:
     """Stage local repository sources inside the workspace for checkout overrides and imports."""
 
-    repo_sources_dir = workspace.harness_dir / "repo-sources"
+    repo_sources_dir = workspace.repo_sources_dir
+    self_origin_dir = workspace.git_origins_dir / "self"
+    if self_origin_dir.exists():
+        shutil.rmtree(self_origin_dir)
+    _materialize_git_checkout(bindings.self_repository.local_path, self_origin_dir)
     self_source_dir = repo_sources_dir / _repository_slug(bindings.self_repository.repository_id)
     if self_source_dir.exists():
         shutil.rmtree(self_source_dir)
@@ -449,7 +429,7 @@ def _stage_repository_sources(
             "remote",
             "set-url",
             "origin",
-            f"./.buildish-release-harness/repo-sources/{self_source_dir.name}",
+            "./.buildish-release-harness/git-origins/self",
         ],
         check=True,
         capture_output=True,
@@ -780,7 +760,7 @@ def _job_status_step(job_id: str) -> dict[str, Any]:
 def _write_setup_uv_noop_action(workspace: runtime.HarnessWorkspace) -> None:
     """Write the generated no-op composite action used to replace `setup-uv`."""
 
-    action_dir = workspace.harness_dir / "actions" / "setup-uv-noop"
+    action_dir = workspace.actions_dir / "setup-uv-noop"
     action_dir.mkdir(parents=True, exist_ok=True)
     (action_dir / "action.yml").write_text(
         yaml.safe_dump(
@@ -805,7 +785,7 @@ def _write_setup_uv_noop_action(workspace: runtime.HarnessWorkspace) -> None:
 def _write_local_checkout_action(workspace: runtime.HarnessWorkspace) -> None:
     """Write the generated composite action that materializes local checkout overrides."""
 
-    action_dir = workspace.harness_dir / "actions" / "local-checkout"
+    action_dir = workspace.actions_dir / "local-checkout"
     action_dir.mkdir(parents=True, exist_ok=True)
     script_path = action_dir / "local-checkout.sh"
     script_path.write_text(
@@ -1005,7 +985,7 @@ def _repository_slug(repository_id: str) -> str:
 def _job_status_directory(workspace: runtime.HarnessWorkspace) -> Path:
     """Return the directory containing per-job status files emitted by the rewritten workflow."""
 
-    return workspace.harness_dir / "job-statuses"
+    return workspace.job_statuses_dir
 
 
 def _collect_recorded_job_statuses(workspace: runtime.HarnessWorkspace) -> dict[str, str]:

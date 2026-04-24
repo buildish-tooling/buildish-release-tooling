@@ -84,6 +84,13 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             result.workspace.root.name,
             r"^scenario\.\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.",
         )
+        self.assertTrue(result.workspace.repo_sources_dir.is_dir())
+        self.assertTrue(result.workspace.actions_dir.is_dir())
+        self.assertTrue(result.workspace.git_origins_dir.is_dir())
+        self.assertTrue((result.workspace.git_origins_dir / "self").is_dir())
+        self.assertTrue(result.workspace.git_checkouts_dir.is_dir())
+        self.assertTrue(result.workspace.svn_repository_dir.parent.is_dir())
+        self.assertTrue(result.workspace.svn_working_copy_dir.parent.is_dir())
         self.assertEqual([], result.failed_job_ids)
         self.assertEqual([], result.blocked_job_ids)
 
@@ -302,6 +309,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         act_path, state_dir = create_fake_act_launcher(self.sandbox_dir)
         scenario_path = self._scenario_path("releasey-10-create-release-branch.yaml")
         stderr = StringIO()
+        stdout = StringIO()
 
         with (
             mock.patch.dict(
@@ -315,6 +323,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
                 clear=False,
             ),
             mock.patch("sys.stderr", stderr),
+            mock.patch("sys.stdout", stdout),
         ):
             with self.assertRaises(SystemExit) as exc_info:
                 harness_main(["run", str(scenario_path), "--workspace-root", str(self.sandbox_dir)])
@@ -325,6 +334,11 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         self.assertIn("buildish-release-harness: preparing rewritten workflow", stderr_text)
         self.assertIn("buildish-release-harness: running command:", stderr_text)
         self.assertIn("buildish-release-harness workspace: ", stderr_text)
+        self.assertIn("  git_origins: ", stderr_text)
+        self.assertIn("  self_git_origin: ", stderr_text)
+        payload = json.loads(stdout.getvalue())
+        self.assertIn("inspectable_paths", payload)
+        self.assertEqual(payload["workspace"], payload["inspectable_paths"]["workspace_root"])
 
     def test_cli_reports_missing_act_backend_dependency_cleanly(self) -> None:
         """The CLI should print a direct message instead of a traceback when `act` is unavailable."""

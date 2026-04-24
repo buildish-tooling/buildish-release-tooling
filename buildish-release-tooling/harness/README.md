@@ -241,6 +241,37 @@ uv run --frozen buildish-release-harness rerun-failed \
   /path/to/existing/workspace
 ```
 
+## Inspecting a workspace
+
+Every harness run prints the workspace root to `stderr` and includes an `inspectable_paths` object
+in its JSON output.
+
+Important paths:
+
+- `workspace_root`
+  - the primary mutable Git checkout for the workflow repository under test
+- `rewritten_workflows`
+  - the rewritten workflow YAML that `act` actually executed
+- `repo_sources`
+  - staged repository sources used by local checkout overrides and imports
+- `git_origins`
+  - harness-owned local Git origins
+- `self_git_origin`
+  - the local origin used as `origin` for the workflow repository under test
+- `git_checkouts`
+  - reserved for additional mutable Git checkouts when scenarios need them
+- `svn_repository`
+  - reserved location for a harness-owned local SVN repository
+- `svn_working_copy`
+  - reserved location for a harness-owned local SVN working copy
+- `step_summaries`
+  - individual step summaries
+- `job_summaries`
+  - GitHub-like per-job concatenated summaries
+
+For the current `act` backend, the main repository under test should be inspected at the workspace
+root, not under `.buildish-release-harness/`.
+
 Harness CLI exit codes:
 
 - `0` if the scenario completed without failed or blocked jobs

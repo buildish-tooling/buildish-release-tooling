@@ -40,11 +40,41 @@ class HarnessWorkspace:
     scripts_dir: Path
     summaries_dir: Path
     job_summaries_dir: Path
+    job_statuses_dir: Path
+    actions_dir: Path
+    repo_sources_dir: Path
+    git_origins_dir: Path
+    git_checkouts_dir: Path
+    svn_dir: Path
+    svn_repository_dir: Path
+    svn_working_copy_dir: Path
     state_file: Path
     job_status_file: Path
     trace_file: Path
     shims_dir: Path
     bash_env_file: Path
+
+    def inspectable_paths(self) -> dict[str, str]:
+        """Return stable inspectable workspace paths for CLI output and JSON results."""
+
+        return {
+            "workspace_root": str(self.root),
+            "primary_git_checkout": str(self.root),
+            "rewritten_workflows": str(self.root / ".github" / "workflows"),
+            "harness_root": str(self.harness_dir),
+            "generated_actions": str(self.actions_dir),
+            "repo_sources": str(self.repo_sources_dir),
+            "git_origins": str(self.git_origins_dir),
+            "self_git_origin": str(self.git_origins_dir / "self"),
+            "git_checkouts": str(self.git_checkouts_dir),
+            "svn_root": str(self.svn_dir),
+            "svn_repository": str(self.svn_repository_dir),
+            "svn_working_copy": str(self.svn_working_copy_dir),
+            "step_summaries": str(self.summaries_dir),
+            "job_summaries": str(self.job_summaries_dir),
+            "job_statuses": str(self.job_statuses_dir),
+            "command_trace": str(self.trace_file),
+        }
 
 
 @dataclass(frozen=True)
@@ -85,44 +115,61 @@ def create_workspace(root_dir: Path | None = None) -> HarnessWorkspace:
     """Create a fresh workspace for a harness scenario."""
 
     workspace_root = create_workspace_root(root_dir)
-    harness_dir = workspace_root / ".buildish-release-harness"
-    scripts_dir = harness_dir / "scripts"
-    summaries_dir = harness_dir / "summaries"
-    shims_dir = harness_dir / "shims"
-    for directory in (harness_dir, scripts_dir, summaries_dir, shims_dir):
-        directory.mkdir(parents=True, exist_ok=True)
-    job_summaries_dir = harness_dir / "job-summaries"
-    job_summaries_dir.mkdir(parents=True, exist_ok=True)
-    return HarnessWorkspace(
-        root=workspace_root,
-        harness_dir=harness_dir,
-        scripts_dir=scripts_dir,
-        summaries_dir=summaries_dir,
-        job_summaries_dir=job_summaries_dir,
-        state_file=harness_dir / "shim-state.json",
-        job_status_file=harness_dir / "job-statuses.json",
-        trace_file=harness_dir / "command-trace.jsonl",
-        shims_dir=shims_dir,
-        bash_env_file=harness_dir / "bash-env.sh",
-    )
+    workspace = workspace_paths(workspace_root)
+    ensure_workspace_directories(workspace)
+    return workspace
 
 
 def load_existing_workspace(workspace_root: Path) -> HarnessWorkspace:
     """Reconstruct a workspace descriptor for a previously initialized workspace."""
 
+    return workspace_paths(workspace_root)
+
+
+def workspace_paths(workspace_root: Path) -> HarnessWorkspace:
+    """Derive the standard harness workspace layout from one workspace root."""
+
     harness_dir = workspace_root / ".buildish-release-harness"
+    svn_dir = harness_dir / "svn"
     return HarnessWorkspace(
         root=workspace_root,
         harness_dir=harness_dir,
         scripts_dir=harness_dir / "scripts",
         summaries_dir=harness_dir / "summaries",
         job_summaries_dir=harness_dir / "job-summaries",
+        job_statuses_dir=harness_dir / "job-statuses",
+        actions_dir=harness_dir / "actions",
+        repo_sources_dir=harness_dir / "repo-sources",
+        git_origins_dir=harness_dir / "git-origins",
+        git_checkouts_dir=harness_dir / "git-checkouts",
+        svn_dir=svn_dir,
+        svn_repository_dir=svn_dir / "repository",
+        svn_working_copy_dir=svn_dir / "working-copy",
         state_file=harness_dir / "shim-state.json",
         job_status_file=harness_dir / "job-statuses.json",
         trace_file=harness_dir / "command-trace.jsonl",
         shims_dir=harness_dir / "shims",
         bash_env_file=harness_dir / "bash-env.sh",
     )
+
+
+def ensure_workspace_directories(workspace: HarnessWorkspace) -> None:
+    """Create the standard directory layout for one harness workspace."""
+
+    for directory in (
+        workspace.harness_dir,
+        workspace.scripts_dir,
+        workspace.summaries_dir,
+        workspace.job_summaries_dir,
+        workspace.job_statuses_dir,
+        workspace.actions_dir,
+        workspace.repo_sources_dir,
+        workspace.git_origins_dir,
+        workspace.git_checkouts_dir,
+        workspace.svn_dir,
+        workspace.shims_dir,
+    ):
+        directory.mkdir(parents=True, exist_ok=True)
 
 
 def run_scenario(

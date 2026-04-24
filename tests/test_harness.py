@@ -116,6 +116,31 @@ class HarnessIntegrationTest(unittest.TestCase):
             result.workspace.root.name,
             r"^scenario\.\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.",
         )
+        self.assertEqual(
+            {
+                "workspace_root",
+                "primary_git_checkout",
+                "rewritten_workflows",
+                "harness_root",
+                "generated_actions",
+                "repo_sources",
+                "git_origins",
+                "self_git_origin",
+                "git_checkouts",
+                "svn_root",
+                "svn_repository",
+                "svn_working_copy",
+                "step_summaries",
+                "job_summaries",
+                "job_statuses",
+                "command_trace",
+            },
+            set(result.workspace.inspectable_paths()),
+        )
+        self.assertTrue(result.workspace.git_origins_dir.is_dir())
+        self.assertTrue(result.workspace.git_checkouts_dir.is_dir())
+        self.assertTrue(result.workspace.svn_repository_dir.parent.is_dir())
+        self.assertTrue(result.workspace.svn_working_copy_dir.parent.is_dir())
         self.assertEqual([], result.failed_job_ids)
         self.assertEqual([], result.blocked_job_ids)
         trace = summarize_trace(result.workspace)
