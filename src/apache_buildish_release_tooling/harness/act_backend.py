@@ -25,10 +25,12 @@ import shutil
 import subprocess
 import sys
 import threading
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
 from typing import Any
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -38,7 +40,11 @@ from apache_buildish_release_tooling.harness.config import (
     ResolvedRepositoryBinding,
     load_release_harness_config,
 )
-from apache_buildish_release_tooling.harness.models import HarnessScenario, WorkflowScenario
+from apache_buildish_release_tooling.harness.models import (
+    HarnessScenario,
+    SvnRepositoryFixture,
+    WorkflowScenario,
+)
 from apache_buildish_release_tooling.harness import runtime
 
 
@@ -120,6 +126,7 @@ def run_scenario(
     _prepare_workflow_execution(workspace, scenario, bindings)
     _progress("invoking act for all jobs")
     act_exit_code = _run_act(workspace, scenario, selected_job_ids=None)
+    _refresh_svn_working_copy(workspace)
     result = _result_from_recorded_statuses(
         workspace=workspace,
         selected_job_ids=selected_job_ids,
@@ -154,6 +161,7 @@ def rerun_failed_jobs(scenario: HarnessScenario, workspace_root: Path) -> runtim
     _clear_job_status_files(workspace, selected_job_ids)
     _progress(f"invoking act for rerun jobs: {', '.join(selected_job_ids)}")
     act_exit_code = _run_act(workspace, scenario, selected_job_ids=selected_job_ids)
+    _refresh_svn_working_copy(workspace)
     result = _result_from_recorded_statuses(
         workspace=workspace,
         selected_job_ids=selected_job_ids,
@@ -191,6 +199,8 @@ def _bootstrap_workspace(
     """Materialize repo bindings, workspace fixtures, and shims for an `act` run."""
 
     _stage_repository_sources(workspace, bindings)
+    _prepare_local_svn_fixture(workspace, scenario)
+    _overlay_release_config_for_local_svn(workspace, scenario)
     _apply_workflow_repository_fixture(workspace, scenario)
     for file_fixture in scenario.workspace_files:
         runtime._write_workspace_file(
@@ -487,6 +497,167 @@ def _apply_workflow_repository_fixture(
             capture_output=True,
             text=True,
         )
+
+
+def _prepare_local_svn_fixture(
+    workspace: runtime.HarnessWorkspace,
+    scenario: HarnessScenario,
+) -> None:
+    """Create a local inspectable ASF SVN repository and working copy for one workflow scenario."""
+
+    workflow = _require_workflow(scenario)
+    repository_dir = workspace.svn_repository_dir
+    working_copy_dir = workspace.svn_working_copy_dir
+    if repository_dir.exists():
+        shutil.rmtree(repository_dir)
+    if working_copy_dir.exists():
+        shutil.rmtree(working_copy_dir)
+    subprocess.run(
+        ["svnadmin", "create", str(repository_dir)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    component_config_path = _component_release_config_path(workspace)
+    if not component_config_path.is_file():
+        return
+    config_payload = _load_github_actions_yaml(component_config_path)
+    dev_base_relpath = _svn_repository_relpath(str(config_payload["asf_dist_dev_base"]))
+    release_base_relpath = _svn_repository_relpath(str(config_payload["asf_dist_release_base"]))
+    fixture = workflow.svn_fixture
+    directories_to_create = _svn_fixture_directories(
+        fixture=fixture,
+        workflow=workflow,
+        dev_base_relpath=dev_base_relpath,
+        release_base_relpath=release_base_relpath,
+    )
+    for relative_directory in directories_to_create:
+        _svn_mkdir_url(repository_dir.as_uri(), relative_directory)
+    _refresh_svn_working_copy(workspace)
+
+
+def _overlay_release_config_for_local_svn(
+    workspace: runtime.HarnessWorkspace,
+    scenario: HarnessScenario,
+) -> None:
+    """Rewrite the workspace release-config to use the harness-owned local ASF SVN repository."""
+
+    del scenario
+    component_config_path = _component_release_config_path(workspace)
+    if not component_config_path.is_file():
+        return
+    config_payload = _load_github_actions_yaml(component_config_path)
+    dev_base_relpath = _svn_repository_relpath(str(config_payload["asf_dist_dev_base"]))
+    release_base_relpath = _svn_repository_relpath(str(config_payload["asf_dist_release_base"]))
+    config_payload["asf_dist_dev_base"] = (workspace.svn_repository_dir / dev_base_relpath).as_uri()
+    config_payload["asf_dist_release_base"] = (
+        workspace.svn_repository_dir / release_base_relpath
+    ).as_uri()
+    component_config_path.write_text(
+        yaml.safe_dump(config_payload, sort_keys=False),
+        encoding="utf-8",
+    )
+
+
+def _component_release_config_path(workspace: runtime.HarnessWorkspace) -> Path:
+    """Return the standard per-repository release-config path inside one workspace."""
+
+    return workspace.root / "buildish-release-tooling" / "release-config.yaml"
+
+
+def _svn_repository_relpath(base_url: str) -> Path:
+    """Return the repository-relative path portion for one configured ASF SVN base URL."""
+
+    parsed = urlsplit(base_url)
+    return Path(parsed.path.lstrip("/"))
+
+
+def _svn_fixture_directories(
+    *,
+    fixture: SvnRepositoryFixture,
+    workflow: WorkflowScenario,
+    dev_base_relpath: Path,
+    release_base_relpath: Path,
+) -> list[Path]:
+    """Return the repository-relative directories that the local SVN fixture should contain."""
+
+    directories: list[Path] = []
+    if fixture.initial_state != "absent":
+        directories.extend(_parent_paths(dev_base_relpath))
+        directories.extend(_parent_paths(release_base_relpath))
+        directories.append(dev_base_relpath)
+        directories.append(release_base_relpath)
+    version = fixture.version or workflow.inputs.get("version", "")
+    rc_number = fixture.rc_number
+    if fixture.initial_state == "preexisting-current-rc":
+        directories.append(dev_base_relpath / f"{version}-rc{rc_number}")
+    elif fixture.initial_state == "preexisting-previous-rc":
+        directories.append(dev_base_relpath / f"{version}-rc{rc_number - 1}")
+    elif fixture.initial_state == "preexisting-future-rc":
+        directories.append(dev_base_relpath / f"{version}-rc{rc_number + 1}")
+    elif fixture.initial_state == "preexisting-other-version":
+        directories.append(dev_base_relpath / f"{fixture.other_version}-rc{rc_number}")
+    directories.extend(dev_base_relpath / entry for entry in fixture.dev_dist_entries)
+    directories.extend(release_base_relpath / entry for entry in fixture.release_dist_entries)
+    expanded_directories: list[Path] = []
+    for directory in directories:
+        expanded_directories.extend(_parent_paths(directory))
+        expanded_directories.append(directory)
+    deduplicated: list[Path] = []
+    seen: set[str] = set()
+    for directory in expanded_directories:
+        normalized = directory.as_posix().rstrip("/")
+        if not normalized or normalized == ".":
+            continue
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        deduplicated.append(Path(normalized))
+    return deduplicated
+
+
+def _parent_paths(path: Path) -> Iterable[Path]:
+    """Yield all repository-relative parent paths needed to reach one target path."""
+
+    parts = path.parts
+    for index in range(1, len(parts)):
+        yield Path(*parts[:index])
+
+
+def _svn_mkdir_url(repo_url: str, relative_directory: Path) -> None:
+    """Create one directory inside the harness local SVN repository when it does not exist yet."""
+
+    directory_url = f"{repo_url.rstrip('/')}/{relative_directory.as_posix().lstrip('/')}"
+    subprocess.run(
+        ["svn", "mkdir", "-m", f"create {relative_directory.as_posix()}", directory_url],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def _refresh_svn_working_copy(workspace: runtime.HarnessWorkspace) -> None:
+    """Refresh the inspectable SVN working copy from the harness local repository."""
+
+    repository_dir = workspace.svn_repository_dir
+    if not repository_dir.is_dir():
+        return
+    working_copy_dir = workspace.svn_working_copy_dir
+    repo_url = repository_dir.as_uri()
+    if working_copy_dir.exists():
+        subprocess.run(
+            ["svn", "update", str(working_copy_dir)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        return
+    subprocess.run(
+        ["svn", "checkout", repo_url, str(working_copy_dir)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def _materialize_git_checkout(source_root: Path, destination_root: Path) -> None:

@@ -159,6 +159,57 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         self.assertTrue(job_summary_path.is_file())
         self.assertEqual("", job_summary_path.read_text(encoding="utf-8"))
 
+    def test_run_scenario_prepares_local_svn_fixture_and_overlayed_release_config(self) -> None:
+        """The `act` backend should create inspectable local SVN state and rewrite release-config URLs."""
+
+        act_path, state_dir = create_fake_act_launcher(self.sandbox_dir)
+        scenario = load_scenario(self._scenario_path("releasey-30-release-version.yaml"))
+
+        with mock.patch.dict(
+            os.environ,
+            env_with_prepend_path(
+                {"FAKE_ACT_STATE_DIR": str(state_dir)},
+                prepend_dirs=(act_path,),
+            ),
+            clear=False,
+        ), mock.patch("sys.stderr", StringIO()):
+            result = run_scenario(scenario, workspace_root=self.sandbox_dir)
+
+        config_path = result.workspace.root / "buildish-release-tooling" / "release-config.yaml"
+        config_payload = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        self.assertEqual(
+            (result.workspace.svn_repository_dir / "repos" / "dist" / "dev" / "incubator" / "buildish" / "buildish-release-tooling").as_uri(),
+            config_payload["asf_dist_dev_base"],
+        )
+        self.assertEqual(
+            (result.workspace.svn_repository_dir / "repos" / "dist" / "release" / "incubator" / "buildish" / "buildish-release-tooling").as_uri(),
+            config_payload["asf_dist_release_base"],
+        )
+        self.assertTrue(
+            (
+                result.workspace.svn_working_copy_dir
+                / "repos"
+                / "dist"
+                / "dev"
+                / "incubator"
+                / "buildish"
+                / "buildish-release-tooling"
+                / "1.2.3-rc1"
+            ).is_dir()
+        )
+        self.assertTrue(
+            (
+                result.workspace.svn_working_copy_dir
+                / "repos"
+                / "dist"
+                / "release"
+                / "incubator"
+                / "buildish"
+                / "buildish-release-tooling"
+                / "1.2.2"
+            ).is_dir()
+        )
+
     def test_rerun_failed_jobs_reinvokes_act_for_failed_jobs_and_dependents(self) -> None:
         """The `act` backend should select failed jobs and their dependents on rerun."""
 

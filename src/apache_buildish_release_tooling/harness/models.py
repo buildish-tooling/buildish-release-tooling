@@ -22,6 +22,14 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 HarnessBackendName = Literal["custom", "act"]
+SvnInitialState = Literal[
+    "absent",
+    "empty",
+    "preexisting-current-rc",
+    "preexisting-previous-rc",
+    "preexisting-future-rc",
+    "preexisting-other-version",
+]
 
 
 class WorkspaceFile(BaseModel):
@@ -72,6 +80,29 @@ class WorkflowRepositoryFixture(BaseModel):
 
     branches: list[WorkflowRepositoryBranchFixture] = Field(default_factory=list)
     tags: list[WorkflowRepositoryTagFixture] = Field(default_factory=list)
+
+
+class SvnRepositoryFixture(BaseModel):
+    """Initial ASF SVN state to create inside one harness `act` workspace."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    initial_state: SvnInitialState = "absent"
+    version: str | None = None
+    rc_number: int = Field(default=0, ge=0)
+    other_version: str | None = None
+    dev_dist_entries: list[str] = Field(default_factory=list)
+    release_dist_entries: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_fixture_shape(self) -> SvnRepositoryFixture:
+        """Reject impossible SVN preset combinations."""
+
+        if self.initial_state == "preexisting-previous-rc" and self.rc_number < 1:
+            raise ValueError("preexisting-previous-rc requires rc_number >= 1")
+        if self.initial_state == "preexisting-other-version" and not self.other_version:
+            raise ValueError("preexisting-other-version requires other_version")
+        return self
 
 
 class InvocationMatch(BaseModel):
@@ -161,6 +192,7 @@ class WorkflowScenario(BaseModel):
     harness_config: str
     real_cli_commands: list[str] = Field(default_factory=list)
     repository_fixture: WorkflowRepositoryFixture = Field(default_factory=WorkflowRepositoryFixture)
+    svn_fixture: SvnRepositoryFixture = Field(default_factory=SvnRepositoryFixture)
 
 
 class HarnessScenario(BaseModel):

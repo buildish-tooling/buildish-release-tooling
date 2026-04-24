@@ -247,3 +247,6 @@ workflow:
   inputs:
     version: 1.2.3
     source_sha: ""
+  svn_fixture:
+    initial_state: preexisting-current-rc
+    rc_number: 0

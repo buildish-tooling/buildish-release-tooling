@@ -63,3 +63,8 @@ workflow:
   harness_config: ../release-harness.yaml
   inputs:
     version: 1.2.3
+  svn_fixture:
+    initial_state: preexisting-current-rc
+    rc_number: 1
+    release_dist_entries:
+      - 1.2.2

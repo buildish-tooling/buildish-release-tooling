@@ -238,6 +238,12 @@ Goal:
 
 - provide a harness-owned local ASF SVN repository and working copy inside the `act` workspace
 
+Status:
+
+- implemented for the `act` backend workspace bootstrap path
+- committed `releasey-20-prepare-rc` and `releasey-30-release-version` scenarios now declare
+  local SVN fixture state through `workflow.svn_fixture`
+
 Tasks:
 
 - create a local SVN repository under `.buildish-release-harness/svn/repository/`
@@ -327,9 +333,10 @@ need a few explicit additions:
   - tags
   - optional extra commits
 - local SVN fixture declarations for:
-  - initial directory layout
-  - pre-existing RC directories
-  - pre-existing release directories
+  - preset initial state via `workflow.svn_fixture.initial_state`
+  - optional explicit `dev_dist_entries`
+  - optional explicit `release_dist_entries`
+  - configurable `rc_number`, `version`, and `other_version` for preset expansion
 - optional GPG fixture material
 
 The simplest first step is to add preset-style initial-state values before introducing fully custom

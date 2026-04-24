@@ -67,7 +67,6 @@ The current custom backend supports:
 
 The current backend does not yet implement:
 
-- detached local ASF SVN fixtures in the harness itself
 - target-family-specific assertions for Maven, Docker Hub, or PyPI publication results
 
 The `act` backend is intentionally narrow. It is meant to execute the real checked-in workflow
@@ -222,6 +221,12 @@ checkout actions are visible inside the runner workspace.
 The rewritten workflow in the disposable workspace is clearly marked as harness-generated and keeps
 a verbatim `*.original.yml` copy of the source workflow next to it for comparison.
 
+The `act` backend also prepares a harness-owned local ASF SVN repository under
+`.buildish-release-harness/svn/repository/`, checks out an inspectable working copy under
+`.buildish-release-harness/svn/working-copy/`, and rewrites the workspace
+`buildish-release-tooling/release-config.yaml` to use `file://...` URLs that point at that local
+repository.
+
 Example installation via GitHub CLI extension on Linux and macOS:
 
 ```bash
@@ -241,6 +246,19 @@ uv run --frozen buildish-release-harness rerun-failed \
   /path/to/existing/workspace
 ```
 
+For workflow scenarios, the `workflow.svn_fixture` block can pre-seed the local ASF SVN repository
+with a small preset-style initial state such as:
+
+- `absent`
+- `empty`
+- `preexisting-current-rc`
+- `preexisting-previous-rc`
+- `preexisting-future-rc`
+- `preexisting-other-version`
+
+Scenarios can also add explicit `dev_dist_entries` and `release_dist_entries` under the configured
+`asf_dist_dev_base` and `asf_dist_release_base` roots.
+
 ## Inspecting a workspace
 
 Every harness run prints the workspace root to `stderr` and includes an `inspectable_paths` object
@@ -258,12 +276,12 @@ Important paths:
   - harness-owned local Git origins
 - `self_git_origin`
   - the local origin used as `origin` for the workflow repository under test
+- `svn_repository`
+  - the harness-owned local ASF SVN repository used by real-CLI scenarios
+- `svn_working_copy`
+  - an inspectable checkout of that local SVN repository, refreshed after each run or rerun
 - `git_checkouts`
   - reserved for additional mutable Git checkouts when scenarios need them
-- `svn_repository`
-  - reserved location for a harness-owned local SVN repository
-- `svn_working_copy`
-  - reserved location for a harness-owned local SVN working copy
 - `step_summaries`
   - individual step summaries
 - `job_summaries`
