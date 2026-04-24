@@ -45,6 +45,35 @@ class GitRepositoryFixture(BaseModel):
     files: list[WorkspaceFile] = Field(default_factory=list)
 
 
+class WorkflowRepositoryBranchFixture(BaseModel):
+    """A branch that should exist in the workflow repository checkout before execution."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    start_point: str = "HEAD"
+
+
+class WorkflowRepositoryTagFixture(BaseModel):
+    """A tag that should exist in the workflow repository checkout before execution."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    target: str = "HEAD"
+    annotated: bool = False
+    message: str | None = None
+
+
+class WorkflowRepositoryFixture(BaseModel):
+    """Git refs that should be created in the workflow repository checkout before execution."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    branches: list[WorkflowRepositoryBranchFixture] = Field(default_factory=list)
+    tags: list[WorkflowRepositoryTagFixture] = Field(default_factory=list)
+
+
 class InvocationMatch(BaseModel):
     """A matcher for a single intercepted tool invocation."""
 
@@ -130,6 +159,8 @@ class WorkflowScenario(BaseModel):
     event: Literal["workflow_dispatch"] = "workflow_dispatch"
     inputs: dict[str, str] = Field(default_factory=dict)
     harness_config: str
+    real_cli_commands: list[str] = Field(default_factory=list)
+    repository_fixture: WorkflowRepositoryFixture = Field(default_factory=WorkflowRepositoryFixture)
 
 
 class HarnessScenario(BaseModel):

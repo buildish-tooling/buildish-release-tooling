@@ -389,6 +389,32 @@ This repository currently includes:
 - a committed `buildish-release-tooling/harness/release-harness.yaml` binding file for the
   tooling repo itself
 
+For `act` scenarios, the workflow block can also declare:
+
+- `real_cli_commands`
+  - exact `buildish-release-tooling` subcommands that should run for real through `uv run ...`
+    instead of going through mocked shim behavior
+- `repository_fixture`
+  - lightweight Git state to seed into the workflow repository checkout before the workflow runs
+  - currently supports:
+    - `tags`
+    - `branches`
+
+Example:
+
+```yaml
+workflow:
+  path: ../../../.github/workflows/releasey-40-verify-rc.yml
+  harness_config: ../release-harness.yaml
+  inputs:
+    version: 9.9.9
+  real_cli_commands:
+    - verify-rc
+  repository_fixture:
+    tags:
+      - name: v9.9.9-rc1
+```
+
 ## Shim strategy
 
 The harness uses two interception mechanisms:
@@ -410,9 +436,10 @@ For the `act` backend, the harness also provides:
 
 - a `bash` executable shim that redirects `GITHUB_STEP_SUMMARY` to harness-owned summary files and
   then mirrors the content back to the original step-summary path
-- a purpose-built `uv` shim that treats `uv python install ...` as a no-op and can route
-  `uv run --project ... buildish-release-tooling ...` through either scripted harness behavior or
-  the real Python module
+- a purpose-built `uv` shim that can either:
+  - delegate to the real `uv` installed in the runner, or
+  - route `uv run --project ... buildish-release-tooling ...` through scripted harness behavior
+    or a direct Python fallback
 - direct summary writes from mocked `buildish-release-tooling` invocations into the harness-owned
   step summary file, so the captured summaries stay meaningful even when the CLI call itself is
   scripted
@@ -491,7 +518,10 @@ The `act` backend intentionally avoids reimplementing marketplace actions. Inste
 small set of action usages that Buildish release workflows currently depend on:
 
 - `astral-sh/setup-uv@...`
-  - rewritten to a harness-generated local composite action that behaves as a no-op
+  - rewritten to a harness-generated local composite action that behaves as a no-op for mocked
+    scenarios
+  - left intact for scenarios that declare `workflow.real_cli_commands`, so the runner gets a real
+    `uv` installation
 - `actions/checkout@...` for explicitly bound companion repositories
   - rewritten to a harness-generated local composite action that performs a deterministic local
     checkout from `.buildish-release-harness/repo-sources/...`

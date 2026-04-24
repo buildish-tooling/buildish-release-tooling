@@ -25,7 +25,6 @@ import shutil
 import subprocess
 import sys
 import threading
-import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
@@ -192,6 +191,7 @@ def _bootstrap_workspace(
     """Materialize repo bindings, workspace fixtures, and shims for an `act` run."""
 
     _stage_repository_sources(workspace, bindings)
+    _apply_workflow_repository_fixture(workspace, scenario)
     for file_fixture in scenario.workspace_files:
         runtime._write_workspace_file(
             workspace.root,
@@ -205,7 +205,7 @@ def _bootstrap_workspace(
     runtime._write_bash_env_hook(workspace, scenario)
     _write_generic_tool_shims(workspace, scenario)
     _write_bash_shim(workspace)
-    _write_uv_shim(workspace)
+    _write_uv_shim(workspace, scenario)
     workspace.job_status_file.write_text("{}", encoding="utf-8")
     workspace.trace_file.write_text("", encoding="utf-8")
 
@@ -368,7 +368,10 @@ def _write_secrets_file(workspace: runtime.HarnessWorkspace, scenario: HarnessSc
     """Write one `act` secret file from the scenario-provided secret map."""
 
     secrets = dict(scenario.secrets)
-    secrets.setdefault("GITHUB_TOKEN", f"buildish-harness-{uuid.uuid4().hex}")
+    for key in ("GITHUB_TOKEN", "GH_TOKEN"):
+        value = os.environ.get(key)
+        if value:
+            secrets.setdefault(key, value)
     destination = workspace.harness_dir / "act.secrets"
     lines = [f"{key}={value}" for key, value in sorted(secrets.items())]
     destination.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
@@ -442,6 +445,48 @@ def _stage_repository_sources(
         if source_dir.exists():
             shutil.rmtree(source_dir)
         _materialize_source_tree(binding.local_path, source_dir)
+
+
+def _apply_workflow_repository_fixture(
+    workspace: runtime.HarnessWorkspace,
+    scenario: HarnessScenario,
+) -> None:
+    """Create any scenario-declared branches and tags in the workflow repository checkout."""
+
+    workflow = _require_workflow(scenario)
+    fixture = workflow.repository_fixture
+    for branch in fixture.branches:
+        subprocess.run(
+            [
+                "git",
+                "-C",
+                str(workspace.root),
+                "branch",
+                branch.name,
+                branch.start_point,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    for tag in fixture.tags:
+        command = [
+            "git",
+            "-C",
+            str(workspace.root),
+            "tag",
+        ]
+        if tag.annotated:
+            message = tag.message or f"Harness tag {tag.name}"
+            command.extend(["-a", tag.name, "-m", message, tag.target])
+        else:
+            command.extend([tag.name, tag.target])
+        subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
 
 
 def _materialize_git_checkout(source_root: Path, destination_root: Path) -> None:
@@ -565,6 +610,7 @@ def _rewrite_workflow(
         original_steps = list(job_payload.get("steps") or [])
         rewritten_steps: list[dict[str, Any]] = [_bootstrap_step()]
         generated_action_references = _generated_action_references(workspace)
+        real_cli_commands = set(_require_workflow(scenario).real_cli_commands)
         for index, step_payload in enumerate(original_steps, start=1):
             if not isinstance(step_payload, dict):
                 raise ValueError(f"workflow job {job_id} contains a non-mapping step")
@@ -575,6 +621,7 @@ def _rewrite_workflow(
                     step_index=index,
                     bindings=bindings,
                     generated_action_references=generated_action_references,
+                    real_cli_commands=real_cli_commands,
                 )
             )
         rewritten_steps.append(_job_status_step(str(job_id)))
@@ -658,11 +705,16 @@ def _rewrite_step(
     step_index: int,
     bindings: ResolvedReleaseHarnessConfig,
     generated_action_references: dict[str, str],
+    real_cli_commands: set[str],
 ) -> dict[str, Any]:
     """Rewrite one workflow step for local harness execution."""
 
     uses = step_payload.get("uses")
-    if isinstance(uses, str) and uses.startswith("astral-sh/setup-uv@"):
+    if (
+        isinstance(uses, str)
+        and uses.startswith("astral-sh/setup-uv@")
+        and not real_cli_commands
+    ):
         rewritten = {key: value for key, value in step_payload.items() if key not in {"uses", "with"}}
         rewritten["uses"] = generated_action_references["setup-uv-noop"]
         return rewritten
@@ -919,58 +971,107 @@ def _write_generic_tool_shims(workspace: runtime.HarnessWorkspace, scenario: Har
         script_path.chmod(script_path.stat().st_mode | 0o111)
 
 
-def _write_uv_shim(workspace: runtime.HarnessWorkspace) -> None:
+def _render_uv_shim_script(real_cli_commands: list[str]) -> str:
+    """Return the generated `uv` shim script for one act workspace."""
+
+    real_cli_case = "|".join(real_cli_commands)
+    lines = [
+        "#!/usr/bin/env bash",
+        "set -euo pipefail",
+        'original_args=("$@")',
+        'resolve_real_uv() {',
+        '  local shim_dir resolved_path joined_path',
+        '  local -a path_parts=()',
+        '  local -a search_parts=()',
+        '  shim_dir="$(cd "$(dirname "$0")" && pwd)"',
+        '  IFS=: read -r -a path_parts <<<"${PATH:-}"',
+        '  for part in "${path_parts[@]}"; do',
+        '    if [[ -n "$part" && "$part" != "$shim_dir" ]]; then',
+        '      search_parts+=("$part")',
+        "    fi",
+        "  done",
+        '  joined_path="$(IFS=:; printf "%s" "${search_parts[*]}")"',
+        '  resolved_path="$(PATH="$joined_path" command -v uv || true)"',
+        '  if [[ -n "$resolved_path" ]]; then',
+        '    printf "%s\\n" "$resolved_path"',
+        "  fi",
+        "}",
+        'if [[ "${1:-}" == "python" && "${2:-}" == "install" ]]; then',
+        '  if resolved_uv="$(resolve_real_uv)"; then',
+        '    exec "$resolved_uv" "${original_args[@]}"',
+        "  fi",
+        "  exit 0",
+        "fi",
+        'if [[ "${1:-}" != "run" ]]; then',
+        '  printf "buildish-release-harness: unsupported uv invocation: %s\\n" "$*" >&2',
+        "  exit 2",
+        "fi",
+        "shift",
+        'while [[ $# -gt 0 ]]; do',
+        '  case "$1" in',
+        '    --project)',
+        "      shift 2",
+        "      ;;",
+        '    --frozen)',
+        "      shift",
+        "      ;;",
+        '    buildish-release-tooling)',
+        "      shift",
+        '      command_name="${1:-}"',
+        '      if [[ -z "$command_name" ]]; then',
+        '        printf "buildish-release-harness: missing buildish-release-tooling command\\n" >&2',
+        "        exit 2",
+        "      fi",
+    ]
+    if real_cli_case:
+        lines.extend(
+            [
+                '      case "$command_name" in',
+                f"        {real_cli_case})",
+                '          if resolved_uv="$(resolve_real_uv)"; then',
+                '            exec "$resolved_uv" "${original_args[@]}"',
+                "          fi",
+                '          exec python3 -m apache_buildish_release_tooling "$@"',
+                "          ;;",
+                "      esac",
+            ]
+        )
+    lines.extend(
+        [
+            '      filtered_args=()',
+            '      while [[ $# -gt 0 ]]; do',
+            '        case "$1" in',
+            '          --component-config)',
+            "            shift 2",
+            "            ;;",
+            "          *)",
+            '            filtered_args+=("$1")',
+            "            shift",
+            "            ;;",
+            "        esac",
+            "      done",
+            '      exec python3 -m apache_buildish_release_tooling.harness.shim_entrypoint buildish-release-tooling "${filtered_args[@]}"',
+            "      ;;",
+            "    *)",
+            '      printf "buildish-release-harness: unexpected uv arguments: %s\\n" "$*" >&2',
+            "      exit 2",
+            "      ;;",
+            "  esac",
+            "done",
+            'printf "buildish-release-harness: uv did not receive a command\\n" >&2',
+            "exit 2",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def _write_uv_shim(workspace: runtime.HarnessWorkspace, scenario: HarnessScenario) -> None:
     """Write the `uv` shim used by the rewritten workflows."""
 
     script_path = workspace.shims_dir / "uv"
+    workflow = _require_workflow(scenario)
     script_path.write_text(
-        "\n".join(
-            [
-                "#!/usr/bin/env bash",
-                "set -euo pipefail",
-                'if [[ "${1:-}" == "python" && "${2:-}" == "install" ]]; then',
-                "  exit 0",
-                "fi",
-                'if [[ "${1:-}" != "run" ]]; then',
-                '  printf "buildish-release-harness: unsupported uv invocation: %s\\n" "$*" >&2',
-                "  exit 2",
-                "fi",
-                "shift",
-                'while [[ $# -gt 0 ]]; do',
-                '  case "$1" in',
-                '    --project)',
-                "      shift 2",
-                "      ;;",
-                '    --frozen)',
-                "      shift",
-                "      ;;",
-                '    buildish-release-tooling)',
-                "      shift",
-                '      filtered_args=()',
-                '      while [[ $# -gt 0 ]]; do',
-                '        case "$1" in',
-                '          --component-config)',
-                "            shift 2",
-                "            ;;",
-                "          *)",
-                '            filtered_args+=("$1")',
-                "            shift",
-                "            ;;",
-                "        esac",
-                "      done",
-                '      exec python3 -m apache_buildish_release_tooling.harness.shim_entrypoint buildish-release-tooling "${filtered_args[@]}"',
-                "      ;;",
-                "    *)",
-                '      printf "buildish-release-harness: unexpected uv arguments: %s\\n" "$*" >&2',
-                "      exit 2",
-                "      ;;",
-                "  esac",
-                "done",
-                'printf "buildish-release-harness: uv did not receive a command\\n" >&2',
-                "exit 2",
-            ]
-        )
-        + "\n",
+        _render_uv_shim_script(workflow.real_cli_commands),
         encoding="utf-8",
     )
     script_path.chmod(script_path.stat().st_mode | 0o111)

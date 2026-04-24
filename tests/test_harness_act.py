@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import unittest
 from io import StringIO
 from pathlib import Path
@@ -28,14 +30,18 @@ import yaml
 from apache_buildish_release_tooling.harness.act_backend import (
     _dump_workflow_yaml,
     _render_rewritten_workflow_yaml,
+    _render_uv_shim_script,
     _resolve_act_command,
 )
+from apache_buildish_release_tooling.harness import runtime
 from apache_buildish_release_tooling.harness.backend import rerun_failed_jobs, run_scenario
 from apache_buildish_release_tooling.harness.cli import main as harness_main
 from apache_buildish_release_tooling.harness.errors import HarnessExternalToolError
+from apache_buildish_release_tooling.harness.models import WorkflowScenario
 from apache_buildish_release_tooling.harness.scenario import load_scenario
 from tests.support import (
     cleanup_sandbox,
+    cli_env,
     component_root,
     create_build_test_sandbox,
     create_fake_act_launcher,
@@ -133,7 +139,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             steps[1]["uses"],
         )
         self.assertEqual(
-            "./.buildish-release-harness/actions/setup-uv-noop",
+            "astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78",
             steps[2]["uses"],
         )
         self.assertEqual(
@@ -365,6 +371,18 @@ class ActHarnessIntegrationTest(unittest.TestCase):
 class ActWorkflowRewriteUnitTest(unittest.TestCase):
     """Focused tests for the workflow YAML rewrite renderer."""
 
+    sandbox_dir: Path
+
+    def setUp(self) -> None:
+        """Create a disposable sandbox for direct uv-shim tests."""
+
+        self.sandbox_dir = create_build_test_sandbox()
+
+    def tearDown(self) -> None:
+        """Remove the disposable sandbox after each workflow-renderer test."""
+
+        cleanup_sandbox(self.sandbox_dir)
+
     def test_dump_workflow_yaml_keeps_on_key_and_multiline_run_blocks(self) -> None:
         """The workflow dumper should keep `on:` literal and use block scalars for scripts."""
 
@@ -412,3 +430,130 @@ class ActWorkflowRewriteUnitTest(unittest.TestCase):
         self.assertIn("example.original.yml", lines[3])
         self.assertIn("name: Example", lines)
         self.assertIn("on:", lines)
+
+    def test_render_uv_shim_script_routes_selected_commands_to_real_cli(self) -> None:
+        """The generated uv shim should route configured commands to the real CLI module."""
+
+        script = _render_uv_shim_script(["create-release-branch", "verify-rc"])
+
+        self.assertIn('case "$command_name" in', script)
+        self.assertIn("create-release-branch|verify-rc)", script)
+        self.assertIn('exec python3 -m apache_buildish_release_tooling "$@"', script)
+        self.assertIn(
+            'exec python3 -m apache_buildish_release_tooling.harness.shim_entrypoint buildish-release-tooling "${filtered_args[@]}"',
+            script,
+        )
+
+    def test_generated_uv_shim_can_execute_create_release_branch_for_real(self) -> None:
+        """The act uv shim should be able to invoke the real CLI entrypoint."""
+
+        workflow = WorkflowScenario(
+            path=str(self._workflow_path()),
+            harness_config=str(
+                component_root() / "buildish-release-tooling" / "harness" / "release-harness.yaml"
+            ),
+            real_cli_commands=["create-release-branch"],
+        )
+        workspace = runtime.workspace_paths(self.sandbox_dir / "workspace")
+        runtime.ensure_workspace_directories(workspace)
+        release_config = component_root() / "buildish-release-tooling" / "release-config.yaml"
+        self._initialize_git_repository(workspace.root)
+        (workspace.root / "buildish-release-tooling").mkdir(parents=True, exist_ok=True)
+        (workspace.root / "buildish-release-tooling" / "release-config.yaml").write_text(
+            release_config.read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+        uv_path = workspace.shims_dir / "uv"
+        python_path = workspace.shims_dir / "python3"
+        uv_path.write_text(
+            _render_uv_shim_script(workflow.real_cli_commands),
+            encoding="utf-8",
+        )
+        uv_path.chmod(0o755)
+        python_path.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            f"exec {json.dumps(os.fspath(Path(sys.executable)))} \"$@\"\n",
+            encoding="utf-8",
+        )
+        python_path.chmod(0o755)
+
+        env = cli_env(
+            workspace.root / "manifest.json",
+            extra_env={"PYTHONPATH": str(component_root() / "src")},
+            prepend_dirs=(workspace.shims_dir,),
+        )
+        completed = subprocess.run(  # noqa: S603
+            [
+                str(uv_path),
+                "run",
+                "--project",
+                str(component_root()),
+                "--frozen",
+                "buildish-release-tooling",
+                "create-release-branch",
+                "--component-config",
+                str(workspace.root / "buildish-release-tooling" / "release-config.yaml"),
+                "--apply",
+                "9.x",
+                "main",
+            ],
+            cwd=str(workspace.root),
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        branches = subprocess.run(  # noqa: S603
+            ["git", "-C", str(workspace.root), "branch", "--list", "release/9.x"],
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        self.assertIn("release/9.x", branches.stdout)
+        summary = (workspace.root / "manifest.summary.md").read_text(encoding="utf-8")
+        self.assertIn("Create release branch", summary)
+        self.assertIn("release/9.x <- main", summary)
+
+    def _workflow_path(self) -> Path:
+        """Return one checked-in workflow path used only to satisfy the scenario model."""
+
+        return component_root() / ".github" / "workflows" / "releasey-10-create-release-branch.yml"
+
+    def _initialize_git_repository(self, path: Path) -> None:
+        """Create a disposable repository with a single `main` commit."""
+
+        path.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "init", "-b", "main", str(path)],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(path), "config", "user.name", "Buildish Harness"],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(path), "config", "user.email", "harness@example.test"],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        (path / "README.md").write_text("hello\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "-C", str(path), "add", "README.md"],
+            check=True,
+            text=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(path), "commit", "-m", "initial"],
+            check=True,
+            text=True,
+            capture_output=True,
+        )

@@ -14,19 +14,11 @@
 
 name: releasey-create-release-branch
 backend: act
-tool_behaviors:
-  buildish-release-tooling:
-    - match:
-        argv:
-          - create-release-branch
-          - --apply
-          - 1.x
-          - main
-      result:
-        stdout: "created release/1.x\n"
 workflow:
   path: ../../../.github/workflows/releasey-10-create-release-branch.yml
   harness_config: ../release-harness.yaml
   inputs:
-    release_line: 1.x
+    release_line: 9.x
     source_ref: main
+  real_cli_commands:
+    - create-release-branch

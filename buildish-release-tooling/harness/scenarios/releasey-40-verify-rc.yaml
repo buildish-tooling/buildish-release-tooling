@@ -14,16 +14,13 @@
 
 name: releasey-verify-rc
 backend: act
-tool_behaviors:
-  buildish-release-tooling:
-    - match:
-        argv:
-          - verify-rc
-          - "1.2.3"
-      result:
-        stdout: "verification instructions emitted\n"
 workflow:
   path: ../../../.github/workflows/releasey-40-verify-rc.yml
   harness_config: ../release-harness.yaml
   inputs:
-    version: 1.2.3
+    version: 9.9.9
+  real_cli_commands:
+    - verify-rc
+  repository_fixture:
+    tags:
+      - name: v9.9.9-rc1

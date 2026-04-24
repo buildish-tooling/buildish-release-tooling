@@ -211,6 +211,11 @@ Goal:
 
 - run the real CLI for the low-risk workflows first
 
+Status:
+
+- implemented for the tooling repo's committed `releasey-10-create-release-branch` and
+  `releasey-40-verify-rc` scenarios
+
 Targets:
 
 - `releasey-10-create-release-branch`
