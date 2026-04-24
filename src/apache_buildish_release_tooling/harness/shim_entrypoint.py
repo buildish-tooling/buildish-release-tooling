@@ -36,7 +36,25 @@ def main() -> None:
     state_path = Path(os.environ["BUILDISH_HARNESS_STATE_FILE"])
     state = json.loads(state_path.read_text(encoding="utf-8"))
     behavior_index, result = _resolve_behavior(state, tool_name, argv)
+    stdin_text = sys.stdin.read() if tool_name == "gh" else ""
     if result is None:
+        builtin_result = _handle_builtin_tool(tool_name, argv, stdin_text, state)
+        if builtin_result is not None:
+            state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+            _record_invocation(
+                state=state,
+                tool_name=tool_name,
+                argv=argv,
+                exit_code=int(builtin_result.get("exit_code", 0)),
+                stdout=str(builtin_result.get("stdout", "")),
+                stderr=str(builtin_result.get("stderr", "")),
+                delegated=False,
+            )
+            if builtin_stdout := str(builtin_result.get("stdout", "")):
+                sys.stdout.write(builtin_stdout)
+            if builtin_stderr := str(builtin_result.get("stderr", "")):
+                sys.stderr.write(builtin_stderr)
+            raise SystemExit(int(builtin_result.get("exit_code", 0)))
         stderr = f"buildish-release-harness: no scripted behavior for {tool_name} {' '.join(argv)}\n"
         _record_invocation(
             state=state,
@@ -250,6 +268,10 @@ def _matches(
     expected_prefix = match.get("argv_prefix")
     if expected_prefix is not None and argv[: len(expected_prefix)] != list(expected_prefix):
         return False
+    expected_contains = list(match.get("argv_contains", []))
+    for fragment in expected_contains:
+        if not any(fragment in argument for argument in argv):
+            return False
     expected_cwd = match.get("cwd")
     if expected_cwd is not None:
         expected_path = Path(workspace_root) / str(expected_cwd)
@@ -268,6 +290,116 @@ def _increment_behavior_count(state: dict[str, Any], tool_name: str, behavior_in
     counts: dict[str, int] = state.setdefault("counts", {})
     key = _count_key(tool_name, behavior_index)
     counts[key] = counts.get(key, 0) + 1
+
+
+def _handle_builtin_tool(
+    tool_name: str,
+    argv: list[str],
+    stdin_text: str,
+    state: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Handle built-in shim side effects for tools that need local mutable-state emulation."""
+
+    if tool_name == "gh":
+        return _handle_builtin_gh(argv, stdin_text, state)
+    return None
+
+
+def _handle_builtin_gh(
+    argv: list[str],
+    stdin_text: str,
+    state: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Handle the small GitHub CLI subset that must mutate local Git state in harness runs."""
+
+    parsed = _parse_gh_api_request(argv)
+    if parsed is None:
+        return None
+    method, endpoint = parsed
+    if method == "POST" and endpoint.endswith("/git/tags"):
+        payload = json.loads(stdin_text or "{}")
+        fake_sha = _store_builtin_gh_tag_object(state, payload)
+        return {"stdout": json.dumps({"sha": fake_sha})}
+    if method == "POST" and endpoint.endswith("/git/refs"):
+        payload = json.loads(stdin_text or "{}")
+        _apply_builtin_gh_tag_ref(state, endpoint, payload, force=False)
+        return {"stdout": json.dumps({"ref": payload.get("ref", "")})}
+    if method == "PATCH" and "/git/refs/tags/" in endpoint:
+        payload = json.loads(stdin_text or "{}")
+        _apply_builtin_gh_tag_ref(state, endpoint, payload, force=True)
+        return {"stdout": json.dumps({"ref": f"refs/tags/{endpoint.rsplit('/', 1)[-1]}"})}
+    return None
+
+
+def _parse_gh_api_request(argv: list[str]) -> tuple[str, str] | None:
+    """Parse a subset of `gh api` arguments into `(method, endpoint)`."""
+
+    if not argv or argv[0] != "api":
+        return None
+    method = "GET"
+    endpoint = ""
+    index = 1
+    while index < len(argv):
+        argument = argv[index]
+        if argument == "-X" and index + 1 < len(argv):
+            method = argv[index + 1]
+            index += 2
+            continue
+        if argument == "-H" and index + 1 < len(argv):
+            index += 2
+            continue
+        if argument == "--input" and index + 1 < len(argv):
+            index += 2
+            continue
+        if argument.startswith("repos/"):
+            endpoint = argument
+        index += 1
+    if not endpoint:
+        return None
+    return method, endpoint
+
+
+def _store_builtin_gh_tag_object(state: dict[str, Any], payload: dict[str, Any]) -> str:
+    """Persist one synthetic GitHub tag object payload in shim state."""
+
+    tag_objects: dict[str, dict[str, Any]] = state.setdefault("gh_tag_objects", {})
+    fake_sha = f"harness-tag-object-{len(tag_objects) + 1}"
+    tag_objects[fake_sha] = payload
+    return fake_sha
+
+
+def _apply_builtin_gh_tag_ref(
+    state: dict[str, Any],
+    endpoint: str,
+    payload: dict[str, Any],
+    *,
+    force: bool,
+) -> None:
+    """Create or update a local annotated Git tag from a synthetic GitHub ref mutation."""
+
+    ref_name = str(payload.get("ref") or f"refs/tags/{endpoint.rsplit('/', 1)[-1]}")
+    tag_name = ref_name.removeprefix("refs/tags/")
+    target_sha = str(payload.get("sha", ""))
+    tag_objects = state.setdefault("gh_tag_objects", {})
+    tag_payload = dict(tag_objects.get(target_sha) or {})
+    target_commit = str(tag_payload.get("object") or "")
+    if not tag_name or not target_commit:
+        raise SystemExit("buildish-release-harness: builtin gh tag ref mutation is missing tag metadata")
+    message = str(tag_payload.get("message") or tag_name)
+    for repository in _builtin_gh_mutated_repositories(state):
+        command = ["git", "-C", str(repository), "tag"]
+        if force:
+            command.append("-f")
+        command.extend(["-a", tag_name, "-m", message, target_commit])
+        subprocess.run(command, check=True, capture_output=True, text=True)
+
+
+def _builtin_gh_mutated_repositories(state: dict[str, Any]) -> list[Path]:
+    """Return the local repositories that should reflect synthetic GitHub tag mutations."""
+
+    workspace_root = Path(str(state["workspace_root"]))
+    origin_root = workspace_root / ".buildish-release-harness" / "git-origins" / "self"
+    return [workspace_root, origin_root]
 
 
 def _count_key(tool_name: str, behavior_index: int) -> str:

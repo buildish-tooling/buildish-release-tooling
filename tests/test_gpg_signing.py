@@ -20,7 +20,11 @@ import os
 import subprocess
 import unittest
 
-from apache_buildish_release_tooling.gpg_signing import detached_ascii_sign, import_private_key_from_secret
+from apache_buildish_release_tooling.gpg_signing import (
+    _effective_home,
+    detached_ascii_sign,
+    import_private_key_from_secret,
+)
 
 from tests.support import cleanup_sandbox, create_build_test_sandbox
 
@@ -28,11 +32,23 @@ from tests.support import cleanup_sandbox, create_build_test_sandbox
 class GpgSigningIntegrationTest(unittest.TestCase):
     """Verify detached signing with an imported test key."""
 
+    def test_long_gpg_home_uses_short_alias(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        requested_home = sandbox_dir / ("nested-" * 16) / "gnupg-home"
+
+        effective_home = _effective_home(requested_home)
+
+        self.assertNotEqual(requested_home, effective_home)
+        self.assertTrue(effective_home.is_symlink())
+        self.assertEqual(requested_home.resolve(strict=False), effective_home.resolve(strict=False))
+        self.assertLess(len(str(effective_home / "S.gpg-agent.browser")), 108)
+
     def test_import_private_key_and_sign(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
         source_home = sandbox_dir / "gpg-source"
-        target_home = sandbox_dir / "gpg-target"
+        target_home = sandbox_dir / ("nested-" * 16) / "gpg-target"
         verify_home = sandbox_dir / "gpg-verify"
         input_path = sandbox_dir / "source.tar.gz"
         signature_path = sandbox_dir / "source.tar.gz.asc"

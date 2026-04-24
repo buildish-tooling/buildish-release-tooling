@@ -43,6 +43,7 @@ from apache_buildish_release_tooling.harness.config import (
 from apache_buildish_release_tooling.harness.models import (
     HarnessScenario,
     SvnRepositoryFixture,
+    WorkspaceFile,
     WorkflowScenario,
 )
 from apache_buildish_release_tooling.harness import runtime
@@ -199,6 +200,9 @@ def _bootstrap_workspace(
     """Materialize repo bindings, workspace fixtures, and shims for an `act` run."""
 
     _stage_repository_sources(workspace, bindings)
+    workflow = _require_workflow(scenario)
+    if workflow.gpg_fixture == "generated-signing-key":
+        _generated_gpg_private_key_path(workspace)
     _prepare_local_svn_fixture(workspace, scenario)
     _overlay_release_config_for_local_svn(workspace, scenario)
     _apply_workflow_repository_fixture(workspace, scenario)
@@ -388,6 +392,69 @@ def _write_secrets_file(workspace: runtime.HarnessWorkspace, scenario: HarnessSc
     return destination
 
 
+def _generated_gpg_private_key(workspace: runtime.HarnessWorkspace) -> str:
+    """Return one reusable armored private key for harness signing scenarios."""
+
+    fixture_dir = workspace.harness_dir / "gpg-fixture"
+    source_home = fixture_dir / "source-home"
+    private_key_path = fixture_dir / "private.asc"
+    public_key_path = fixture_dir / "public.asc"
+    if private_key_path.is_file():
+        return private_key_path.read_text(encoding="utf-8")
+    fixture_dir.mkdir(parents=True, exist_ok=True)
+    source_home.mkdir(parents=True, exist_ok=True)
+    source_home.chmod(0o700)
+    gpg_env = {**os.environ, "GNUPGHOME": str(source_home)}
+    identity = "Buildish Release Harness <buildish-release-harness@example.invalid>"
+    subprocess.run(
+        [
+            "gpg",
+            "--batch",
+            "--pinentry-mode",
+            "loopback",
+            "--passphrase",
+            "",
+            "--quick-gen-key",
+            identity,
+            "ed25519",
+            "sign",
+            "1d",
+        ],
+        env=gpg_env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    private_key_path.write_text(
+        subprocess.run(
+            ["gpg", "--armor", "--export-secret-keys", identity],
+            env=gpg_env,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout,
+        encoding="utf-8",
+    )
+    public_key_path.write_text(
+        subprocess.run(
+            ["gpg", "--armor", "--export", identity],
+            env=gpg_env,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout,
+        encoding="utf-8",
+    )
+    return private_key_path.read_text(encoding="utf-8")
+
+
+def _generated_gpg_private_key_path(workspace: runtime.HarnessWorkspace) -> Path:
+    """Return the workspace file that stores the generated harness private key."""
+
+    _generated_gpg_private_key(workspace)
+    return workspace.harness_dir / "gpg-fixture" / "private.asc"
+
+
 def _active_workflow_path(workspace: runtime.HarnessWorkspace) -> Path:
     """Return the currently prepared rewritten workflow path for one workspace."""
 
@@ -434,6 +501,20 @@ def _stage_repository_sources(
     if self_source_dir.exists():
         shutil.rmtree(self_source_dir)
     _materialize_git_checkout(bindings.self_repository.local_path, self_source_dir)
+    github_origin_url = f"https://github.com/{bindings.self_repository.repository_id}.git"
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(workspace.root),
+            "config",
+            "url../.buildish-release-harness/git-origins/self.insteadOf",
+            github_origin_url,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     subprocess.run(
         [
             "git",
@@ -442,7 +523,7 @@ def _stage_repository_sources(
             "remote",
             "set-url",
             "origin",
-            "./.buildish-release-harness/git-origins/self",
+            github_origin_url,
         ],
         check=True,
         capture_output=True,
@@ -534,6 +615,7 @@ def _prepare_local_svn_fixture(
     for relative_directory in directories_to_create:
         _svn_mkdir_url(repository_dir.as_uri(), relative_directory)
     _refresh_svn_working_copy(workspace)
+    _apply_svn_repository_file_fixtures(workspace, fixture.repository_files)
 
 
 def _overlay_release_config_for_local_svn(
@@ -660,6 +742,42 @@ def _refresh_svn_working_copy(workspace: runtime.HarnessWorkspace) -> None:
     )
 
 
+def _apply_svn_repository_file_fixtures(
+    workspace: runtime.HarnessWorkspace,
+    file_fixtures: list[WorkspaceFile],
+) -> None:
+    """Create and commit any scenario-declared repository-relative SVN files."""
+
+    if not file_fixtures:
+        return
+    working_copy_dir = workspace.svn_working_copy_dir
+    for file_fixture in file_fixtures:
+        relative_path = Path(file_fixture.path)
+        if relative_path.is_absolute():
+            raise ValueError(f"SVN fixture paths must be repository-relative: {file_fixture.path}")
+        destination = working_copy_dir / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(file_fixture.content, encoding="utf-8")
+        subprocess.run(
+            ["svn", "add", "--parents", "--force", str(destination)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    subprocess.run(
+        ["svn", "commit", "-m", "seed harness SVN repository files", str(working_copy_dir)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        ["svn", "update", str(working_copy_dir)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
 def _materialize_git_checkout(source_root: Path, destination_root: Path) -> None:
     """Clone one local Git repository and overlay the current working-tree files on top."""
 
@@ -669,6 +787,7 @@ def _materialize_git_checkout(source_root: Path, destination_root: Path) -> None
         capture_output=True,
         text=True,
     )
+    _configure_git_identity(destination_root)
     _overlay_working_tree(source_root, destination_root)
 
 
@@ -677,6 +796,30 @@ def _materialize_source_tree(source_root: Path, destination_root: Path) -> None:
 
     destination_root.mkdir(parents=True, exist_ok=True)
     _overlay_working_tree(source_root, destination_root)
+
+
+def _configure_git_identity(repository_root: Path) -> None:
+    """Ensure annotated-tag operations have a deterministic local Git identity."""
+
+    subprocess.run(
+        ["git", "-C", str(repository_root), "config", "user.name", "Buildish Release Harness"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repository_root),
+            "config",
+            "user.email",
+            "buildish-release-harness@example.invalid",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
 
 
 def _overlay_working_tree(source_root: Path, destination_root: Path) -> None:
@@ -793,6 +936,8 @@ def _rewrite_workflow(
                     bindings=bindings,
                     generated_action_references=generated_action_references,
                     real_cli_commands=real_cli_commands,
+                    generated_gpg_fixture=_require_workflow(scenario).gpg_fixture
+                    == "generated-signing-key",
                 )
             )
         rewritten_steps.append(_job_status_step(str(job_id)))
@@ -865,6 +1010,14 @@ def _bootstrap_step() -> dict[str, Any]:
             "    printf 'PYTHONPATH=%s/.buildish-release-harness/repo-sources/apache__buildish-release-tooling/src\\n' \"$GITHUB_WORKSPACE\"\n"
             "  fi\n"
             "} >> \"$GITHUB_ENV\"\n"
+            "gpg_key_file=\"$GITHUB_WORKSPACE/.buildish-release-harness/gpg-fixture/private.asc\"\n"
+            "if [[ -f \"$gpg_key_file\" ]]; then\n"
+            "  {\n"
+            "    printf 'BUILDISH_GPG_PRIVATE_KEY<<__BUILDISH_HARNESS_GPG_KEY__\\n'\n"
+            "    cat \"$gpg_key_file\"\n"
+            "    printf '__BUILDISH_HARNESS_GPG_KEY__\\n'\n"
+            "  } >> \"$GITHUB_ENV\"\n"
+            "fi\n"
         ),
     }
 
@@ -877,6 +1030,7 @@ def _rewrite_step(
     bindings: ResolvedReleaseHarnessConfig,
     generated_action_references: dict[str, str],
     real_cli_commands: set[str],
+    generated_gpg_fixture: bool,
 ) -> dict[str, Any]:
     """Rewrite one workflow step for local harness execution."""
 
@@ -902,6 +1056,8 @@ def _rewrite_step(
     step_id = _step_identifier(step_payload, step_index)
     rewritten = dict(step_payload)
     env = dict(rewritten.get("env") or {})
+    if generated_gpg_fixture:
+        env.pop("BUILDISH_GPG_PRIVATE_KEY", None)
     env["BUILDISH_HARNESS_JOB_ID"] = job_id
     env["BUILDISH_HARNESS_STEP_ID"] = step_id
     rewritten["env"] = env
@@ -1124,7 +1280,7 @@ def _write_bash_shim(workspace: runtime.HarnessWorkspace) -> None:
 def _write_generic_tool_shims(workspace: runtime.HarnessWorkspace, scenario: HarnessScenario) -> None:
     """Write container-safe executable shims for all intercepted non-shell tools."""
 
-    tools = sorted(set(scenario.tool_behaviors) | {"gh", "docker", "gpg", "java", "javac"})
+    tools = sorted(set(scenario.tool_behaviors) | {"gh", "docker", "java", "javac"})
     for tool in tools:
         script_path = workspace.shims_dir / tool
         script_path.write_text(

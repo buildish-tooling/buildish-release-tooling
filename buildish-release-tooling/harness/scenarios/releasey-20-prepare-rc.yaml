@@ -17,236 +17,86 @@ backend: act
 secrets:
   BUILDISH_SVN_DEV_USERNAME: release-user
   BUILDISH_SVN_DEV_PASSWORD: release-password
-  BUILDISH_GPG_PRIVATE_KEY: dummy-private-key
 tool_behaviors:
-  buildish-release-tooling:
+  gh:
+    - match:
+        argv_contains:
+          - /check-runs?per_page=100
+      result:
+        stdout: |
+          {"check_runs":[{"name":"release-branch-ci","status":"completed","conclusion":"success"}]}
+    - match:
+        argv_contains:
+          - /status
+      result:
+        stdout: |
+          {"statuses":[{"context":"required-status","state":"success"}]}
     - match:
         argv:
-          - verify-source-ref-checks
-          - "1.2.3"
+          - api
+          - -H
+          - "Accept: application/vnd.github+json"
+          - repos/apache/buildish-release-tooling/releases?per_page=100
+      times: 1
       result:
-        stdout: "checks passed\n"
-        summary: |
-          ## Verify GitHub checks for source ref 1.2.3
-
-          ### Technical details
-
-          | Field | Value |
-          | --- | --- |
-          | Component | `buildish-release-tooling` |
-          | Version | `1.2.3` |
-          | Requested source SHA | `<latest on release branch>` |
-          | Resolved release branch | `release/1.2.x` |
-          | RC tag | `v1.2.3-rc0` |
-          | Final tag | `v1.2.3` |
-          | Required check policy | `success` or `skipped` |
-
-          ### Outcome
-
-          ```text
-          All GitHub checks on the resolved source ref passed or were skipped.
-          ```
+        stdout: |
+          []
+    - match:
+        argv_prefix:
+          - api
+          - -X
+          - POST
+          - -H
+          - "Accept: application/vnd.github+json"
+          - repos/apache/buildish-release-tooling/releases
+          - --input
+          - "-"
+      times: 1
+      result:
+        stdout: |
+          {"id":123,"draft":true,"name":"Apache Buildish Release Tooling 1.2.3","tag_name":"v1.2.3","html_url":"https://github.com/apache/buildish-release-tooling/releases/tag/v1.2.3"}
     - match:
         argv:
-          - prepare-rc
-          - "1.2.3"
+          - api
+          - -H
+          - "Accept: application/vnd.github+json"
+          - repos/apache/buildish-release-tooling/releases?per_page=100
+      times: 1
       result:
-        writes:
-          - path: ${MANIFEST_PATH}
-            content: |
-              {"rc_tag":"v1.2.3-rc0"}
-        summary: |
-          ## Resolve Prepare RC state for version 1.2.3
-
-          ### Technical details
-
-          | Field | Value |
-          | --- | --- |
-          | Component | `buildish-release-tooling` |
-          | Version | `1.2.3` |
-          | Release branch | `release/1.2.x` |
-          | RC tag | `v1.2.3-rc0` |
-          | Final tag | `v1.2.3` |
-          | Source artifact name | `apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz` |
-
-          ### Outcome
-
-          ```text
-          Resolved the release state and emitted the RC metadata manifest.
-          ```
+        stdout: |
+          [{"id":123,"draft":true,"name":"Apache Buildish Release Tooling 1.2.3","tag_name":"v1.2.3","html_url":"https://github.com/apache/buildish-release-tooling/releases/tag/v1.2.3"}]
     - match:
-        argv:
-          - cleanup-dev-svn-rcs
-          - "1.2.3"
+        argv_prefix:
+          - release
+          - upload
+          - v1.2.3
+      times: 1
       result:
-        stdout: "cleaned\n"
-        summary: |
-          ## Cleanup ASF SVN dev/dist for version 1.2.3
-
-          ### Technical details
-
-          | Field | Value |
-          | --- | --- |
-          | Component | `buildish-release-tooling` |
-          | Version | `1.2.3` |
-          | ASF SVN dev/dist base | `https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-release-tooling` |
-          | RC directory prefix | `1.2.3-rc` |
-
-          ### Planned deletions
-
-          - `https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc0`
-          - `https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc1`
-
-          ### Outcome
-
-          ```text
-          Removed all pre-existing ASF SVN dev/dist RC directories for version 1.2.3 before staging the new RC.
-          ```
-    - match:
-        argv:
-          - build-source-rc
-          - --rc-tag
-          - v1.2.3-rc0
-          - "1.2.3"
-      result:
-        stdout: "built source rc\n"
-        summary: |
-          ## Build and stage source RC for version 1.2.3
-
-          ### Technical details
-
-          | Field | Value |
-          | --- | --- |
-          | Component | `buildish-release-tooling` |
-          | Version | `1.2.3` |
-          | RC tag | `v1.2.3-rc0` |
-          | Source artifact | `apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz` |
-          | Staging target | `ASF SVN dev/dist` |
-          | Signing artifacts | `.asc`, `.sha512` |
-
-          ### Outcome
-
-          ```text
-          Built the reproducible source artifact, signed it, and staged it into ASF SVN dev/dist.
-          ```
-    - match:
-        argv:
-          - create-rc-materialization-tag
-          - --rc-tag
-          - v1.2.3-rc0
-          - "1.2.3"
-      result:
-        stdout: "created tag\n"
-        summary: |
-          ## Create RC materialization tag for version 1.2.3
-
-          ### Technical details
-
-          | Field | Value |
-          | --- | --- |
-          | Component | `buildish-release-tooling` |
-          | Version | `1.2.3` |
-          | RC tag | `v1.2.3-rc0` |
-          | Final tag mode | `same-commit` |
-
-          ### Outcome
-
-          ```text
-          No detached materialization commit was needed for this component, so the RC tag was confirmed as ready.
-          ```
-    - match:
-        argv:
-          - sync-draft-github-release
-          - --rc-tag
-          - v1.2.3-rc0
-          - "1.2.3"
-      result:
-        stdout: "synced draft release\n"
-        summary: |
-          ## Synchronize draft GitHub Release for version 1.2.3
-
-          ### Technical details
-
-          | Field | Value |
-          | --- | --- |
-          | Component | `buildish-release-tooling` |
-          | Version | `1.2.3` |
-          | RC tag | `v1.2.3-rc0` |
-          | Draft release tag | `v1.2.3` |
-          | Draft release mode | `draft` |
-
-          ### Outcome
-
-          ```text
-          Reconciled the draft GitHub Release so it points to the exact RC selected for vote.
-          ```
-    - match:
-        argv:
-          - finalize-rc-vote-materials
-          - --rc-tag
-          - v1.2.3-rc0
-          - "1.2.3"
-      result:
-        stdout: "finalized rc vote materials\n"
-        summary: |
-          ## Finalize RC vote materials for version 1.2.3
-
-          ### Technical details
-
-          | Field | Value |
-          | --- | --- |
-          | Component | `buildish-release-tooling` |
-          | Version | `1.2.3` |
-          | RC tag | `v1.2.3-rc0` |
-          | Final tag | `v1.2.3` |
-          | Authoritative manifest URL | `https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc0/rc-vote-manifest.json` |
-
-          ### Outcome
-
-          ```text
-          The RC vote manifest was signed, staged into ASF dev/dist, and mirrored to the draft GitHub Release.
-          ```
-
-          ### Project vote subject
-
-          ```text
-          [VOTE] Release Apache Buildish Release Tooling 1.2.3-incubating (RC0)
-          ```
-
-          ### Project vote body
-
-          ```text
-          Hi all,
-
-          I propose that we release the following RC as the official Apache Buildish Release Tooling 1.2.3 release.
-
-          Please download, verify, and test according to the release verification guide, which can be found at:
-          https://buildish.apache.org/buildish-release-tooling/release-verification/
-          ```
-
-          ### Incubator vote request subject
-
-          ```text
-          [VOTE] Release Apache Buildish Release Tooling 1.2.3-incubating (RC0)
-          ```
-
-          ### RC vote manifest
-
-          ```json
-          {
-            "manifest_type": "rc-vote",
-            "component_id": "buildish-release-tooling",
-            "version": "1.2.3",
-            "rc_tag": "v1.2.3-rc0",
-            "final_tag": "v1.2.3"
-          }
-          ```
+        stdout: ""
 workflow:
   path: ../../../.github/workflows/releasey-20-prepare-rc.yml
   harness_config: ../release-harness.yaml
   inputs:
     version: 1.2.3
     source_sha: ""
+  real_cli_commands:
+    - verify-source-ref-checks
+    - prepare-rc
+    - cleanup-dev-svn-rcs
+    - build-source-rc
+    - create-rc-materialization-tag
+    - sync-draft-github-release
+    - finalize-rc-vote-materials
+  repository_fixture:
+    branches:
+      - name: release/1.2.x
+  gpg_fixture: generated-signing-key
   svn_fixture:
     initial_state: preexisting-current-rc
     rc_number: 0
+    repository_files:
+      - path: repos/dist/release/incubator/buildish/KEYS
+        content: |
+          pub   ed25519 2026-01-01 [SC]
+                0123456789ABCDEF0123456789ABCDEF01234567
+          uid           Buildish Release Harness <buildish-release-harness@example.invalid>

@@ -22,6 +22,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 HarnessBackendName = Literal["custom", "act"]
+GpgFixtureMode = Literal["disabled", "generated-signing-key"]
 SvnInitialState = Literal[
     "absent",
     "empty",
@@ -93,6 +94,7 @@ class SvnRepositoryFixture(BaseModel):
     other_version: str | None = None
     dev_dist_entries: list[str] = Field(default_factory=list)
     release_dist_entries: list[str] = Field(default_factory=list)
+    repository_files: list[WorkspaceFile] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_fixture_shape(self) -> SvnRepositoryFixture:
@@ -112,6 +114,7 @@ class InvocationMatch(BaseModel):
 
     argv: list[str] | None = None
     argv_prefix: list[str] | None = None
+    argv_contains: list[str] = Field(default_factory=list)
     cwd: str | None = None
     env_contains: dict[str, str] = Field(default_factory=dict)
 
@@ -192,6 +195,7 @@ class WorkflowScenario(BaseModel):
     harness_config: str
     real_cli_commands: list[str] = Field(default_factory=list)
     repository_fixture: WorkflowRepositoryFixture = Field(default_factory=WorkflowRepositoryFixture)
+    gpg_fixture: GpgFixtureMode = "disabled"
     svn_fixture: SvnRepositoryFixture = Field(default_factory=SvnRepositoryFixture)
 
 

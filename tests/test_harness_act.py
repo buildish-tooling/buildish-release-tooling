@@ -210,6 +210,37 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             ).is_dir()
         )
 
+    def test_run_scenario_seeds_repository_relative_svn_files(self) -> None:
+        """The `act` backend should seed repository-relative SVN files like shared KEYS."""
+
+        act_path, state_dir = create_fake_act_launcher(self.sandbox_dir)
+        scenario = load_scenario(self._scenario_path("releasey-20-prepare-rc.yaml"))
+
+        with mock.patch.dict(
+            os.environ,
+            env_with_prepend_path(
+                {"FAKE_ACT_STATE_DIR": str(state_dir)},
+                prepend_dirs=(act_path,),
+            ),
+            clear=False,
+        ), mock.patch("sys.stderr", StringIO()):
+            result = run_scenario(scenario, workspace_root=self.sandbox_dir)
+
+        keys_path = (
+            result.workspace.svn_working_copy_dir
+            / "repos"
+            / "dist"
+            / "release"
+            / "incubator"
+            / "buildish"
+            / "KEYS"
+        )
+        self.assertTrue(keys_path.is_file())
+        self.assertIn(
+            "Buildish Release Harness <buildish-release-harness@example.invalid>",
+            keys_path.read_text(encoding="utf-8"),
+        )
+
     def test_rerun_failed_jobs_reinvokes_act_for_failed_jobs_and_dependents(self) -> None:
         """The `act` backend should select failed jobs and their dependents on rerun."""
 
