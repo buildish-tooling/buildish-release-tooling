@@ -36,9 +36,8 @@ def main() -> None:
     state_path = Path(os.environ["BUILDISH_HARNESS_STATE_FILE"])
     state = json.loads(state_path.read_text(encoding="utf-8"))
     behavior_index, result = _resolve_behavior(state, tool_name, argv)
-    stdin_text = sys.stdin.read() if tool_name == "gh" else ""
     if result is None:
-        builtin_result = _handle_builtin_tool(tool_name, argv, stdin_text, state)
+        builtin_result = _handle_builtin_tool(tool_name, argv, state)
         if builtin_result is not None:
             state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
             _record_invocation(
@@ -295,19 +294,17 @@ def _increment_behavior_count(state: dict[str, Any], tool_name: str, behavior_in
 def _handle_builtin_tool(
     tool_name: str,
     argv: list[str],
-    stdin_text: str,
     state: dict[str, Any],
 ) -> dict[str, Any] | None:
     """Handle built-in shim side effects for tools that need local mutable-state emulation."""
 
     if tool_name == "gh":
-        return _handle_builtin_gh(argv, stdin_text, state)
+        return _handle_builtin_gh(argv, state)
     return None
 
 
 def _handle_builtin_gh(
     argv: list[str],
-    stdin_text: str,
     state: dict[str, Any],
 ) -> dict[str, Any] | None:
     """Handle the small GitHub CLI subset that must mutate local Git state in harness runs."""
@@ -317,14 +314,17 @@ def _handle_builtin_gh(
         return None
     method, endpoint = parsed
     if method == "POST" and endpoint.endswith("/git/tags"):
+        stdin_text = sys.stdin.read()
         payload = json.loads(stdin_text or "{}")
         fake_sha = _store_builtin_gh_tag_object(state, payload)
         return {"stdout": json.dumps({"sha": fake_sha})}
     if method == "POST" and endpoint.endswith("/git/refs"):
+        stdin_text = sys.stdin.read()
         payload = json.loads(stdin_text or "{}")
         _apply_builtin_gh_tag_ref(state, endpoint, payload, force=False)
         return {"stdout": json.dumps({"ref": payload.get("ref", "")})}
     if method == "PATCH" and "/git/refs/tags/" in endpoint:
+        stdin_text = sys.stdin.read()
         payload = json.loads(stdin_text or "{}")
         _apply_builtin_gh_tag_ref(state, endpoint, payload, force=True)
         return {"stdout": json.dumps({"ref": f"refs/tags/{endpoint.rsplit('/', 1)[-1]}"})}

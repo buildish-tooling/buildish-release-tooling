@@ -322,6 +322,66 @@ class HarnessIntegrationTest(unittest.TestCase):
         self.assertIn("Verify GitHub checks for source ref 1.2.3", summary_text)
         self.assertIn("checks passed", summary_text)
 
+    def test_scripted_gh_shim_does_not_block_on_open_stdin(self) -> None:
+        """Scripted `gh` responses should not wait for stdin EOF when no builtin payload is needed."""
+
+        state_path = self.sandbox_dir / "shim-state.json"
+        trace_path = self.sandbox_dir / "trace.jsonl"
+        state_path.write_text(
+            json.dumps(
+                {
+                    "workspace_root": str(self.sandbox_dir),
+                    "trace_file": str(trace_path),
+                    "tool_behaviors": {
+                        "gh": [
+                            {
+                                "match": {"argv": ["api", "repos/demo"]},
+                                "result": {"stdout": "{\"ok\":true}\n"},
+                            }
+                        ]
+                    },
+                    "counts": {},
+                    "env_capture": [],
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+
+        shim_process = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "apache_buildish_release_tooling.harness.shim_entrypoint",
+                "gh",
+                "api",
+                "repos/demo",
+            ],
+            cwd=str(self.sandbox_dir),
+            env=tool_env({"BUILDISH_HARNESS_STATE_FILE": str(state_path)}),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        try:
+            exit_code = shim_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            shim_process.kill()
+            shim_process.communicate(timeout=5)
+            self.fail("scripted gh shim blocked while waiting for stdin EOF")
+
+        stdout, stderr = shim_process.communicate(timeout=1)
+        self.assertEqual(0, exit_code)
+        self.assertEqual("{\"ok\":true}\n", stdout)
+        self.assertEqual("", stderr)
+        trace = [json.loads(line) for line in trace_path.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(1, len(trace))
+        self.assertEqual("gh", trace[0]["tool"])
+        self.assertEqual(["api", "repos/demo"], trace[0]["argv"])
+
     def test_uv_shim_preserves_summary_capture_through_bash_shim(self) -> None:
         """The `bash` shim must not truncate summaries when the `uv` shim runs beneath it."""
 
