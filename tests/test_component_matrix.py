@@ -270,4 +270,5 @@ class ComponentMatrixIntegrationTest(unittest.TestCase):
             check=False,
         )
         self.assertEqual(2, completed.returncode)
-        self.assertIn("unsupported release-tooling command", completed.stderr)
+        self.assertIn("unsupported-command", completed.stderr)
+        self.assertIn("invalid choice", completed.stderr)
