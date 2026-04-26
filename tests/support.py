@@ -276,6 +276,9 @@ def cli_env(
     env = {
         "MANIFEST_PATH": str(manifest_path),
         "GITHUB_STEP_SUMMARY": str(manifest_path.with_suffix(".summary.md")),
+        # Keep CLI integration tests deterministic even when the parent process is a GitHub runner.
+        "GITHUB_RUN_ID": "",
+        "GITHUB_RUN_ATTEMPT": "",
     }
     if extra_env is not None:
         env.update(extra_env)

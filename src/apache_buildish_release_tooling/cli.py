@@ -24,6 +24,7 @@ from pathlib import Path
 from apache_buildish_release_tooling import commands
 
 CommandHandler = Callable[[argparse.Namespace], Path | None]
+Subparsers = argparse._SubParsersAction
 
 
 def _common_parser() -> argparse.ArgumentParser:
@@ -42,15 +43,50 @@ def _common_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def build_parser() -> argparse.ArgumentParser:
-    """Build the top-level argparse parser for the tool."""
+def _add_command_parser(
+    subparsers: Subparsers,
+    common: argparse.ArgumentParser,
+    name: str,
+    *,
+    help_text: str,
+    handler: CommandHandler,
+) -> argparse.ArgumentParser:
+    parser = subparsers.add_parser(name, parents=[common], help=help_text)
+    parser.set_defaults(handler=handler)
+    return parser
 
-    parser = argparse.ArgumentParser(prog="buildish-release-tooling")
-    common = _common_parser()
-    subparsers = parser.add_subparsers(dest="command", required=True)
 
-    create_release_branch = subparsers.add_parser(
-        "create-release-branch", parents=[common], help="Create or plan a release branch."
+def _add_version_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("version")
+
+
+def _add_optional_source_sha_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("source_sha", nargs="?")
+
+
+def _add_version_and_optional_source_sha_arguments(parser: argparse.ArgumentParser) -> None:
+    _add_version_argument(parser)
+    _add_optional_source_sha_argument(parser)
+
+
+def _add_rc_tag_argument(parser: argparse.ArgumentParser, help_text: str) -> None:
+    parser.add_argument("--rc-tag", dest="rc_tag", help=help_text)
+
+
+def _add_selected_rc_tag_argument(parser: argparse.ArgumentParser, help_text: str) -> None:
+    parser.add_argument("--selected-rc-tag", dest="selected_rc_tag", help=help_text)
+
+
+def _register_source_selection_commands(
+    subparsers: Subparsers,
+    common: argparse.ArgumentParser,
+) -> None:
+    create_release_branch = _add_command_parser(
+        subparsers,
+        common,
+        "create-release-branch",
+        help_text="Create or plan a release branch.",
+        handler=commands.run_create_release_branch,
     )
     create_release_branch.add_argument(
         "--apply",
@@ -60,67 +96,71 @@ def build_parser() -> argparse.ArgumentParser:
     )
     create_release_branch.add_argument("release_line")
     create_release_branch.add_argument("source_ref", nargs="?", default="main")
-    create_release_branch.set_defaults(handler=commands.run_create_release_branch)
 
-    verify_source_ref_checks = subparsers.add_parser(
+    verify_source_ref_checks = _add_command_parser(
+        subparsers,
+        common,
         "verify-source-ref-checks",
-        parents=[common],
-        help="Verify GitHub checks on the resolved source ref.",
+        help_text="Verify GitHub checks on the resolved source ref.",
+        handler=commands.run_verify_source_ref_checks,
     )
-    verify_source_ref_checks.add_argument("version")
-    verify_source_ref_checks.add_argument("source_sha", nargs="?")
-    verify_source_ref_checks.set_defaults(handler=commands.run_verify_source_ref_checks)
+    _add_version_and_optional_source_sha_arguments(verify_source_ref_checks)
 
-    prepare_rc = subparsers.add_parser(
-        "prepare-rc", parents=[common], help="Resolve shared RC state and emit vote summaries."
+    prepare_rc = _add_command_parser(
+        subparsers,
+        common,
+        "prepare-rc",
+        help_text="Resolve shared RC state and emit vote summaries.",
+        handler=commands.run_prepare_rc,
     )
-    prepare_rc.add_argument("version")
-    prepare_rc.add_argument("source_sha", nargs="?")
-    prepare_rc.set_defaults(handler=commands.run_prepare_rc)
+    _add_version_and_optional_source_sha_arguments(prepare_rc)
 
-    cleanup_dev_svn_rcs = subparsers.add_parser(
+    cleanup_dev_svn_rcs = _add_command_parser(
+        subparsers,
+        common,
         "cleanup-dev-svn-rcs",
-        parents=[common],
-        help="Delete pre-existing RC directories for one version from ASF SVN dev dist.",
+        help_text="Delete pre-existing RC directories for one version from ASF SVN dev dist.",
+        handler=commands.run_cleanup_dev_svn_rcs,
     )
-    cleanup_dev_svn_rcs.add_argument("version")
-    cleanup_dev_svn_rcs.set_defaults(handler=commands.run_cleanup_dev_svn_rcs)
+    _add_version_argument(cleanup_dev_svn_rcs)
 
-    create_source_artifact = subparsers.add_parser(
+    create_source_artifact = _add_command_parser(
+        subparsers,
+        common,
         "create-source-artifact",
-        parents=[common],
-        help="Build a reproducible source artifact from Git.",
+        help_text="Build a reproducible source artifact from Git.",
+        handler=commands.run_create_source_artifact,
     )
-    create_source_artifact.add_argument("version")
-    create_source_artifact.add_argument("source_sha", nargs="?")
-    create_source_artifact.set_defaults(handler=commands.run_create_source_artifact)
+    _add_version_and_optional_source_sha_arguments(create_source_artifact)
 
-    build_source_rc = subparsers.add_parser(
+    build_source_rc = _add_command_parser(
+        subparsers,
+        common,
         "build-source-rc",
-        parents=[common],
-        help="Build, sign, and stage a source RC.",
+        help_text="Build, sign, and stage a source RC.",
+        handler=commands.run_build_source_rc,
     )
-    build_source_rc.add_argument(
-        "--rc-tag",
-        dest="rc_tag",
-        help="Exact RC tag to use for this run. Required to keep later reruns on the same RC within one workflow.",
+    _add_rc_tag_argument(
+        build_source_rc,
+        "Exact RC tag to use for this run. Required to keep later reruns on the same RC within one workflow.",
     )
-    build_source_rc.add_argument("version")
-    build_source_rc.add_argument("source_sha", nargs="?")
-    build_source_rc.set_defaults(handler=commands.run_build_source_rc)
+    _add_version_and_optional_source_sha_arguments(build_source_rc)
 
-    materialize_rc_git_content = subparsers.add_parser(
+
+def _register_materialization_commands(
+    subparsers: Subparsers,
+    common: argparse.ArgumentParser,
+) -> None:
+    materialize_rc_git_content = _add_command_parser(
+        subparsers,
+        common,
         "materialize-rc-git-content",
-        parents=[common],
-        help=(
-            "Build release-only Git content in a detached worktree and emit one "
-            "materialized commit."
-        ),
+        help_text="Build release-only Git content in a detached worktree and emit one materialized commit.",
+        handler=commands.run_materialize_rc_git_content,
     )
-    materialize_rc_git_content.add_argument(
-        "--rc-tag",
-        dest="rc_tag",
-        help="Exact RC tag whose detached materialization commit is being prepared.",
+    _add_rc_tag_argument(
+        materialize_rc_git_content,
+        "Exact RC tag whose detached materialization commit is being prepared.",
     )
     materialize_rc_git_content.add_argument(
         "--materialized-path",
@@ -150,20 +190,16 @@ def build_parser() -> argparse.ArgumentParser:
             "staging the materialized paths."
         ),
     )
-    materialize_rc_git_content.add_argument("version")
-    materialize_rc_git_content.add_argument("source_sha", nargs="?")
-    materialize_rc_git_content.set_defaults(handler=commands.run_materialize_rc_git_content)
+    _add_version_and_optional_source_sha_arguments(materialize_rc_git_content)
 
-    create_rc_materialization_tag = subparsers.add_parser(
+    create_rc_materialization_tag = _add_command_parser(
+        subparsers,
+        common,
         "create-rc-materialization-tag",
-        parents=[common],
-        help="Create the RC tag on the source commit or on a detached materialization commit.",
+        help_text="Create the RC tag on the source commit or on a detached materialization commit.",
+        handler=commands.run_create_rc_materialization_tag,
     )
-    create_rc_materialization_tag.add_argument(
-        "--rc-tag",
-        dest="rc_tag",
-        help="Exact RC tag to create or reuse for this run.",
-    )
+    _add_rc_tag_argument(create_rc_materialization_tag, "Exact RC tag to create or reuse for this run.")
     create_rc_materialization_tag.add_argument(
         "--target-commit",
         dest="target_commit",
@@ -174,73 +210,133 @@ def build_parser() -> argparse.ArgumentParser:
         dest="cleanup_materialized_ref_name",
         help="Optional temporary remote ref name to delete after RC tag creation.",
     )
-    create_rc_materialization_tag.add_argument("version")
-    create_rc_materialization_tag.add_argument("source_sha", nargs="?")
-    create_rc_materialization_tag.set_defaults(handler=commands.run_create_rc_materialization_tag)
+    _add_version_and_optional_source_sha_arguments(create_rc_materialization_tag)
 
-    publish_source_release_svn = subparsers.add_parser(
+    finalize_rc_vote_materials = _add_command_parser(
+        subparsers,
+        common,
+        "finalize-rc-vote-materials",
+        help_text="Build, sign, stage, and mirror the authoritative RC vote-manifest.",
+        handler=commands.run_finalize_rc_vote_materials,
+    )
+    finalize_rc_vote_materials.add_argument(
+        "--secondary-artifact-manifest",
+        dest="secondary_artifact_manifests",
+        action="append",
+        default=[],
+        help="JSON manifest containing generic secondary_artifacts entries to include in the RC vote-manifest.",
+    )
+    _add_rc_tag_argument(
+        finalize_rc_vote_materials,
+        "Exact RC tag whose vote-manifest should be generated.",
+    )
+    _add_version_and_optional_source_sha_arguments(finalize_rc_vote_materials)
+
+
+def _register_publication_commands(
+    subparsers: Subparsers,
+    common: argparse.ArgumentParser,
+) -> None:
+    publish_source_release_svn = _add_command_parser(
+        subparsers,
+        common,
         "publish-source-release-svn",
-        parents=[common],
-        help="Promote the latest RC source directory from ASF dev dist into release dist.",
+        help_text="Promote the latest RC source directory from ASF dev dist into release dist.",
+        handler=commands.run_publish_source_release_svn,
     )
-    publish_source_release_svn.add_argument(
-        "--selected-rc-tag",
-        dest="selected_rc_tag",
-        help="Exact RC tag that this release-version workflow run is allowed to publish.",
+    _add_selected_rc_tag_argument(
+        publish_source_release_svn,
+        "Exact RC tag that this release-version workflow run is allowed to publish.",
     )
-    publish_source_release_svn.add_argument("version")
-    publish_source_release_svn.set_defaults(handler=commands.run_publish_source_release_svn)
+    _add_version_argument(publish_source_release_svn)
 
-    prune_older_line_releases = subparsers.add_parser(
+    prune_older_line_releases = _add_command_parser(
+        subparsers,
+        common,
         "prune-older-line-releases",
-        parents=[common],
-        help="Delete older same-line releases from ASF release dist.",
+        help_text="Delete older same-line releases from ASF release dist.",
+        handler=commands.run_prune_older_line_releases,
     )
-    prune_older_line_releases.add_argument("version")
-    prune_older_line_releases.set_defaults(handler=commands.run_prune_older_line_releases)
+    _add_version_argument(prune_older_line_releases)
 
-    create_final_tag = subparsers.add_parser(
+    create_final_tag = _add_command_parser(
+        subparsers,
+        common,
         "create-final-tag",
-        parents=[common],
-        help="Create the immutable exact final Git tag for a version.",
+        help_text="Create the immutable exact final Git tag for a version.",
+        handler=commands.run_create_final_tag,
     )
-    create_final_tag.add_argument(
-        "--selected-rc-tag",
-        dest="selected_rc_tag",
-        help="Exact RC tag that this release-version workflow run is allowed to finalize.",
+    _add_selected_rc_tag_argument(
+        create_final_tag,
+        "Exact RC tag that this release-version workflow run is allowed to finalize.",
     )
-    create_final_tag.add_argument("version")
-    create_final_tag.set_defaults(handler=commands.run_create_final_tag)
+    _add_version_argument(create_final_tag)
 
-    update_moving_tags = subparsers.add_parser(
+    finalize_draft_github_release = _add_command_parser(
+        subparsers,
+        common,
+        "finalize-draft-github-release",
+        help_text="Publish the existing draft GitHub Release for a final version.",
+        handler=commands.run_finalize_draft_github_release,
+    )
+    _add_selected_rc_tag_argument(
+        finalize_draft_github_release,
+        "Exact RC tag that this release-version workflow run is allowed to publish.",
+    )
+    _add_version_argument(finalize_draft_github_release)
+
+    sync_draft_github_release = _add_command_parser(
+        subparsers,
+        common,
+        "sync-draft-github-release",
+        help_text="Create or recreate the draft GitHub Release placeholder for one version.",
+        handler=commands.run_sync_draft_github_release,
+    )
+    _add_rc_tag_argument(
+        sync_draft_github_release,
+        "Exact RC tag to record in the draft GitHub Release for this run.",
+    )
+    _add_version_and_optional_source_sha_arguments(sync_draft_github_release)
+
+
+def _register_release_metadata_commands(
+    subparsers: Subparsers,
+    common: argparse.ArgumentParser,
+) -> None:
+    update_moving_tags = _add_command_parser(
+        subparsers,
+        common,
         "update-moving-tags",
-        parents=[common],
-        help="Move Git tag-backed moving aliases such as GitHub Action major/minor tags.",
+        help_text="Move Git tag-backed moving aliases such as GitHub Action major/minor tags.",
+        handler=commands.run_update_moving_tags,
     )
-    update_moving_tags.add_argument("version")
-    update_moving_tags.set_defaults(handler=commands.run_update_moving_tags)
+    _add_version_argument(update_moving_tags)
 
-    update_moving_image_aliases = subparsers.add_parser(
+    update_moving_image_aliases = _add_command_parser(
+        subparsers,
+        common,
         "update-moving-image-aliases",
-        parents=[common],
-        help="Resolve the moving container-image aliases for a version.",
+        help_text="Resolve the moving container-image aliases for a version.",
+        handler=commands.run_update_moving_image_aliases,
     )
-    update_moving_image_aliases.add_argument("version")
-    update_moving_image_aliases.set_defaults(handler=commands.run_update_moving_image_aliases)
+    _add_version_argument(update_moving_image_aliases)
 
-    publish_dockerhub_moving_tags = subparsers.add_parser(
+    publish_dockerhub_moving_tags = _add_command_parser(
+        subparsers,
+        common,
         "publish-dockerhub-moving-tags",
-        parents=[common],
-        help="Publish Docker Hub moving aliases that point at an already-pushed exact image.",
+        help_text="Publish Docker Hub moving aliases that point at an already-pushed exact image.",
+        handler=commands.run_publish_dockerhub_moving_tags,
     )
-    publish_dockerhub_moving_tags.add_argument("version")
+    _add_version_argument(publish_dockerhub_moving_tags)
     publish_dockerhub_moving_tags.add_argument("source_image")
-    publish_dockerhub_moving_tags.set_defaults(handler=commands.run_publish_dockerhub_moving_tags)
 
-    attach_github_release_assets = subparsers.add_parser(
+    attach_github_release_assets = _add_command_parser(
+        subparsers,
+        common,
         "attach-github-release-assets",
-        parents=[common],
-        help="Attach convenience assets and optional sidecars to a GitHub Release.",
+        help_text="Attach convenience assets and optional sidecars to a GitHub Release.",
+        handler=commands.run_attach_github_release_assets,
     )
     attach_github_release_assets.add_argument(
         "--sign",
@@ -255,71 +351,38 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Generate and attach checksum sidecars for each asset.",
     )
-    attach_github_release_assets.add_argument("version")
+    _add_version_argument(attach_github_release_assets)
     attach_github_release_assets.add_argument("assets", nargs="+")
-    attach_github_release_assets.set_defaults(handler=commands.run_attach_github_release_assets)
 
-    finalize_draft_github_release = subparsers.add_parser(
-        "finalize-draft-github-release",
-        parents=[common],
-        help="Publish the existing draft GitHub Release for a final version.",
-    )
-    finalize_draft_github_release.add_argument(
-        "--selected-rc-tag",
-        dest="selected_rc_tag",
-        help="Exact RC tag that this release-version workflow run is allowed to publish.",
-    )
-    finalize_draft_github_release.add_argument("version")
-    finalize_draft_github_release.set_defaults(handler=commands.run_finalize_draft_github_release)
-
-    sync_draft_github_release = subparsers.add_parser(
-        "sync-draft-github-release",
-        parents=[common],
-        help="Create or recreate the draft GitHub Release placeholder for one version.",
-    )
-    sync_draft_github_release.add_argument(
-        "--rc-tag",
-        dest="rc_tag",
-        help="Exact RC tag to record in the draft GitHub Release for this run.",
-    )
-    sync_draft_github_release.add_argument("version")
-    sync_draft_github_release.add_argument("source_sha", nargs="?")
-    sync_draft_github_release.set_defaults(handler=commands.run_sync_draft_github_release)
-
-    finalize_rc_vote_materials = subparsers.add_parser(
-        "finalize-rc-vote-materials",
-        parents=[common],
-        help="Build, sign, stage, and mirror the authoritative RC vote-manifest.",
-    )
-    finalize_rc_vote_materials.add_argument(
-        "--secondary-artifact-manifest",
-        dest="secondary_artifact_manifests",
-        action="append",
-        default=[],
-        help="JSON manifest containing generic secondary_artifacts entries to include in the RC vote-manifest.",
-    )
-    finalize_rc_vote_materials.add_argument(
-        "--rc-tag",
-        dest="rc_tag",
-        help="Exact RC tag whose vote-manifest should be generated.",
-    )
-    finalize_rc_vote_materials.add_argument("version")
-    finalize_rc_vote_materials.add_argument("source_sha", nargs="?")
-    finalize_rc_vote_materials.set_defaults(handler=commands.run_finalize_rc_vote_materials)
-
-    release_version = subparsers.add_parser(
+    release_version = _add_command_parser(
+        subparsers,
+        common,
         "release-version",
-        parents=[common],
-        help="Resolve final release state and alias plans.",
+        help_text="Resolve final release state and alias plans.",
+        handler=commands.run_release_version,
     )
-    release_version.add_argument("version")
-    release_version.set_defaults(handler=commands.run_release_version)
+    _add_version_argument(release_version)
 
-    verify_rc = subparsers.add_parser(
-        "verify-rc", parents=[common], help="Emit authoritative RC verification instructions."
+    verify_rc = _add_command_parser(
+        subparsers,
+        common,
+        "verify-rc",
+        help_text="Emit authoritative RC verification instructions.",
+        handler=commands.run_verify_rc,
     )
-    verify_rc.add_argument("version")
-    verify_rc.set_defaults(handler=commands.run_verify_rc)
+    _add_version_argument(verify_rc)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the top-level argparse parser for the tool."""
+
+    parser = argparse.ArgumentParser(prog="buildish-release-tooling")
+    common = _common_parser()
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    _register_source_selection_commands(subparsers, common)
+    _register_materialization_commands(subparsers, common)
+    _register_publication_commands(subparsers, common)
+    _register_release_metadata_commands(subparsers, common)
 
     return parser
 
