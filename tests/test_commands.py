@@ -32,8 +32,8 @@ from pathlib import Path
 from typing import Any, cast
 from unittest import mock
 
-from apache_buildish_release_tooling.asf_svn import AsfSvnClient
-from apache_buildish_release_tooling.git_materialization import (
+from apache_buildish_release_tooling.release.asf_svn import AsfSvnClient
+from apache_buildish_release_tooling.release.git_materialization import (
     delete_remote_ref_best_effort,
     push_remote_ref,
 )
@@ -127,7 +127,7 @@ class CommandCredentialHandlingUnitTest(unittest.TestCase):
         with (
             mock.patch.dict(os.environ, {"GITHUB_TOKEN": "gh-secret-token"}, clear=False),
             mock.patch(
-                "apache_buildish_release_tooling.git_materialization.run_logged_command",
+                "apache_buildish_release_tooling.release.git_materialization.run_logged_command",
                 side_effect=fake_run_logged_command,
             ),
         ):
@@ -175,7 +175,7 @@ class CommandCredentialHandlingUnitTest(unittest.TestCase):
         with (
             mock.patch.dict(os.environ, {"GH_TOKEN": "gh-secret-token"}, clear=False),
             mock.patch(
-                "apache_buildish_release_tooling.git_materialization.run_logged_command",
+                "apache_buildish_release_tooling.release.git_materialization.run_logged_command",
                 side_effect=fake_run_logged_command,
             ),
         ):

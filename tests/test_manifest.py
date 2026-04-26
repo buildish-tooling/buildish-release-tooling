@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from apache_buildish_release_tooling.manifest import write_manifest
+from apache_buildish_release_tooling.release.manifest import write_manifest
 
 from tests.support import cleanup_sandbox, create_build_test_sandbox
 

@@ -19,38 +19,38 @@ from __future__ import annotations
 from argparse import Namespace
 from pathlib import Path
 
-from apache_buildish_release_tooling.asf_svn import AsfSvnClient, url_join
-from apache_buildish_release_tooling.email_templates import (
+from apache_buildish_release_tooling.release.asf_svn import AsfSvnClient, url_join
+from apache_buildish_release_tooling.release.email_templates import (
     render_announce_email,
     render_project_vote_result_email,
 )
-from apache_buildish_release_tooling.git_repo import GitRepository
-from apache_buildish_release_tooling.github_checks import resolve_repository_slug
-from apache_buildish_release_tooling.github_release_selection import (
+from apache_buildish_release_tooling.release.git_repo import GitRepository
+from apache_buildish_release_tooling.release.github_checks import resolve_repository_slug
+from apache_buildish_release_tooling.release.github_release_selection import (
     asset_release_url,
     matching_draft_releases,
     plan_draft_release_sync,
     selected_github_release,
     upsert_draft_release,
 )
-from apache_buildish_release_tooling.github_releases import (
+from apache_buildish_release_tooling.release.github_releases import (
     delete_release,
     delete_release_asset,
     list_releases,
     release_asset_ids_by_names,
     update_release,
 )
-from apache_buildish_release_tooling.manifest import write_manifest
-from apache_buildish_release_tooling.models import CommandContext, PrepareRcState
-from apache_buildish_release_tooling.rc_vote_verification import (
+from apache_buildish_release_tooling.release.manifest import write_manifest
+from apache_buildish_release_tooling.release.models import CommandContext, PrepareRcState
+from apache_buildish_release_tooling.release.rc_vote_verification import (
     required_rc_vote_manifest_file_names,
     required_source_release_file_names,
     verify_staged_source_release_against_vote_manifest,
 )
-from apache_buildish_release_tooling.release_state import derive_final_tag, require_semantic_version
-from apache_buildish_release_tooling.summary import SummaryWriter
+from apache_buildish_release_tooling.release.release_state import derive_final_tag, require_semantic_version
+from apache_buildish_release_tooling.release.summary import SummaryWriter
 
-from apache_buildish_release_tooling.commands._shared import (
+from apache_buildish_release_tooling.release.commands._shared import (
     _context,
     _create_or_reuse_annotated_tag,
     _latest_rc_directory_name,

@@ -16,9 +16,9 @@
 
 from __future__ import annotations
 
-from apache_buildish_release_tooling.git_repo import GitRepository
-from apache_buildish_release_tooling.models import ComponentConfig, PrepareRcState
-from apache_buildish_release_tooling.release_state import (
+from apache_buildish_release_tooling.release.git_repo import GitRepository
+from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
+from apache_buildish_release_tooling.release.release_state import (
     derive_final_tag,
     derive_rc_tag,
     require_semantic_version,

@@ -20,7 +20,7 @@ import hashlib
 import subprocess
 from pathlib import Path
 
-from apache_buildish_release_tooling.command_logging import print_command
+from apache_buildish_release_tooling.release.command_logging import print_command
 
 _SUPPORTED_CHECKSUM_ALGORITHMS = frozenset({"sha256", "sha512"})
 

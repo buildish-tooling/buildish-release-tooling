@@ -14,21 +14,21 @@
 
 """Command handlers and orchestration helpers for the `buildish-release-tooling` CLI."""
 
-from apache_buildish_release_tooling.commands.branching import (
+from apache_buildish_release_tooling.release.commands.branching import (
     run_create_release_branch,
     run_verify_source_ref_checks,
 )
-from apache_buildish_release_tooling.commands.materialization import (
+from apache_buildish_release_tooling.release.commands.materialization import (
     run_create_rc_materialization_tag,
     run_materialize_rc_git_content,
 )
-from apache_buildish_release_tooling.commands.rc_preparation import (
+from apache_buildish_release_tooling.release.commands.rc_preparation import (
     run_build_source_rc,
     run_cleanup_dev_svn_rcs,
     run_create_source_artifact,
     run_prepare_rc,
 )
-from apache_buildish_release_tooling.commands.release_publication import (
+from apache_buildish_release_tooling.release.commands.release_publication import (
     run_create_final_tag,
     run_finalize_draft_github_release,
     run_prune_older_line_releases,
@@ -37,13 +37,13 @@ from apache_buildish_release_tooling.commands.release_publication import (
     run_sync_draft_github_release,
     run_verify_rc,
 )
-from apache_buildish_release_tooling.commands.secondary_targets import (
+from apache_buildish_release_tooling.release.commands.secondary_targets import (
     run_attach_github_release_assets,
     run_publish_dockerhub_moving_tags,
     run_update_moving_image_aliases,
     run_update_moving_tags,
 )
-from apache_buildish_release_tooling.commands.vote_materials import (
+from apache_buildish_release_tooling.release.commands.vote_materials import (
     run_finalize_rc_vote_materials,
 )
 

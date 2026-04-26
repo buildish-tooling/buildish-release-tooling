@@ -20,15 +20,15 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from apache_buildish_release_tooling.git_repo import GitRepository
-from apache_buildish_release_tooling.github_checks import resolve_repository_slug
-from apache_buildish_release_tooling.github_releases import (
+from apache_buildish_release_tooling.release.git_repo import GitRepository
+from apache_buildish_release_tooling.release.github_checks import resolve_repository_slug
+from apache_buildish_release_tooling.release.github_releases import (
     create_draft_release,
     list_releases,
     update_release,
 )
-from apache_buildish_release_tooling.models import PrepareRcState
-from apache_buildish_release_tooling.release_state import derive_final_tag, require_semantic_version
+from apache_buildish_release_tooling.release.models import PrepareRcState
+from apache_buildish_release_tooling.release.release_state import derive_final_tag, require_semantic_version
 
 
 @dataclass(frozen=True)

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import unittest
 
-from apache_buildish_release_tooling.config import load_component_config
+from apache_buildish_release_tooling.release.config import load_component_config
 
 from tests.support import cleanup_sandbox, create_build_test_sandbox, fixture_component_config_path
 

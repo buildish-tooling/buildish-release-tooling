@@ -21,7 +21,7 @@ import subprocess
 import unittest
 from unittest import mock
 
-from apache_buildish_release_tooling import github_git_refs
+from apache_buildish_release_tooling.release import github_git_refs
 
 
 class GitHubGitRefsTest(unittest.TestCase):
@@ -29,7 +29,7 @@ class GitHubGitRefsTest(unittest.TestCase):
 
     def test_create_annotated_tag_object_posts_expected_payload(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.github_git_refs.run_logged_command",
+            "apache_buildish_release_tooling.release.github_git_refs.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, json.dumps({"sha": "tag-object-sha"}), ""),
         ) as run_command:
             actual = github_git_refs.create_annotated_tag_object(
@@ -63,7 +63,7 @@ class GitHubGitRefsTest(unittest.TestCase):
 
     def test_create_ref_posts_expected_payload(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.github_git_refs.run_logged_command",
+            "apache_buildish_release_tooling.release.github_git_refs.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, json.dumps({"ref": "refs/tags/v1.2.3"}), ""),
         ) as run_command:
             actual = github_git_refs.create_ref(
@@ -94,7 +94,7 @@ class GitHubGitRefsTest(unittest.TestCase):
 
     def test_update_ref_posts_expected_payload(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.github_git_refs.run_logged_command",
+            "apache_buildish_release_tooling.release.github_git_refs.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, json.dumps({"ref": "refs/tags/v1"}), ""),
         ) as run_command:
             actual = github_git_refs.update_ref(

@@ -20,7 +20,7 @@ from argparse import Namespace
 from dataclasses import dataclass
 from pathlib import Path
 
-from apache_buildish_release_tooling.git_materialization import (
+from apache_buildish_release_tooling.release.git_materialization import (
     add_detached_worktree,
     default_materialized_ref_name,
     delete_remote_ref_best_effort,
@@ -31,13 +31,13 @@ from apache_buildish_release_tooling.git_materialization import (
     validate_full_ref_name,
     validate_materialized_paths,
 )
-from apache_buildish_release_tooling.git_repo import GitRepository
-from apache_buildish_release_tooling.manifest import write_manifest
-from apache_buildish_release_tooling.models import CommandContext, PrepareRcState
-from apache_buildish_release_tooling.process import run_logged_command
-from apache_buildish_release_tooling.summary import SummaryWriter
+from apache_buildish_release_tooling.release.git_repo import GitRepository
+from apache_buildish_release_tooling.release.manifest import write_manifest
+from apache_buildish_release_tooling.release.models import CommandContext, PrepareRcState
+from apache_buildish_release_tooling.release.process import run_logged_command
+from apache_buildish_release_tooling.release.summary import SummaryWriter
 
-from apache_buildish_release_tooling.commands._shared import (
+from apache_buildish_release_tooling.release.commands._shared import (
     _append_github_outputs,
     _context,
     _create_or_reuse_annotated_tag,

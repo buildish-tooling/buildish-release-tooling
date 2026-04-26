@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from apache_buildish_release_tooling.process import run_logged_command
+from apache_buildish_release_tooling.release.process import run_logged_command
 
 
 @dataclass(frozen=True, slots=True)

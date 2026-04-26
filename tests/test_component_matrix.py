@@ -22,7 +22,7 @@ import unittest
 from dataclasses import dataclass
 from pathlib import Path
 
-from apache_buildish_release_tooling.asf_svn import AsfSvnClient
+from apache_buildish_release_tooling.release.asf_svn import AsfSvnClient
 
 from tests.support import (
     cli_env,

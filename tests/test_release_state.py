@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import unittest
 
-from apache_buildish_release_tooling.release_state import (
+from apache_buildish_release_tooling.release.release_state import (
     compare_versions,
     derive_specific_release_line,
     derive_moving_tags,

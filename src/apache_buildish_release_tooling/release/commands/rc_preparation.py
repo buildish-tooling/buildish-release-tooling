@@ -19,21 +19,21 @@ from __future__ import annotations
 from argparse import Namespace
 from pathlib import Path
 
-from apache_buildish_release_tooling.asf_svn import AsfSvnClient, url_join
-from apache_buildish_release_tooling.git_repo import GitRepository
-from apache_buildish_release_tooling.gpg_signing import (
+from apache_buildish_release_tooling.release.asf_svn import AsfSvnClient, url_join
+from apache_buildish_release_tooling.release.git_repo import GitRepository
+from apache_buildish_release_tooling.release.gpg_signing import (
     detached_ascii_sign,
     import_private_key_from_secret,
 )
-from apache_buildish_release_tooling.manifest import write_manifest
-from apache_buildish_release_tooling.source_artifact import (
+from apache_buildish_release_tooling.release.manifest import write_manifest
+from apache_buildish_release_tooling.release.source_artifact import (
     create_from_git,
     sha512,
     write_sha512_file,
 )
-from apache_buildish_release_tooling.summary import SummaryWriter
+from apache_buildish_release_tooling.release.summary import SummaryWriter
 
-from apache_buildish_release_tooling.commands._shared import (
+from apache_buildish_release_tooling.release.commands._shared import (
     _append_github_outputs,
     _artifact_output_dir,
     _context,

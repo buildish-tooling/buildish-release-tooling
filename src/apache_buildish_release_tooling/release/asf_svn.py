@@ -21,7 +21,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from apache_buildish_release_tooling.process import run_logged_command
+from apache_buildish_release_tooling.release.process import run_logged_command
 
 
 def url_join(base_url: str, *parts: str) -> str:

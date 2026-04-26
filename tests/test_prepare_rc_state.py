@@ -19,14 +19,14 @@ from __future__ import annotations
 import unittest
 from typing import cast
 
-from apache_buildish_release_tooling.models import ComponentConfig
-from apache_buildish_release_tooling.prepare_rc_state import (
+from apache_buildish_release_tooling.release.models import ComponentConfig
+from apache_buildish_release_tooling.release.prepare_rc_state import (
     prepare_rc_source_artifact_name,
     prepare_rc_source_artifact_prefix_path,
     prepare_rc_source_artifact_root_name,
     resolve_prepare_rc_state,
 )
-from apache_buildish_release_tooling.git_repo import GitRepository
+from apache_buildish_release_tooling.release.git_repo import GitRepository
 
 
 class PrepareRcStateTest(unittest.TestCase):

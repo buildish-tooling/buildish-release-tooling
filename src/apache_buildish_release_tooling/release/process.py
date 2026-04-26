@@ -21,7 +21,7 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from apache_buildish_release_tooling.command_logging import format_command, print_command
+from apache_buildish_release_tooling.release.command_logging import format_command, print_command
 
 
 class CommandExecutionError(RuntimeError):

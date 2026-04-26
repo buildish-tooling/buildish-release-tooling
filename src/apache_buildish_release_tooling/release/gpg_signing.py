@@ -20,7 +20,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from apache_buildish_release_tooling.process import run_logged_command
+from apache_buildish_release_tooling.release.process import run_logged_command
 
 _UNIX_SOCKET_PATH_LIMIT = 108
 _LONGEST_GPG_AGENT_SOCKET_NAME = "S.gpg-agent.browser"

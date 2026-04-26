@@ -18,13 +18,13 @@ from __future__ import annotations
 
 import unittest
 
-from apache_buildish_release_tooling.email_templates import (
+from apache_buildish_release_tooling.release.email_templates import (
     render_announce_email,
     render_incubator_rc_vote_email,
     render_project_rc_vote_email,
     render_project_vote_result_email,
 )
-from apache_buildish_release_tooling.models import ComponentConfig, PrepareRcState
+from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
 
 
 class EmailTemplatesTest(unittest.TestCase):

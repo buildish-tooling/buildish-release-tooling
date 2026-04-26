@@ -21,26 +21,26 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from apache_buildish_release_tooling.dockerhub import parse_image_reference, publish_moving_aliases
-from apache_buildish_release_tooling.git_repo import GitRepository
-from apache_buildish_release_tooling.github_checks import resolve_repository_slug
-from apache_buildish_release_tooling.github_release_selection import asset_release_url
-from apache_buildish_release_tooling.github_releases import (
+from apache_buildish_release_tooling.release.dockerhub import parse_image_reference, publish_moving_aliases
+from apache_buildish_release_tooling.release.git_repo import GitRepository
+from apache_buildish_release_tooling.release.github_checks import resolve_repository_slug
+from apache_buildish_release_tooling.release.github_release_selection import asset_release_url
+from apache_buildish_release_tooling.release.github_releases import (
     list_releases,
     release_by_tag,
     upload_release_assets,
 )
-from apache_buildish_release_tooling.gpg_signing import (
+from apache_buildish_release_tooling.release.gpg_signing import (
     detached_ascii_sign,
     import_private_key_from_secret,
     secret_key_fingerprint,
 )
-from apache_buildish_release_tooling.manifest import write_manifest
-from apache_buildish_release_tooling.release_state import derive_final_tag, derive_moving_tags
-from apache_buildish_release_tooling.source_artifact import checksum, write_checksum_file
-from apache_buildish_release_tooling.summary import SummaryWriter
+from apache_buildish_release_tooling.release.manifest import write_manifest
+from apache_buildish_release_tooling.release.release_state import derive_final_tag, derive_moving_tags
+from apache_buildish_release_tooling.release.source_artifact import checksum, write_checksum_file
+from apache_buildish_release_tooling.release.summary import SummaryWriter
 
-from apache_buildish_release_tooling.commands._shared import (
+from apache_buildish_release_tooling.release.commands._shared import (
     _context,
     _create_or_reuse_annotated_tag,
     _final_version_for_commit,

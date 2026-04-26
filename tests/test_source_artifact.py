@@ -22,7 +22,7 @@ import subprocess
 import tarfile
 import unittest
 
-from apache_buildish_release_tooling.source_artifact import checksum, create_from_git, write_checksum_file
+from apache_buildish_release_tooling.release.source_artifact import checksum, create_from_git, write_checksum_file
 
 from tests.support import cleanup_sandbox, create_build_test_sandbox, init_git_origin_and_clone
 

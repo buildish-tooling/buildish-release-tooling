@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 import unittest
 
-from apache_buildish_release_tooling.command_logging import format_command
+from apache_buildish_release_tooling.release.command_logging import format_command
 
 
 class CommandLoggingTest(unittest.TestCase):

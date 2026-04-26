@@ -19,8 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from apache_buildish_release_tooling.process import run_logged_command
-from apache_buildish_release_tooling.release_state import (
+from apache_buildish_release_tooling.release.process import run_logged_command
+from apache_buildish_release_tooling.release.release_state import (
     highest_existing_rc_number_or_zero,
     latest_rc_tag_from_tags,
     next_rc_number_from_tags,

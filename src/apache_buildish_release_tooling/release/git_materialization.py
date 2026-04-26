@@ -23,9 +23,9 @@ import tempfile
 from collections.abc import Iterable
 from pathlib import Path
 
-from apache_buildish_release_tooling.git_repo import GitRepository
-from apache_buildish_release_tooling.models import PrepareRcState
-from apache_buildish_release_tooling.process import CommandExecutionError, run_logged_command
+from apache_buildish_release_tooling.release.git_repo import GitRepository
+from apache_buildish_release_tooling.release.models import PrepareRcState
+from apache_buildish_release_tooling.release.process import CommandExecutionError, run_logged_command
 
 
 def validate_full_ref_name(ref_name: str) -> str:

@@ -21,7 +21,7 @@ from string import Template
 from textwrap import dedent
 from typing import Any, cast
 
-from apache_buildish_release_tooling.models import ComponentConfig, PrepareRcState
+from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
 
 
 @dataclass(frozen=True)

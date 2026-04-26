@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 
 import yaml
 
-from apache_buildish_release_tooling.models import ComponentConfig
+from apache_buildish_release_tooling.release.models import ComponentConfig
 
 _DIST_DEV_PREFIX = "https://dist.apache.org/repos/dist/dev/"
 _DIST_RELEASE_PREFIX = "https://dist.apache.org/repos/dist/release/"

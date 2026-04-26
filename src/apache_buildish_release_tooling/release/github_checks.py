@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from apache_buildish_release_tooling.process import run_logged_command
+from apache_buildish_release_tooling.release.process import run_logged_command
 
 
 def _check_runs(payload: dict[str, object]) -> list[dict[str, object]]:

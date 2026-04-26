@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 import unittest
 
-from apache_buildish_release_tooling.summary import SummaryWriter
+from apache_buildish_release_tooling.release.summary import SummaryWriter
 
 from tests.support import cleanup_sandbox, create_build_test_sandbox
 

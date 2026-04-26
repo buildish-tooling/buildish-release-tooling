@@ -22,7 +22,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from apache_buildish_release_tooling import github_releases
+from apache_buildish_release_tooling.release import github_releases
 
 
 class GitHubReleasesTest(unittest.TestCase):
@@ -30,7 +30,7 @@ class GitHubReleasesTest(unittest.TestCase):
 
     def test_list_releases_filters_to_object_entries(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.github_releases.run_logged_command",
+            "apache_buildish_release_tooling.release.github_releases.run_logged_command",
             return_value=subprocess.CompletedProcess(
                 [],
                 0,
@@ -79,7 +79,7 @@ class GitHubReleasesTest(unittest.TestCase):
 
     def test_delete_release_uses_delete_api_call(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.github_releases.run_logged_command",
+            "apache_buildish_release_tooling.release.github_releases.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, "", ""),
         ) as run_command:
             github_releases.delete_release("apache/buildish-example", 42)
@@ -98,7 +98,7 @@ class GitHubReleasesTest(unittest.TestCase):
 
     def test_delete_release_asset_uses_delete_api_call(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.github_releases.run_logged_command",
+            "apache_buildish_release_tooling.release.github_releases.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, "", ""),
         ) as run_command:
             github_releases.delete_release_asset("apache/buildish-example", 99)
@@ -117,7 +117,7 @@ class GitHubReleasesTest(unittest.TestCase):
 
     def test_create_draft_release_posts_expected_payload(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.github_releases.run_logged_command",
+            "apache_buildish_release_tooling.release.github_releases.run_logged_command",
             return_value=subprocess.CompletedProcess(
                 [],
                 0,
@@ -160,7 +160,7 @@ class GitHubReleasesTest(unittest.TestCase):
 
     def test_update_release_posts_expected_payload(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.github_releases.run_logged_command",
+            "apache_buildish_release_tooling.release.github_releases.run_logged_command",
             return_value=subprocess.CompletedProcess(
                 [],
                 0,
@@ -191,7 +191,7 @@ class GitHubReleasesTest(unittest.TestCase):
 
     def test_upload_release_assets_uses_release_upload_with_clobber(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.github_releases.run_logged_command",
+            "apache_buildish_release_tooling.release.github_releases.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, "", ""),
         ) as run_command:
             github_releases.upload_release_assets(

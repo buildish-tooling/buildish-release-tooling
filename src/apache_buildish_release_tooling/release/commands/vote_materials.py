@@ -23,27 +23,27 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from apache_buildish_release_tooling.asf_svn import AsfSvnClient
-from apache_buildish_release_tooling.email_templates import (
+from apache_buildish_release_tooling.release.asf_svn import AsfSvnClient
+from apache_buildish_release_tooling.release.email_templates import (
     render_incubator_rc_vote_email,
     render_project_rc_vote_email,
 )
-from apache_buildish_release_tooling.git_repo import GitRepository
-from apache_buildish_release_tooling.github_release_selection import SelectedGitHubRelease, selected_github_release
-from apache_buildish_release_tooling.github_releases import upload_release_assets
-from apache_buildish_release_tooling.gpg_signing import (
+from apache_buildish_release_tooling.release.git_repo import GitRepository
+from apache_buildish_release_tooling.release.github_release_selection import SelectedGitHubRelease, selected_github_release
+from apache_buildish_release_tooling.release.github_releases import upload_release_assets
+from apache_buildish_release_tooling.release.gpg_signing import (
     detached_ascii_sign,
     import_private_key_from_secret,
     secret_key_fingerprint,
 )
-from apache_buildish_release_tooling.manifest import write_manifest
-from apache_buildish_release_tooling.models import CommandContext, PrepareRcState
-from apache_buildish_release_tooling.rc_vote_manifest import build_rc_vote_manifest, read_uri_text
-from apache_buildish_release_tooling.rc_vote_verification import verified_staged_source_artifact_sha512
-from apache_buildish_release_tooling.source_artifact import sha512, write_sha512_file
-from apache_buildish_release_tooling.summary import SummaryWriter
+from apache_buildish_release_tooling.release.manifest import write_manifest
+from apache_buildish_release_tooling.release.models import CommandContext, PrepareRcState
+from apache_buildish_release_tooling.release.rc_vote_manifest import build_rc_vote_manifest, read_uri_text
+from apache_buildish_release_tooling.release.rc_vote_verification import verified_staged_source_artifact_sha512
+from apache_buildish_release_tooling.release.source_artifact import sha512, write_sha512_file
+from apache_buildish_release_tooling.release.summary import SummaryWriter
 
-from apache_buildish_release_tooling.commands._shared import (
+from apache_buildish_release_tooling.release.commands._shared import (
     _artifact_output_dir,
     _context,
     _manifest_path,

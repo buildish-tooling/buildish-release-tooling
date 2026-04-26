@@ -25,10 +25,10 @@ from typing import Any
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
-from apache_buildish_release_tooling.git_repo import GitRepository
-from apache_buildish_release_tooling.github_checks import resolve_repository_slug
-from apache_buildish_release_tooling.models import ComponentConfig, PrepareRcState
-from apache_buildish_release_tooling.release_state import derive_specific_release_line
+from apache_buildish_release_tooling.release.git_repo import GitRepository
+from apache_buildish_release_tooling.release.github_checks import resolve_repository_slug
+from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
+from apache_buildish_release_tooling.release.release_state import derive_specific_release_line
 
 
 def _tooling_repo_root() -> Path:

@@ -21,7 +21,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from apache_buildish_release_tooling.github_checks import (
+from apache_buildish_release_tooling.release.github_checks import (
     assert_ref_ready,
     resolve_repository_slug,
     total_count,
@@ -83,7 +83,7 @@ class GitHubChecksTest(unittest.TestCase):
 
     def test_resolve_repository_slug_reads_origin_url(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.github_checks.run_logged_command",
+            "apache_buildish_release_tooling.release.github_checks.run_logged_command",
             return_value=subprocess.CompletedProcess(
                 [],
                 0,
@@ -98,7 +98,7 @@ class GitHubChecksTest(unittest.TestCase):
 
     def test_resolve_repository_slug_rejects_non_github_origin(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.github_checks.run_logged_command",
+            "apache_buildish_release_tooling.release.github_checks.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, "file:///tmp/repo\n", ""),
         ):
             with self.assertRaisesRegex(ValueError, "unable to resolve GitHub repository slug"):

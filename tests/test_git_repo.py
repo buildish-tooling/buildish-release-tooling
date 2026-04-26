@@ -19,7 +19,7 @@ from __future__ import annotations
 import subprocess
 import unittest
 
-from apache_buildish_release_tooling.git_repo import GitRepository
+from apache_buildish_release_tooling.release.git_repo import GitRepository
 
 from tests.support import cleanup_sandbox, create_build_test_sandbox, fetch_git_origin_refs, init_git_origin_and_clone
 

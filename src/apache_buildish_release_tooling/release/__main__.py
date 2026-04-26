@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Compatibility CLI wrapper for the release-tooling package root."""
+"""Module entrypoint for ``python -m apache_buildish_release_tooling.release``."""
 
 from apache_buildish_release_tooling.release.cli import main
 
-__all__ = ["main"]
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -20,14 +20,14 @@ import hashlib
 import json
 from typing import Any
 
-from apache_buildish_release_tooling.github_releases import (
+from apache_buildish_release_tooling.release.github_releases import (
     download_release_asset_text,
     release_asset_ids_by_names,
 )
-from apache_buildish_release_tooling.models import CommandContext
-from apache_buildish_release_tooling.prepare_rc_state import prepare_rc_source_artifact_name
-from apache_buildish_release_tooling.rc_vote_manifest import read_uri_bytes, read_uri_text
-from apache_buildish_release_tooling.release_state import derive_final_tag
+from apache_buildish_release_tooling.release.models import CommandContext
+from apache_buildish_release_tooling.release.prepare_rc_state import prepare_rc_source_artifact_name
+from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes, read_uri_text
+from apache_buildish_release_tooling.release.release_state import derive_final_tag
 
 
 def required_source_release_file_names(source_artifact_prefix: str, version: str) -> list[str]:

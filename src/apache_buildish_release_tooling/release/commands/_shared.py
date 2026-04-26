@@ -29,22 +29,22 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from apache_buildish_release_tooling.asf_svn import AsfSvnClient
-from apache_buildish_release_tooling.config import (
+from apache_buildish_release_tooling.release.asf_svn import AsfSvnClient
+from apache_buildish_release_tooling.release.config import (
     load_component_config,
     validate_release_target_base_urls,
 )
-from apache_buildish_release_tooling.git_repo import GitRepository
-from apache_buildish_release_tooling.github_checks import resolve_repository_slug
-from apache_buildish_release_tooling.github_git_refs import (
+from apache_buildish_release_tooling.release.git_repo import GitRepository
+from apache_buildish_release_tooling.release.github_checks import resolve_repository_slug
+from apache_buildish_release_tooling.release.github_git_refs import (
     create_annotated_tag_object,
     create_ref,
     update_ref,
 )
-from apache_buildish_release_tooling.github_release_selection import selected_github_release
-from apache_buildish_release_tooling.models import CommandContext, PrepareRcState, ReleaseVersionState
-from apache_buildish_release_tooling.prepare_rc_state import resolve_prepare_rc_state
-from apache_buildish_release_tooling.release_state import (
+from apache_buildish_release_tooling.release.github_release_selection import selected_github_release
+from apache_buildish_release_tooling.release.models import CommandContext, PrepareRcState, ReleaseVersionState
+from apache_buildish_release_tooling.release.prepare_rc_state import resolve_prepare_rc_state
+from apache_buildish_release_tooling.release.release_state import (
     compare_versions,
     derive_final_tag,
     derive_moving_tags,

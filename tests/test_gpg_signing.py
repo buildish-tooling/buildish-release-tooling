@@ -20,7 +20,7 @@ import os
 import subprocess
 import unittest
 
-from apache_buildish_release_tooling.gpg_signing import (
+from apache_buildish_release_tooling.release.gpg_signing import (
     _effective_home,
     detached_ascii_sign,
     import_private_key_from_secret,

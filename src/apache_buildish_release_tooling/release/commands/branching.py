@@ -20,18 +20,18 @@ import re
 from argparse import Namespace
 from pathlib import Path
 
-from apache_buildish_release_tooling.git_repo import GitRepository
-from apache_buildish_release_tooling.github_checks import (
+from apache_buildish_release_tooling.release.git_repo import GitRepository
+from apache_buildish_release_tooling.release.github_checks import (
     assert_ref_ready,
     fetch_check_runs_json,
     fetch_statuses_json,
     resolve_repository_slug,
 )
-from apache_buildish_release_tooling.manifest import write_manifest
-from apache_buildish_release_tooling.prepare_rc_state import resolve_prepare_rc_state
-from apache_buildish_release_tooling.summary import SummaryWriter
+from apache_buildish_release_tooling.release.manifest import write_manifest
+from apache_buildish_release_tooling.release.prepare_rc_state import resolve_prepare_rc_state
+from apache_buildish_release_tooling.release.summary import SummaryWriter
 
-from apache_buildish_release_tooling.commands._shared import (
+from apache_buildish_release_tooling.release.commands._shared import (
     _context,
     _manifest_path,
     _summary_code,

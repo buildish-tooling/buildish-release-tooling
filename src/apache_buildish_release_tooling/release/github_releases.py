@@ -20,7 +20,7 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-from apache_buildish_release_tooling.process import run_logged_command
+from apache_buildish_release_tooling.release.process import run_logged_command
 
 
 def list_releases(repository_slug: str) -> list[dict[str, object]]:

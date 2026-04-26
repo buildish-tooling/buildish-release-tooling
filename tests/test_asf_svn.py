@@ -19,7 +19,7 @@ from __future__ import annotations
 import subprocess
 import unittest
 
-from apache_buildish_release_tooling.asf_svn import AsfSvnClient, url_join
+from apache_buildish_release_tooling.release.asf_svn import AsfSvnClient, url_join
 
 from tests.support import (
     cleanup_sandbox,

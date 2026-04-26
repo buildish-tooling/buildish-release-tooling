@@ -12,4 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Shared release orchestration tooling for Buildish components."""
+"""Top-level package for the Buildish release tooling and harness."""

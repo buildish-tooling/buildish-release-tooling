@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 
-from apache_buildish_release_tooling.process import run_logged_command
+from apache_buildish_release_tooling.release.process import run_logged_command
 
 
 def create_annotated_tag_object(

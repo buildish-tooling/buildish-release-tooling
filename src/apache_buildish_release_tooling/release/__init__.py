@@ -12,8 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Compatibility CLI wrapper for the release-tooling package root."""
-
-from apache_buildish_release_tooling.release.cli import main
-
-__all__ = ["main"]
+"""Release orchestration implementation for Buildish components."""

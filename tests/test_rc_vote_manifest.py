@@ -21,8 +21,8 @@ import unittest
 from typing import Any, cast
 from unittest import mock
 
-from apache_buildish_release_tooling.models import ComponentConfig, PrepareRcState
-from apache_buildish_release_tooling.rc_vote_manifest import (
+from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
+from apache_buildish_release_tooling.release.rc_vote_manifest import (
     build_rc_vote_manifest,
     derive_asf_keys_uri,
     trust_root_metadata,
@@ -90,7 +90,7 @@ class RcVoteManifestTest(unittest.TestCase):
         )
         with (
             mock.patch(
-                "apache_buildish_release_tooling.rc_vote_manifest.tooling_provenance",
+                "apache_buildish_release_tooling.release.rc_vote_manifest.tooling_provenance",
                 return_value={
                     "repository": "apache/buildish-release-tooling",
                     "repository_url": "https://github.com/apache/buildish-release-tooling",
@@ -99,7 +99,7 @@ class RcVoteManifestTest(unittest.TestCase):
                 },
             ),
             mock.patch(
-                "apache_buildish_release_tooling.rc_vote_manifest.github_workflow_provenance",
+                "apache_buildish_release_tooling.release.rc_vote_manifest.github_workflow_provenance",
                 return_value={
                     "repository": "apache/buildish-example",
                     "workflow": "Releasey Prepare RC",
@@ -110,7 +110,7 @@ class RcVoteManifestTest(unittest.TestCase):
                 },
             ),
             mock.patch(
-                "apache_buildish_release_tooling.rc_vote_manifest.trust_root_metadata",
+                "apache_buildish_release_tooling.release.rc_vote_manifest.trust_root_metadata",
                 return_value={
                     "asf_keys": {
                         "uri": "https://downloads.apache.org/incubator/buildish/KEYS",
@@ -120,7 +120,7 @@ class RcVoteManifestTest(unittest.TestCase):
                 },
             ),
             mock.patch(
-                "apache_buildish_release_tooling.rc_vote_manifest.created_at_utc",
+                "apache_buildish_release_tooling.release.rc_vote_manifest.created_at_utc",
                 return_value="2026-04-23T10:15:30Z",
             ),
         ):
