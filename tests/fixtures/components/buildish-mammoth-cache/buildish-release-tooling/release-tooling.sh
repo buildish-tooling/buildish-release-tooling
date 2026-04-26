@@ -143,7 +143,7 @@ COMMAND_NAME="$1"
 shift
 
 case "$COMMAND_NAME" in
-  attach-github-release-assets|build-source-rc|cleanup-dev-svn-rcs|create-final-tag|create-rc-materialization-tag|create-release-branch|create-source-artifact|finalize-draft-github-release|finalize-rc-vote-materials|prepare-rc|publish-dockerhub-moving-tags|publish-source-release-svn|prune-older-line-releases|release-version|sync-draft-github-release|update-moving-image-aliases|update-moving-tags|verify-rc|verify-source-ref-checks)
+  attach-github-release-assets|build-source-rc|cleanup-dev-svn-rcs|create-final-tag|create-rc-materialization-tag|create-release-branch|create-source-artifact|finalize-draft-github-release|finalize-rc-vote-materials|materialize-rc-git-content|prepare-rc|publish-dockerhub-moving-tags|publish-source-release-svn|prune-older-line-releases|release-version|sync-draft-github-release|update-moving-image-aliases|update-moving-tags|verify-rc|verify-source-ref-checks)
     ;;
   *)
     printf 'unsupported release-tooling command: %s\n' "$COMMAND_NAME" >&2

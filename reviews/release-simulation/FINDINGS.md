@@ -46,11 +46,9 @@ fixes were applied and the scenario set was re-reviewed.
 ### Medium
 
 - `buildish-mammoth-cache` is still blocked by draft-workflow `TODO` jobs.
-  - The shared tooling can now handle the detached materialization tag path, but the draft workflow
-    still does not generate `MATERIALIZED_COMMIT_SHA`, and the final GitHub Action publication job
-    is still a placeholder.
+  - The draft `Prepare RC` workflow now materializes and tags the detached `dist/` commit through
+    shared tooling, but the final GitHub Action publication job is still a placeholder.
   - References:
-    - [releasey-20-prepare-rc.yml](/home/snazy/devel/apache/buildish/buildish-mammoth-cache/.github/workflows/releasey-20-prepare-rc.yml)
     - [releasey-30-release-version.yml](/home/snazy/devel/apache/buildish/buildish-mammoth-cache/.github/workflows/releasey-30-release-version.yml)
 
 - The component workflows with secondary artifacts remain structurally incomplete.

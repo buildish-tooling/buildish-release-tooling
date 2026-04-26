@@ -83,6 +83,7 @@ For those components, the supported model is:
 - resolve the source commit from the release branch as usual
 - build the authoritative ASF source release from that source commit
 - create a detached materialization commit from that source commit in isolated Git state
+- if later workflow jobs need to see that detached commit, temporarily anchor it on a remote ref
 - keep that detached commit out of `release/<line>` history
 - place the RC tag on that detached materialization commit
 - place the final exact tag on that same detached materialization commit after release approval
@@ -126,13 +127,14 @@ integration surface is:
 Only a small set of runtime environment hooks should be treated as stable integration points:
 
 - `MANIFEST_PATH`: override where the command writes its JSON manifest
+- `GITHUB_OUTPUT`: optional path where selected commands append stable GitHub step outputs
 - `GITHUB_STEP_SUMMARY`: required path where Markdown summary output is appended
 
 The tool also interoperates with environment-based credentials and GitHub runner metadata when it
 talks to external systems, but those should be treated as operational wiring rather than semver
 stable CLI API:
 
-- `GH_TOKEN` or `GITHUB_TOKEN` for GitHub CLI authentication
+- `GH_TOKEN` or `GITHUB_TOKEN` for GitHub CLI authentication and temporary detached-ref pushes
 - `BUILDISH_SVN_DEV_USERNAME` and `BUILDISH_SVN_DEV_PASSWORD` for ASF SVN access
 - `BUILDISH_GPG_PRIVATE_KEY` for detached signing
 - `DOCKERHUB_USER` and `DOCKERHUB_TOKEN` for Docker Hub alias publication
@@ -263,6 +265,7 @@ Summaries are intended for:
 - `cleanup-dev-svn-rcs <version>`
 - `create-source-artifact <version> [source_sha]`
 - `build-source-rc [--rc-tag <tag>] <version> [source_sha]`
+- `materialize-rc-git-content [--rc-tag <tag>] --materialized-path <path>... [--materialized-ref-name <ref>] --run-command <shell> <version> [source_sha]`
 - `create-rc-materialization-tag [--rc-tag <tag>] [--target-commit <sha>] <version> [source_sha]`
 - `sync-draft-github-release [--rc-tag <tag>] <version> [source_sha]`
 - `finalize-rc-vote-materials [--secondary-artifact-manifest <path>]... [--rc-tag <tag>] <version> [source_sha]`
@@ -285,6 +288,12 @@ Summaries are intended for:
 
 ## Selected command guarantees
 
+### `prepare-rc`
+
+- resolves the release branch, next RC number, and authoritative source commit for one version
+- writes the full JSON manifest to `MANIFEST_PATH`
+- appends `rc_tag` and `resolved_source_ref` to `GITHUB_OUTPUT` when that file path is present
+
 ### `create-source-artifact`
 
 - builds from Git using a fixed mtime and reproducible gzip settings
@@ -300,12 +309,31 @@ Summaries are intended for:
 - accepts `--rc-tag` so later reruns in one `Prepare RC` workflow stay bound to the same RC
 - does not by itself define where the RC Git tag must point; that remains component policy
 
+### `materialize-rc-git-content`
+
+- valid only for components whose `final_tag_mode` is `detached-materialization-commit`
+- resolves the same authoritative RC source commit as the rest of the `Prepare RC` flow
+- creates an isolated detached worktree from that source commit
+- runs one caller-provided shell command in that detached worktree after the workflow has already
+  prepared any project-specific toolchain state
+- accepts repeatable repository-relative file or directory `--materialized-path` inputs and
+  force-stages them so git-ignored payloads such as `dist/` can be committed without entering
+  normal branch history
+- creates one detached materialization commit and emits its exact commit SHA
+- pushes that detached commit to a temporary remote ref so later workflow jobs can tag it before
+  the temporary anchor ref is deleted
+- accepts `--materialized-ref-name` as an override, but generates a default temporary remote ref
+  name when one is not provided
+- appends `materialized_commit_sha` and `materialized_ref_name` to `GITHUB_OUTPUT` when that file
+  path is present
+
 ### `create-rc-materialization-tag`
 
 - creates the RC tag for the resolved version
 - tags the resolved source commit by default
 - requires `--target-commit` for components that use detached materialization commits
 - accepts `--rc-tag` so the tag-creation step can reuse the RC number resolved earlier in the workflow
+- can optionally clean up one temporary remote anchor ref after the RC tag has been created
 - fails if the RC tag already exists, even when it already points at the same commit
 - this prevents concurrent same-version `Prepare RC` runs from silently sharing one RC tag
 

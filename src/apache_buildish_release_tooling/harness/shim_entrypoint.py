@@ -173,6 +173,8 @@ def _buildish_release_tooling_heading(command_name: str, arguments: list[str]) -
         return f"Cleanup ASF SVN dev/dist for version {version}"
     if command_name == "verify-source-ref-checks" and version is not None:
         return f"Verify GitHub checks for source ref {version}"
+    if command_name == "materialize-rc-git-content" and version is not None:
+        return f"Materialize RC Git content for version {version}"
     if command_name == "finalize-rc-vote-materials" and version is not None:
         return f"Finalize RC vote materials for version {version}"
     if command_name == "publish-source-release-svn" and version is not None:

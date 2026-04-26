@@ -104,6 +104,51 @@ def build_parser() -> argparse.ArgumentParser:
     build_source_rc.add_argument("source_sha", nargs="?")
     build_source_rc.set_defaults(handler=commands.run_build_source_rc)
 
+    materialize_rc_git_content = subparsers.add_parser(
+        "materialize-rc-git-content",
+        parents=[common],
+        help=(
+            "Build release-only Git content in a detached worktree and emit one "
+            "materialized commit."
+        ),
+    )
+    materialize_rc_git_content.add_argument(
+        "--rc-tag",
+        dest="rc_tag",
+        help="Exact RC tag whose detached materialization commit is being prepared.",
+    )
+    materialize_rc_git_content.add_argument(
+        "--materialized-path",
+        dest="materialized_paths",
+        action="append",
+        default=[],
+        help=(
+            "Repository-relative file or directory path to stage with "
+            "`git add --force`. Repeat for multiple paths."
+        ),
+    )
+    materialize_rc_git_content.add_argument(
+        "--materialized-ref-name",
+        dest="materialized_ref_name",
+        help=(
+            "Optional temporary remote ref name override. When omitted, the "
+            "tooling generates one and uses it to anchor the detached "
+            "materialization commit between jobs."
+        ),
+    )
+    materialize_rc_git_content.add_argument(
+        "--run-command",
+        dest="run_command",
+        required=True,
+        help=(
+            "POSIX shell command executed inside the detached worktree before "
+            "staging the materialized paths."
+        ),
+    )
+    materialize_rc_git_content.add_argument("version")
+    materialize_rc_git_content.add_argument("source_sha", nargs="?")
+    materialize_rc_git_content.set_defaults(handler=commands.run_materialize_rc_git_content)
+
     create_rc_materialization_tag = subparsers.add_parser(
         "create-rc-materialization-tag",
         parents=[common],
@@ -118,6 +163,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--target-commit",
         dest="target_commit",
         help="Detached materialization commit SHA to tag for components that release generated Git content.",
+    )
+    create_rc_materialization_tag.add_argument(
+        "--cleanup-materialized-ref-name",
+        dest="cleanup_materialized_ref_name",
+        help="Optional temporary remote ref name to delete after RC tag creation.",
     )
     create_rc_materialization_tag.add_argument("version")
     create_rc_materialization_tag.add_argument("source_sha", nargs="?")

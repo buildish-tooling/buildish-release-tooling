@@ -57,6 +57,7 @@ exact pinned ref over pulling from an index.
 - `prepare-rc`
 - `create-source-artifact`
 - `build-source-rc`
+- `materialize-rc-git-content`
 - `release-version`
 - `verify-rc`
 

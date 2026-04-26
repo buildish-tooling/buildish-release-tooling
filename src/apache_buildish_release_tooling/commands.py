@@ -19,10 +19,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import shutil
 import tempfile
 from argparse import Namespace
 from collections.abc import Iterable
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +70,7 @@ from apache_buildish_release_tooling.prepare_rc_state import (
     prepare_rc_source_artifact_name,
     resolve_prepare_rc_state,
 )
+from apache_buildish_release_tooling.process import CommandExecutionError, run_logged_command
 from apache_buildish_release_tooling.rc_vote_manifest import build_rc_vote_manifest, read_uri_text
 from apache_buildish_release_tooling.release_state import (
     compare_versions,
@@ -124,6 +127,26 @@ def _artifact_output_dir(component_id: str) -> Path:
     return Path.cwd() / "build" / "release-artifacts" / component_id
 
 
+def _append_github_outputs(entries: Mapping[str, Any]) -> None:
+    """Append one or more step outputs when running inside GitHub Actions."""
+
+    output_path_text = os.environ.get("GITHUB_OUTPUT", "").strip()
+    if not output_path_text:
+        return
+    output_path = Path(output_path_text)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("a", encoding="utf-8") as handle:
+        for key, value in entries.items():
+            rendered = "" if value is None else str(value)
+            if "\n" not in rendered:
+                handle.write(f"{key}={rendered}\n")
+                continue
+            delimiter = f"__BUILDISH_OUTPUT_{secrets.token_hex(8)}__"
+            while delimiter in rendered:
+                delimiter = f"__BUILDISH_OUTPUT_{secrets.token_hex(8)}__"
+            handle.write(f"{key}<<{delimiter}\n{rendered}\n{delimiter}\n")
+
+
 def _required_source_release_file_names(source_artifact_prefix: str, version: str) -> list[str]:
     """Return the mandatory ASF source-release files expected in one staged RC directory."""
 
@@ -133,6 +156,161 @@ def _required_source_release_file_names(source_artifact_prefix: str, version: st
         f"{artifact_name}.sha512",
         f"{artifact_name}.asc",
     ]
+
+
+def _validate_full_ref_name(ref_name: str) -> str:
+    """Validate that one Git ref name is fully qualified and syntactically valid."""
+
+    if not ref_name.startswith("refs/"):
+        raise ValueError(f"Git ref name must start with refs/: {ref_name}")
+    completed = run_logged_command(
+        ["git", "check-ref-format", ref_name],
+        check=False,
+    )
+    if completed.returncode != 0:
+        raise ValueError(f"invalid Git ref name: {ref_name}")
+    return ref_name
+
+
+def _default_materialized_ref_name(state: PrepareRcState) -> str:
+    """Derive one temporary remote ref name for a detached materialization commit."""
+
+    run_id = os.environ.get("GITHUB_RUN_ID", "").strip()
+    if run_id:
+        run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "").strip() or "1"
+        return _validate_full_ref_name(
+            f"refs/heads/buildish-internal/materialized/{state.rc_tag}/{run_id}-{run_attempt}"
+        )
+    random_suffix = secrets.token_hex(4)
+    return _validate_full_ref_name(
+        "refs/heads/buildish-internal/materialized/"
+        f"{state.rc_tag}/{state.resolved_source_ref[:12]}-{random_suffix}"
+    )
+
+
+def _validate_materialized_paths(paths: Iterable[str]) -> list[str]:
+    """Validate and deduplicate repository-relative materialized file or directory paths."""
+
+    materialized_paths: list[str] = []
+    for raw_path in paths:
+        candidate = Path(raw_path)
+        if candidate.is_absolute():
+            raise ValueError(f"materialized paths must be repository-relative: {raw_path}")
+        if ".." in candidate.parts:
+            raise ValueError(f"materialized paths must not escape the repository root: {raw_path}")
+        normalized = str(candidate)
+        if normalized not in materialized_paths:
+            materialized_paths.append(normalized)
+    if not materialized_paths:
+        raise ValueError("at least one --materialized-path is required")
+    return materialized_paths
+
+
+def _git_config_set(repo_path: Path, key: str, value: str) -> None:
+    """Set one local Git configuration value inside one repository or worktree."""
+
+    run_logged_command(
+        ["git", "-C", str(repo_path), "config", key, value],
+        cwd=repo_path,
+        capture_output=False,
+    )
+
+
+def _add_detached_worktree(repo: GitRepository, worktree_path: Path, source_ref: str) -> None:
+    """Create one detached Git worktree rooted at a resolved source ref."""
+
+    run_logged_command(
+        [
+            "git",
+            "-C",
+            str(repo.path),
+            "worktree",
+            "add",
+            "--detach",
+            str(worktree_path),
+            source_ref,
+        ],
+        cwd=repo.path,
+        capture_output=False,
+    )
+
+
+def _remove_worktree(repo: GitRepository, worktree_path: Path) -> None:
+    """Best-effort removal of one Git worktree path."""
+
+    run_logged_command(
+        ["git", "-C", str(repo.path), "worktree", "remove", "--force", str(worktree_path)],
+        cwd=repo.path,
+        capture_output=False,
+        check=False,
+    )
+
+
+def _has_staged_changes(repo_path: Path) -> bool:
+    """Return whether one repository currently has staged changes."""
+
+    completed = run_logged_command(
+        ["git", "-C", str(repo_path), "diff", "--cached", "--quiet"],
+        cwd=repo_path,
+        check=False,
+    )
+    if completed.returncode in (0, 1):
+        return completed.returncode == 1
+    raise CommandExecutionError("command failed: git diff --cached --quiet")
+
+
+def _git_push_target(repo: GitRepository, repository_slug: str | None) -> tuple[str, list[str]]:
+    """Resolve the remote URL used for temporary detached-commit ref pushes."""
+
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if token and repository_slug is not None:
+        return (f"https://x-access-token:{token}@github.com/{repository_slug}.git", [token])
+    return (repo.remote_url("origin"), [])
+
+
+def _push_remote_ref(
+    repo: GitRepository,
+    *,
+    repository_slug: str | None,
+    source_ref: str,
+    target_ref: str,
+    force: bool,
+) -> str:
+    """Push one local ref or commit expression to one remote full ref name."""
+
+    push_target, secret_values = _git_push_target(repo, repository_slug)
+    command = ["git", "-C", str(repo.path), "push"]
+    if force:
+        command.append("--force")
+    command.extend([push_target, f"{source_ref}:{target_ref}"])
+    run_logged_command(
+        command,
+        cwd=repo.path,
+        capture_output=False,
+        extra_secret_values=secret_values,
+    )
+    return "pushed"
+
+
+def _delete_remote_ref_best_effort(
+    repo: GitRepository,
+    *,
+    repository_slug: str | None,
+    ref_name: str,
+) -> str:
+    """Delete one remote full ref name without failing the parent command on cleanup issues."""
+
+    try:
+        push_target, secret_values = _git_push_target(repo, repository_slug)
+        run_logged_command(
+            ["git", "-C", str(repo.path), "push", push_target, f":{ref_name}"],
+            cwd=repo.path,
+            capture_output=False,
+            extra_secret_values=secret_values,
+        )
+    except Exception:  # noqa: BLE001
+        return "delete-failed-ignored"
+    return "deleted"
 
 
 def _matching_dev_rc_entries(entries: Iterable[str], version: str) -> list[str]:
@@ -602,25 +780,29 @@ def run_prepare_rc(args: Namespace) -> Path:
     state = resolve_prepare_rc_state(repo, context.component_config, version, source_sha)
     manifest_path = _manifest_path(context.component_config.component_id, "prepare-rc")
     summary = _summary_writer()
-    write_manifest(
-        manifest_path,
+    manifest_entries = {
+        "component": context.component_config.component_id,
+        "action": "prepare-rc",
+        "version": version,
+        "resolved_source_ref": state.resolved_source_ref,
+        "resolved_release_branch": state.resolved_release_branch,
+        "rc_number": str(state.rc_number),
+        "rc_tag": state.rc_tag,
+        "final_tag": state.final_tag,
+        "source_artifact_name": state.source_artifact_name,
+        "source_artifact_root_name": state.source_artifact_root_name,
+        "source_artifact_prefix_path": state.source_artifact_prefix_path,
+        "staging_url": state.staging_url,
+        "cleanup_existing_rc_staging": "true",
+        "draft_release_action": "recreate",
+        "final_tag_mode": context.component_config.final_tag_mode,
+    }
+    write_manifest(manifest_path, manifest_entries)
+    _append_github_outputs(
         {
-            "component": context.component_config.component_id,
-            "action": "prepare-rc",
-            "version": version,
-            "resolved_source_ref": state.resolved_source_ref,
-            "resolved_release_branch": state.resolved_release_branch,
-            "rc_number": str(state.rc_number),
-            "rc_tag": state.rc_tag,
-            "final_tag": state.final_tag,
-            "source_artifact_name": state.source_artifact_name,
-            "source_artifact_root_name": state.source_artifact_root_name,
-            "source_artifact_prefix_path": state.source_artifact_prefix_path,
-            "staging_url": state.staging_url,
-            "cleanup_existing_rc_staging": "true",
-            "draft_release_action": "recreate",
-            "final_tag_mode": context.component_config.final_tag_mode,
-        },
+            "rc_tag": manifest_entries["rc_tag"],
+            "resolved_source_ref": manifest_entries["resolved_source_ref"],
+        }
     )
     summary.append_heading("Prepare RC")
     summary.append_plaintext_block("Resolved source", state.resolved_source_ref)
@@ -1039,6 +1221,108 @@ def run_prune_older_line_releases(args: Namespace) -> Path:
     return manifest_path
 
 
+def run_materialize_rc_git_content(args: Namespace) -> Path:
+    """Create one detached RC materialization commit from release-only generated Git paths."""
+
+    context = _context(args)
+    if context.component_config.final_tag_mode != "detached-materialization-commit":
+        raise ValueError(
+            "materialize-rc-git-content is valid only for detached-materialization components"
+        )
+    repo = GitRepository.from_current_worktree()
+    version = args.version
+    source_sha = args.source_sha
+    state = resolve_prepare_rc_state(
+        repo, context.component_config, version, source_sha, getattr(args, "rc_tag", None)
+    )
+    materialized_paths = _validate_materialized_paths(getattr(args, "materialized_paths", []))
+    materialized_ref_name = getattr(args, "materialized_ref_name", None)
+    if materialized_ref_name is not None:
+        materialized_ref_name = _validate_full_ref_name(materialized_ref_name)
+    else:
+        materialized_ref_name = _default_materialized_ref_name(state)
+    run_command = getattr(args, "run_command", "").strip()
+    if not run_command:
+        raise ValueError("--run-command must not be empty")
+
+    repository_slug = _repository_slug_or_none(repo)
+    temp_parent = Path.cwd() / "build"
+    temp_parent.mkdir(parents=True, exist_ok=True)
+    temp_root = Path(tempfile.mkdtemp(prefix="materialize-rc-git-content.", dir=temp_parent))
+    worktree_path = temp_root / "worktree"
+    materialized_commit_sha = ""
+    materialized_ref_mode = "generated"
+    try:
+        _add_detached_worktree(repo, worktree_path, state.resolved_source_ref)
+        worktree_repo = GitRepository(worktree_path)
+        _git_config_set(worktree_path, "user.name", "Buildish Release Tooling")
+        _git_config_set(worktree_path, "user.email", "buildish-release-tooling@example.invalid")
+        run_logged_command(["sh", "-lc", run_command], cwd=worktree_path, capture_output=False)
+        run_logged_command(
+            ["git", "-C", str(worktree_path), "add", "--force", "--", *materialized_paths],
+            cwd=worktree_path,
+            capture_output=False,
+        )
+        if not _has_staged_changes(worktree_path):
+            raise ValueError(
+                "materialized content commit would be empty for "
+                f"{state.resolved_source_ref}: {', '.join(materialized_paths)}"
+            )
+        run_logged_command(
+            [
+                "git",
+                "-C",
+                str(worktree_path),
+                "commit",
+                "-m",
+                f"Materialize RC Git content for {state.rc_tag}",
+            ],
+            cwd=worktree_path,
+            capture_output=False,
+        )
+        materialized_commit_sha = worktree_repo.current_head_commit()
+        materialized_ref_mode = _push_remote_ref(
+            worktree_repo,
+            repository_slug=repository_slug,
+            source_ref="HEAD",
+            target_ref=materialized_ref_name,
+            force=True,
+        )
+        manifest_path = _manifest_path(
+            context.component_config.component_id, "materialize-rc-git-content"
+        )
+        summary = _summary_writer()
+        manifest_entries = {
+            "component": context.component_config.component_id,
+            "action": "materialize-rc-git-content",
+            "version": version,
+            "resolved_source_ref": state.resolved_source_ref,
+            "rc_tag": state.rc_tag,
+            "materialized_paths": ",".join(materialized_paths),
+            "materialized_commit_sha": materialized_commit_sha,
+            "materialized_ref_name": materialized_ref_name,
+            "materialized_ref_mode": materialized_ref_mode,
+        }
+        write_manifest(manifest_path, manifest_entries)
+        _append_github_outputs(
+            {
+                "materialized_commit_sha": manifest_entries["materialized_commit_sha"],
+                "materialized_ref_name": manifest_entries["materialized_ref_name"],
+            }
+        )
+        summary.append_heading("Materialize RC Git content")
+        summary.append_plaintext_block("Resolved source ref", state.resolved_source_ref)
+        summary.append_plaintext_block("RC tag", state.rc_tag)
+        summary.append_plaintext_block("Materialized paths", "\n".join(materialized_paths))
+        summary.append_plaintext_block("Materialized commit", materialized_commit_sha)
+        summary.append_plaintext_block("Materialized ref", materialized_ref_name)
+        summary.append_plaintext_block("Materialized ref mode", materialized_ref_mode)
+        return manifest_path
+    finally:
+        _remove_worktree(repo, worktree_path)
+        shutil.rmtree(temp_root, ignore_errors=True)
+
+
 def run_create_rc_materialization_tag(args: Namespace) -> Path:
     """Create the RC tag on either the source commit or one detached materialization commit."""
 
@@ -1049,6 +1333,9 @@ def run_create_rc_materialization_tag(args: Namespace) -> Path:
     state = resolve_prepare_rc_state(
         repo, context.component_config, version, source_sha, getattr(args, "rc_tag", None)
     )
+    cleanup_materialized_ref_name = getattr(args, "cleanup_materialized_ref_name", None)
+    if cleanup_materialized_ref_name is not None:
+        cleanup_materialized_ref_name = _validate_full_ref_name(cleanup_materialized_ref_name)
     if args.target_commit:
         target_commit = args.target_commit
         if (
@@ -1067,15 +1354,24 @@ def run_create_rc_materialization_tag(args: Namespace) -> Path:
         target_commit = state.resolved_source_ref
         tag_target_origin = "source-commit"
     repository_slug = _repository_slug_or_none(repo)
-    tag_creation_mode, created_ref = _create_or_reuse_annotated_tag(
-        repo=repo,
-        repository_slug=repository_slug,
-        tag_name=state.rc_tag,
-        target_commit=target_commit,
-        message=_rc_tag_message(context, version, state.rc_tag),
-        allow_update=False,
-        reuse_if_same_target=False,
-    )
+    cleanup_materialized_ref_mode = "not-requested"
+    try:
+        tag_creation_mode, created_ref = _create_or_reuse_annotated_tag(
+            repo=repo,
+            repository_slug=repository_slug,
+            tag_name=state.rc_tag,
+            target_commit=target_commit,
+            message=_rc_tag_message(context, version, state.rc_tag),
+            allow_update=False,
+            reuse_if_same_target=False,
+        )
+    finally:
+        if cleanup_materialized_ref_name is not None:
+            cleanup_materialized_ref_mode = _delete_remote_ref_best_effort(
+                repo,
+                repository_slug=repository_slug,
+                ref_name=cleanup_materialized_ref_name,
+            )
     manifest_path = _manifest_path(context.component_config.component_id, "create-rc-materialization-tag")
     summary = _summary_writer()
     write_manifest(
@@ -1088,6 +1384,8 @@ def run_create_rc_materialization_tag(args: Namespace) -> Path:
             "rc_tag": state.rc_tag,
             "target_commit": target_commit,
             "tag_target_origin": tag_target_origin,
+            "cleanup_materialized_ref_name": cleanup_materialized_ref_name or "",
+            "cleanup_materialized_ref_mode": cleanup_materialized_ref_mode,
             "tag_creation_mode": tag_creation_mode,
             "created_ref": str(created_ref.get("ref") or ""),
         },
@@ -1097,6 +1395,11 @@ def run_create_rc_materialization_tag(args: Namespace) -> Path:
     summary.append_plaintext_block("RC tag", state.rc_tag)
     summary.append_plaintext_block("Target commit", target_commit)
     summary.append_plaintext_block("Tag target origin", tag_target_origin)
+    summary.append_plaintext_block(
+        "Cleanup materialized ref",
+        cleanup_materialized_ref_name or "<none>",
+    )
+    summary.append_plaintext_block("Cleanup materialized ref mode", cleanup_materialized_ref_mode)
     summary.append_plaintext_block("Tag creation mode", tag_creation_mode)
     return manifest_path
 
