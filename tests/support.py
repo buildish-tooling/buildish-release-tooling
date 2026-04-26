@@ -12,7 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Shared test support for buildish-release-tooling."""
+"""Shared test support for buildish-release-tooling.
+
+The helpers in this module intentionally centralize the heavy test plumbing:
+
+- repo-local sandboxes under `build/tests/`
+- fake `gh` and Docker launchers
+- temporary Git and SVN repositories
+- CLI environment assembly for manifest and summary assertions
+
+Keeping that machinery here makes the larger integration tests read as release scenarios instead of
+as filesystem-setup scripts.
+"""
 
 from __future__ import annotations
 

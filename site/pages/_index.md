@@ -19,4 +19,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-TBD
+`buildish-release-tooling` is the shared release implementation component used by Buildish
+repositories.
+
+The stable contract is the CLI plus `release-config.yaml`. The Python package layout is internal,
+but the docs tree includes maintainer guides for the current structure:
+
+- `docs/_index.md`: CLI contract and compatibility notes
+- `docs/codebase-layout.md`: production package layout
+- `docs/test-suite.md`: test suite layout and layering
+
+Use `make check` as the standard local and CI gate.

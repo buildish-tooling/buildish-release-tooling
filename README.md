@@ -66,3 +66,9 @@ exact pinned ref over pulling from an index.
 ```bash
 make check
 ```
+
+## Documentation
+
+- `docs/_index.md`: CLI contract and compatibility notes
+- `docs/codebase-layout.md`: production source tree guide
+- `docs/test-suite.md`: test suite guide

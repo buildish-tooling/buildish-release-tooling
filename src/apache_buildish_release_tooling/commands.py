@@ -12,7 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Command handlers for the `buildish-release-tooling` CLI."""
+"""Command handlers and orchestration helpers for the `buildish-release-tooling` CLI.
+
+This module is the top-level workflow layer for the production CLI:
+
+- `cli.py` parses the command line and dispatches here
+- helper modules perform low-level Git, SVN, GitHub, GPG, and artifact work
+- this module composes those helpers into release actions, manifests, and summaries
+
+Keep protocol-specific details in the dedicated adapter modules when possible. The command layer
+should mainly express release flow, validation order, and output contracts.
+"""
 
 from __future__ import annotations
 

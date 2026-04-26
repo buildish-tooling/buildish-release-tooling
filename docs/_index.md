@@ -24,6 +24,14 @@ limitations under the License.
 
 This page defines the supported external contract for `buildish-release-tooling`.
 
+## Internal implementation guides
+
+The pages below describe the current source tree for maintainers. They are intentionally
+descriptive, not contractual.
+
+- [Codebase Layout](codebase-layout.md)
+- [Test Suite Layout](test-suite.md)
+
 The public contract is intentionally narrow:
 
 - the `buildish-release-tooling` CLI command surface

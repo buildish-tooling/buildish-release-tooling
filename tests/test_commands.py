@@ -12,7 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Integration tests for the CLI command surface."""
+"""Integration tests for the CLI command surface.
+
+This file is the broadest command-contract suite in the repository. Most tests exercise the real
+CLI entrypoint against temporary Git repositories, local SVN repositories, fake GitHub CLIs, and
+temporary GPG material so that command orchestration is covered end to end.
+"""
 
 from __future__ import annotations
 
