@@ -27,7 +27,7 @@ dependencies = [
 ]
 
 [project.scripts]
-buildish-release-tooling = "apache_buildish_release_tooling.cli:main"
+buildish-release-tooling = "apache_buildish_release_tooling.release.cli:main"
 buildish-release-harness = "apache_buildish_release_tooling.harness.cli:main"
 
 [build-system]

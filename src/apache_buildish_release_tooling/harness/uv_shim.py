@@ -28,7 +28,7 @@ class UvShimConfig:
     shim_python_executable: str
     passthrough_python_install: bool = False
     real_cli_commands: tuple[str, ...] = ()
-    real_cli_module: str = "apache_buildish_release_tooling"
+    real_cli_module: str = "apache_buildish_release_tooling.release"
     real_cli_python_executable: str = "python3"
     shim_entrypoint_module: str = "apache_buildish_release_tooling.harness.shim_entrypoint"
 

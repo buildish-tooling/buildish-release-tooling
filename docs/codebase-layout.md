@@ -32,11 +32,11 @@ The package is organized around one rule:
 
 ## Entry points and command flow
 
-- `__main__.py`: minimal Python entrypoint for `python -m apache_buildish_release_tooling`
-- `cli.py`: argparse command registration and argument normalization
-- `commands.py`: command handlers plus command-local orchestration helpers
+- `release/__main__.py`: Python module entrypoint for `python -m apache_buildish_release_tooling.release`
+- `release/cli.py`: argparse command registration and argument normalization
+- `release/commands/`: command handlers plus command-local orchestration helpers grouped by workflow family
 
-`commands.py` is intentionally the orchestration layer. It should decide:
+The `release/commands/` package is intentionally the orchestration layer. It should decide:
 
 - which repo state to load
 - which external adapters to call
@@ -52,7 +52,7 @@ It should not absorb low-level protocol details that belong in a dedicated adapt
 - `release_state.py`: pure version, tag, release-line, and pruning logic
 
 If a behavior is mostly deterministic data derivation and does not need I/O, it should usually
-land in `prepare_rc_state.py` or `release_state.py` instead of in `commands.py`.
+land in `prepare_rc_state.py` or `release_state.py` instead of in one of the command handlers.
 
 ## External system adapters
 
@@ -91,24 +91,24 @@ The `harness/` package is a local workflow simulator used by tests and release-p
 - `harness/cli.py` and `harness/__main__.py`: harness CLI entrypoints
 - `harness/config.py`: checked-in harness config plus local override support
 - `harness/models.py`: scenario, repository, and workspace model types
-- `harness/runtime.py`: repo-local execution backend and generic tool shims
-- `harness/act_backend.py`: `act`-driven GitHub Actions simulation backend
+- `harness/runtime.py`: shared workspace layout, disposable checkout creation, and generic runtime helpers
+- `harness/backends/custom.py`: simple local-exec backend for synthetic shell scenarios
+- `harness/backends/act/`: `act`-driven GitHub Actions simulation backend
 - `harness/uv_shim.py`: shared `uv` shim rendering used by both harness backends
 - `harness/scenario.py`: scenario file loading
 - `harness/shim_entrypoint.py`: Python entrypoint for shell-tool shims
-- `harness/backend.py` and `harness/errors.py`: backend interface and user-facing harness errors
+- `harness/backend.py`, `harness/backends/`, and `harness/errors.py`: backend dispatch, interface, and user-facing harness errors
 
-`runtime.py` is the simpler local-exec backend. `act_backend.py` is the heavier workflow rewrite
-and container-execution backend. Shared shell-shim behavior should prefer `harness/uv_shim.py` or
-another helper instead of being copied into both files.
+Shared shell-shim behavior should prefer `harness/uv_shim.py` or another helper instead of being
+copied into both backends.
 
 ## Practical placement rules
 
-- Add new CLI flags in `cli.py` and consume them in `commands.py`.
+- Add new CLI flags in `release/cli.py` and consume them in the relevant `release/commands/` module.
 - Add new release-state derivation in `prepare_rc_state.py` or `release_state.py` when possible.
 - Add new external API or CLI interaction in the corresponding adapter module.
 - Add new manifest or summary formatting in `manifest.py`, `summary.py`, or `email_templates.py`.
 - Add new harness-only behavior under `harness/`, not in the production CLI modules.
 
-When in doubt, prefer a new helper module over growing `commands.py` or `harness/act_backend.py`
+When in doubt, prefer a new helper module over growing one command module or one harness backend
 with another protocol-specific block.

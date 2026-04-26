@@ -318,7 +318,7 @@ def create_fake_uv_launcher(sandbox_dir: Path) -> Path:
                 "        exit 2",
                 "      fi",
                 '      export PYTHONPATH="$project_dir/src${PYTHONPATH:+:$PYTHONPATH}"',
-                '      exec "${BUILDISH_TEST_PYTHON:?}" -m apache_buildish_release_tooling "$@"',
+                '      exec "${BUILDISH_TEST_PYTHON:?}" -m apache_buildish_release_tooling.release "$@"',
                 "      ;;",
                 "    *)",
                 '      printf "unexpected fake uv arguments: %s\\n" "$*" >&2',
@@ -770,7 +770,7 @@ def run_cli(arguments: list[str], *, cwd: Path, env: Mapping[str, str] | None = 
     """Run the CLI in a subprocess with the local source tree on `PYTHONPATH`."""
 
     return subprocess.run(
-        [sys.executable, "-m", "apache_buildish_release_tooling", *arguments],
+        [sys.executable, "-m", "apache_buildish_release_tooling.release", *arguments],
         cwd=str(cwd),
         env=tool_env(env),
         text=True,

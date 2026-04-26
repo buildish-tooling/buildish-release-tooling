@@ -719,7 +719,7 @@ class ActWorkflowRewriteUnitTest(unittest.TestCase):
             'if [[ "$command_name" == "--allow-non-production-release-targets" ]]; then',
             script,
         )
-        self.assertIn('exec python3 -m apache_buildish_release_tooling "$@"', script)
+        self.assertIn('exec python3 -m apache_buildish_release_tooling.release "$@"', script)
         self.assertIn(
             'exec python3 -m apache_buildish_release_tooling.harness.shim_entrypoint buildish-release-tooling "${filtered_args[@]}"',
             script,
