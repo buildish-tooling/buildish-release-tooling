@@ -38,8 +38,8 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
-      - name: Install Python 3.13 for uv-managed commands
-        run: uv python install 3.13
+      - name: Install Python 3.11 for uv-managed commands
+        run: uv python install 3.11
       - name: Fetch remote heads and tags
         run: |
           git fetch --force --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
