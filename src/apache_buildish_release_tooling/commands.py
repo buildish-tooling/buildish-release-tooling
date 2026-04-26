@@ -26,7 +26,6 @@ should mainly express release flow, validation order, and output contracts.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
@@ -34,8 +33,10 @@ import secrets
 import shutil
 import tempfile
 from argparse import Namespace
+from collections.abc import Iterator
 from collections.abc import Iterable
 from collections.abc import Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,17 @@ from apache_buildish_release_tooling.email_templates import (
     render_project_vote_result_email,
 )
 from apache_buildish_release_tooling.git_repo import GitRepository
+from apache_buildish_release_tooling.git_materialization import (
+    add_detached_worktree,
+    default_materialized_ref_name,
+    delete_remote_ref_best_effort,
+    git_config_set,
+    has_staged_changes,
+    push_remote_ref,
+    remove_worktree,
+    validate_full_ref_name,
+    validate_materialized_paths,
+)
 from apache_buildish_release_tooling.github_checks import (
     assert_ref_ready,
     fetch_check_runs_json,
@@ -64,11 +76,17 @@ from apache_buildish_release_tooling.github_git_refs import (
     create_ref,
     update_ref,
 )
+from apache_buildish_release_tooling.github_release_selection import (
+    SelectedGitHubRelease,
+    asset_release_url,
+    matching_draft_releases,
+    plan_draft_release_sync,
+    selected_github_release,
+    upsert_draft_release,
+)
 from apache_buildish_release_tooling.github_releases import (
-    create_draft_release,
     delete_release,
     delete_release_asset,
-    download_release_asset_text,
     list_releases,
     release_by_tag,
     release_asset_ids_by_names,
@@ -82,15 +100,14 @@ from apache_buildish_release_tooling.gpg_signing import (
 )
 from apache_buildish_release_tooling.manifest import write_manifest
 from apache_buildish_release_tooling.models import CommandContext, PrepareRcState, ReleaseVersionState
-from apache_buildish_release_tooling.prepare_rc_state import (
-    prepare_rc_source_artifact_name,
-    resolve_prepare_rc_state,
-)
-from apache_buildish_release_tooling.process import CommandExecutionError, run_logged_command
-from apache_buildish_release_tooling.rc_vote_manifest import (
-    build_rc_vote_manifest,
-    read_uri_bytes,
-    read_uri_text,
+from apache_buildish_release_tooling.prepare_rc_state import resolve_prepare_rc_state
+from apache_buildish_release_tooling.process import run_logged_command
+from apache_buildish_release_tooling.rc_vote_manifest import build_rc_vote_manifest, read_uri_text
+from apache_buildish_release_tooling.rc_vote_verification import (
+    required_rc_vote_manifest_file_names,
+    required_source_release_file_names,
+    verified_staged_source_artifact_sha512,
+    verify_staged_source_release_against_vote_manifest,
 )
 from apache_buildish_release_tooling.release_state import (
     compare_versions,
@@ -114,42 +131,37 @@ from apache_buildish_release_tooling.summary import SummaryWriter
 
 
 @dataclass(frozen=True)
-class SelectedGitHubRelease:
-    """Resolved GitHub Release metadata for one exact version."""
+class MaterializedGitContent:
+    """Resolved outcome from one detached RC content materialization run."""
 
-    repository_slug: str
-    release_payload: dict[str, object]
-    selected_rc_tag: str
-
-    def require_release_id(self, *, reference_tag: str) -> int:
-        """Return the numeric release id or raise a direct error."""
-
-        release_id = self.release_payload.get("id")
-        if not isinstance(release_id, int):
-            raise ValueError(f"GitHub Release for {reference_tag} does not include a numeric id")
-        return release_id
-
-    def require_release_tag(self, *, reference_tag: str) -> str:
-        """Return the release tag name or raise a direct error."""
-
-        release_tag = self.release_payload.get("tag_name")
-        if not isinstance(release_tag, str) or not release_tag:
-            raise ValueError(f"GitHub Release for {reference_tag} does not include a tag name")
-        return release_tag
-
-    @property
-    def release_url(self) -> str:
-        """Return the best available browser/API URL for this release."""
-
-        return _asset_release_url(self.release_payload)
+    materialized_paths: list[str]
+    materialized_commit_sha: str
+    materialized_ref_name: str
+    materialized_ref_mode: str
 
 
 @dataclass(frozen=True)
-class DraftReleaseSyncPlan:
-    """Draft-release cleanup and reuse decisions for one sync run."""
+class PreparedReleaseAssetUploads:
+    """Generated checksum/signature sidecars and the final upload set for one release."""
 
-    deleted_release_ids: list[int]
-    same_rc_release: dict[str, object] | None
+    upload_paths: list[Path]
+    checksum_algorithms: list[str]
+    generated_checksum_lines: list[str]
+    generated_checksum_paths: list[Path]
+    generated_signature_paths: list[Path]
+    gpg_fingerprint: str
+
+
+@dataclass(frozen=True)
+class RcVoteManifestArtifacts:
+    """Built and signed authoritative RC vote-manifest artifacts."""
+
+    manifest_payload: dict[str, Any]
+    manifest_file_path: Path
+    manifest_sha512: str
+    manifest_sha512_path: Path
+    manifest_signature_path: Path
+    gpg_fingerprint: str
 
 
 def _context(args: Namespace) -> CommandContext:
@@ -213,382 +225,341 @@ def _append_github_outputs(entries: Mapping[str, Any]) -> None:
             handle.write(f"{key}<<{delimiter}\n{rendered}\n{delimiter}\n")
 
 
-def _required_source_release_file_names(source_artifact_prefix: str, version: str) -> list[str]:
-    """Return the mandatory ASF source-release files expected in one staged RC directory."""
+@contextmanager
+def _temporary_build_dir(prefix: str) -> Iterator[Path]:
+    """Yield one temporary build workspace rooted under `./build` and clean it up."""
 
-    artifact_name = prepare_rc_source_artifact_name(source_artifact_prefix, version)
-    return [
-        artifact_name,
-        f"{artifact_name}.sha512",
-        f"{artifact_name}.asc",
-    ]
-
-
-def _required_rc_vote_manifest_file_names() -> list[str]:
-    """Return the RC vote-manifest files expected after vote finalization."""
-
-    return [
-        "rc-vote-manifest.json",
-        "rc-vote-manifest.json.sha512",
-        "rc-vote-manifest.json.asc",
-    ]
+    temp_parent = Path.cwd() / "build"
+    temp_parent.mkdir(parents=True, exist_ok=True)
+    temp_root = Path(tempfile.mkdtemp(prefix=f"{prefix}.", dir=temp_parent))
+    try:
+        yield temp_root
+    finally:
+        shutil.rmtree(temp_root, ignore_errors=True)
 
 
-def _rc_vote_manifest_payload(manifest_text: str, *, source: str) -> dict[str, Any]:
-    """Parse and validate one RC vote-manifest JSON document."""
+def _resolve_prepare_rc_state_from_args(
+    args: Namespace,
+    context: CommandContext,
+    repo: GitRepository,
+) -> tuple[str, PrepareRcState]:
+    """Resolve one RC workflow state from common CLI arguments."""
 
-    payload = json.loads(manifest_text)
-    if not isinstance(payload, dict):
-        raise ValueError(f"RC vote manifest must be a JSON object: {source}")
-    return payload
+    version = args.version
+    return (
+        version,
+        resolve_prepare_rc_state(
+            repo,
+            context.component_config,
+            version,
+            getattr(args, "source_sha", None),
+            getattr(args, "rc_tag", None),
+        ),
+    )
 
 
-def _source_artifact_entry_from_vote_manifest(
-    manifest_payload: dict[str, Any],
+def _materialize_rc_git_content(
+    repo: GitRepository,
     *,
-    source: str,
-) -> dict[str, Any]:
-    """Return the single source-artifact entry recorded in one RC vote manifest."""
+    state: PrepareRcState,
+    repository_slug: str | None,
+    materialized_paths: list[str],
+    materialized_ref_name: str,
+    run_command: str,
+) -> MaterializedGitContent:
+    """Create, commit, and push one detached materialization worktree result."""
 
-    vote_materials = manifest_payload.get("vote_materials")
-    if not isinstance(vote_materials, dict):
-        raise ValueError(f"RC vote manifest is missing vote_materials: {source}")
-    source_artifacts = vote_materials.get("source_artifacts")
-    if not isinstance(source_artifacts, list) or len(source_artifacts) != 1:
-        raise ValueError(f"RC vote manifest must contain exactly one source artifact: {source}")
-    source_artifact = source_artifacts[0]
-    if not isinstance(source_artifact, dict):
-        raise ValueError(f"RC vote manifest source artifact must be an object: {source}")
-    return source_artifact
+    with _temporary_build_dir("materialize-rc-git-content") as temp_root:
+        worktree_path = temp_root / "worktree"
+        add_detached_worktree(repo, worktree_path, state.resolved_source_ref)
+        try:
+            worktree_repo = GitRepository(worktree_path)
+            git_config_set(worktree_path, "user.name", "Buildish Release Tooling")
+            git_config_set(worktree_path, "user.email", "buildish-release-tooling@example.invalid")
+            run_logged_command(["sh", "-lc", run_command], cwd=worktree_path, capture_output=False)
+            run_logged_command(
+                ["git", "-C", str(worktree_path), "add", "--force", "--", *materialized_paths],
+                cwd=worktree_path,
+                capture_output=False,
+            )
+            if not has_staged_changes(worktree_path):
+                raise ValueError(
+                    "materialized content commit would be empty for "
+                    f"{state.resolved_source_ref}: {', '.join(materialized_paths)}"
+                )
+            run_logged_command(
+                [
+                    "git",
+                    "-C",
+                    str(worktree_path),
+                    "commit",
+                    "-m",
+                    f"Materialize RC Git content for {state.rc_tag}",
+                ],
+                cwd=worktree_path,
+                capture_output=False,
+            )
+            materialized_commit_sha = worktree_repo.current_head_commit()
+            materialized_ref_mode = push_remote_ref(
+                worktree_repo,
+                repository_slug=repository_slug,
+                source_ref="HEAD",
+                target_ref=materialized_ref_name,
+                force=True,
+            )
+            return MaterializedGitContent(
+                materialized_paths=materialized_paths,
+                materialized_commit_sha=materialized_commit_sha,
+                materialized_ref_name=materialized_ref_name,
+                materialized_ref_mode=materialized_ref_mode,
+            )
+        finally:
+            remove_worktree(repo, worktree_path)
 
 
-def _manifest_source_artifact_sha512(
-    source_artifact: dict[str, Any],
+def _resolve_materialization_tag_target(
+    context: CommandContext,
+    state: PrepareRcState,
+    target_commit: str | None,
+) -> tuple[str, str]:
+    """Resolve the commit to tag and whether it comes from source or detached materialization."""
+
+    if target_commit is not None:
+        if (
+            context.component_config.final_tag_mode != "detached-materialization-commit"
+            and target_commit != state.resolved_source_ref
+        ):
+            raise ValueError("target_commit override is only valid for detached-materialization components")
+        tag_target_origin = (
+            "materialized-commit" if target_commit != state.resolved_source_ref else "source-commit"
+        )
+        return target_commit, tag_target_origin
+    if context.component_config.final_tag_mode == "detached-materialization-commit":
+        raise ValueError("detached-materialization components require --target-commit")
+    return state.resolved_source_ref, "source-commit"
+
+
+def _prepare_release_asset_uploads(
+    asset_paths: list[Path],
+    checksum_algorithms: list[str],
     *,
-    source: str,
-) -> str:
-    """Return the SHA512 recorded for one manifest source artifact."""
+    sign: bool,
+) -> PreparedReleaseAssetUploads:
+    """Generate checksum/signature sidecars and the final GitHub Release upload set."""
 
-    checksums = source_artifact.get("checksums")
-    if not isinstance(checksums, dict):
-        raise ValueError(f"RC vote manifest source artifact is missing checksums: {source}")
-    sha512_payload = checksums.get("sha512")
-    if not isinstance(sha512_payload, dict):
-        raise ValueError(f"RC vote manifest source artifact is missing sha512: {source}")
-    digest_value = sha512_payload.get("value")
-    if not isinstance(digest_value, str) or not digest_value:
-        raise ValueError(f"RC vote manifest source artifact sha512 is invalid: {source}")
-    return digest_value
+    upload_paths = list(asset_paths)
+    generated_checksum_lines: list[str] = []
+    generated_checksum_paths: list[Path] = []
+    for asset_path in asset_paths:
+        for algorithm in checksum_algorithms:
+            digest_value = checksum(asset_path, algorithm)
+            checksum_path = write_checksum_file(asset_path, algorithm, digest_value)
+            generated_checksum_lines.append(f"{algorithm}:{digest_value}  {asset_path.name}")
+            generated_checksum_paths.append(checksum_path)
+            upload_paths.append(checksum_path)
 
+    generated_signature_paths: list[Path] = []
+    gpg_fingerprint = ""
+    if sign:
+        generated_signature_paths, gpg_fingerprint = _sign_release_assets(asset_paths)
+        upload_paths.extend(generated_signature_paths)
 
-def _sha512_sidecar_digest(sidecar_text: str, *, source: str) -> str:
-    """Parse the first digest field from one staged `.sha512` sidecar."""
-
-    fields = sidecar_text.strip().split()
-    if not fields or not fields[0]:
-        raise ValueError(f"invalid sha512 sidecar contents: {source}")
-    return fields[0]
-
-
-def _verified_staged_source_artifact_sha512(source_artifact_url: str) -> str:
-    """Recompute one staged source-artifact digest and verify the `.sha512` sidecar."""
-
-    actual_sha512 = hashlib.sha512(read_uri_bytes(source_artifact_url)).hexdigest()
-    sidecar_url = f"{source_artifact_url}.sha512"
-    staged_sha512 = _sha512_sidecar_digest(read_uri_text(sidecar_url), source=sidecar_url)
-    if staged_sha512 != actual_sha512:
-        raise ValueError("staged source artifact .sha512 sidecar does not match the staged source artifact bytes")
-    return actual_sha512
+    return PreparedReleaseAssetUploads(
+        upload_paths=upload_paths,
+        checksum_algorithms=checksum_algorithms,
+        generated_checksum_lines=generated_checksum_lines,
+        generated_checksum_paths=generated_checksum_paths,
+        generated_signature_paths=generated_signature_paths,
+        gpg_fingerprint=gpg_fingerprint,
+    )
 
 
-def _mirrored_release_asset_text(
-    repository_slug: str,
-    release_payload: dict[str, object],
-    *,
-    asset_name: str,
-) -> str:
-    """Download one mirrored draft-release asset as UTF-8 text."""
+def _sign_release_assets(asset_paths: list[Path]) -> tuple[list[Path], str]:
+    """Generate detached ASCII-armored signatures for one set of release assets."""
 
-    asset_ids = release_asset_ids_by_names(release_payload, asset_names=[asset_name])
-    asset_id = asset_ids.get(asset_name)
-    if asset_id is None:
-        raise ValueError(f"draft GitHub Release is missing mirrored asset: {asset_name}")
-    return download_release_asset_text(repository_slug, asset_id)
+    with _temporary_build_dir("attach-github-release-assets") as temp_root:
+        gpg_home = temp_root / "gnupg"
+        import_private_key_from_secret(gpg_home)
+        gpg_fingerprint = secret_key_fingerprint(gpg_home)
+        signature_paths: list[Path] = []
+        for asset_path in asset_paths:
+            signature_path = asset_path.with_name(f"{asset_path.name}.asc")
+            detached_ascii_sign(gpg_home, asset_path, signature_path)
+            signature_paths.append(signature_path)
+        return signature_paths, gpg_fingerprint
 
 
-def _verify_staged_source_release_against_vote_manifest(
+def _build_rc_vote_manifest_artifacts(
     context: CommandContext,
     *,
-    repository_slug: str,
-    release_payload: dict[str, object],
-    source_url: str,
+    state: PrepareRcState,
+    selected_release: SelectedGitHubRelease,
+    rc_tag_target_commit: str,
+    source_artifact_sha512: str,
+    secondary_artifacts: list[dict[str, Any]],
+    output_dir: Path,
+) -> RcVoteManifestArtifacts:
+    """Build and sign the authoritative RC vote-manifest artifacts."""
+
+    manifest_file_path = output_dir / "rc-vote-manifest.json"
+    with _temporary_build_dir("finalize-rc-vote-materials") as temp_root:
+        gpg_home = temp_root / "gnupg"
+        manifest_payload = build_rc_vote_manifest(
+            component_config=context.component_config,
+            state=state,
+            repository_slug=selected_release.repository_slug,
+            draft_release_tag=selected_release.require_release_tag(reference_tag=state.rc_tag),
+            draft_release_url=selected_release.release_url,
+            rc_tag_target_commit=rc_tag_target_commit,
+            source_artifact_sha512=source_artifact_sha512,
+            secondary_artifacts=secondary_artifacts,
+        )
+        write_manifest(manifest_file_path, manifest_payload)
+        manifest_sha512 = sha512(manifest_file_path)
+        manifest_sha512_path = write_sha512_file(manifest_file_path, manifest_sha512)
+        import_private_key_from_secret(gpg_home)
+        gpg_fingerprint = secret_key_fingerprint(gpg_home)
+        manifest_signature_path = manifest_file_path.with_name(f"{manifest_file_path.name}.asc")
+        detached_ascii_sign(gpg_home, manifest_file_path, manifest_signature_path)
+        return RcVoteManifestArtifacts(
+            manifest_payload=manifest_payload,
+            manifest_file_path=manifest_file_path,
+            manifest_sha512=manifest_sha512,
+            manifest_sha512_path=manifest_sha512_path,
+            manifest_signature_path=manifest_signature_path,
+            gpg_fingerprint=gpg_fingerprint,
+        )
+
+
+def _stage_rc_vote_manifest_and_mirror(
+    context: CommandContext,
+    *,
+    state: PrepareRcState,
     version: str,
-    selected_rc_tag: str,
-    expected_source_artifact_name: str,
+    selected_release: SelectedGitHubRelease,
+    artifacts: RcVoteManifestArtifacts,
 ) -> str:
-    """Verify staged source-release bytes against the mirrored authoritative vote manifest."""
+    """Stage authoritative RC vote-manifest artifacts in SVN and mirror them to GitHub Releases."""
 
-    source_url = source_url.rstrip("/")
-    manifest_name = "rc-vote-manifest.json"
-    mirrored_manifest_text = _mirrored_release_asset_text(
-        repository_slug,
-        release_payload,
-        asset_name=manifest_name,
-    )
-    staged_manifest_url = f"{source_url}/{manifest_name}"
-    staged_manifest_text = read_uri_text(staged_manifest_url)
-    if staged_manifest_text != mirrored_manifest_text:
-        raise ValueError("RC vote manifest in SVN staging does not match the mirrored GitHub Release asset")
-
-    manifest_payload = _rc_vote_manifest_payload(staged_manifest_text, source=staged_manifest_url)
-    if manifest_payload.get("manifest_type") != "rc-vote":
-        raise ValueError(f"unexpected RC vote manifest type in {staged_manifest_url}")
-    if manifest_payload.get("component_id") != context.component_config.component_id:
-        raise ValueError(f"RC vote manifest component does not match {context.component_config.component_id}")
-    if manifest_payload.get("version") != version:
-        raise ValueError(f"RC vote manifest version does not match {version}")
-    if manifest_payload.get("rc_tag") != selected_rc_tag:
-        raise ValueError(f"RC vote manifest RC tag does not match {selected_rc_tag}")
-    if manifest_payload.get("final_tag") != derive_final_tag(version):
-        raise ValueError(f"RC vote manifest final tag does not match v{version}")
-
-    source_artifact = _source_artifact_entry_from_vote_manifest(
-        manifest_payload,
-        source=staged_manifest_url,
-    )
-    manifest_filename = source_artifact.get("filename")
-    if manifest_filename != expected_source_artifact_name:
-        raise ValueError(
-            "RC vote manifest source artifact filename does not match the expected staged source release"
+    svn_client = AsfSvnClient.from_environment()
+    staging_url = state.staging_url.rstrip("/")
+    if not svn_client.path_exists(staging_url):
+        raise ValueError(f"RC staging directory does not exist: {staging_url}")
+    with _temporary_build_dir("finalize-rc-vote-materials-svn") as temp_root:
+        staging_wc = temp_root / "staging-wc"
+        svn_client.checkout_url(staging_url, staging_wc)
+        svn_client.working_copy_put_file(
+            staging_wc,
+            artifacts.manifest_file_path,
+            artifacts.manifest_file_path.name,
         )
-    expected_source_artifact_url = f"{source_url}/{expected_source_artifact_name}"
-
-    expected_sha512 = _manifest_source_artifact_sha512(source_artifact, source=staged_manifest_url)
-    actual_sha512 = _verified_staged_source_artifact_sha512(expected_source_artifact_url)
-    if actual_sha512 != expected_sha512:
-        raise ValueError("staged source artifact checksum does not match the authoritative RC vote manifest")
-    return expected_sha512
-
-
-def _validate_full_ref_name(ref_name: str) -> str:
-    """Validate that one Git ref name is fully qualified and syntactically valid."""
-
-    if not ref_name.startswith("refs/"):
-        raise ValueError(f"Git ref name must start with refs/: {ref_name}")
-    completed = run_logged_command(
-        ["git", "check-ref-format", ref_name],
-        check=False,
-    )
-    if completed.returncode != 0:
-        raise ValueError(f"invalid Git ref name: {ref_name}")
-    return ref_name
-
-
-def _default_materialized_ref_name(state: PrepareRcState) -> str:
-    """Derive one temporary remote ref name for a detached materialization commit."""
-
-    run_id = os.environ.get("GITHUB_RUN_ID", "").strip()
-    if run_id:
-        run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT", "").strip() or "1"
-        return _validate_full_ref_name(
-            f"refs/heads/buildish-internal/materialized/{state.rc_tag}/{run_id}-{run_attempt}"
+        svn_client.working_copy_put_file(
+            staging_wc,
+            artifacts.manifest_sha512_path,
+            artifacts.manifest_sha512_path.name,
         )
-    random_suffix = secrets.token_hex(4)
-    return _validate_full_ref_name(
-        "refs/heads/buildish-internal/materialized/"
-        f"{state.rc_tag}/{state.resolved_source_ref[:12]}-{random_suffix}"
-    )
-
-
-def _validate_materialized_paths(paths: Iterable[str]) -> list[str]:
-    """Validate and deduplicate repository-relative materialized file or directory paths."""
-
-    materialized_paths: list[str] = []
-    for raw_path in paths:
-        candidate = Path(raw_path)
-        if candidate.is_absolute():
-            raise ValueError(f"materialized paths must be repository-relative: {raw_path}")
-        if ".." in candidate.parts:
-            raise ValueError(f"materialized paths must not escape the repository root: {raw_path}")
-        normalized = str(candidate)
-        if normalized not in materialized_paths:
-            materialized_paths.append(normalized)
-    if not materialized_paths:
-        raise ValueError("at least one --materialized-path is required")
-    return materialized_paths
-
-
-def _git_config_set(repo_path: Path, key: str, value: str) -> None:
-    """Set one local Git configuration value inside one repository or worktree."""
-
-    run_logged_command(
-        ["git", "-C", str(repo_path), "config", key, value],
-        cwd=repo_path,
-        capture_output=False,
-    )
-
-
-def _add_detached_worktree(repo: GitRepository, worktree_path: Path, source_ref: str) -> None:
-    """Create one detached Git worktree rooted at a resolved source ref."""
-
-    run_logged_command(
-        [
-            "git",
-            "-C",
-            str(repo.path),
-            "worktree",
-            "add",
-            "--detach",
-            str(worktree_path),
-            source_ref,
+        svn_client.working_copy_put_file(
+            staging_wc,
+            artifacts.manifest_signature_path,
+            artifacts.manifest_signature_path.name,
+        )
+        svn_client.commit_working_copy(
+            staging_wc,
+            f"stage RC vote manifest for {context.component_config.component_id} {version}",
+        )
+    upload_release_assets(
+        selected_release.repository_slug,
+        tag_name=selected_release.require_release_tag(reference_tag=state.rc_tag),
+        asset_paths=[
+            artifacts.manifest_file_path,
+            artifacts.manifest_sha512_path,
+            artifacts.manifest_signature_path,
         ],
-        cwd=repo.path,
-        capture_output=False,
+        clobber=True,
     )
+    return f"{staging_url}/{artifacts.manifest_file_path.name}"
 
 
-def _remove_worktree(repo: GitRepository, worktree_path: Path) -> None:
-    """Best-effort removal of one Git worktree path."""
+def _rc_vote_manifest_asset_names(artifacts: RcVoteManifestArtifacts) -> list[str]:
+    """Return the authoritative RC vote-manifest asset names in mirror order."""
 
-    run_logged_command(
-        ["git", "-C", str(repo.path), "worktree", "remove", "--force", str(worktree_path)],
-        cwd=repo.path,
-        capture_output=False,
-        check=False,
-    )
-
-
-def _has_staged_changes(repo_path: Path) -> bool:
-    """Return whether one repository currently has staged changes."""
-
-    completed = run_logged_command(
-        ["git", "-C", str(repo_path), "diff", "--cached", "--quiet"],
-        cwd=repo_path,
-        check=False,
-    )
-    if completed.returncode in (0, 1):
-        return completed.returncode == 1
-    raise CommandExecutionError("command failed: git diff --cached --quiet")
+    return [
+        artifacts.manifest_file_path.name,
+        artifacts.manifest_sha512_path.name,
+        artifacts.manifest_signature_path.name,
+    ]
 
 
-def _github_push_token() -> str | None:
-    """Return the GitHub token used for authenticated HTTPS pushes, when available."""
-
-    return os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-
-
-def _write_git_askpass_script(script_path: Path) -> None:
-    """Materialize one short-lived askpass helper that serves GitHub HTTPS credentials."""
-
-    script_path.write_text(
-        "\n".join(
-            [
-                "#!/bin/sh",
-                "set -eu",
-                'prompt="${1-}"',
-                'case "$prompt" in',
-                "  *Username*|*username*)",
-                '    printf \'%s\\n\' "${BUILDISH_GIT_ASKPASS_USERNAME:-x-access-token}"',
-                "    ;;",
-                "  *)",
-                '    printf \'%s\\n\' "${BUILDISH_GIT_ASKPASS_TOKEN:?}"',
-                "    ;;",
-                "esac",
-            ]
-        )
-        + "\n",
-        encoding="utf-8",
-    )
-    script_path.chmod(0o700)
-
-
-def _git_push_target(repo: GitRepository, repository_slug: str | None) -> str:
-    """Resolve the remote URL used for temporary detached-commit ref pushes."""
-
-    if _github_push_token() and repository_slug is not None:
-        return f"https://github.com/{repository_slug}.git"
-    return repo.remote_url("origin")
-
-
-def _git_push_auth_env(push_target: str) -> tuple[Path | None, dict[str, str] | None, list[str]]:
-    """Return short-lived environment overrides for authenticated HTTPS Git pushes."""
-
-    token = _github_push_token()
-    if token is None or not push_target.startswith(("http://", "https://")):
-        return (None, None, [])
-
-    helper_dir = Path(tempfile.mkdtemp(prefix="buildish-git-askpass-"))
-    script_path = helper_dir / "git-askpass.sh"
-    _write_git_askpass_script(script_path)
-    return (
-        helper_dir,
-        {
-            "BUILDISH_GIT_ASKPASS_TOKEN": token,
-            "BUILDISH_GIT_ASKPASS_USERNAME": "x-access-token",
-            "GH_TOKEN": "",
-            "GITHUB_TOKEN": "",
-            "GIT_ASKPASS": str(script_path),
-            "GIT_TERMINAL_PROMPT": "0",
-        },
-        [token],
-    )
-
-
-def _push_remote_ref(
-    repo: GitRepository,
+def _append_finalize_rc_vote_materials_summary(
+    summary: SummaryWriter,
     *,
-    repository_slug: str | None,
-    source_ref: str,
-    target_ref: str,
-    force: bool,
-) -> str:
-    """Push one local ref or commit expression to one remote full ref name."""
+    context: CommandContext,
+    version: str,
+    state: PrepareRcState,
+    selected_release: SelectedGitHubRelease,
+    rc_tag_target_commit: str,
+    source_artifact_sha512: str,
+    source_signature_text: str,
+    secondary_artifacts: list[dict[str, Any]],
+    authoritative_manifest_url: str,
+    artifacts: RcVoteManifestArtifacts,
+    project_vote_email: Any,
+    incubator_vote_email: Any | None,
+) -> None:
+    """Append the full human-facing RC vote-materials summary for one run."""
 
-    push_target = _git_push_target(repo, repository_slug)
-    helper_dir, push_env, secret_values = _git_push_auth_env(push_target)
-    command = ["git", "-C", str(repo.path), "push"]
-    if force:
-        command.append("--force")
-    command.extend([push_target, f"{source_ref}:{target_ref}"])
-    try:
-        run_logged_command(
-            command,
-            cwd=repo.path,
-            env=push_env,
-            capture_output=False,
-            extra_secret_values=secret_values,
+    summary.append_heading(f"Finalize RC vote materials for version {version}")
+    summary.append_key_value_table(
+        "Technical details",
+        [
+            ("Component", _summary_code(context.component_config.component_id)),
+            ("Version", _summary_code(version)),
+            ("Release branch", _summary_code(state.resolved_release_branch)),
+            ("Source commit", _summary_code(state.resolved_source_ref)),
+            ("RC tag", _summary_code(state.rc_tag)),
+            ("Final tag", _summary_code(state.final_tag)),
+            ("RC tag target commit", _summary_code(rc_tag_target_commit)),
+            ("ASF SVN staging URL", _summary_code(f"{state.staging_url.rstrip('/')}/")),
+            ("Authoritative manifest URL", _summary_code(authoritative_manifest_url)),
+            ("Draft GitHub Release URL", _summary_optional_code(selected_release.release_url)),
+            ("Secondary artifact count", str(len(secondary_artifacts))),
+            ("GPG signing key", _summary_code(artifacts.gpg_fingerprint)),
+        ],
+    )
+    summary.append_sha512_block(state.source_artifact_name, source_artifact_sha512)
+    summary.append_signature_text_block(state.source_artifact_name, source_signature_text)
+    summary.append_sha512_block(artifacts.manifest_file_path.name, artifacts.manifest_sha512)
+    summary.append_signature_block(
+        artifacts.manifest_file_path.name,
+        artifacts.manifest_signature_path,
+    )
+    summary.append_bullet_list(
+        "Draft GitHub Release mirror assets",
+        [_summary_code(asset_name) for asset_name in _rc_vote_manifest_asset_names(artifacts)],
+    )
+    summary.append_json_block("RC vote manifest", artifacts.manifest_payload)
+    summary.append_plaintext_block(
+        "Outcome",
+        "The RC vote manifest was signed, staged into ASF dev/dist, and mirrored to the draft "
+        "GitHub Release. The email proposals below are ready for human review and sending.",
+    )
+    summary.append_plaintext_block(
+        "Verification trust roots",
+        f"ASF KEYS: {artifacts.manifest_payload['trust_roots']['asf_keys']['uri']}\n"
+        "Buildish verification guide: "
+        f"{context.component_config.release_verification_guide_url}",
+    )
+    summary.append_email_template_blocks(
+        "Project vote",
+        project_vote_email.subject,
+        project_vote_email.body,
+    )
+    if incubator_vote_email is not None:
+        summary.append_email_template_blocks(
+            "Incubator vote request",
+            incubator_vote_email.subject,
+            incubator_vote_email.body,
         )
-    finally:
-        if helper_dir is not None:
-            shutil.rmtree(helper_dir, ignore_errors=True)
-    return "pushed"
-
-
-def _delete_remote_ref_best_effort(
-    repo: GitRepository,
-    *,
-    repository_slug: str | None,
-    ref_name: str,
-) -> str:
-    """Delete one remote full ref name without failing the parent command on cleanup issues."""
-
-    helper_dir: Path | None = None
-    try:
-        push_target = _git_push_target(repo, repository_slug)
-        helper_dir, push_env, secret_values = _git_push_auth_env(push_target)
-        run_logged_command(
-            ["git", "-C", str(repo.path), "push", push_target, f":{ref_name}"],
-            cwd=repo.path,
-            env=push_env,
-            capture_output=False,
-            extra_secret_values=secret_values,
-        )
-    except Exception:  # noqa: BLE001
-        return "delete-failed-ignored"
-    finally:
-        if helper_dir is not None:
-            shutil.rmtree(helper_dir, ignore_errors=True)
-    return "deleted"
 
 
 def _matching_dev_rc_entries(entries: Iterable[str], version: str) -> list[str]:
@@ -599,268 +570,6 @@ def _matching_dev_rc_entries(entries: Iterable[str], version: str) -> list[str]:
         entry.rstrip("/")
         for entry in entries
         if entry.endswith("/") and pattern.fullmatch(entry.rstrip("/")) is not None
-    )
-
-
-def _matching_draft_releases(
-    releases: Iterable[dict[str, object]],
-    *,
-    version: str,
-    tag_names: Iterable[str],
-    release_name: str,
-) -> list[dict[str, object]]:
-    """Return draft GitHub Release payloads matching one exact release family."""
-
-    tag_name_set = set(tag_names)
-    matching_releases: list[dict[str, object]] = []
-    for release in releases:
-        if release.get("draft") is not True:
-            continue
-        release_tag = release.get("tag_name")
-        release_title = release.get("name")
-        matches_exact_version_rc = (
-            isinstance(release_tag, str)
-            and re.fullmatch(rf"v{re.escape(version)}-rc[0-9]+", release_tag) is not None
-        )
-        if (
-            isinstance(release_tag, str)
-            and release_tag in tag_name_set
-            or matches_exact_version_rc
-            or isinstance(release_title, str)
-            and release_title == release_name
-        ):
-            matching_releases.append(release)
-    return matching_releases
-
-
-def _release_body_line_value(release_payload: dict[str, object], prefix: str) -> str | None:
-    """Extract one exact line value from a release body by prefix."""
-
-    body = release_payload.get("body")
-    if not isinstance(body, str) or not body:
-        return None
-    pattern = re.compile(rf"(?m)^{re.escape(prefix)}(?P<value>.+)$")
-    match = pattern.search(body)
-    if match is None:
-        return None
-    value = match.group("value").strip()
-    return value or None
-
-
-def _release_payload_rc_tag(release_payload: dict[str, object], version: str) -> str | None:
-    """Resolve one RC tag from a draft release payload."""
-
-    release_tag = release_payload.get("tag_name")
-    if isinstance(release_tag, str) and re.fullmatch(rf"v{re.escape(version)}-rc[0-9]+", release_tag):
-        return release_tag
-    body_rc_tag = _release_body_line_value(release_payload, "RC tag: ")
-    if body_rc_tag is None:
-        return None
-    if not re.fullmatch(rf"v{re.escape(version)}-rc[0-9]+", body_rc_tag):
-        raise ValueError(f"draft release body contains an invalid RC tag for {version}: {body_rc_tag}")
-    return body_rc_tag
-
-
-def _release_payload_source_ref(release_payload: dict[str, object]) -> str | None:
-    """Resolve the recorded source ref from a draft release payload."""
-
-    return _release_body_line_value(release_payload, "Resolved source ref: ")
-
-
-def _selected_release_for_version(
-    releases: Iterable[dict[str, object]],
-    *,
-    version: str,
-) -> tuple[dict[str, object], str]:
-    """Return the unique release payload and RC tag selected for one version."""
-
-    final_tag = derive_final_tag(version)
-    matching_releases: list[tuple[dict[str, object], str]] = []
-    for release in releases:
-        selected_rc_tag = _release_payload_rc_tag(release, version)
-        release_tag = release.get("tag_name")
-        if selected_rc_tag is None and release_tag != final_tag:
-            continue
-        if selected_rc_tag is None:
-            raise ValueError(f"GitHub Release for {final_tag} does not record an RC tag")
-        matching_releases.append((release, selected_rc_tag))
-    if not matching_releases:
-        raise ValueError(f"no GitHub Release exists for version {version}")
-    selected_rc_tags = {selected_rc_tag for _release, selected_rc_tag in matching_releases}
-    if len(selected_rc_tags) != 1:
-        raise ValueError(
-            f"GitHub Releases for v{version} record multiple RC tags: "
-            + ", ".join(sorted(selected_rc_tags))
-        )
-    selected_rc_tag = next(iter(selected_rc_tags))
-    matching_releases.sort(
-        key=lambda item: _release_selection_priority(
-            item[0],
-            selected_rc_tag=selected_rc_tag,
-            final_tag=final_tag,
-        )
-    )
-    selected_release = matching_releases[0][0]
-    selected_priority = _release_selection_priority(
-        selected_release,
-        selected_rc_tag=selected_rc_tag,
-        final_tag=final_tag,
-    )
-    ambiguous_matches = [
-        release
-        for release, _release_rc_tag in matching_releases
-        if _release_selection_priority(
-            release,
-            selected_rc_tag=selected_rc_tag,
-            final_tag=final_tag,
-        )
-        == selected_priority
-    ]
-    if len(ambiguous_matches) != 1:
-        raise ValueError(f"multiple GitHub Releases match version {version} at the same priority")
-    return selected_release, selected_rc_tag
-
-
-def _release_selection_priority(
-    release_payload: dict[str, object],
-    *,
-    selected_rc_tag: str,
-    final_tag: str,
-) -> tuple[int, int]:
-    """Rank exact-version releases by the preferred draft/final tagging scheme."""
-
-    release_tag = release_payload.get("tag_name")
-    release_id = release_payload.get("id")
-    numeric_release_id = release_id if isinstance(release_id, int) else 0
-    if release_tag == final_tag and release_payload.get("draft") is False:
-        return (0, numeric_release_id)
-    if release_tag == selected_rc_tag:
-        return (1, numeric_release_id)
-    if release_tag == final_tag:
-        return (2, numeric_release_id)
-    return (3, numeric_release_id)
-
-
-def _selected_github_release(
-    *,
-    repo: GitRepository,
-    version: str,
-    expected_selected_rc_tag: str | None = None,
-) -> SelectedGitHubRelease:
-    """Resolve the GitHub Release selected for one exact version."""
-
-    version = require_semantic_version(version)
-    repository_slug = resolve_repository_slug(repo.path)
-    release_payload, selected_rc_tag = _selected_release_for_version(
-        list_releases(repository_slug),
-        version=version,
-    )
-    if expected_selected_rc_tag is not None and selected_rc_tag != expected_selected_rc_tag:
-        raise ValueError(
-            f"draft GitHub Release for v{version} now points at {selected_rc_tag}, expected {expected_selected_rc_tag}"
-        )
-    if not repo.tag_exists(selected_rc_tag):
-        raise ValueError(f"selected RC tag does not exist locally: {selected_rc_tag}")
-    return SelectedGitHubRelease(
-        repository_slug=repository_slug,
-        release_payload=release_payload,
-        selected_rc_tag=selected_rc_tag,
-    )
-
-
-def _plan_draft_release_sync(
-    matching_draft_releases: Iterable[dict[str, object]],
-    *,
-    version: str,
-    state: PrepareRcState,
-) -> DraftReleaseSyncPlan:
-    """Classify matching draft releases into deletions and same-RC reuse candidates."""
-
-    lower_rc_release_ids: list[int] = []
-    legacy_release_ids: list[int] = []
-    same_rc_release: dict[str, object] | None = None
-    higher_rc_tags: list[str] = []
-    for release in matching_draft_releases:
-        release_id = release.get("id")
-        if not isinstance(release_id, int):
-            continue
-        existing_rc_tag = _release_payload_rc_tag(release, version)
-        if existing_rc_tag is None:
-            legacy_release_ids.append(release_id)
-            continue
-        existing_rc_number = _rc_number_from_tag(version, existing_rc_tag)
-        if existing_rc_number < state.rc_number:
-            lower_rc_release_ids.append(release_id)
-            continue
-        if existing_rc_number > state.rc_number:
-            higher_rc_tags.append(existing_rc_tag)
-            continue
-        if same_rc_release is not None:
-            raise ValueError(f"multiple draft GitHub Releases already exist for {state.rc_tag}")
-        existing_source_ref = _release_payload_source_ref(release)
-        if existing_source_ref is not None and existing_source_ref != state.resolved_source_ref:
-            raise ValueError(
-                f"draft GitHub Release for {state.rc_tag} points at a different source ref: {existing_source_ref}"
-            )
-        same_rc_release = release
-    if higher_rc_tags:
-        raise ValueError(
-            "draft GitHub Release already records a higher RC: " + ", ".join(sorted(higher_rc_tags))
-        )
-    return DraftReleaseSyncPlan(
-        deleted_release_ids=sorted(legacy_release_ids + lower_rc_release_ids),
-        same_rc_release=same_rc_release,
-    )
-
-
-def _upsert_draft_release(
-    repository_slug: str,
-    *,
-    state: PrepareRcState,
-    release_name: str,
-    desired_release_body: str,
-    same_rc_release: dict[str, object] | None,
-) -> tuple[dict[str, object], str]:
-    """Create, reuse, or update the selected draft release for one RC."""
-
-    if same_rc_release is None:
-        return (
-            create_draft_release(
-                repository_slug,
-                tag_name=state.rc_tag,
-                target_commitish=state.resolved_source_ref,
-                release_name=release_name,
-                release_body=desired_release_body,
-            ),
-            "created",
-        )
-    existing_release_id = same_rc_release.get("id")
-    if not isinstance(existing_release_id, int):
-        raise ValueError(f"draft GitHub Release for {state.rc_tag} does not include a numeric id")
-    same_release_body = same_rc_release.get("body")
-    same_release_name = same_rc_release.get("name")
-    if (
-        isinstance(same_release_body, str)
-        and same_release_body == desired_release_body
-        and isinstance(same_release_name, str)
-        and same_release_name == release_name
-        and same_rc_release.get("tag_name") == state.rc_tag
-    ):
-        return same_rc_release, "reused"
-    return (
-        update_release(
-            repository_slug,
-            existing_release_id,
-            payload={
-                "tag_name": state.rc_tag,
-                "target_commitish": state.resolved_source_ref,
-                "name": release_name,
-                "body": desired_release_body,
-                "draft": True,
-                "prerelease": False,
-            },
-        ),
-        "updated",
     )
 
 
@@ -922,7 +631,7 @@ def _resolve_release_version_state(
     expected_selected_rc_tag: str | None = None,
 ) -> tuple[str, ReleaseVersionState]:
     version = require_semantic_version(version)
-    selected_release = _selected_github_release(
+    selected_release = selected_github_release(
         repo=repo,
         version=version,
         expected_selected_rc_tag=expected_selected_rc_tag,
@@ -999,16 +708,6 @@ def _assert_unique_upload_asset_names(asset_paths: Iterable[Path]) -> None:
         if asset_path.name in seen_names:
             raise ValueError(f"duplicate GitHub Release asset name: {asset_path.name}")
         seen_names.add(asset_path.name)
-
-
-def _asset_release_url(release_payload: dict[str, object]) -> str:
-    """Resolve the most useful URL string from a GitHub Release payload."""
-
-    for key in ("html_url", "url"):
-        value = release_payload.get(key)
-        if isinstance(value, str) and value:
-            return value
-    return ""
 
 
 def _create_or_reuse_annotated_tag(
@@ -1367,17 +1066,10 @@ def run_build_source_rc(args: Namespace) -> Path:
 
     context = _context(args)
     repo = GitRepository.from_current_worktree()
-    version = args.version
-    source_sha = args.source_sha
-    state = resolve_prepare_rc_state(
-        repo, context.component_config, version, source_sha, getattr(args, "rc_tag", None)
-    )
+    version, state = _resolve_prepare_rc_state_from_args(args, context, repo)
     output_dir = _artifact_output_dir(context.component_config.component_id)
     artifact_path = output_dir / state.source_artifact_name
-    temp_parent = Path.cwd() / "build"
-    temp_parent.mkdir(parents=True, exist_ok=True)
-    temp_root = Path(tempfile.mkdtemp(prefix="build-source-rc.", dir=temp_parent))
-    try:
+    with _temporary_build_dir("build-source-rc") as temp_root:
         gpg_home = temp_root / "gnupg"
         staging_wc = temp_root / "staging-wc"
         create_from_git(repo.path, state.resolved_source_ref, state.source_artifact_prefix_path, artifact_path)
@@ -1431,8 +1123,6 @@ def run_build_source_rc(args: Namespace) -> Path:
         summary.append_sha512_block(state.source_artifact_name, artifact_sha512)
         summary.append_signature_block(state.source_artifact_name, asc_path)
         return manifest_path
-    finally:
-        shutil.rmtree(temp_root, ignore_errors=True)
 
 
 def run_sync_draft_github_release(args: Namespace) -> Path:
@@ -1440,22 +1130,18 @@ def run_sync_draft_github_release(args: Namespace) -> Path:
 
     context = _context(args)
     repo = GitRepository.from_current_worktree()
-    version = args.version
-    source_sha = args.source_sha
-    state = resolve_prepare_rc_state(
-        repo, context.component_config, version, source_sha, getattr(args, "rc_tag", None)
-    )
+    version, state = _resolve_prepare_rc_state_from_args(args, context, repo)
     repository_slug = resolve_repository_slug(repo.path)
-    release_name = f"{context.component_config.vote_release_name} {version}"
+    release_name = _release_name(context, version)
     existing_releases = list_releases(repository_slug)
-    matching_draft_releases = _matching_draft_releases(
+    matching_release_payloads = matching_draft_releases(
         existing_releases,
         version=version,
         tag_names=[state.final_tag, state.rc_tag],
         release_name=release_name,
     )
-    sync_plan = _plan_draft_release_sync(
-        matching_draft_releases,
+    sync_plan = plan_draft_release_sync(
+        matching_release_payloads,
         version=version,
         state=state,
     )
@@ -1463,7 +1149,7 @@ def run_sync_draft_github_release(args: Namespace) -> Path:
     for release_id in deleted_release_ids:
         delete_release(repository_slug, release_id)
     desired_release_body = _draft_release_body(context, state)
-    created_release, sync_mode = _upsert_draft_release(
+    created_release, sync_mode = upsert_draft_release(
         repository_slug,
         state=state,
         release_name=release_name,
@@ -1473,7 +1159,7 @@ def run_sync_draft_github_release(args: Namespace) -> Path:
     created_release_id = created_release.get("id")
     created_release_tag = created_release.get("tag_name")
     created_release_title = created_release.get("name")
-    created_release_url = created_release.get("html_url") or created_release.get("url") or ""
+    created_release_url = asset_release_url(created_release)
     manifest_path = _manifest_path(context.component_config.component_id, "sync-draft-github-release")
     summary = _summary_writer()
     write_manifest(
@@ -1522,7 +1208,7 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
     context = _context(args)
     repo = GitRepository.from_current_worktree()
     version = args.version
-    selected_release = _selected_github_release(
+    selected_release = selected_github_release(
         repo=repo,
         version=version,
         expected_selected_rc_tag=getattr(args, "selected_rc_tag", None),
@@ -1534,11 +1220,14 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
     if not svn_client.path_exists(source_url):
         raise ValueError(f"RC staging directory does not exist: {source_url}")
     staged_entries = sorted(svn_client.list_entries(source_url, recursive=True))
-    required_source_release_file_names = _required_source_release_file_names(
+    required_source_release_files = required_source_release_file_names(
         context.component_config.source_artifact_prefix,
         version,
     )
-    required_file_names = [*required_source_release_file_names, *_required_rc_vote_manifest_file_names()]
+    required_file_names = [
+        *required_source_release_files,
+        *required_rc_vote_manifest_file_names(),
+    ]
     missing_required_files = [
         file_name for file_name in required_file_names if file_name not in staged_entries
     ]
@@ -1547,14 +1236,14 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
             "RC staging directory is missing required staged release files: "
             + ", ".join(missing_required_files)
         )
-    verified_source_artifact_sha512 = _verify_staged_source_release_against_vote_manifest(
+    verified_source_artifact_sha512 = verify_staged_source_release_against_vote_manifest(
         context,
         repository_slug=selected_release.repository_slug,
         release_payload=selected_release.release_payload,
         source_url=source_url,
         version=version,
         selected_rc_tag=selected_release.selected_rc_tag,
-        expected_source_artifact_name=required_source_release_file_names[0],
+        expected_source_artifact_name=required_source_release_files[0],
     )
     if svn_client.path_exists(target_url):
         target_entries = sorted(svn_client.list_entries(target_url, recursive=True))
@@ -1590,7 +1279,7 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
     summary.append_plaintext_block("Promoted source URL", f"{source_url}/")
     summary.append_plaintext_block("Published release URL", f"{target_url}/")
     summary.append_sha512_block(
-        required_source_release_file_names[0],
+        required_source_release_files[0],
         verified_source_artifact_sha512,
     )
     summary.append_plaintext_block("Publish mode", publish_mode)
@@ -1643,97 +1332,56 @@ def run_materialize_rc_git_content(args: Namespace) -> Path:
             "materialize-rc-git-content is valid only for detached-materialization components"
         )
     repo = GitRepository.from_current_worktree()
-    version = args.version
-    source_sha = args.source_sha
-    state = resolve_prepare_rc_state(
-        repo, context.component_config, version, source_sha, getattr(args, "rc_tag", None)
-    )
-    materialized_paths = _validate_materialized_paths(getattr(args, "materialized_paths", []))
+    version, state = _resolve_prepare_rc_state_from_args(args, context, repo)
+    materialized_paths = validate_materialized_paths(getattr(args, "materialized_paths", []))
     materialized_ref_name = getattr(args, "materialized_ref_name", None)
     if materialized_ref_name is not None:
-        materialized_ref_name = _validate_full_ref_name(materialized_ref_name)
+        materialized_ref_name = validate_full_ref_name(materialized_ref_name)
     else:
-        materialized_ref_name = _default_materialized_ref_name(state)
+        materialized_ref_name = default_materialized_ref_name(state)
     run_command = getattr(args, "run_command", "").strip()
     if not run_command:
         raise ValueError("--run-command must not be empty")
 
-    repository_slug = _repository_slug_or_none(repo)
-    temp_parent = Path.cwd() / "build"
-    temp_parent.mkdir(parents=True, exist_ok=True)
-    temp_root = Path(tempfile.mkdtemp(prefix="materialize-rc-git-content.", dir=temp_parent))
-    worktree_path = temp_root / "worktree"
-    materialized_commit_sha = ""
-    materialized_ref_mode = "generated"
-    try:
-        _add_detached_worktree(repo, worktree_path, state.resolved_source_ref)
-        worktree_repo = GitRepository(worktree_path)
-        _git_config_set(worktree_path, "user.name", "Buildish Release Tooling")
-        _git_config_set(worktree_path, "user.email", "buildish-release-tooling@example.invalid")
-        run_logged_command(["sh", "-lc", run_command], cwd=worktree_path, capture_output=False)
-        run_logged_command(
-            ["git", "-C", str(worktree_path), "add", "--force", "--", *materialized_paths],
-            cwd=worktree_path,
-            capture_output=False,
-        )
-        if not _has_staged_changes(worktree_path):
-            raise ValueError(
-                "materialized content commit would be empty for "
-                f"{state.resolved_source_ref}: {', '.join(materialized_paths)}"
-            )
-        run_logged_command(
-            [
-                "git",
-                "-C",
-                str(worktree_path),
-                "commit",
-                "-m",
-                f"Materialize RC Git content for {state.rc_tag}",
-            ],
-            cwd=worktree_path,
-            capture_output=False,
-        )
-        materialized_commit_sha = worktree_repo.current_head_commit()
-        materialized_ref_mode = _push_remote_ref(
-            worktree_repo,
-            repository_slug=repository_slug,
-            source_ref="HEAD",
-            target_ref=materialized_ref_name,
-            force=True,
-        )
-        manifest_path = _manifest_path(
-            context.component_config.component_id, "materialize-rc-git-content"
-        )
-        summary = _summary_writer()
-        manifest_entries = {
-            "component": context.component_config.component_id,
-            "action": "materialize-rc-git-content",
-            "version": version,
-            "resolved_source_ref": state.resolved_source_ref,
-            "rc_tag": state.rc_tag,
-            "materialized_paths": ",".join(materialized_paths),
-            "materialized_commit_sha": materialized_commit_sha,
-            "materialized_ref_name": materialized_ref_name,
-            "materialized_ref_mode": materialized_ref_mode,
+    materialized_content = _materialize_rc_git_content(
+        repo,
+        state=state,
+        repository_slug=_repository_slug_or_none(repo),
+        materialized_paths=materialized_paths,
+        materialized_ref_name=materialized_ref_name,
+        run_command=run_command,
+    )
+    manifest_path = _manifest_path(context.component_config.component_id, "materialize-rc-git-content")
+    summary = _summary_writer()
+    manifest_entries = {
+        "component": context.component_config.component_id,
+        "action": "materialize-rc-git-content",
+        "version": version,
+        "resolved_source_ref": state.resolved_source_ref,
+        "rc_tag": state.rc_tag,
+        "materialized_paths": ",".join(materialized_content.materialized_paths),
+        "materialized_commit_sha": materialized_content.materialized_commit_sha,
+        "materialized_ref_name": materialized_content.materialized_ref_name,
+        "materialized_ref_mode": materialized_content.materialized_ref_mode,
+    }
+    write_manifest(manifest_path, manifest_entries)
+    _append_github_outputs(
+        {
+            "materialized_commit_sha": materialized_content.materialized_commit_sha,
+            "materialized_ref_name": materialized_content.materialized_ref_name,
         }
-        write_manifest(manifest_path, manifest_entries)
-        _append_github_outputs(
-            {
-                "materialized_commit_sha": manifest_entries["materialized_commit_sha"],
-                "materialized_ref_name": manifest_entries["materialized_ref_name"],
-            }
-        )
-        summary.append_heading("Materialize RC Git content")
-        summary.append_plaintext_block("Resolved source ref", state.resolved_source_ref)
-        summary.append_plaintext_block("RC tag", state.rc_tag)
-        summary.append_plaintext_block("Materialized paths", "\n".join(materialized_paths))
-        summary.append_plaintext_block("Materialized commit", materialized_commit_sha)
-        summary.append_plaintext_block("Materialized ref", materialized_ref_name)
-        summary.append_plaintext_block("Materialized ref mode", materialized_ref_mode)
-        return manifest_path
-    finally:
-        _remove_worktree(repo, worktree_path)
-        shutil.rmtree(temp_root, ignore_errors=True)
+    )
+    summary.append_heading("Materialize RC Git content")
+    summary.append_plaintext_block("Resolved source ref", state.resolved_source_ref)
+    summary.append_plaintext_block("RC tag", state.rc_tag)
+    summary.append_plaintext_block(
+        "Materialized paths",
+        "\n".join(materialized_content.materialized_paths),
+    )
+    summary.append_plaintext_block("Materialized commit", materialized_content.materialized_commit_sha)
+    summary.append_plaintext_block("Materialized ref", materialized_content.materialized_ref_name)
+    summary.append_plaintext_block("Materialized ref mode", materialized_content.materialized_ref_mode)
+    return manifest_path
 
 
 def run_create_rc_materialization_tag(args: Namespace) -> Path:
@@ -1741,31 +1389,15 @@ def run_create_rc_materialization_tag(args: Namespace) -> Path:
 
     context = _context(args)
     repo = GitRepository.from_current_worktree()
-    version = args.version
-    source_sha = args.source_sha
-    state = resolve_prepare_rc_state(
-        repo, context.component_config, version, source_sha, getattr(args, "rc_tag", None)
-    )
+    version, state = _resolve_prepare_rc_state_from_args(args, context, repo)
     cleanup_materialized_ref_name = getattr(args, "cleanup_materialized_ref_name", None)
     if cleanup_materialized_ref_name is not None:
-        cleanup_materialized_ref_name = _validate_full_ref_name(cleanup_materialized_ref_name)
-    if args.target_commit:
-        target_commit = args.target_commit
-        if (
-            context.component_config.final_tag_mode != "detached-materialization-commit"
-            and target_commit != state.resolved_source_ref
-        ):
-            raise ValueError("target_commit override is only valid for detached-materialization components")
-        tag_target_origin = (
-            "materialized-commit"
-            if target_commit != state.resolved_source_ref
-            else "source-commit"
-        )
-    else:
-        if context.component_config.final_tag_mode == "detached-materialization-commit":
-            raise ValueError("detached-materialization components require --target-commit")
-        target_commit = state.resolved_source_ref
-        tag_target_origin = "source-commit"
+        cleanup_materialized_ref_name = validate_full_ref_name(cleanup_materialized_ref_name)
+    target_commit, tag_target_origin = _resolve_materialization_tag_target(
+        context,
+        state,
+        args.target_commit,
+    )
     repository_slug = _repository_slug_or_none(repo)
     cleanup_materialized_ref_mode = "not-requested"
     try:
@@ -1780,7 +1412,7 @@ def run_create_rc_materialization_tag(args: Namespace) -> Path:
         )
     finally:
         if cleanup_materialized_ref_name is not None:
-            cleanup_materialized_ref_mode = _delete_remote_ref_best_effort(
+            cleanup_materialized_ref_mode = delete_remote_ref_best_effort(
                 repo,
                 repository_slug=repository_slug,
                 ref_name=cleanup_materialized_ref_name,
@@ -1823,7 +1455,7 @@ def run_create_final_tag(args: Namespace) -> Path:
     context = _context(args)
     repo = GitRepository.from_current_worktree()
     version = args.version
-    selected_release = _selected_github_release(
+    selected_release = selected_github_release(
         repo=repo,
         version=version,
         expected_selected_rc_tag=getattr(args, "selected_rc_tag", None),
@@ -2025,45 +1657,16 @@ def run_attach_github_release_assets(args: Namespace) -> Path:
     if not isinstance(release_id, int):
         raise ValueError(f"GitHub Release for {final_tag} does not include a numeric id")
     asset_paths = _asset_paths(args.assets)
-    upload_paths = list(asset_paths)
-    checksum_algorithms = _deduplicated_checksum_algorithms(args.checksum_algorithms)
-    generated_checksum_lines: list[str] = []
-    generated_checksum_paths: list[Path] = []
-    generated_signature_paths: list[Path] = []
-    gpg_fingerprint = ""
-
-    for asset_path in asset_paths:
-        for algorithm in checksum_algorithms:
-            digest_value = checksum(asset_path, algorithm)
-            checksum_path = write_checksum_file(asset_path, algorithm, digest_value)
-            generated_checksum_lines.append(f"{algorithm}:{digest_value}  {asset_path.name}")
-            generated_checksum_paths.append(checksum_path)
-            upload_paths.append(checksum_path)
-
-    temp_root: Path | None = None
-    if args.sign:
-        temp_parent = Path.cwd() / "build"
-        temp_parent.mkdir(parents=True, exist_ok=True)
-        temp_root = Path(tempfile.mkdtemp(prefix="attach-github-release-assets.", dir=temp_parent))
-        try:
-            gpg_home = temp_root / "gnupg"
-            import_private_key_from_secret(gpg_home)
-            gpg_fingerprint = secret_key_fingerprint(gpg_home)
-            for asset_path in asset_paths:
-                signature_path = asset_path.with_name(f"{asset_path.name}.asc")
-                detached_ascii_sign(gpg_home, asset_path, signature_path)
-                generated_signature_paths.append(signature_path)
-                upload_paths.append(signature_path)
-        finally:
-            if temp_root is not None:
-                shutil.rmtree(temp_root, ignore_errors=True)
-                temp_root = None
-
-    _assert_unique_upload_asset_names(upload_paths)
+    prepared_uploads = _prepare_release_asset_uploads(
+        asset_paths,
+        _deduplicated_checksum_algorithms(args.checksum_algorithms),
+        sign=args.sign,
+    )
+    _assert_unique_upload_asset_names(prepared_uploads.upload_paths)
     upload_release_assets(
         repository_slug,
         tag_name=final_tag,
-        asset_paths=upload_paths,
+        asset_paths=prepared_uploads.upload_paths,
         clobber=True,
     )
 
@@ -2071,7 +1674,7 @@ def run_attach_github_release_assets(args: Namespace) -> Path:
     summary = _summary_writer()
     release_name = release_payload.get("name")
     release_tag = release_payload.get("tag_name")
-    release_url = _asset_release_url(release_payload)
+    release_url = asset_release_url(release_payload)
     write_manifest(
         manifest_path,
         {
@@ -2084,15 +1687,17 @@ def run_attach_github_release_assets(args: Namespace) -> Path:
             "release_tag": str(release_tag or ""),
             "release_url": release_url,
             "primary_asset_names": ",".join(asset_path.name for asset_path in asset_paths),
-            "uploaded_asset_names": ",".join(upload_path.name for upload_path in upload_paths),
+            "uploaded_asset_names": ",".join(
+                upload_path.name for upload_path in prepared_uploads.upload_paths
+            ),
             "generated_checksum_asset_names": ",".join(
-                checksum_path.name for checksum_path in generated_checksum_paths
+                checksum_path.name for checksum_path in prepared_uploads.generated_checksum_paths
             ),
             "generated_signature_asset_names": ",".join(
-                signature_path.name for signature_path in generated_signature_paths
+                signature_path.name for signature_path in prepared_uploads.generated_signature_paths
             ),
-            "checksum_algorithms": ",".join(checksum_algorithms),
-            "gpg_fingerprint": gpg_fingerprint,
+            "checksum_algorithms": ",".join(prepared_uploads.checksum_algorithms),
+            "gpg_fingerprint": prepared_uploads.gpg_fingerprint,
         },
     )
     summary.append_heading("Attach GitHub Release assets")
@@ -2110,19 +1715,21 @@ def run_attach_github_release_assets(args: Namespace) -> Path:
     )
     summary.append_plaintext_block(
         "Uploaded assets",
-        "\n".join(upload_path.name for upload_path in upload_paths),
+        "\n".join(upload_path.name for upload_path in prepared_uploads.upload_paths),
     )
-    if checksum_algorithms:
+    if prepared_uploads.checksum_algorithms:
         summary.append_plaintext_block(
             "Checksum sidecars",
-            "\n".join(generated_checksum_lines),
+            "\n".join(prepared_uploads.generated_checksum_lines),
         )
-    if generated_signature_paths:
+    if prepared_uploads.generated_signature_paths:
         summary.append_plaintext_block(
             "Signature sidecars",
-            "\n".join(signature_path.name for signature_path in generated_signature_paths),
+            "\n".join(
+                signature_path.name for signature_path in prepared_uploads.generated_signature_paths
+            ),
         )
-        summary.append_plaintext_block("GPG signing key", gpg_fingerprint)
+        summary.append_plaintext_block("GPG signing key", prepared_uploads.gpg_fingerprint)
     return manifest_path
 
 
@@ -2131,174 +1738,87 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
 
     context = _context(args)
     repo = GitRepository.from_current_worktree()
-    version = args.version
-    source_sha = args.source_sha
-    state = resolve_prepare_rc_state(
-        repo, context.component_config, version, source_sha, getattr(args, "rc_tag", None)
-    )
+    version, state = _resolve_prepare_rc_state_from_args(args, context, repo)
     if not repo.tag_exists(state.rc_tag):
         raise ValueError(f"RC tag does not exist: {state.rc_tag}")
-    selected_release = _selected_github_release(
+    selected_release = selected_github_release(
         repo=repo,
         version=version,
         expected_selected_rc_tag=state.rc_tag,
     )
-    release_tag = selected_release.require_release_tag(reference_tag=state.rc_tag)
     rc_tag_target_commit = repo.resolve_commit(state.rc_tag)
     source_artifact_url = f"{state.staging_url.rstrip('/')}/{state.source_artifact_name}"
-    source_artifact_sha512 = _verified_staged_source_artifact_sha512(source_artifact_url)
+    source_artifact_sha512 = verified_staged_source_artifact_sha512(source_artifact_url)
     source_signature_text = read_uri_text(f"{source_artifact_url}.asc").strip()
     output_dir = _artifact_output_dir(context.component_config.component_id)
-    manifest_file_path = output_dir / "rc-vote-manifest.json"
     secondary_artifacts = _load_secondary_artifacts(args.secondary_artifact_manifests)
-    temp_parent = Path.cwd() / "build"
-    temp_parent.mkdir(parents=True, exist_ok=True)
-    temp_root = Path(tempfile.mkdtemp(prefix="finalize-rc-vote-materials.", dir=temp_parent))
-    try:
-        gpg_home = temp_root / "gnupg"
-        staging_wc = temp_root / "staging-wc"
-        manifest_payload = build_rc_vote_manifest(
+    artifacts = _build_rc_vote_manifest_artifacts(
+        context,
+        state=state,
+        selected_release=selected_release,
+        rc_tag_target_commit=rc_tag_target_commit,
+        source_artifact_sha512=source_artifact_sha512,
+        secondary_artifacts=secondary_artifacts,
+        output_dir=output_dir,
+    )
+    authoritative_manifest_url = _stage_rc_vote_manifest_and_mirror(
+        context,
+        state=state,
+        version=version,
+        selected_release=selected_release,
+        artifacts=artifacts,
+    )
+    project_vote_email = render_project_rc_vote_email(
+        component_config=context.component_config,
+        state=state,
+        rc_tag_target_commit=rc_tag_target_commit,
+        manifest_payload=artifacts.manifest_payload,
+        draft_release_url=selected_release.release_url,
+    )
+    incubator_vote_email = None
+    if context.component_config.incubator_vote_enabled:
+        incubator_vote_email = render_incubator_rc_vote_email(
             component_config=context.component_config,
             state=state,
-            repository_slug=selected_release.repository_slug,
-            draft_release_tag=release_tag,
-            draft_release_url=selected_release.release_url,
-            rc_tag_target_commit=rc_tag_target_commit,
-            source_artifact_sha512=source_artifact_sha512,
-            secondary_artifacts=secondary_artifacts,
+            manifest_payload=artifacts.manifest_payload,
         )
-        write_manifest(manifest_file_path, manifest_payload)
-        manifest_sha512 = sha512(manifest_file_path)
-        manifest_sha512_path = write_sha512_file(manifest_file_path, manifest_sha512)
-        import_private_key_from_secret(gpg_home)
-        gpg_fingerprint = secret_key_fingerprint(gpg_home)
-        manifest_signature_path = manifest_file_path.with_name(f"{manifest_file_path.name}.asc")
-        detached_ascii_sign(gpg_home, manifest_file_path, manifest_signature_path)
-
-        svn_client = AsfSvnClient.from_environment()
-        staging_url = state.staging_url.rstrip("/")
-        if not svn_client.path_exists(staging_url):
-            raise ValueError(f"RC staging directory does not exist: {staging_url}")
-        svn_client.checkout_url(staging_url, staging_wc)
-        svn_client.working_copy_put_file(staging_wc, manifest_file_path, manifest_file_path.name)
-        svn_client.working_copy_put_file(staging_wc, manifest_sha512_path, manifest_sha512_path.name)
-        svn_client.working_copy_put_file(
-            staging_wc,
-            manifest_signature_path,
-            manifest_signature_path.name,
-        )
-        svn_client.commit_working_copy(
-            staging_wc,
-            f"stage RC vote manifest for {context.component_config.component_id} {version}",
-        )
-
-        upload_release_assets(
-            selected_release.repository_slug,
-            tag_name=release_tag,
-            asset_paths=[manifest_file_path, manifest_sha512_path, manifest_signature_path],
-            clobber=True,
-        )
-        authoritative_manifest_url = f"{staging_url}/{manifest_file_path.name}"
-        project_vote_email = render_project_rc_vote_email(
-            component_config=context.component_config,
-            state=state,
-            rc_tag_target_commit=rc_tag_target_commit,
-            manifest_payload=manifest_payload,
-            draft_release_url=selected_release.release_url,
-        )
-        incubator_vote_email = None
-        if context.component_config.incubator_vote_enabled:
-            incubator_vote_email = render_incubator_rc_vote_email(
-                component_config=context.component_config,
-                state=state,
-                manifest_payload=manifest_payload,
-            )
-        manifest_path = _manifest_path(context.component_config.component_id, "finalize-rc-vote-materials")
-        summary = _summary_writer()
-        write_manifest(
-            manifest_path,
-            {
-                "component": context.component_config.component_id,
-                "action": "finalize-rc-vote-materials",
-                "version": version,
-                "resolved_source_ref": state.resolved_source_ref,
-                "rc_tag": state.rc_tag,
-                "final_tag": state.final_tag,
-                "rc_tag_target_commit": rc_tag_target_commit,
-                "source_artifact_url": source_artifact_url,
-                "authoritative_manifest_url": authoritative_manifest_url,
-                "authoritative_manifest_sha512": manifest_sha512,
-                "draft_release_url": selected_release.release_url,
-                "secondary_artifact_count": str(len(secondary_artifacts)),
-                "mirrored_asset_names": ",".join(
-                    [
-                        manifest_file_path.name,
-                        manifest_sha512_path.name,
-                        manifest_signature_path.name,
-                    ]
-                ),
-                "gpg_fingerprint": gpg_fingerprint,
-            },
-        )
-        summary.append_heading(f"Finalize RC vote materials for version {version}")
-        summary.append_key_value_table(
-            "Technical details",
-            [
-                ("Component", _summary_code(context.component_config.component_id)),
-                ("Version", _summary_code(version)),
-                ("Release branch", _summary_code(state.resolved_release_branch)),
-                ("Source commit", _summary_code(state.resolved_source_ref)),
-                ("RC tag", _summary_code(state.rc_tag)),
-                ("Final tag", _summary_code(state.final_tag)),
-                ("RC tag target commit", _summary_code(rc_tag_target_commit)),
-                ("ASF SVN staging URL", _summary_code(f"{staging_url}/")),
-                ("Authoritative manifest URL", _summary_code(authoritative_manifest_url)),
-                ("Draft GitHub Release URL", _summary_optional_code(selected_release.release_url)),
-                ("Secondary artifact count", str(len(secondary_artifacts))),
-                ("GPG signing key", _summary_code(gpg_fingerprint)),
-            ],
-        )
-        summary.append_sha512_block(state.source_artifact_name, source_artifact_sha512)
-        summary.append_signature_text_block(state.source_artifact_name, source_signature_text)
-        summary.append_sha512_block(manifest_file_path.name, manifest_sha512)
-        summary.append_signature_block(manifest_file_path.name, manifest_signature_path)
-        summary.append_bullet_list(
-            "Draft GitHub Release mirror assets",
-            [
-                _summary_code(manifest_file_path.name),
-                _summary_code(manifest_sha512_path.name),
-                _summary_code(manifest_signature_path.name),
-            ],
-        )
-        summary.append_json_block(
-            "RC vote manifest",
-            manifest_payload,
-        )
-        summary.append_plaintext_block(
-            "Outcome",
-            "The RC vote manifest was signed, staged into ASF dev/dist, and mirrored to the draft "
-            "GitHub Release. The email proposals below are ready for human review and sending.",
-        )
-        summary.append_plaintext_block(
-            "Verification trust roots",
-            f"ASF KEYS: {manifest_payload['trust_roots']['asf_keys']['uri']}\n"
-            "Buildish verification guide: "
-            f"{context.component_config.release_verification_guide_url}",
-        )
-        summary.append_email_template_blocks(
-            "Project vote",
-            project_vote_email.subject,
-            project_vote_email.body,
-        )
-        if incubator_vote_email is not None:
-            summary.append_email_template_blocks(
-                "Incubator vote request",
-                incubator_vote_email.subject,
-                incubator_vote_email.body,
-            )
-        return manifest_path
-    finally:
-        shutil.rmtree(temp_root, ignore_errors=True)
+    manifest_path = _manifest_path(context.component_config.component_id, "finalize-rc-vote-materials")
+    summary = _summary_writer()
+    write_manifest(
+        manifest_path,
+        {
+            "component": context.component_config.component_id,
+            "action": "finalize-rc-vote-materials",
+            "version": version,
+            "resolved_source_ref": state.resolved_source_ref,
+            "rc_tag": state.rc_tag,
+            "final_tag": state.final_tag,
+            "rc_tag_target_commit": rc_tag_target_commit,
+            "source_artifact_url": source_artifact_url,
+            "authoritative_manifest_url": authoritative_manifest_url,
+            "authoritative_manifest_sha512": artifacts.manifest_sha512,
+            "draft_release_url": selected_release.release_url,
+            "secondary_artifact_count": str(len(secondary_artifacts)),
+            "mirrored_asset_names": ",".join(_rc_vote_manifest_asset_names(artifacts)),
+            "gpg_fingerprint": artifacts.gpg_fingerprint,
+        },
+    )
+    _append_finalize_rc_vote_materials_summary(
+        summary,
+        context=context,
+        version=version,
+        state=state,
+        selected_release=selected_release,
+        rc_tag_target_commit=rc_tag_target_commit,
+        source_artifact_sha512=source_artifact_sha512,
+        source_signature_text=source_signature_text,
+        secondary_artifacts=secondary_artifacts,
+        authoritative_manifest_url=authoritative_manifest_url,
+        artifacts=artifacts,
+        project_vote_email=project_vote_email,
+        incubator_vote_email=incubator_vote_email,
+    )
+    return manifest_path
 
 
 def run_finalize_draft_github_release(args: Namespace) -> Path:
@@ -2308,7 +1828,7 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
     repo = GitRepository.from_current_worktree()
     version = args.version
     expected_selected_rc_tag = getattr(args, "selected_rc_tag", None)
-    selected_release = _selected_github_release(
+    selected_release = selected_github_release(
         repo=repo,
         version=version,
         expected_selected_rc_tag=expected_selected_rc_tag,
@@ -2346,7 +1866,7 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
         finalize_mode = "published-draft"
     finalized_release_tag = finalized_release.get("tag_name")
     finalized_release_name = finalized_release.get("name")
-    finalized_release_url = finalized_release.get("html_url") or finalized_release.get("url") or ""
+    finalized_release_url = asset_release_url(finalized_release)
     manifest_path = _manifest_path(context.component_config.component_id, "finalize-draft-github-release")
     summary = _summary_writer()
     write_manifest(

@@ -33,7 +33,10 @@ from typing import Any, cast
 from unittest import mock
 
 from apache_buildish_release_tooling.asf_svn import AsfSvnClient
-from apache_buildish_release_tooling.commands import _delete_remote_ref_best_effort, _push_remote_ref
+from apache_buildish_release_tooling.git_materialization import (
+    delete_remote_ref_best_effort,
+    push_remote_ref,
+)
 
 from tests.support import (
     cli_env,
@@ -123,9 +126,12 @@ class CommandCredentialHandlingUnitTest(unittest.TestCase):
 
         with (
             mock.patch.dict(os.environ, {"GITHUB_TOKEN": "gh-secret-token"}, clear=False),
-            mock.patch("apache_buildish_release_tooling.commands.run_logged_command", side_effect=fake_run_logged_command),
+            mock.patch(
+                "apache_buildish_release_tooling.git_materialization.run_logged_command",
+                side_effect=fake_run_logged_command,
+            ),
         ):
-            actual = _push_remote_ref(
+            actual = push_remote_ref(
                 repo,
                 repository_slug="apache/buildish-example",
                 source_ref="HEAD",
@@ -168,9 +174,12 @@ class CommandCredentialHandlingUnitTest(unittest.TestCase):
 
         with (
             mock.patch.dict(os.environ, {"GH_TOKEN": "gh-secret-token"}, clear=False),
-            mock.patch("apache_buildish_release_tooling.commands.run_logged_command", side_effect=fake_run_logged_command),
+            mock.patch(
+                "apache_buildish_release_tooling.git_materialization.run_logged_command",
+                side_effect=fake_run_logged_command,
+            ),
         ):
-            actual = _delete_remote_ref_best_effort(
+            actual = delete_remote_ref_best_effort(
                 repo,
                 repository_slug="apache/buildish-example",
                 ref_name="refs/buildish/test",
