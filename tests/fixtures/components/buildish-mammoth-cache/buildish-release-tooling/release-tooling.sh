@@ -128,8 +128,6 @@ resolve_tooling_dir() {
   fail "could not locate buildish-release-tooling in the repository root or at ../buildish-release-tooling"
 }
 
-TOOLING_DIR="$(resolve_tooling_dir)"
-
 usage() {
   printf 'usage: %s <command> [args...]\n' "${BASH_SOURCE[0]}" >&2
 }
@@ -151,6 +149,8 @@ case "$COMMAND_NAME" in
     exit 2
     ;;
 esac
+
+TOOLING_DIR="$(resolve_tooling_dir)"
 
 exec uv run --project "$TOOLING_DIR" --frozen buildish-release-tooling \
   "$COMMAND_NAME" \

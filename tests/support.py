@@ -739,6 +739,9 @@ def dispatcher_env(
     )
     env["BUILDISH_TEST_PYTHON"] = sys.executable
     env.setdefault("BUILDISH_RELEASE_TOOLING_DIR", str(component_root()))
+    # Keep wrapper smoke tests deterministic even when the parent process runs on GitHub Actions.
+    env["GITHUB_ACTIONS"] = "false"
+    env.pop("GITHUB_WORKSPACE", None)
     return env
 
 
