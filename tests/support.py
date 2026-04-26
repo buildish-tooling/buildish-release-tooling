@@ -479,6 +479,7 @@ def create_fake_gh_launcher(
     create_tag_response: object | None = None,
     create_ref_response: object | None = None,
     update_ref_response: object | None = None,
+    release_asset_text_by_id: Mapping[int, str] | None = None,
 ) -> tuple[Path, Path]:
     """Create a lightweight `gh` shim for deterministic API and release-upload behavior."""
 
@@ -508,6 +509,8 @@ def create_fake_gh_launcher(
         json.dumps(update_ref_response if update_ref_response is not None else {}),
         encoding="utf-8",
     )
+    for asset_id, asset_text in sorted((release_asset_text_by_id or {}).items()):
+        (state_dir / f"release-asset-{asset_id}.txt").write_text(asset_text, encoding="utf-8")
     launcher_path.write_text(
         "\n".join(
             [
@@ -583,6 +586,10 @@ def create_fake_gh_launcher(
                 'case "$method:$endpoint" in',
                 '  GET:repos/*/releases\\?per_page=100)',
                 '    cat "$state_dir/list-releases.json"',
+                "    ;;",
+                '  GET:repos/*/releases/assets/*)',
+                '    asset_id="${endpoint##*/}"',
+                '    cat "$state_dir/release-asset-${asset_id}.txt"',
                 "    ;;",
                 '  DELETE:repos/*/releases/assets/*)',
                 '    printf "%s\\n" "$endpoint" >> "$state_dir/deleted-asset-endpoints.log"',

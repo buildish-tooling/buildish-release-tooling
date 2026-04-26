@@ -21,6 +21,7 @@ from apache_buildish_release_tooling.models import ComponentConfig, PrepareRcSta
 from apache_buildish_release_tooling.release_state import (
     derive_final_tag,
     derive_rc_tag,
+    require_semantic_version,
 )
 
 
@@ -53,6 +54,7 @@ def resolve_prepare_rc_state(
 ) -> PrepareRcState:
     """Resolve and validate the common state shared across RC-related commands."""
 
+    version = require_semantic_version(version)
     if source_sha:
         resolved_source_ref = source_sha
         resolved_release_branch = "explicit-source-sha"

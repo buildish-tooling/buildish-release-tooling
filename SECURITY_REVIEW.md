@@ -1,3 +1,19 @@
+<!--
+Copyright 2026 The Apache Software Foundation
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
 # Security Review Report
 
 Date: 2026-04-26
@@ -6,12 +22,12 @@ Scope: manual review of the repository in its current working tree, focused on r
 
 ## Executive Summary
 
-I found 4 issues:
+Review findings and current status:
 
-- High: path traversal and out-of-directory writes when `source_sha` is supplied with an unvalidated `version`
-- Medium: GitHub and SVN credentials are passed in child-process arguments
-- Medium: final release publication trusts mutable SVN staging contents by filename only
-- Low: the harness persists secrets and command output to workspace files with minimal containment
+- Fixed: path traversal and out-of-directory writes when `source_sha` is supplied with an unvalidated `version`
+- Fixed: GitHub tokens and SVN passwords no longer travel in child-process arguments
+- Fixed: final release publication trusted mutable SVN staging contents by filename only
+- Mitigated: the `act` harness no longer imports host `GITHUB_TOKEN` / `GH_TOKEN` into `act.secrets`; remaining harness secret handling is primarily local-test hygiene
 
 ## Findings
 
@@ -76,11 +92,16 @@ Impact:
 - On self-hosted or shared runners, another local process can recover the GitHub token or SVN password while the command is running.
 - This is especially relevant because the tool is designed for privileged release workflows.
 
-Recommendation:
+Recommended mitigation plan:
 
 - Stop placing secrets in argv.
-- For Git, use a credential helper, `GIT_ASKPASS`, or another non-argv authentication path.
-- For SVN, use an authentication mechanism that keeps the secret out of the process command line and any persisted cache should be isolated and permission-restricted.
+- For GitHub-backed `git push`, use an ephemeral `GIT_ASKPASS` helper and a normal remote URL without embedded credentials.
+- Keep the token in process environment only for the short-lived helper invocation, not in the remote URL or command arguments.
+- In GitHub Actions, materialize the helper script in a temp directory from the workflow secret, set `GIT_ASKPASS`, `GIT_TERMINAL_PROMPT=0`, and run `git push` against `https://github.com/<owner>/<repo>.git`.
+- In the `act` harness, mirror the same flow by passing scenario-provided tokens through environment and letting the real CLI path use the same helper contract. This keeps harness behavior aligned with the workflow path.
+- For SVN, use `--password-from-stdin` together with `--non-interactive`, `--no-auth-cache`, and `--username <user>` so the password never appears in argv.
+- Feed the password over stdin from the workflow secret in GitHub Actions and from scenario secrets in the `act` harness so both execution modes exercise the same CLI path.
+- Use a temporary `--config-dir` only if you also need isolated SVN auth/cache state; it is not required as the primary password transport.
 
 ### 3. Medium: final release publication trusts mutable SVN staging contents by filename only
 
@@ -119,14 +140,14 @@ Affected code:
 
 Details:
 
-- The `act` backend writes scenario secrets, and host `GITHUB_TOKEN` / `GH_TOKEN` when present, to `.buildish-release-harness/act.secrets`.
+- The `act` backend writes scenario secrets to `.buildish-release-harness/act.secrets`.
 - Step stdout/stderr is appended verbatim to workspace log files.
 - The shim trace can also persist selected environment variables into `command-trace.jsonl`.
 
 Impact:
 
-- Secrets can remain on disk after a harness run and may be exposed if the workspace is archived, shared, or inspected by other local users.
-- This is more of a local containment issue than a remote vulnerability, but it is easy to trigger accidentally.
+- If scenarios use only synthetic test secrets, the practical impact is low.
+- The remaining concern is local containment: secret-like values and raw step output can remain on disk after a harness run and may be exposed if the workspace is archived, shared, or inspected by other local users.
 
 Recommendation:
 
@@ -137,7 +158,4 @@ Recommendation:
 
 ## Suggested Remediation Order
 
-1. Fix the `version` validation gap in `resolve_prepare_rc_state()`.
-2. Remove GitHub and SVN secrets from subprocess argv.
-3. Bind `publish-source-release-svn` to the previously signed RC vote manifest.
-4. Tighten harness secret storage and logging behavior.
+1. Tighten remaining harness secret storage and logging behavior if local test-workspace exposure matters for your environment.

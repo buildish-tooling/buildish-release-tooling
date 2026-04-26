@@ -16,14 +16,19 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import subprocess
 import unittest
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any, cast
+from unittest import mock
 
 from apache_buildish_release_tooling.asf_svn import AsfSvnClient
+from apache_buildish_release_tooling.commands import _delete_remote_ref_best_effort, _push_remote_ref
 
 from tests.support import (
     cli_env,
@@ -53,6 +58,124 @@ def _read_simple_github_outputs(path: Path) -> dict[str, str]:
         key, value = line.split("=", 1)
         outputs[key] = value
     return outputs
+
+
+class CommandCredentialHandlingUnitTest(unittest.TestCase):
+    """Verify credential-sensitive command construction without real subprocesses."""
+
+    def test_push_remote_ref_uses_git_askpass_for_github_https_pushes(self) -> None:
+        repo = mock.Mock()
+        repo.path = Path("/sandbox/repo")
+        repo.remote_url.return_value = "git@github.com:apache/buildish-example.git"
+        seen_script_path: Path | None = None
+
+        def fake_run_logged_command(
+            command: Sequence[str],
+            **kwargs: Any,
+        ) -> subprocess.CompletedProcess[str]:
+            nonlocal seen_script_path
+            self.assertEqual(
+                [
+                    "git",
+                    "-C",
+                    "/sandbox/repo",
+                    "push",
+                    "https://github.com/apache/buildish-example.git",
+                    "HEAD:refs/buildish/test",
+                ],
+                command,
+            )
+            self.assertNotIn("gh-secret-token", "".join(command))
+            self.assertEqual(["gh-secret-token"], cast(Sequence[str], kwargs["extra_secret_values"]))
+            env = cast(Mapping[str, str], kwargs["env"])
+            self.assertEqual("0", env["GIT_TERMINAL_PROMPT"])
+            self.assertEqual("", env["GH_TOKEN"])
+            self.assertEqual("", env["GITHUB_TOKEN"])
+            self.assertEqual("gh-secret-token", env["BUILDISH_GIT_ASKPASS_TOKEN"])
+            self.assertEqual("x-access-token", env["BUILDISH_GIT_ASKPASS_USERNAME"])
+            seen_script_path = Path(env["GIT_ASKPASS"])
+            self.assertTrue(seen_script_path.is_file())
+            self.assertEqual(
+                "\n".join(
+                    [
+                        "#!/bin/sh",
+                        "set -eu",
+                        'prompt="${1-}"',
+                        'case "$prompt" in',
+                        "  *Username*|*username*)",
+                        '    printf \'%s\\n\' "${BUILDISH_GIT_ASKPASS_USERNAME:-x-access-token}"',
+                        "    ;;",
+                        "  *)",
+                        '    printf \'%s\\n\' "${BUILDISH_GIT_ASKPASS_TOKEN:?}"',
+                        "    ;;",
+                        "esac",
+                        "",
+                    ]
+                ),
+                seen_script_path.read_text(encoding="utf-8"),
+            )
+            return subprocess.CompletedProcess(list(command), 0, "", "")
+
+        with (
+            mock.patch.dict(os.environ, {"GITHUB_TOKEN": "gh-secret-token"}, clear=False),
+            mock.patch("apache_buildish_release_tooling.commands.run_logged_command", side_effect=fake_run_logged_command),
+        ):
+            actual = _push_remote_ref(
+                repo,
+                repository_slug="apache/buildish-example",
+                source_ref="HEAD",
+                target_ref="refs/buildish/test",
+                force=False,
+            )
+
+        self.assertEqual("pushed", actual)
+        self.assertIsNotNone(seen_script_path)
+        if seen_script_path is None:
+            self.fail("expected askpass helper path to be captured")
+        self.assertFalse(seen_script_path.exists())
+
+    def test_delete_remote_ref_best_effort_uses_git_askpass_for_github_https_pushes(self) -> None:
+        repo = mock.Mock()
+        repo.path = Path("/sandbox/repo")
+        repo.remote_url.return_value = "git@github.com:apache/buildish-example.git"
+        seen_script_path: Path | None = None
+
+        def fake_run_logged_command(
+            command: Sequence[str],
+            **kwargs: Any,
+        ) -> subprocess.CompletedProcess[str]:
+            nonlocal seen_script_path
+            self.assertEqual(
+                [
+                    "git",
+                    "-C",
+                    "/sandbox/repo",
+                    "push",
+                    "https://github.com/apache/buildish-example.git",
+                    ":refs/buildish/test",
+                ],
+                command,
+            )
+            env = cast(Mapping[str, str], kwargs["env"])
+            seen_script_path = Path(env["GIT_ASKPASS"])
+            self.assertTrue(seen_script_path.is_file())
+            return subprocess.CompletedProcess(list(command), 0, "", "")
+
+        with (
+            mock.patch.dict(os.environ, {"GH_TOKEN": "gh-secret-token"}, clear=False),
+            mock.patch("apache_buildish_release_tooling.commands.run_logged_command", side_effect=fake_run_logged_command),
+        ):
+            actual = _delete_remote_ref_best_effort(
+                repo,
+                repository_slug="apache/buildish-example",
+                ref_name="refs/buildish/test",
+            )
+
+        self.assertEqual("deleted", actual)
+        self.assertIsNotNone(seen_script_path)
+        if seen_script_path is None:
+            self.fail("expected askpass helper path to be captured")
+        self.assertFalse(seen_script_path.exists())
 
 
 class CommandsIntegrationTest(unittest.TestCase):
@@ -103,16 +226,18 @@ class CommandsIntegrationTest(unittest.TestCase):
         component_id: str,
         version: str,
         rc_number: int,
-    ) -> None:
+    ) -> str:
         """Stage the minimal ASF source-release files in one SVN working copy RC directory."""
 
         client = AsfSvnClient()
         subprocess.run(["svn", "update", str(working_copy_dir)], check=True, capture_output=True, text=True)
         artifact_name = f"apache-{component_id}-{version}-incubating-src.tar.gz"
         artifact_path = sandbox_dir / artifact_name
-        artifact_path.write_bytes(b"dummy source payload\n")
+        artifact_bytes = b"dummy source payload\n"
+        artifact_path.write_bytes(artifact_bytes)
+        artifact_sha512 = hashlib.sha512(artifact_bytes).hexdigest()
         sha512_path = sandbox_dir / f"{artifact_name}.sha512"
-        sha512_path.write_text(f"{'a' * 128}  {artifact_name}\n", encoding="utf-8")
+        sha512_path.write_text(f"{artifact_sha512}  {artifact_name}\n", encoding="utf-8")
         asc_path = sandbox_dir / f"{artifact_name}.asc"
         asc_path.write_text("-----BEGIN PGP SIGNATURE-----\n<dummy>\n-----END PGP SIGNATURE-----\n", encoding="utf-8")
         target_dir = (
@@ -139,6 +264,130 @@ class CommandsIntegrationTest(unittest.TestCase):
                 text=True,
             )
         client.commit_working_copy(working_copy_dir, "stage source release files")
+        return artifact_sha512
+
+    @staticmethod
+    def _stage_rc_vote_manifest_files(
+        working_copy_dir: Path,
+        *,
+        component_id: str,
+        version: str,
+        rc_number: int,
+        repo_url: str,
+        artifact_sha512: str,
+    ) -> str:
+        """Stage one RC vote manifest plus sidecars in the RC SVN directory."""
+
+        manifest_text = json.dumps(
+            {
+                "schema_version": "1",
+                "manifest_type": "rc-vote",
+                "component_id": component_id,
+                "version": version,
+                "release_line": "1.2.x",
+                "release_branch": "release/1.2.x",
+                "source_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                "rc_tag": f"v{version}-rc{rc_number}",
+                "final_tag": f"v{version}",
+                "final_tag_mode": "rc-source-commit",
+                "provenance": {"created_at": "2026-04-26T12:00:00Z", "tooling": {}},
+                "trust_roots": {
+                    "asf_keys": {
+                        "uri": "https://downloads.apache.org/incubator/buildish/KEYS",
+                        "known_length_bytes": 9,
+                        "known_prefix_sha512": "abc123",
+                    }
+                },
+                "draft_github_release": {
+                    "repository": "apache/buildish-example",
+                    "tag": f"v{version}",
+                    "url": f"https://github.com/apache/buildish-example/releases/tag/v{version}",
+                },
+                "vote_materials": {
+                    "source_artifacts": [
+                        {
+                            "role": "asf-source-release",
+                            "filename": f"apache-{component_id}-{version}-incubating-src.tar.gz",
+                            "uri": (
+                                f"{repo_url}/dist/dev/incubator/buildish/{component_id}/"
+                                f"{version}-rc{rc_number}/apache-{component_id}-{version}-incubating-src.tar.gz"
+                            ),
+                            "artifact_origin": "source-commit",
+                            "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                            "checksums": {
+                                "sha512": {
+                                    "value": artifact_sha512,
+                                    "uri": (
+                                        f"{repo_url}/dist/dev/incubator/buildish/{component_id}/"
+                                        f"{version}-rc{rc_number}/apache-{component_id}-{version}-incubating-src.tar.gz.sha512"
+                                    ),
+                                }
+                            },
+                            "signatures": [
+                                {
+                                    "type": "openpgp-detached-ascii-armored",
+                                    "uri": (
+                                        f"{repo_url}/dist/dev/incubator/buildish/{component_id}/"
+                                        f"{version}-rc{rc_number}/apache-{component_id}-{version}-incubating-src.tar.gz.asc"
+                                    ),
+                                }
+                            ],
+                        }
+                    ],
+                    "secondary_artifacts": [],
+                },
+                "verification": {
+                    "staging_svn_url": (
+                        f"{repo_url}/dist/dev/incubator/buildish/{component_id}/{version}-rc{rc_number}/"
+                    ),
+                    "authoritative_manifest": {
+                        "uri": (
+                            f"{repo_url}/dist/dev/incubator/buildish/{component_id}/"
+                            f"{version}-rc{rc_number}/rc-vote-manifest.json"
+                        ),
+                        "checksum_uris": {
+                            "sha512": (
+                                f"{repo_url}/dist/dev/incubator/buildish/{component_id}/"
+                                f"{version}-rc{rc_number}/rc-vote-manifest.json.sha512"
+                            )
+                        },
+                        "signatures": [
+                            {
+                                "type": "openpgp-detached-ascii-armored",
+                                "uri": (
+                                    f"{repo_url}/dist/dev/incubator/buildish/{component_id}/"
+                                    f"{version}-rc{rc_number}/rc-vote-manifest.json.asc"
+                                ),
+                            }
+                        ],
+                    },
+                },
+            },
+            indent=2,
+        ) + "\n"
+        manifest_sha512 = hashlib.sha512(manifest_text.encode("utf-8")).hexdigest()
+        manifest_dir = (
+            working_copy_dir
+            / "dist"
+            / "dev"
+            / "incubator"
+            / "buildish"
+            / component_id
+            / f"{version}-rc{rc_number}"
+        )
+        files = {
+            "rc-vote-manifest.json": manifest_text,
+            "rc-vote-manifest.json.sha512": f"{manifest_sha512}  rc-vote-manifest.json\n",
+            "rc-vote-manifest.json.asc": (
+                "-----BEGIN PGP SIGNATURE-----\n<dummy manifest>\n-----END PGP SIGNATURE-----\n"
+            ),
+        }
+        for file_name, content in files.items():
+            path = manifest_dir / file_name
+            path.write_text(content, encoding="utf-8")
+            subprocess.run(["svn", "add", "--force", str(path)], check=True, capture_output=True, text=True)
+        AsfSvnClient().commit_working_copy(working_copy_dir, "stage rc vote manifest")
+        return manifest_text
 
     def _prepare_detached_materialization_repo(self) -> tuple[Path, Path, Path, Path]:
         """Create one disposable repository pair configured for detached-materialization tests."""
@@ -440,6 +689,24 @@ class CommandsIntegrationTest(unittest.TestCase):
             dev_base_url=dev_base_url,
             release_base_url=release_base_url,
         )
+        client.mkdir_url(dev_base_url, "create dev component path")
+        client.mkdir_url(release_base_url, "create release component path")
+        client.mkdir_url(f"{dev_base_url}/1.2.3-rc2", "create rc directory")
+        artifact_sha512 = self._stage_source_release_files(
+            sandbox_dir,
+            working_copy_dir,
+            component_id=component_id,
+            version="1.2.3",
+            rc_number=2,
+        )
+        manifest_text = self._stage_rc_vote_manifest_files(
+            working_copy_dir,
+            component_id=component_id,
+            version="1.2.3",
+            rc_number=2,
+            repo_url=repo_url,
+            artifact_sha512=artifact_sha512,
+        )
         gh_path, gh_state_dir = create_fake_gh_launcher(
             sandbox_dir,
             list_response=[
@@ -454,20 +721,12 @@ class CommandsIntegrationTest(unittest.TestCase):
                             "",
                             "RC tag: v1.2.3-rc2",
                             f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc2^{commit}')}",
-                        ]
+                        ],
                     ),
+                    "assets": [{"id": 700, "name": "rc-vote-manifest.json"}],
                 }
             ],
-        )
-        client.mkdir_url(dev_base_url, "create dev component path")
-        client.mkdir_url(release_base_url, "create release component path")
-        client.mkdir_url(f"{dev_base_url}/1.2.3-rc2", "create rc directory")
-        self._stage_source_release_files(
-            sandbox_dir,
-            working_copy_dir,
-            component_id=component_id,
-            version="1.2.3",
-            rc_number=2,
+            release_asset_text_by_id={700: manifest_text},
         )
         completed = run_cli(
             [
@@ -488,6 +747,7 @@ class CommandsIntegrationTest(unittest.TestCase):
         self.assertEqual("v1.2.3-rc2", manifest["selected_rc_tag"])
         self.assertEqual(["1.2.3/"], client.list_entries(release_base_url))
         self.assertEqual("copied", manifest["publish_mode"])
+        self.assertEqual(artifact_sha512, manifest["verified_source_artifact_sha512"])
         rerun = run_cli(
             [
                 "publish-source-release-svn",
@@ -544,8 +804,9 @@ class CommandsIntegrationTest(unittest.TestCase):
                             "",
                             "RC tag: v1.2.3-rc2",
                             f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc2^{commit}')}",
-                        ]
+                        ],
                     ),
+                    "assets": [{"id": 700, "name": "rc-vote-manifest.json"}],
                 }
             ],
         )
@@ -567,7 +828,104 @@ class CommandsIntegrationTest(unittest.TestCase):
             ),
         )
         self.assertNotEqual(0, completed.returncode)
-        self.assertIn("missing required source release files", completed.stderr)
+        self.assertIn("missing required staged release files", completed.stderr)
+        self.assertEqual([], client.list_entries(release_base_url))
+
+    def test_publish_source_release_svn_command_rejects_staged_artifact_drift_from_vote_manifest(self) -> None:
+        if not command_available("svnadmin") or not command_available("svn"):
+            self.skipTest("svnadmin and svn are required for the SVN integration test")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
+        _repo_dir, repo_url, working_copy_dir = init_svn_repo_and_checkout(sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        manifest_path = sandbox_dir / "publish-source-release-svn.json"
+        client = AsfSvnClient()
+        component_id = "buildish-example"
+        dev_base_url = f"{repo_url}/dist/dev/incubator/buildish/{component_id}"
+        release_base_url = f"{repo_url}/dist/release/incubator/buildish/{component_id}"
+        git_create_branch(origin_dir, "release/1.x")
+        git_create_branch(origin_dir, "release/1.2.x")
+        git_create_annotated_tag(origin_dir, "v1.2.3-rc2")
+        fetch_git_origin_refs(clone_dir)
+        set_github_origin_url(clone_dir, "apache/buildish-example")
+        self._write_component_config(
+            config_path,
+            component_id=component_id,
+            dev_base_url=dev_base_url,
+            release_base_url=release_base_url,
+        )
+        client.mkdir_url(dev_base_url, "create dev component path")
+        client.mkdir_url(release_base_url, "create release component path")
+        client.mkdir_url(f"{dev_base_url}/1.2.3-rc2", "create rc directory")
+        artifact_sha512 = self._stage_source_release_files(
+            sandbox_dir,
+            working_copy_dir,
+            component_id=component_id,
+            version="1.2.3",
+            rc_number=2,
+        )
+        manifest_text = self._stage_rc_vote_manifest_files(
+            working_copy_dir,
+            component_id=component_id,
+            version="1.2.3",
+            rc_number=2,
+            repo_url=repo_url,
+            artifact_sha512=artifact_sha512,
+        )
+        subprocess.run(["svn", "update", str(working_copy_dir)], check=True, capture_output=True, text=True)
+        drifted_artifact = (
+            working_copy_dir
+            / "dist"
+            / "dev"
+            / "incubator"
+            / "buildish"
+            / component_id
+            / "1.2.3-rc2"
+            / "apache-buildish-example-1.2.3-incubating-src.tar.gz"
+        )
+        drifted_artifact.write_bytes(b"drifted source payload\n")
+        subprocess.run(["svn", "commit", "-m", "drift staged artifact", str(working_copy_dir)], check=True)
+        gh_path, gh_state_dir = create_fake_gh_launcher(
+            sandbox_dir,
+            list_response=[
+                {
+                    "id": 42,
+                    "draft": True,
+                    "tag_name": "v1.2.3",
+                    "name": "Apache Buildish Example 1.2.3",
+                    "body": "\n".join(
+                        [
+                            "Draft GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "",
+                            "RC tag: v1.2.3-rc2",
+                            f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc2^{commit}')}",
+                        ],
+                    ),
+                    "assets": [{"id": 700, "name": "rc-vote-manifest.json"}],
+                }
+            ],
+            release_asset_text_by_id={700: manifest_text},
+        )
+        completed = run_cli(
+            [
+                "publish-source-release-svn",
+                "--component-config",
+                str(config_path),
+                "1.2.3",
+            ],
+            cwd=clone_dir,
+            env=cli_env(
+                manifest_path,
+                extra_env={"FAKE_GH_STATE_DIR": str(gh_state_dir)},
+                prepend_dirs=(gh_path.parent,),
+            ),
+        )
+        self.assertNotEqual(0, completed.returncode)
+        self.assertIn(
+            "staged source artifact checksum does not match the authoritative RC vote manifest",
+            completed.stderr,
+        )
         self.assertEqual([], client.list_entries(release_base_url))
 
     def test_publish_source_release_svn_command_rejects_rc_drift(self) -> None:

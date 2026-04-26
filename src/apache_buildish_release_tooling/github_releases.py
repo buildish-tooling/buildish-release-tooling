@@ -148,6 +148,21 @@ def delete_release_asset(repository_slug: str, asset_id: int) -> None:
     )
 
 
+def download_release_asset_text(repository_slug: str, asset_id: int) -> str:
+    """Download one GitHub Release asset as UTF-8 text."""
+
+    completed = run_logged_command(
+        [
+            "gh",
+            "api",
+            "-H",
+            "Accept: application/octet-stream",
+            f"repos/{repository_slug}/releases/assets/{asset_id}",
+        ]
+    )
+    return completed.stdout
+
+
 def create_draft_release(
     repository_slug: str,
     *,

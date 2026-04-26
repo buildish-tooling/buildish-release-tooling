@@ -57,17 +57,26 @@ class AsfSvnClient:
             "--no-auth-cache",
             "--username",
             self.username,
-            "--password",
-            self.password,
+            "--password-from-stdin",
         ]
 
     def _run(self, *args: str, capture_output: bool = True, check: bool = True) -> str:
-        completed = run_logged_command(
-            ["svn", *self._auth_args(), *args],
-            capture_output=capture_output,
-            check=check,
-            extra_secret_values=[self.username or "", self.password or ""],
-        )
+        command = ["svn", *self._auth_args(), *args]
+        if self.username and self.password:
+            completed = run_logged_command(
+                command,
+                input_text=f"{self.password}\n",
+                capture_output=capture_output,
+                check=check,
+                extra_secret_values=[self.username or "", self.password or ""],
+            )
+        else:
+            completed = run_logged_command(
+                command,
+                capture_output=capture_output,
+                check=check,
+                extra_secret_values=[self.username or "", self.password or ""],
+            )
         return (completed.stdout or "").strip()
 
     def path_exists(self, target: str) -> bool:

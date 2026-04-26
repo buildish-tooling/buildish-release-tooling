@@ -40,6 +40,13 @@ def compare_versions(left: str, right: str) -> int:
     return _compare_versions(left, right)
 
 
+def require_semantic_version(version: str) -> str:
+    """Validate and return one semantic version string."""
+
+    _parse_version_parts(version)
+    return version
+
+
 def _branch_candidates(version: str) -> list[str]:
     major, minor, _patch = _parse_version_parts(version)
     return [f"release/{major}.{minor}.x", f"release/{major}.x"]

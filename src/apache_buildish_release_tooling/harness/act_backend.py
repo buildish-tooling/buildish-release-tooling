@@ -422,10 +422,6 @@ def _write_secrets_file(workspace: runtime.HarnessWorkspace, scenario: HarnessSc
     """Write one `act` secret file from the scenario-provided secret map."""
 
     secrets = dict(scenario.secrets)
-    for key in ("GITHUB_TOKEN", "GH_TOKEN"):
-        value = os.environ.get(key)
-        if value:
-            secrets.setdefault(key, value)
     destination = workspace.harness_dir / "act.secrets"
     lines = [f"{key}={value}" for key, value in sorted(secrets.items())]
     destination.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")

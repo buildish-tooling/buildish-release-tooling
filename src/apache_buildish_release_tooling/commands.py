@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -53,6 +54,7 @@ from apache_buildish_release_tooling.github_releases import (
     create_draft_release,
     delete_release,
     delete_release_asset,
+    download_release_asset_text,
     list_releases,
     release_by_tag,
     release_asset_ids_by_names,
@@ -71,7 +73,11 @@ from apache_buildish_release_tooling.prepare_rc_state import (
     resolve_prepare_rc_state,
 )
 from apache_buildish_release_tooling.process import CommandExecutionError, run_logged_command
-from apache_buildish_release_tooling.rc_vote_manifest import build_rc_vote_manifest, read_uri_text
+from apache_buildish_release_tooling.rc_vote_manifest import (
+    build_rc_vote_manifest,
+    read_uri_bytes,
+    read_uri_text,
+)
 from apache_buildish_release_tooling.release_state import (
     compare_versions,
     derive_final_tag,
@@ -79,6 +85,7 @@ from apache_buildish_release_tooling.release_state import (
     derive_moving_tags,
     is_version_in_release_line,
     published_versions_from_entries,
+    require_semantic_version,
     version_from_final_tag,
     versions_to_archive_for_line,
 )
@@ -156,6 +163,137 @@ def _required_source_release_file_names(source_artifact_prefix: str, version: st
         f"{artifact_name}.sha512",
         f"{artifact_name}.asc",
     ]
+
+
+def _required_rc_vote_manifest_file_names() -> list[str]:
+    """Return the RC vote-manifest files expected after vote finalization."""
+
+    return [
+        "rc-vote-manifest.json",
+        "rc-vote-manifest.json.sha512",
+        "rc-vote-manifest.json.asc",
+    ]
+
+
+def _rc_vote_manifest_payload(manifest_text: str, *, source: str) -> dict[str, Any]:
+    """Parse and validate one RC vote-manifest JSON document."""
+
+    payload = json.loads(manifest_text)
+    if not isinstance(payload, dict):
+        raise ValueError(f"RC vote manifest must be a JSON object: {source}")
+    return payload
+
+
+def _source_artifact_entry_from_vote_manifest(
+    manifest_payload: dict[str, Any],
+    *,
+    source: str,
+) -> dict[str, Any]:
+    """Return the single source-artifact entry recorded in one RC vote manifest."""
+
+    vote_materials = manifest_payload.get("vote_materials")
+    if not isinstance(vote_materials, dict):
+        raise ValueError(f"RC vote manifest is missing vote_materials: {source}")
+    source_artifacts = vote_materials.get("source_artifacts")
+    if not isinstance(source_artifacts, list) or len(source_artifacts) != 1:
+        raise ValueError(f"RC vote manifest must contain exactly one source artifact: {source}")
+    source_artifact = source_artifacts[0]
+    if not isinstance(source_artifact, dict):
+        raise ValueError(f"RC vote manifest source artifact must be an object: {source}")
+    return source_artifact
+
+
+def _manifest_source_artifact_sha512(
+    source_artifact: dict[str, Any],
+    *,
+    source: str,
+) -> str:
+    """Return the SHA512 recorded for one manifest source artifact."""
+
+    checksums = source_artifact.get("checksums")
+    if not isinstance(checksums, dict):
+        raise ValueError(f"RC vote manifest source artifact is missing checksums: {source}")
+    sha512_payload = checksums.get("sha512")
+    if not isinstance(sha512_payload, dict):
+        raise ValueError(f"RC vote manifest source artifact is missing sha512: {source}")
+    digest_value = sha512_payload.get("value")
+    if not isinstance(digest_value, str) or not digest_value:
+        raise ValueError(f"RC vote manifest source artifact sha512 is invalid: {source}")
+    return digest_value
+
+
+def _mirrored_release_asset_text(
+    repository_slug: str,
+    release_payload: dict[str, object],
+    *,
+    asset_name: str,
+) -> str:
+    """Download one mirrored draft-release asset as UTF-8 text."""
+
+    asset_ids = release_asset_ids_by_names(release_payload, asset_names=[asset_name])
+    asset_id = asset_ids.get(asset_name)
+    if asset_id is None:
+        raise ValueError(f"draft GitHub Release is missing mirrored asset: {asset_name}")
+    return download_release_asset_text(repository_slug, asset_id)
+
+
+def _verify_staged_source_release_against_vote_manifest(
+    context: CommandContext,
+    *,
+    repository_slug: str,
+    release_payload: dict[str, object],
+    source_url: str,
+    version: str,
+    selected_rc_tag: str,
+    expected_source_artifact_name: str,
+) -> str:
+    """Verify staged source-release bytes against the mirrored authoritative vote manifest."""
+
+    source_url = source_url.rstrip("/")
+    manifest_name = "rc-vote-manifest.json"
+    mirrored_manifest_text = _mirrored_release_asset_text(
+        repository_slug,
+        release_payload,
+        asset_name=manifest_name,
+    )
+    staged_manifest_url = f"{source_url}/{manifest_name}"
+    staged_manifest_text = read_uri_text(staged_manifest_url)
+    if staged_manifest_text != mirrored_manifest_text:
+        raise ValueError("RC vote manifest in SVN staging does not match the mirrored GitHub Release asset")
+
+    manifest_payload = _rc_vote_manifest_payload(staged_manifest_text, source=staged_manifest_url)
+    if manifest_payload.get("manifest_type") != "rc-vote":
+        raise ValueError(f"unexpected RC vote manifest type in {staged_manifest_url}")
+    if manifest_payload.get("component_id") != context.component_config.component_id:
+        raise ValueError(f"RC vote manifest component does not match {context.component_config.component_id}")
+    if manifest_payload.get("version") != version:
+        raise ValueError(f"RC vote manifest version does not match {version}")
+    if manifest_payload.get("rc_tag") != selected_rc_tag:
+        raise ValueError(f"RC vote manifest RC tag does not match {selected_rc_tag}")
+    if manifest_payload.get("final_tag") != derive_final_tag(version):
+        raise ValueError(f"RC vote manifest final tag does not match v{version}")
+
+    source_artifact = _source_artifact_entry_from_vote_manifest(
+        manifest_payload,
+        source=staged_manifest_url,
+    )
+    manifest_filename = source_artifact.get("filename")
+    if manifest_filename != expected_source_artifact_name:
+        raise ValueError(
+            "RC vote manifest source artifact filename does not match the expected staged source release"
+        )
+    expected_source_artifact_url = f"{source_url}/{expected_source_artifact_name}"
+
+    expected_sha512 = _manifest_source_artifact_sha512(source_artifact, source=staged_manifest_url)
+    actual_sha512 = hashlib.sha512(read_uri_bytes(expected_source_artifact_url)).hexdigest()
+    if actual_sha512 != expected_sha512:
+        raise ValueError("staged source artifact checksum does not match the authoritative RC vote manifest")
+
+    staged_sha512_text = read_uri_text(f"{expected_source_artifact_url}.sha512").strip()
+    staged_sha512_fields = staged_sha512_text.split()
+    if not staged_sha512_fields or staged_sha512_fields[0] != expected_sha512:
+        raise ValueError("staged source artifact .sha512 sidecar does not match the authoritative RC vote manifest")
+    return expected_sha512
 
 
 def _validate_full_ref_name(ref_name: str) -> str:
@@ -259,13 +397,67 @@ def _has_staged_changes(repo_path: Path) -> bool:
     raise CommandExecutionError("command failed: git diff --cached --quiet")
 
 
-def _git_push_target(repo: GitRepository, repository_slug: str | None) -> tuple[str, list[str]]:
+def _github_push_token() -> str | None:
+    """Return the GitHub token used for authenticated HTTPS pushes, when available."""
+
+    return os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+
+
+def _write_git_askpass_script(script_path: Path) -> None:
+    """Materialize one short-lived askpass helper that serves GitHub HTTPS credentials."""
+
+    script_path.write_text(
+        "\n".join(
+            [
+                "#!/bin/sh",
+                "set -eu",
+                'prompt="${1-}"',
+                'case "$prompt" in',
+                "  *Username*|*username*)",
+                '    printf \'%s\\n\' "${BUILDISH_GIT_ASKPASS_USERNAME:-x-access-token}"',
+                "    ;;",
+                "  *)",
+                '    printf \'%s\\n\' "${BUILDISH_GIT_ASKPASS_TOKEN:?}"',
+                "    ;;",
+                "esac",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    script_path.chmod(0o700)
+
+
+def _git_push_target(repo: GitRepository, repository_slug: str | None) -> str:
     """Resolve the remote URL used for temporary detached-commit ref pushes."""
 
-    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if token and repository_slug is not None:
-        return (f"https://x-access-token:{token}@github.com/{repository_slug}.git", [token])
-    return (repo.remote_url("origin"), [])
+    if _github_push_token() and repository_slug is not None:
+        return f"https://github.com/{repository_slug}.git"
+    return repo.remote_url("origin")
+
+
+def _git_push_auth_env(push_target: str) -> tuple[Path | None, dict[str, str] | None, list[str]]:
+    """Return short-lived environment overrides for authenticated HTTPS Git pushes."""
+
+    token = _github_push_token()
+    if token is None or not push_target.startswith(("http://", "https://")):
+        return (None, None, [])
+
+    helper_dir = Path(tempfile.mkdtemp(prefix="buildish-git-askpass-"))
+    script_path = helper_dir / "git-askpass.sh"
+    _write_git_askpass_script(script_path)
+    return (
+        helper_dir,
+        {
+            "BUILDISH_GIT_ASKPASS_TOKEN": token,
+            "BUILDISH_GIT_ASKPASS_USERNAME": "x-access-token",
+            "GH_TOKEN": "",
+            "GITHUB_TOKEN": "",
+            "GIT_ASKPASS": str(script_path),
+            "GIT_TERMINAL_PROMPT": "0",
+        },
+        [token],
+    )
 
 
 def _push_remote_ref(
@@ -278,17 +470,23 @@ def _push_remote_ref(
 ) -> str:
     """Push one local ref or commit expression to one remote full ref name."""
 
-    push_target, secret_values = _git_push_target(repo, repository_slug)
+    push_target = _git_push_target(repo, repository_slug)
+    helper_dir, push_env, secret_values = _git_push_auth_env(push_target)
     command = ["git", "-C", str(repo.path), "push"]
     if force:
         command.append("--force")
     command.extend([push_target, f"{source_ref}:{target_ref}"])
-    run_logged_command(
-        command,
-        cwd=repo.path,
-        capture_output=False,
-        extra_secret_values=secret_values,
-    )
+    try:
+        run_logged_command(
+            command,
+            cwd=repo.path,
+            env=push_env,
+            capture_output=False,
+            extra_secret_values=secret_values,
+        )
+    finally:
+        if helper_dir is not None:
+            shutil.rmtree(helper_dir, ignore_errors=True)
     return "pushed"
 
 
@@ -300,16 +498,22 @@ def _delete_remote_ref_best_effort(
 ) -> str:
     """Delete one remote full ref name without failing the parent command on cleanup issues."""
 
+    helper_dir: Path | None = None
     try:
-        push_target, secret_values = _git_push_target(repo, repository_slug)
+        push_target = _git_push_target(repo, repository_slug)
+        helper_dir, push_env, secret_values = _git_push_auth_env(push_target)
         run_logged_command(
             ["git", "-C", str(repo.path), "push", push_target, f":{ref_name}"],
             cwd=repo.path,
+            env=push_env,
             capture_output=False,
             extra_secret_values=secret_values,
         )
     except Exception:  # noqa: BLE001
         return "delete-failed-ignored"
+    finally:
+        if helper_dir is not None:
+            shutil.rmtree(helper_dir, ignore_errors=True)
     return "deleted"
 
 
@@ -397,6 +601,7 @@ def _selected_rc_tag_for_version(
 ) -> tuple[str, dict[str, object], str]:
     """Resolve the RC selected by the exact-version draft GitHub Release."""
 
+    version = require_semantic_version(version)
     repository_slug = resolve_repository_slug(repo.path)
     release_payload = release_by_tag(list_releases(repository_slug), tag_name=derive_final_tag(version))
     selected_rc_tag = _release_payload_rc_tag(release_payload, version)
@@ -468,6 +673,7 @@ def _resolve_release_version_state(
     version: str,
     expected_selected_rc_tag: str | None = None,
 ) -> tuple[str, ReleaseVersionState]:
+    version = require_semantic_version(version)
     _repository_slug, _release_payload, selected_rc_tag = _selected_rc_tag_for_version(
         repo=repo,
         version=version,
@@ -1124,7 +1330,7 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
     context = _context(args)
     repo = GitRepository.from_current_worktree()
     version = args.version
-    _repository_slug, _release_payload, selected_rc_tag = _selected_rc_tag_for_version(
+    repository_slug, release_payload, selected_rc_tag = _selected_rc_tag_for_version(
         repo=repo,
         version=version,
         expected_selected_rc_tag=getattr(args, "selected_rc_tag", None),
@@ -1136,18 +1342,28 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
     if not svn_client.path_exists(source_url):
         raise ValueError(f"RC staging directory does not exist: {source_url}")
     staged_entries = sorted(svn_client.list_entries(source_url, recursive=True))
-    required_file_names = _required_source_release_file_names(
+    required_source_release_file_names = _required_source_release_file_names(
         context.component_config.source_artifact_prefix,
         version,
     )
+    required_file_names = [*required_source_release_file_names, *_required_rc_vote_manifest_file_names()]
     missing_required_files = [
         file_name for file_name in required_file_names if file_name not in staged_entries
     ]
     if missing_required_files:
         raise ValueError(
-            "RC staging directory is missing required source release files: "
+            "RC staging directory is missing required staged release files: "
             + ", ".join(missing_required_files)
         )
+    verified_source_artifact_sha512 = _verify_staged_source_release_against_vote_manifest(
+        context,
+        repository_slug=repository_slug,
+        release_payload=release_payload,
+        source_url=source_url,
+        version=version,
+        selected_rc_tag=selected_rc_tag,
+        expected_source_artifact_name=required_source_release_file_names[0],
+    )
     if svn_client.path_exists(target_url):
         target_entries = sorted(svn_client.list_entries(target_url, recursive=True))
         if staged_entries != target_entries:
@@ -1173,6 +1389,7 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
             "selected_rc_tag": selected_rc_tag,
             "source_url": f"{source_url}/",
             "target_url": f"{target_url}/",
+            "verified_source_artifact_sha512": verified_source_artifact_sha512,
             "publish_mode": publish_mode,
         },
     )
@@ -1180,6 +1397,10 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
     summary.append_plaintext_block("Selected RC", selected_rc_tag)
     summary.append_plaintext_block("Promoted source URL", f"{source_url}/")
     summary.append_plaintext_block("Published release URL", f"{target_url}/")
+    summary.append_sha512_block(
+        required_source_release_file_names[0],
+        verified_source_artifact_sha512,
+    )
     summary.append_plaintext_block("Publish mode", publish_mode)
     return manifest_path
 
@@ -2033,7 +2254,7 @@ def run_verify_rc(args: Namespace) -> Path:
 
     context = _context(args)
     repo = GitRepository.from_current_worktree()
-    version = args.version
+    version = require_semantic_version(args.version)
     rc_tag = repo.latest_matching_rc_tag(version)
     manifest_path = _manifest_path(context.component_config.component_id, "verify-rc")
     summary = _summary_writer()

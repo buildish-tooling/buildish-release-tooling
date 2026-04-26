@@ -22,6 +22,7 @@ import sys
 from collections.abc import Iterable, Sequence
 
 _SECRET_ENV_NAMES = (
+    "BUILDISH_GIT_ASKPASS_TOKEN",
     "BUILDISH_SVN_DEV_USERNAME",
     "BUILDISH_SVN_DEV_PASSWORD",
     "BUILDISH_GPG_PRIVATE_KEY",

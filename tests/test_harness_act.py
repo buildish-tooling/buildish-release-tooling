@@ -32,6 +32,7 @@ from apache_buildish_release_tooling.harness.act_backend import (
     _render_rewritten_workflow_yaml,
     _render_uv_shim_script,
     _resolve_act_command,
+    _write_secrets_file,
 )
 from apache_buildish_release_tooling.harness import runtime
 from apache_buildish_release_tooling.harness.backend import (
@@ -40,7 +41,7 @@ from apache_buildish_release_tooling.harness.backend import (
 )
 from apache_buildish_release_tooling.harness.cli import main as harness_main
 from apache_buildish_release_tooling.harness.errors import HarnessExternalToolError
-from apache_buildish_release_tooling.harness.models import WorkflowScenario
+from apache_buildish_release_tooling.harness.models import HarnessScenario, WorkflowScenario
 from apache_buildish_release_tooling.harness.scenario import load_scenario
 from tests.support import (
     cleanup_sandbox,
@@ -71,6 +72,37 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         """Return the path of one committed `act` scenario fixture."""
 
         return component_root() / "buildish-release-tooling" / "harness" / "scenarios" / filename
+
+    def test_write_secrets_file_ignores_host_github_tokens(self) -> None:
+        """The `act` backend should not copy ambient host GitHub tokens into the harness secret file."""
+
+        workspace = runtime.create_workspace(self.sandbox_dir)
+        scenario = HarnessScenario.model_validate(
+            {
+                "name": "test-write-secrets",
+                "backend": "act",
+                "secrets": {
+                    "BUILDISH_SVN_DEV_USERNAME": "release-user",
+                    "GITHUB_TOKEN": "scenario-token",
+                },
+                "workflow": {
+                    "path": ".github/workflows/release.yml",
+                    "harness_config": "buildish-release-tooling/harness/config.yml",
+                },
+            }
+        )
+
+        with mock.patch.dict(
+            os.environ,
+            {"GITHUB_TOKEN": "host-github-token", "GH_TOKEN": "host-gh-token"},
+            clear=False,
+        ):
+            secrets_path = _write_secrets_file(workspace, scenario)
+
+        self.assertEqual(
+            "BUILDISH_SVN_DEV_USERNAME=release-user\nGITHUB_TOKEN=scenario-token\n",
+            secrets_path.read_text(encoding="utf-8"),
+        )
 
     def test_run_scenario_rewrites_workflow_for_local_composite_actions(self) -> None:
         """The `act` backend should rewrite the checked-in workflow before executing `act`."""

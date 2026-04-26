@@ -79,6 +79,38 @@ class AsfSvnUnitTest(unittest.TestCase):
             extra_secret_values=["", ""],
         )
 
+    def test_copy_url_with_credentials_uses_password_from_stdin(self) -> None:
+        secret_value = "".join(["super", "-secret"])
+        client = AsfSvnClient(username="release-user", password=secret_value)
+        with mock.patch(
+            "apache_buildish_release_tooling.asf_svn.run_logged_command",
+            return_value=subprocess.CompletedProcess([], 0, "", ""),
+        ) as run_command:
+            client.copy_url(
+                "https://example.invalid/dev/1.2.3-rc0",
+                "https://example.invalid/release/1.2.3",
+                "promote release",
+            )
+        run_command.assert_called_once_with(
+            [
+                "svn",
+                "--non-interactive",
+                "--no-auth-cache",
+                "--username",
+                "release-user",
+                "--password-from-stdin",
+                "copy",
+                "-m",
+                "promote release",
+                "https://example.invalid/dev/1.2.3-rc0",
+                "https://example.invalid/release/1.2.3",
+            ],
+            capture_output=False,
+            check=True,
+            input_text=f"{secret_value}\n",
+            extra_secret_values=["release-user", secret_value],
+        )
+
     def test_delete_url_runs_expected_command(self) -> None:
         client = AsfSvnClient()
         with mock.patch(

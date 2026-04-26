@@ -45,6 +45,81 @@ tool_behaviors:
     - match:
         argv:
           - api
+          - -H
+          - "Accept: application/octet-stream"
+          - repos/apache/buildish-release-tooling/releases/assets/500
+      result:
+        stdout: |
+          {
+            "schema_version": "1",
+            "manifest_type": "rc-vote",
+            "component_id": "buildish-release-tooling",
+            "version": "1.2.3",
+            "release_line": "1.2.x",
+            "release_branch": "release/1.2.x",
+            "source_commit_sha": "d232c22",
+            "rc_tag": "v1.2.3-rc1",
+            "final_tag": "v1.2.3",
+            "final_tag_mode": "rc-source-commit",
+            "provenance": {
+              "created_at": "2026-04-26T12:00:00Z",
+              "tooling": {}
+            },
+            "trust_roots": {
+              "asf_keys": {
+                "uri": "https://downloads.apache.org/incubator/buildish/KEYS",
+                "known_length_bytes": 9,
+                "known_prefix_sha512": "abc123"
+              }
+            },
+            "draft_github_release": {
+              "repository": "apache/buildish-release-tooling",
+              "tag": "v1.2.3",
+              "url": "https://github.com/apache/buildish-release-tooling/releases/tag/v1.2.3"
+            },
+            "vote_materials": {
+              "source_artifacts": [
+                {
+                  "role": "asf-source-release",
+                  "filename": "apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz",
+                  "uri": "file:///tmp/placeholder/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz",
+                  "artifact_origin": "source-commit",
+                  "git_commit_sha": "d232c22",
+                  "checksums": {
+                    "sha512": {
+                      "value": "311f6197a06d4e75c9e65e0855aab71a3a4bb733a859b855d23d4bca5a66a16c485a9f364743e40561c61c0a0cf5e51a218bfb11b5de7a6f640b290125665e52",
+                      "uri": "file:///tmp/placeholder/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz.sha512"
+                    }
+                  },
+                  "signatures": [
+                    {
+                      "type": "openpgp-detached-ascii-armored",
+                      "uri": "file:///tmp/placeholder/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz.asc"
+                    }
+                  ]
+                }
+              ],
+              "secondary_artifacts": []
+            },
+            "verification": {
+              "staging_svn_url": "file:///tmp/placeholder/",
+              "authoritative_manifest": {
+                "uri": "file:///tmp/placeholder/rc-vote-manifest.json",
+                "checksum_uris": {
+                  "sha512": "file:///tmp/placeholder/rc-vote-manifest.json.sha512"
+                },
+                "signatures": [
+                  {
+                    "type": "openpgp-detached-ascii-armored",
+                    "uri": "file:///tmp/placeholder/rc-vote-manifest.json.asc"
+                  }
+                ]
+              }
+            }
+          }
+    - match:
+        argv:
+          - api
           - -X
           - DELETE
           - -H
@@ -119,9 +194,86 @@ workflow:
           dummy source payload
       - path: repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc1/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz.sha512
         content: |
-          aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz
+          311f6197a06d4e75c9e65e0855aab71a3a4bb733a859b855d23d4bca5a66a16c485a9f364743e40561c61c0a0cf5e51a218bfb11b5de7a6f640b290125665e52  apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz
       - path: repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc1/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz.asc
         content: |
           -----BEGIN PGP SIGNATURE-----
           <dummy>
+          -----END PGP SIGNATURE-----
+      - path: repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc1/rc-vote-manifest.json
+        content: |
+          {
+            "schema_version": "1",
+            "manifest_type": "rc-vote",
+            "component_id": "buildish-release-tooling",
+            "version": "1.2.3",
+            "release_line": "1.2.x",
+            "release_branch": "release/1.2.x",
+            "source_commit_sha": "d232c22",
+            "rc_tag": "v1.2.3-rc1",
+            "final_tag": "v1.2.3",
+            "final_tag_mode": "rc-source-commit",
+            "provenance": {
+              "created_at": "2026-04-26T12:00:00Z",
+              "tooling": {}
+            },
+            "trust_roots": {
+              "asf_keys": {
+                "uri": "https://downloads.apache.org/incubator/buildish/KEYS",
+                "known_length_bytes": 9,
+                "known_prefix_sha512": "abc123"
+              }
+            },
+            "draft_github_release": {
+              "repository": "apache/buildish-release-tooling",
+              "tag": "v1.2.3",
+              "url": "https://github.com/apache/buildish-release-tooling/releases/tag/v1.2.3"
+            },
+            "vote_materials": {
+              "source_artifacts": [
+                {
+                  "role": "asf-source-release",
+                  "filename": "apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz",
+                  "uri": "file:///tmp/placeholder/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz",
+                  "artifact_origin": "source-commit",
+                  "git_commit_sha": "d232c22",
+                  "checksums": {
+                    "sha512": {
+                      "value": "311f6197a06d4e75c9e65e0855aab71a3a4bb733a859b855d23d4bca5a66a16c485a9f364743e40561c61c0a0cf5e51a218bfb11b5de7a6f640b290125665e52",
+                      "uri": "file:///tmp/placeholder/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz.sha512"
+                    }
+                  },
+                  "signatures": [
+                    {
+                      "type": "openpgp-detached-ascii-armored",
+                      "uri": "file:///tmp/placeholder/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz.asc"
+                    }
+                  ]
+                }
+              ],
+              "secondary_artifacts": []
+            },
+            "verification": {
+              "staging_svn_url": "file:///tmp/placeholder/",
+              "authoritative_manifest": {
+                "uri": "file:///tmp/placeholder/rc-vote-manifest.json",
+                "checksum_uris": {
+                  "sha512": "file:///tmp/placeholder/rc-vote-manifest.json.sha512"
+                },
+                "signatures": [
+                  {
+                    "type": "openpgp-detached-ascii-armored",
+                    "uri": "file:///tmp/placeholder/rc-vote-manifest.json.asc"
+                  }
+                ]
+              }
+            }
+          }
+      - path: repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc1/rc-vote-manifest.json.sha512
+        content: |
+          aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa  rc-vote-manifest.json
+      - path: repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc1/rc-vote-manifest.json.asc
+        content: |
+          -----BEGIN PGP SIGNATURE-----
+          <dummy manifest>
           -----END PGP SIGNATURE-----
