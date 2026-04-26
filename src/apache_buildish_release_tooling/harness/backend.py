@@ -19,7 +19,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
-from apache_buildish_release_tooling.harness import act_backend, runtime
+from apache_buildish_release_tooling.harness import runtime
+from apache_buildish_release_tooling.harness.backends import get_backend, supported_backends as _supported_backends
 from apache_buildish_release_tooling.harness.models import HarnessBackendName, HarnessScenario
 
 HarnessRunResult = runtime.HarnessRunResult
@@ -34,9 +35,7 @@ def run_scenario(
 ) -> HarnessRunResult:
     """Run a harness scenario through the selected execution backend."""
 
-    if scenario.backend == "custom":
-        return runtime.run_scenario(scenario, workspace_root=workspace_root, seed_from=seed_from)
-    return act_backend.run_scenario(
+    return get_backend(scenario.backend).run_scenario(
         scenario,
         workspace_root=workspace_root,
         seed_from=seed_from,
@@ -46,9 +45,7 @@ def run_scenario(
 def rerun_failed_jobs(scenario: HarnessScenario, workspace_root: Path) -> HarnessRunResult:
     """Rerun failed jobs for a scenario through the selected execution backend."""
 
-    if scenario.backend == "custom":
-        return runtime.rerun_failed_jobs(scenario, workspace_root)
-    return act_backend.rerun_failed_jobs(scenario, workspace_root)
+    return get_backend(scenario.backend).rerun_failed_jobs(scenario, workspace_root)
 
 
 def run_scenario_sequence(
@@ -76,4 +73,4 @@ def run_scenario_sequence(
 def supported_backends() -> tuple[HarnessBackendName, ...]:
     """Return the list of backend names exposed by the harness CLI."""
 
-    return ("custom", "act")
+    return _supported_backends()

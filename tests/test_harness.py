@@ -23,9 +23,11 @@ from pathlib import Path
 
 import yaml
 
-from apache_buildish_release_tooling.harness.runtime import (
+from apache_buildish_release_tooling.harness.backend import (
     rerun_failed_jobs,
     run_scenario,
+)
+from apache_buildish_release_tooling.harness.runtime import (
     summarize_trace,
 )
 from apache_buildish_release_tooling.harness.scenario import load_scenario

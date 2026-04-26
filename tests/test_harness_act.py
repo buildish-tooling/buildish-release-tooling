@@ -27,7 +27,7 @@ from unittest import mock
 
 import yaml
 
-from apache_buildish_release_tooling.harness.act_backend import (
+from apache_buildish_release_tooling.harness.backends.act import (
     _dump_workflow_yaml,
     _render_rewritten_workflow_yaml,
     _render_uv_shim_script,
@@ -513,14 +513,18 @@ class ActHarnessIntegrationTest(unittest.TestCase):
     def test_resolve_act_command_prefers_act_then_gh_act_extension_binary(self) -> None:
         """The backend should prefer `act` and fall back to the installed gh-act binary."""
 
-        with mock.patch("apache_buildish_release_tooling.harness.act_backend.shutil.which") as which_mock:
+        with mock.patch(
+            "apache_buildish_release_tooling.harness.backends.act.backend.shutil.which"
+        ) as which_mock:
             which_mock.side_effect = lambda command: "/usr/bin/act" if command == "act" else None
             self.assertEqual(["act"], _resolve_act_command())
 
         with (
-            mock.patch("apache_buildish_release_tooling.harness.act_backend.shutil.which") as which_mock,
             mock.patch(
-                "apache_buildish_release_tooling.harness.act_backend._find_gh_act_extension_binary"
+                "apache_buildish_release_tooling.harness.backends.act.backend.shutil.which"
+            ) as which_mock,
+            mock.patch(
+                "apache_buildish_release_tooling.harness.backends.act.backend._find_gh_act_extension_binary"
             ) as find_extension_mock,
         ):
             which_mock.return_value = None
@@ -534,9 +538,11 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         """Missing local workflow runners should produce a direct actionable error."""
 
         with (
-            mock.patch("apache_buildish_release_tooling.harness.act_backend.shutil.which") as which_mock,
             mock.patch(
-                "apache_buildish_release_tooling.harness.act_backend._find_gh_act_extension_binary"
+                "apache_buildish_release_tooling.harness.backends.act.backend.shutil.which"
+            ) as which_mock,
+            mock.patch(
+                "apache_buildish_release_tooling.harness.backends.act.backend._find_gh_act_extension_binary"
             ) as find_extension_mock,
         ):
             which_mock.return_value = None
@@ -625,7 +631,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "apache_buildish_release_tooling.harness.act_backend._resolve_act_command",
+                "apache_buildish_release_tooling.harness.backends.act.backend._resolve_act_command",
                 side_effect=HarnessExternalToolError("missing act test message"),
             ),
             mock.patch("sys.stderr", stderr),
