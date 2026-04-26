@@ -16,8 +16,8 @@
 
 schemaVersion: 1
 component:
-  slug: site-pipeline
-  displayName: Site Pipeline
+  slug: release-tooling
+  displayName: Release Tooling
 content:
   pagesRoot: site/pages
   docsRoot: docs
