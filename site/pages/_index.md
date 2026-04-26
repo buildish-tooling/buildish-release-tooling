@@ -25,8 +25,8 @@ repositories.
 The stable contract is the CLI plus `release-config.yaml`. The Python package layout is internal,
 but the docs tree includes maintainer guides for the current structure:
 
-- `docs/_index.md`: CLI contract and compatibility notes
-- `docs/codebase-layout.md`: production package layout
-- `docs/test-suite.md`: test suite layout and layering
+- [CLI contract and compatibility notes](docs/_index.md)
+- [Production package layout](docs/codebase-layout.md)
+- [Test suite layout and layering](docs/test-suite.md)
 
 Use `make check` as the standard local and CI gate.
