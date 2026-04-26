@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from apache_buildish_release_tooling.harness.models import GitRepositoryFixture, HarnessScenario, JobScenario
+from apache_buildish_release_tooling.harness.uv_shim import render_uv_shim_script, uv_shim_config
 
 
 @dataclass(frozen=True)
@@ -311,56 +312,9 @@ def _write_tool_shims(workspace: HarnessWorkspace, scenario: HarnessScenario) ->
         script_path = workspace.shims_dir / tool
         if tool == "uv":
             script_path.write_text(
-                "\n".join(
-                    [
-                        "#!/usr/bin/env bash",
-                        "set -euo pipefail",
-                        'if [[ "${1:-}" == "python" && "${2:-}" == "install" ]]; then',
-                        "  exit 0",
-                        "fi",
-                        'if [[ "${1:-}" != "run" ]]; then',
-                        '  printf "buildish-release-harness: unsupported uv invocation: %s\\n" "$*" >&2',
-                        "  exit 2",
-                        "fi",
-                        "shift",
-                        'while [[ $# -gt 0 ]]; do',
-                        '  case "$1" in',
-                        '    --project)',
-                        "      shift 2",
-                        "      ;;",
-                        '    --frozen)',
-                        "      shift",
-                        "      ;;",
-                        '    buildish-release-tooling)',
-                        "      shift",
-                        '      filtered_args=()',
-                        '      while [[ $# -gt 0 ]]; do',
-                        '        case "$1" in',
-                        '          --allow-non-production-release-targets)',
-                        "            shift",
-                        "            ;;",
-                        '          --component-config)',
-                        "            shift 2",
-                        "            ;;",
-                        "          *)",
-                        '            filtered_args+=("$1")',
-                        "            shift",
-                        "            ;;",
-                        "        esac",
-                        "      done",
-                        f'      exec {json.dumps(sys.executable)} -m apache_buildish_release_tooling.harness.shim_entrypoint buildish-release-tooling "${{filtered_args[@]}}"',
-                        "      ;;",
-                        "    *)",
-                        '      printf "buildish-release-harness: unexpected uv arguments: %s\\n" "$*" >&2',
-                        "      exit 2",
-                        "      ;;",
-                        "  esac",
-                        "done",
-                        'printf "buildish-release-harness: uv did not receive a command\\n" >&2',
-                        "exit 2",
-                    ]
-                )
-                + "\n",
+                render_uv_shim_script(
+                    uv_shim_config(shim_python_executable=sys.executable)
+                ),
                 encoding="utf-8",
             )
         else:

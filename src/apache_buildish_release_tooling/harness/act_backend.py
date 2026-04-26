@@ -47,6 +47,7 @@ from apache_buildish_release_tooling.harness.models import (
     WorkflowScenario,
 )
 from apache_buildish_release_tooling.harness import runtime
+from apache_buildish_release_tooling.harness.uv_shim import render_uv_shim_script, uv_shim_config
 
 
 @dataclass(frozen=True)
@@ -1414,101 +1415,13 @@ def _write_generic_tool_shims(workspace: runtime.HarnessWorkspace, scenario: Har
 def _render_uv_shim_script(real_cli_commands: list[str]) -> str:
     """Return the generated `uv` shim script for one act workspace."""
 
-    real_cli_case = "|".join(real_cli_commands)
-    lines = [
-        "#!/usr/bin/env bash",
-        "set -euo pipefail",
-        'original_args=("$@")',
-        'resolve_real_uv() {',
-        '  local shim_dir resolved_path joined_path',
-        '  local -a path_parts=()',
-        '  local -a search_parts=()',
-        '  shim_dir="$(cd "$(dirname "$0")" && pwd)"',
-        '  IFS=: read -r -a path_parts <<<"${PATH:-}"',
-        '  for part in "${path_parts[@]}"; do',
-        '    if [[ -n "$part" && "$part" != "$shim_dir" ]]; then',
-        '      search_parts+=("$part")',
-        "    fi",
-        "  done",
-        '  joined_path="$(IFS=:; printf "%s" "${search_parts[*]}")"',
-        '  resolved_path="$(PATH="$joined_path" command -v uv || true)"',
-        '  if [[ -n "$resolved_path" ]]; then',
-        '    printf "%s\\n" "$resolved_path"',
-        "  fi",
-        "}",
-        'if [[ "${1:-}" == "python" && "${2:-}" == "install" ]]; then',
-        '  if resolved_uv="$(resolve_real_uv)"; then',
-        '    exec "$resolved_uv" "${original_args[@]}"',
-        "  fi",
-        "  exit 0",
-        "fi",
-        'if [[ "${1:-}" != "run" ]]; then',
-        '  printf "buildish-release-harness: unsupported uv invocation: %s\\n" "$*" >&2',
-        "  exit 2",
-        "fi",
-        "shift",
-        'while [[ $# -gt 0 ]]; do',
-        '  case "$1" in',
-        '    --project)',
-        "      shift 2",
-        "      ;;",
-        '    --frozen)',
-        "      shift",
-        "      ;;",
-        '    buildish-release-tooling)',
-        "      shift",
-        '      command_name="${1:-}"',
-        '      if [[ "$command_name" == "--allow-non-production-release-targets" ]]; then',
-        '        command_name="${2:-}"',
-        "      fi",
-        '      if [[ -z "$command_name" ]]; then',
-        '        printf "buildish-release-harness: missing buildish-release-tooling command\\n" >&2',
-        "        exit 2",
-        "      fi",
-    ]
-    if real_cli_case:
-        lines.extend(
-            [
-                '      case "$command_name" in',
-                f"        {real_cli_case})",
-                '          if resolved_uv="$(resolve_real_uv)"; then',
-                '            exec "$resolved_uv" "${original_args[@]}"',
-                "          fi",
-                '          exec python3 -m apache_buildish_release_tooling "$@"',
-                "          ;;",
-                "      esac",
-            ]
+    return render_uv_shim_script(
+        uv_shim_config(
+            shim_python_executable="python3",
+            real_cli_commands=real_cli_commands,
+            passthrough_python_install=True,
         )
-    lines.extend(
-        [
-            '      filtered_args=()',
-            '      while [[ $# -gt 0 ]]; do',
-            '        case "$1" in',
-            '          --allow-non-production-release-targets)',
-            "            shift",
-            "            ;;",
-            '          --component-config)',
-            "            shift 2",
-            "            ;;",
-            "          *)",
-            '            filtered_args+=("$1")',
-            "            shift",
-            "            ;;",
-            "        esac",
-            "      done",
-            '      exec python3 -m apache_buildish_release_tooling.harness.shim_entrypoint buildish-release-tooling "${filtered_args[@]}"',
-            "      ;;",
-            "    *)",
-            '      printf "buildish-release-harness: unexpected uv arguments: %s\\n" "$*" >&2',
-            "      exit 2",
-            "      ;;",
-            "  esac",
-            "done",
-            'printf "buildish-release-harness: uv did not receive a command\\n" >&2',
-            "exit 2",
-        ]
     )
-    return "\n".join(lines) + "\n"
 
 
 def _write_uv_shim(workspace: runtime.HarnessWorkspace, scenario: HarnessScenario) -> None:

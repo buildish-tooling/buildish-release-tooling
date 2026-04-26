@@ -26,6 +26,7 @@ import tempfile
 from argparse import Namespace
 from collections.abc import Iterable
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -100,6 +101,45 @@ from apache_buildish_release_tooling.source_artifact import (
     write_sha512_file,
 )
 from apache_buildish_release_tooling.summary import SummaryWriter
+
+
+@dataclass(frozen=True)
+class SelectedGitHubRelease:
+    """Resolved GitHub Release metadata for one exact version."""
+
+    repository_slug: str
+    release_payload: dict[str, object]
+    selected_rc_tag: str
+
+    def require_release_id(self, *, reference_tag: str) -> int:
+        """Return the numeric release id or raise a direct error."""
+
+        release_id = self.release_payload.get("id")
+        if not isinstance(release_id, int):
+            raise ValueError(f"GitHub Release for {reference_tag} does not include a numeric id")
+        return release_id
+
+    def require_release_tag(self, *, reference_tag: str) -> str:
+        """Return the release tag name or raise a direct error."""
+
+        release_tag = self.release_payload.get("tag_name")
+        if not isinstance(release_tag, str) or not release_tag:
+            raise ValueError(f"GitHub Release for {reference_tag} does not include a tag name")
+        return release_tag
+
+    @property
+    def release_url(self) -> str:
+        """Return the best available browser/API URL for this release."""
+
+        return _asset_release_url(self.release_payload)
+
+
+@dataclass(frozen=True)
+class DraftReleaseSyncPlan:
+    """Draft-release cleanup and reuse decisions for one sync run."""
+
+    deleted_release_ids: list[int]
+    same_rc_release: dict[str, object] | None
 
 
 def _context(args: Namespace) -> CommandContext:
@@ -691,13 +731,13 @@ def _release_selection_priority(
     return (3, numeric_release_id)
 
 
-def _selected_rc_tag_for_version(
+def _selected_github_release(
     *,
     repo: GitRepository,
     version: str,
     expected_selected_rc_tag: str | None = None,
-) -> tuple[str, dict[str, object], str]:
-    """Resolve the RC selected by the exact-version draft GitHub Release."""
+) -> SelectedGitHubRelease:
+    """Resolve the GitHub Release selected for one exact version."""
 
     version = require_semantic_version(version)
     repository_slug = resolve_repository_slug(repo.path)
@@ -711,7 +751,107 @@ def _selected_rc_tag_for_version(
         )
     if not repo.tag_exists(selected_rc_tag):
         raise ValueError(f"selected RC tag does not exist locally: {selected_rc_tag}")
-    return repository_slug, release_payload, selected_rc_tag
+    return SelectedGitHubRelease(
+        repository_slug=repository_slug,
+        release_payload=release_payload,
+        selected_rc_tag=selected_rc_tag,
+    )
+
+
+def _plan_draft_release_sync(
+    matching_draft_releases: Iterable[dict[str, object]],
+    *,
+    version: str,
+    state: PrepareRcState,
+) -> DraftReleaseSyncPlan:
+    """Classify matching draft releases into deletions and same-RC reuse candidates."""
+
+    lower_rc_release_ids: list[int] = []
+    legacy_release_ids: list[int] = []
+    same_rc_release: dict[str, object] | None = None
+    higher_rc_tags: list[str] = []
+    for release in matching_draft_releases:
+        release_id = release.get("id")
+        if not isinstance(release_id, int):
+            continue
+        existing_rc_tag = _release_payload_rc_tag(release, version)
+        if existing_rc_tag is None:
+            legacy_release_ids.append(release_id)
+            continue
+        existing_rc_number = _rc_number_from_tag(version, existing_rc_tag)
+        if existing_rc_number < state.rc_number:
+            lower_rc_release_ids.append(release_id)
+            continue
+        if existing_rc_number > state.rc_number:
+            higher_rc_tags.append(existing_rc_tag)
+            continue
+        if same_rc_release is not None:
+            raise ValueError(f"multiple draft GitHub Releases already exist for {state.rc_tag}")
+        existing_source_ref = _release_payload_source_ref(release)
+        if existing_source_ref is not None and existing_source_ref != state.resolved_source_ref:
+            raise ValueError(
+                f"draft GitHub Release for {state.rc_tag} points at a different source ref: {existing_source_ref}"
+            )
+        same_rc_release = release
+    if higher_rc_tags:
+        raise ValueError(
+            "draft GitHub Release already records a higher RC: " + ", ".join(sorted(higher_rc_tags))
+        )
+    return DraftReleaseSyncPlan(
+        deleted_release_ids=sorted(legacy_release_ids + lower_rc_release_ids),
+        same_rc_release=same_rc_release,
+    )
+
+
+def _upsert_draft_release(
+    repository_slug: str,
+    *,
+    state: PrepareRcState,
+    release_name: str,
+    desired_release_body: str,
+    same_rc_release: dict[str, object] | None,
+) -> tuple[dict[str, object], str]:
+    """Create, reuse, or update the selected draft release for one RC."""
+
+    if same_rc_release is None:
+        return (
+            create_draft_release(
+                repository_slug,
+                tag_name=state.rc_tag,
+                target_commitish=state.resolved_source_ref,
+                release_name=release_name,
+                release_body=desired_release_body,
+            ),
+            "created",
+        )
+    existing_release_id = same_rc_release.get("id")
+    if not isinstance(existing_release_id, int):
+        raise ValueError(f"draft GitHub Release for {state.rc_tag} does not include a numeric id")
+    same_release_body = same_rc_release.get("body")
+    same_release_name = same_rc_release.get("name")
+    if (
+        isinstance(same_release_body, str)
+        and same_release_body == desired_release_body
+        and isinstance(same_release_name, str)
+        and same_release_name == release_name
+        and same_rc_release.get("tag_name") == state.rc_tag
+    ):
+        return same_rc_release, "reused"
+    return (
+        update_release(
+            repository_slug,
+            existing_release_id,
+            payload={
+                "tag_name": state.rc_tag,
+                "target_commitish": state.resolved_source_ref,
+                "name": release_name,
+                "body": desired_release_body,
+                "draft": True,
+                "prerelease": False,
+            },
+        ),
+        "updated",
+    )
 
 
 def _load_secondary_artifacts(manifest_paths: Iterable[str]) -> list[dict[str, Any]]:
@@ -772,7 +912,7 @@ def _resolve_release_version_state(
     expected_selected_rc_tag: str | None = None,
 ) -> tuple[str, ReleaseVersionState]:
     version = require_semantic_version(version)
-    _repository_slug, _release_payload, selected_rc_tag = _selected_rc_tag_for_version(
+    selected_release = _selected_github_release(
         repo=repo,
         version=version,
         expected_selected_rc_tag=expected_selected_rc_tag,
@@ -782,7 +922,7 @@ def _resolve_release_version_state(
     return (
         release_line,
         ReleaseVersionState(
-            selected_rc_tag=selected_rc_tag,
+            selected_rc_tag=selected_release.selected_rc_tag,
             final_tag=derive_final_tag(version),
             archive_versions=versions_to_archive_for_line(
                 release_line, version, published_versions
@@ -1304,80 +1444,22 @@ def run_sync_draft_github_release(args: Namespace) -> Path:
         tag_names=[state.final_tag, state.rc_tag],
         release_name=release_name,
     )
-    deleted_release_ids: list[int] = []
-    lower_rc_release_ids: list[int] = []
-    legacy_release_ids: list[int] = []
-    same_rc_release: dict[str, object] | None = None
-    higher_rc_tags: list[str] = []
-    for release in matching_draft_releases:
-        release_id = release.get("id")
-        if not isinstance(release_id, int):
-            continue
-        existing_rc_tag = _release_payload_rc_tag(release, version)
-        if existing_rc_tag is None:
-            legacy_release_ids.append(release_id)
-            continue
-        existing_rc_number = _rc_number_from_tag(version, existing_rc_tag)
-        if existing_rc_number < state.rc_number:
-            lower_rc_release_ids.append(release_id)
-            continue
-        if existing_rc_number > state.rc_number:
-            higher_rc_tags.append(existing_rc_tag)
-            continue
-        if same_rc_release is not None:
-            raise ValueError(f"multiple draft GitHub Releases already exist for {state.rc_tag}")
-        existing_source_ref = _release_payload_source_ref(release)
-        if existing_source_ref is not None and existing_source_ref != state.resolved_source_ref:
-            raise ValueError(
-                f"draft GitHub Release for {state.rc_tag} points at a different source ref: {existing_source_ref}"
-            )
-        same_rc_release = release
-    if higher_rc_tags:
-        raise ValueError(
-            "draft GitHub Release already records a higher RC: " + ", ".join(sorted(higher_rc_tags))
-        )
-    deleted_release_ids.extend(sorted(legacy_release_ids + lower_rc_release_ids))
+    sync_plan = _plan_draft_release_sync(
+        matching_draft_releases,
+        version=version,
+        state=state,
+    )
+    deleted_release_ids = sync_plan.deleted_release_ids
     for release_id in deleted_release_ids:
         delete_release(repository_slug, release_id)
     desired_release_body = _draft_release_body(context, state)
-    if same_rc_release is None:
-        created_release = create_draft_release(
-            repository_slug,
-            tag_name=state.rc_tag,
-            target_commitish=state.resolved_source_ref,
-            release_name=release_name,
-            release_body=desired_release_body,
-        )
-        sync_mode = "created"
-    else:
-        existing_release_id = same_rc_release.get("id")
-        if not isinstance(existing_release_id, int):
-            raise ValueError(f"draft GitHub Release for {state.rc_tag} does not include a numeric id")
-        same_release_body = same_rc_release.get("body")
-        same_release_name = same_rc_release.get("name")
-        if (
-            isinstance(same_release_body, str)
-            and same_release_body == desired_release_body
-            and isinstance(same_release_name, str)
-            and same_release_name == release_name
-            and same_rc_release.get("tag_name") == state.rc_tag
-        ):
-            created_release = same_rc_release
-            sync_mode = "reused"
-        else:
-            created_release = update_release(
-                repository_slug,
-                existing_release_id,
-                payload={
-                    "tag_name": state.rc_tag,
-                    "target_commitish": state.resolved_source_ref,
-                    "name": release_name,
-                    "body": desired_release_body,
-                    "draft": True,
-                    "prerelease": False,
-                },
-            )
-            sync_mode = "updated"
+    created_release, sync_mode = _upsert_draft_release(
+        repository_slug,
+        state=state,
+        release_name=release_name,
+        desired_release_body=desired_release_body,
+        same_rc_release=sync_plan.same_rc_release,
+    )
     created_release_id = created_release.get("id")
     created_release_tag = created_release.get("tag_name")
     created_release_title = created_release.get("name")
@@ -1430,12 +1512,12 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
     context = _context(args)
     repo = GitRepository.from_current_worktree()
     version = args.version
-    repository_slug, release_payload, selected_rc_tag = _selected_rc_tag_for_version(
+    selected_release = _selected_github_release(
         repo=repo,
         version=version,
         expected_selected_rc_tag=getattr(args, "selected_rc_tag", None),
     )
-    rc_directory_name = _latest_rc_directory_name(version, selected_rc_tag)
+    rc_directory_name = _latest_rc_directory_name(version, selected_release.selected_rc_tag)
     source_url = url_join(context.component_config.asf_dist_dev_base.rstrip("/"), rc_directory_name)
     target_url = url_join(context.component_config.asf_dist_release_base.rstrip("/"), version)
     svn_client = AsfSvnClient.from_environment()
@@ -1457,11 +1539,11 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
         )
     verified_source_artifact_sha512 = _verify_staged_source_release_against_vote_manifest(
         context,
-        repository_slug=repository_slug,
-        release_payload=release_payload,
+        repository_slug=selected_release.repository_slug,
+        release_payload=selected_release.release_payload,
         source_url=source_url,
         version=version,
-        selected_rc_tag=selected_rc_tag,
+        selected_rc_tag=selected_release.selected_rc_tag,
         expected_source_artifact_name=required_source_release_file_names[0],
     )
     if svn_client.path_exists(target_url):
@@ -1486,7 +1568,7 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
             "component": context.component_config.component_id,
             "action": "publish-source-release-svn",
             "version": version,
-            "selected_rc_tag": selected_rc_tag,
+            "selected_rc_tag": selected_release.selected_rc_tag,
             "source_url": f"{source_url}/",
             "target_url": f"{target_url}/",
             "verified_source_artifact_sha512": verified_source_artifact_sha512,
@@ -1494,7 +1576,7 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
         },
     )
     summary.append_heading("Publish source release SVN")
-    summary.append_plaintext_block("Selected RC", selected_rc_tag)
+    summary.append_plaintext_block("Selected RC", selected_release.selected_rc_tag)
     summary.append_plaintext_block("Promoted source URL", f"{source_url}/")
     summary.append_plaintext_block("Published release URL", f"{target_url}/")
     summary.append_sha512_block(
@@ -1731,14 +1813,14 @@ def run_create_final_tag(args: Namespace) -> Path:
     context = _context(args)
     repo = GitRepository.from_current_worktree()
     version = args.version
-    _repository_slug, _release_payload, selected_rc_tag = _selected_rc_tag_for_version(
+    selected_release = _selected_github_release(
         repo=repo,
         version=version,
         expected_selected_rc_tag=getattr(args, "selected_rc_tag", None),
     )
     final_tag = derive_final_tag(version)
     final_tag_message = f"Release {context.component_config.vote_release_name} {version}"
-    target_commit = repo.resolve_commit(selected_rc_tag)
+    target_commit = repo.resolve_commit(selected_release.selected_rc_tag)
     repository_slug = _repository_slug_or_none(repo)
     tag_creation_mode, created_ref = _create_or_reuse_annotated_tag(
         repo=repo,
@@ -1756,7 +1838,7 @@ def run_create_final_tag(args: Namespace) -> Path:
             "component": context.component_config.component_id,
             "action": "create-final-tag",
             "version": version,
-            "selected_rc_tag": selected_rc_tag,
+            "selected_rc_tag": selected_release.selected_rc_tag,
             "final_tag": final_tag,
             "target_commit": target_commit,
             "tag_creation_mode": tag_creation_mode,
@@ -1764,7 +1846,7 @@ def run_create_final_tag(args: Namespace) -> Path:
         },
     )
     summary.append_heading("Create final tag")
-    summary.append_plaintext_block("Selected RC", selected_rc_tag)
+    summary.append_plaintext_block("Selected RC", selected_release.selected_rc_tag)
     summary.append_plaintext_block("Final tag", final_tag)
     summary.append_plaintext_block("Target commit", target_commit)
     summary.append_plaintext_block("Tag creation mode", tag_creation_mode)
@@ -2046,15 +2128,12 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
     )
     if not repo.tag_exists(state.rc_tag):
         raise ValueError(f"RC tag does not exist: {state.rc_tag}")
-    repository_slug, release_payload, _selected_rc_tag = _selected_rc_tag_for_version(
+    selected_release = _selected_github_release(
         repo=repo,
         version=version,
         expected_selected_rc_tag=state.rc_tag,
     )
-    release_url = _asset_release_url(release_payload)
-    release_tag = release_payload.get("tag_name")
-    if not isinstance(release_tag, str) or not release_tag:
-        raise ValueError(f"GitHub Release for {state.rc_tag} does not include a tag name")
+    release_tag = selected_release.require_release_tag(reference_tag=state.rc_tag)
     rc_tag_target_commit = repo.resolve_commit(state.rc_tag)
     source_artifact_url = f"{state.staging_url.rstrip('/')}/{state.source_artifact_name}"
     source_artifact_sha512 = _verified_staged_source_artifact_sha512(source_artifact_url)
@@ -2071,9 +2150,9 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
         manifest_payload = build_rc_vote_manifest(
             component_config=context.component_config,
             state=state,
-            repository_slug=repository_slug,
+            repository_slug=selected_release.repository_slug,
             draft_release_tag=release_tag,
-            draft_release_url=release_url,
+            draft_release_url=selected_release.release_url,
             rc_tag_target_commit=rc_tag_target_commit,
             source_artifact_sha512=source_artifact_sha512,
             secondary_artifacts=secondary_artifacts,
@@ -2104,7 +2183,7 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
         )
 
         upload_release_assets(
-            repository_slug,
+            selected_release.repository_slug,
             tag_name=release_tag,
             asset_paths=[manifest_file_path, manifest_sha512_path, manifest_signature_path],
             clobber=True,
@@ -2115,7 +2194,7 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
             state=state,
             rc_tag_target_commit=rc_tag_target_commit,
             manifest_payload=manifest_payload,
-            draft_release_url=release_url,
+            draft_release_url=selected_release.release_url,
         )
         incubator_vote_email = None
         if context.component_config.incubator_vote_enabled:
@@ -2139,7 +2218,7 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
                 "source_artifact_url": source_artifact_url,
                 "authoritative_manifest_url": authoritative_manifest_url,
                 "authoritative_manifest_sha512": manifest_sha512,
-                "draft_release_url": release_url,
+                "draft_release_url": selected_release.release_url,
                 "secondary_artifact_count": str(len(secondary_artifacts)),
                 "mirrored_asset_names": ",".join(
                     [
@@ -2164,7 +2243,7 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
                 ("RC tag target commit", _summary_code(rc_tag_target_commit)),
                 ("ASF SVN staging URL", _summary_code(f"{staging_url}/")),
                 ("Authoritative manifest URL", _summary_code(authoritative_manifest_url)),
-                ("Draft GitHub Release URL", _summary_optional_code(release_url)),
+                ("Draft GitHub Release URL", _summary_optional_code(selected_release.release_url)),
                 ("Secondary artifact count", str(len(secondary_artifacts))),
                 ("GPG signing key", _summary_code(gpg_fingerprint)),
             ],
@@ -2219,34 +2298,32 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
     repo = GitRepository.from_current_worktree()
     version = args.version
     expected_selected_rc_tag = getattr(args, "selected_rc_tag", None)
-    repository_slug, release_payload, _selected_rc_tag = _selected_rc_tag_for_version(
+    selected_release = _selected_github_release(
         repo=repo,
         version=version,
         expected_selected_rc_tag=expected_selected_rc_tag,
     )
     release_name = _release_name(context, version)
     final_tag = derive_final_tag(version)
-    final_tag_target_commit = repo.resolve_commit(_selected_rc_tag)
-    release_id = release_payload.get("id")
-    if not isinstance(release_id, int):
-        raise ValueError(f"GitHub Release for {final_tag} does not include a numeric id")
+    final_tag_target_commit = repo.resolve_commit(selected_release.selected_rc_tag)
+    release_id = selected_release.require_release_id(reference_tag=final_tag)
     deleted_asset_names: list[str] = []
     for asset_name, asset_id in release_asset_ids_by_names(
-        release_payload,
+        selected_release.release_payload,
         asset_names=[
             "rc-vote-manifest.json",
             "rc-vote-manifest.json.asc",
             "rc-vote-manifest.json.sha512",
         ],
     ).items():
-        delete_release_asset(repository_slug, asset_id)
+        delete_release_asset(selected_release.repository_slug, asset_id)
         deleted_asset_names.append(asset_name)
-    if release_payload.get("draft") is False:
-        finalized_release = release_payload
+    if selected_release.release_payload.get("draft") is False:
+        finalized_release = selected_release.release_payload
         finalize_mode = "already-finalized"
     else:
         finalized_release = update_release(
-            repository_slug,
+            selected_release.repository_slug,
             release_id,
             payload={
                 "tag_name": final_tag,
@@ -2268,7 +2345,7 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
             "component": context.component_config.component_id,
             "action": "finalize-draft-github-release",
             "version": version,
-            "repository_slug": repository_slug,
+            "repository_slug": selected_release.repository_slug,
             "release_id": str(release_id),
             "release_tag": str(finalized_release_tag or ""),
             "release_name": str(finalized_release_name or ""),
@@ -2278,7 +2355,7 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
         },
     )
     summary.append_heading("Finalize draft GitHub Release")
-    summary.append_plaintext_block("GitHub repository", repository_slug)
+    summary.append_plaintext_block("GitHub repository", selected_release.repository_slug)
     summary.append_plaintext_block(
         "Removed draft-only assets",
         "\n".join(sorted(deleted_asset_names)) if deleted_asset_names else "<none>",
