@@ -30,7 +30,10 @@ from pathlib import Path
 from typing import Any
 
 from apache_buildish_release_tooling.asf_svn import AsfSvnClient, url_join
-from apache_buildish_release_tooling.config import load_component_config
+from apache_buildish_release_tooling.config import (
+    load_component_config,
+    validate_release_target_base_urls,
+)
 from apache_buildish_release_tooling.dockerhub import parse_image_reference, publish_moving_aliases
 from apache_buildish_release_tooling.email_templates import (
     render_announce_email,
@@ -102,6 +105,12 @@ from apache_buildish_release_tooling.summary import SummaryWriter
 def _context(args: Namespace) -> CommandContext:
     config_path = args.component_config
     config = load_component_config(config_path)
+    validate_release_target_base_urls(
+        config,
+        allow_non_production_release_targets=getattr(
+            args, "allow_non_production_release_targets", False
+        ),
+    )
     return CommandContext(
         component_config=config,
         component_config_path=Path(config_path),
@@ -222,6 +231,26 @@ def _manifest_source_artifact_sha512(
     return digest_value
 
 
+def _sha512_sidecar_digest(sidecar_text: str, *, source: str) -> str:
+    """Parse the first digest field from one staged `.sha512` sidecar."""
+
+    fields = sidecar_text.strip().split()
+    if not fields or not fields[0]:
+        raise ValueError(f"invalid sha512 sidecar contents: {source}")
+    return fields[0]
+
+
+def _verified_staged_source_artifact_sha512(source_artifact_url: str) -> str:
+    """Recompute one staged source-artifact digest and verify the `.sha512` sidecar."""
+
+    actual_sha512 = hashlib.sha512(read_uri_bytes(source_artifact_url)).hexdigest()
+    sidecar_url = f"{source_artifact_url}.sha512"
+    staged_sha512 = _sha512_sidecar_digest(read_uri_text(sidecar_url), source=sidecar_url)
+    if staged_sha512 != actual_sha512:
+        raise ValueError("staged source artifact .sha512 sidecar does not match the staged source artifact bytes")
+    return actual_sha512
+
+
 def _mirrored_release_asset_text(
     repository_slug: str,
     release_payload: dict[str, object],
@@ -285,14 +314,9 @@ def _verify_staged_source_release_against_vote_manifest(
     expected_source_artifact_url = f"{source_url}/{expected_source_artifact_name}"
 
     expected_sha512 = _manifest_source_artifact_sha512(source_artifact, source=staged_manifest_url)
-    actual_sha512 = hashlib.sha512(read_uri_bytes(expected_source_artifact_url)).hexdigest()
+    actual_sha512 = _verified_staged_source_artifact_sha512(expected_source_artifact_url)
     if actual_sha512 != expected_sha512:
         raise ValueError("staged source artifact checksum does not match the authoritative RC vote manifest")
-
-    staged_sha512_text = read_uri_text(f"{expected_source_artifact_url}.sha512").strip()
-    staged_sha512_fields = staged_sha512_text.split()
-    if not staged_sha512_fields or staged_sha512_fields[0] != expected_sha512:
-        raise ValueError("staged source artifact .sha512 sidecar does not match the authoritative RC vote manifest")
     return expected_sha512
 
 
@@ -593,6 +617,80 @@ def _release_payload_source_ref(release_payload: dict[str, object]) -> str | Non
     return _release_body_line_value(release_payload, "Resolved source ref: ")
 
 
+def _selected_release_for_version(
+    releases: Iterable[dict[str, object]],
+    *,
+    version: str,
+) -> tuple[dict[str, object], str]:
+    """Return the unique release payload and RC tag selected for one version."""
+
+    final_tag = derive_final_tag(version)
+    matching_releases: list[tuple[dict[str, object], str]] = []
+    for release in releases:
+        selected_rc_tag = _release_payload_rc_tag(release, version)
+        release_tag = release.get("tag_name")
+        if selected_rc_tag is None and release_tag != final_tag:
+            continue
+        if selected_rc_tag is None:
+            raise ValueError(f"GitHub Release for {final_tag} does not record an RC tag")
+        matching_releases.append((release, selected_rc_tag))
+    if not matching_releases:
+        raise ValueError(f"no GitHub Release exists for version {version}")
+    selected_rc_tags = {selected_rc_tag for _release, selected_rc_tag in matching_releases}
+    if len(selected_rc_tags) != 1:
+        raise ValueError(
+            f"GitHub Releases for v{version} record multiple RC tags: "
+            + ", ".join(sorted(selected_rc_tags))
+        )
+    selected_rc_tag = next(iter(selected_rc_tags))
+    matching_releases.sort(
+        key=lambda item: _release_selection_priority(
+            item[0],
+            selected_rc_tag=selected_rc_tag,
+            final_tag=final_tag,
+        )
+    )
+    selected_release = matching_releases[0][0]
+    selected_priority = _release_selection_priority(
+        selected_release,
+        selected_rc_tag=selected_rc_tag,
+        final_tag=final_tag,
+    )
+    ambiguous_matches = [
+        release
+        for release, _release_rc_tag in matching_releases
+        if _release_selection_priority(
+            release,
+            selected_rc_tag=selected_rc_tag,
+            final_tag=final_tag,
+        )
+        == selected_priority
+    ]
+    if len(ambiguous_matches) != 1:
+        raise ValueError(f"multiple GitHub Releases match version {version} at the same priority")
+    return selected_release, selected_rc_tag
+
+
+def _release_selection_priority(
+    release_payload: dict[str, object],
+    *,
+    selected_rc_tag: str,
+    final_tag: str,
+) -> tuple[int, int]:
+    """Rank exact-version releases by the preferred draft/final tagging scheme."""
+
+    release_tag = release_payload.get("tag_name")
+    release_id = release_payload.get("id")
+    numeric_release_id = release_id if isinstance(release_id, int) else 0
+    if release_tag == final_tag and release_payload.get("draft") is False:
+        return (0, numeric_release_id)
+    if release_tag == selected_rc_tag:
+        return (1, numeric_release_id)
+    if release_tag == final_tag:
+        return (2, numeric_release_id)
+    return (3, numeric_release_id)
+
+
 def _selected_rc_tag_for_version(
     *,
     repo: GitRepository,
@@ -603,10 +701,10 @@ def _selected_rc_tag_for_version(
 
     version = require_semantic_version(version)
     repository_slug = resolve_repository_slug(repo.path)
-    release_payload = release_by_tag(list_releases(repository_slug), tag_name=derive_final_tag(version))
-    selected_rc_tag = _release_payload_rc_tag(release_payload, version)
-    if selected_rc_tag is None:
-        raise ValueError(f"draft GitHub Release for v{version} does not record an RC tag")
+    release_payload, selected_rc_tag = _selected_release_for_version(
+        list_releases(repository_slug),
+        version=version,
+    )
     if expected_selected_rc_tag is not None and selected_rc_tag != expected_selected_rc_tag:
         raise ValueError(
             f"draft GitHub Release for v{version} now points at {selected_rc_tag}, expected {expected_selected_rc_tag}"
@@ -1245,7 +1343,7 @@ def run_sync_draft_github_release(args: Namespace) -> Path:
     if same_rc_release is None:
         created_release = create_draft_release(
             repository_slug,
-            tag_name=state.final_tag,
+            tag_name=state.rc_tag,
             target_commitish=state.resolved_source_ref,
             release_name=release_name,
             release_body=desired_release_body,
@@ -1262,6 +1360,7 @@ def run_sync_draft_github_release(args: Namespace) -> Path:
             and same_release_body == desired_release_body
             and isinstance(same_release_name, str)
             and same_release_name == release_name
+            and same_rc_release.get("tag_name") == state.rc_tag
         ):
             created_release = same_rc_release
             sync_mode = "reused"
@@ -1270,6 +1369,7 @@ def run_sync_draft_github_release(args: Namespace) -> Path:
                 repository_slug,
                 existing_release_id,
                 payload={
+                    "tag_name": state.rc_tag,
                     "target_commitish": state.resolved_source_ref,
                     "name": release_name,
                     "body": desired_release_body,
@@ -1946,12 +2046,18 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
     )
     if not repo.tag_exists(state.rc_tag):
         raise ValueError(f"RC tag does not exist: {state.rc_tag}")
-    repository_slug = resolve_repository_slug(repo.path)
-    release_payload = release_by_tag(list_releases(repository_slug), tag_name=state.final_tag)
+    repository_slug, release_payload, _selected_rc_tag = _selected_rc_tag_for_version(
+        repo=repo,
+        version=version,
+        expected_selected_rc_tag=state.rc_tag,
+    )
     release_url = _asset_release_url(release_payload)
+    release_tag = release_payload.get("tag_name")
+    if not isinstance(release_tag, str) or not release_tag:
+        raise ValueError(f"GitHub Release for {state.rc_tag} does not include a tag name")
     rc_tag_target_commit = repo.resolve_commit(state.rc_tag)
     source_artifact_url = f"{state.staging_url.rstrip('/')}/{state.source_artifact_name}"
-    source_artifact_sha512 = read_uri_text(f"{source_artifact_url}.sha512").strip().split()[0]
+    source_artifact_sha512 = _verified_staged_source_artifact_sha512(source_artifact_url)
     source_signature_text = read_uri_text(f"{source_artifact_url}.asc").strip()
     output_dir = _artifact_output_dir(context.component_config.component_id)
     manifest_file_path = output_dir / "rc-vote-manifest.json"
@@ -1966,6 +2072,7 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
             component_config=context.component_config,
             state=state,
             repository_slug=repository_slug,
+            draft_release_tag=release_tag,
             draft_release_url=release_url,
             rc_tag_target_commit=rc_tag_target_commit,
             source_artifact_sha512=source_artifact_sha512,
@@ -1998,7 +2105,7 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
 
         upload_release_assets(
             repository_slug,
-            tag_name=state.final_tag,
+            tag_name=release_tag,
             asset_paths=[manifest_file_path, manifest_sha512_path, manifest_signature_path],
             clobber=True,
         )
@@ -2118,9 +2225,11 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
         expected_selected_rc_tag=expected_selected_rc_tag,
     )
     release_name = _release_name(context, version)
+    final_tag = derive_final_tag(version)
+    final_tag_target_commit = repo.resolve_commit(_selected_rc_tag)
     release_id = release_payload.get("id")
     if not isinstance(release_id, int):
-        raise ValueError(f"GitHub Release for {derive_final_tag(version)} does not include a numeric id")
+        raise ValueError(f"GitHub Release for {final_tag} does not include a numeric id")
     deleted_asset_names: list[str] = []
     for asset_name, asset_id in release_asset_ids_by_names(
         release_payload,
@@ -2140,6 +2249,8 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
             repository_slug,
             release_id,
             payload={
+                "tag_name": final_tag,
+                "target_commitish": final_tag_target_commit,
                 "draft": False,
                 "prerelease": False,
                 "name": release_name,

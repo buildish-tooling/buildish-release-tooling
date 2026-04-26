@@ -300,8 +300,8 @@ class CommandsIntegrationTest(unittest.TestCase):
                 },
                 "draft_github_release": {
                     "repository": "apache/buildish-example",
-                    "tag": f"v{version}",
-                    "url": f"https://github.com/apache/buildish-example/releases/tag/v{version}",
+                    "tag": f"v{version}-rc{rc_number}",
+                    "url": f"https://github.com/apache/buildish-example/releases/tag/v{version}-rc{rc_number}",
                 },
                 "vote_materials": {
                     "source_artifacts": [
@@ -480,6 +480,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 "cleanup-dev-svn-rcs",
                 "--component-config",
                 str(config_path),
+                "--allow-non-production-release-targets",
                 "1.2.3",
             ],
             cwd=sandbox_dir,
@@ -494,6 +495,66 @@ class CommandsIntegrationTest(unittest.TestCase):
         self.assertIn("Cleanup ASF SVN dev/dist for version 1.2.3", summary_text)
         self.assertIn("| Deleted RC directory count | 2 |", summary_text)
         self.assertIn("1.2.3-rc0/", summary_text)
+
+    def test_prepare_rc_rejects_non_production_release_targets_without_opt_in(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        manifest_path = sandbox_dir / "prepare-rc.json"
+        git_create_branch(origin_dir, "release/1.x")
+        git_create_branch(origin_dir, "release/1.2.x")
+        fetch_git_origin_refs(clone_dir)
+        self._write_component_config(
+            config_path,
+            component_id="buildish-example",
+            dev_base_url="file:///tmp/buildish-test/dev",
+            release_base_url="file:///tmp/buildish-test/release",
+        )
+        completed = run_cli(
+            [
+                "prepare-rc",
+                "--component-config",
+                str(config_path),
+                "1.2.3",
+            ],
+            cwd=clone_dir,
+            env=cli_env(manifest_path),
+        )
+        self.assertEqual(1, completed.returncode)
+        self.assertIn("--allow-non-production-release-targets", completed.stderr)
+
+    def test_prepare_rc_allows_non_production_release_targets_with_opt_in(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        manifest_path = sandbox_dir / "prepare-rc.json"
+        git_create_branch(origin_dir, "release/1.x")
+        git_create_branch(origin_dir, "release/1.2.x")
+        fetch_git_origin_refs(clone_dir)
+        expected_commit = git_rev_parse(clone_dir, "refs/remotes/origin/release/1.2.x^{commit}")
+        self._write_component_config(
+            config_path,
+            component_id="buildish-example",
+            dev_base_url="file:///tmp/buildish-test/dev",
+            release_base_url="file:///tmp/buildish-test/release",
+        )
+        completed = run_cli(
+            [
+                "prepare-rc",
+                "--component-config",
+                str(config_path),
+                "--allow-non-production-release-targets",
+                "1.2.3",
+            ],
+            cwd=clone_dir,
+            env=cli_env(manifest_path),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(expected_commit, manifest["resolved_source_ref"])
+        self.assertEqual("file:///tmp/buildish-test/dev/1.2.3-rc0/", manifest["staging_url"])
 
     def test_release_version_command_infers_release_line_and_pruning_from_svn(self) -> None:
         if not command_available("svnadmin") or not command_available("svn"):
@@ -525,7 +586,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 {
                     "id": 42,
                     "draft": True,
-                    "tag_name": "v1.2.3",
+                    "tag_name": "v1.2.3-rc2",
                     "name": "Apache Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
@@ -546,6 +607,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 "release-version",
                 "--component-config",
                 str(config_path),
+                "--allow-non-production-release-targets",
                 "1.2.3",
             ],
             cwd=clone_dir,
@@ -606,9 +668,9 @@ class CommandsIntegrationTest(unittest.TestCase):
             ],
             create_response={
                 "id": 42,
-                "tag_name": "v1.2.3",
+                "tag_name": "v1.2.3-rc3",
                 "name": "Apache Buildish Example 1.2.3",
-                "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3",
+                "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc3",
             },
         )
         completed = run_cli(
@@ -634,16 +696,16 @@ class CommandsIntegrationTest(unittest.TestCase):
         self.assertEqual("11,12", manifest["deleted_release_ids"])
         self.assertEqual("created", manifest["sync_mode"])
         self.assertEqual("42", manifest["release_id"])
-        self.assertEqual("v1.2.3", manifest["release_tag"])
+        self.assertEqual("v1.2.3-rc3", manifest["release_tag"])
         self.assertEqual(
-            "https://github.com/apache/buildish-example/releases/tag/v1.2.3",
+            "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc3",
             manifest["release_url"],
         )
         create_request = json.loads(
             (gh_state_dir / "create-release-request.json").read_text(encoding="utf-8")
         )
         self.assertTrue(create_request["draft"])
-        self.assertEqual("v1.2.3", create_request["tag_name"])
+        self.assertEqual("v1.2.3-rc3", create_request["tag_name"])
         self.assertEqual(expected_commit, create_request["target_commitish"])
         self.assertEqual("Apache Buildish Example 1.2.3", create_request["name"])
         self.assertIn("RC tag: v1.2.3-rc3", create_request["body"])
@@ -713,7 +775,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 {
                     "id": 42,
                     "draft": True,
-                    "tag_name": "v1.2.3",
+                    "tag_name": "v1.2.3-rc2",
                     "name": "Apache Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
@@ -733,6 +795,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 "publish-source-release-svn",
                 "--component-config",
                 str(config_path),
+                "--allow-non-production-release-targets",
                 "1.2.3",
             ],
             cwd=clone_dir,
@@ -753,6 +816,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 "publish-source-release-svn",
                 "--component-config",
                 str(config_path),
+                "--allow-non-production-release-targets",
                 "1.2.3",
             ],
             cwd=clone_dir,
@@ -796,7 +860,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 {
                     "id": 42,
                     "draft": True,
-                    "tag_name": "v1.2.3",
+                    "tag_name": "v1.2.3-rc2",
                     "name": "Apache Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
@@ -818,6 +882,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 "publish-source-release-svn",
                 "--component-config",
                 str(config_path),
+                "--allow-non-production-release-targets",
                 "1.2.3",
             ],
             cwd=clone_dir,
@@ -892,7 +957,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 {
                     "id": 42,
                     "draft": True,
-                    "tag_name": "v1.2.3",
+                    "tag_name": "v1.2.3-rc2",
                     "name": "Apache Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
@@ -912,6 +977,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 "publish-source-release-svn",
                 "--component-config",
                 str(config_path),
+                "--allow-non-production-release-targets",
                 "1.2.3",
             ],
             cwd=clone_dir,
@@ -923,7 +989,7 @@ class CommandsIntegrationTest(unittest.TestCase):
         )
         self.assertNotEqual(0, completed.returncode)
         self.assertIn(
-            "staged source artifact checksum does not match the authoritative RC vote manifest",
+            "staged source artifact .sha512 sidecar does not match the staged source artifact bytes",
             completed.stderr,
         )
         self.assertEqual([], client.list_entries(release_base_url))
@@ -959,7 +1025,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 {
                     "id": 42,
                     "draft": True,
-                    "tag_name": "v1.2.3",
+                    "tag_name": "v1.2.3-rc2",
                     "name": "Apache Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
@@ -980,6 +1046,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 "publish-source-release-svn",
                 "--component-config",
                 str(config_path),
+                "--allow-non-production-release-targets",
                 "--selected-rc-tag",
                 "v1.2.3-rc1",
                 "1.2.3",
@@ -1027,7 +1094,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 {
                     "id": 42,
                     "draft": True,
-                    "tag_name": "v1.2.3",
+                    "tag_name": "v1.2.3-rc2",
                     "name": "Apache Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
@@ -1048,6 +1115,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 "prune-older-line-releases",
                 "--component-config",
                 str(config_path),
+                "--allow-non-production-release-targets",
                 "1.2.3",
             ],
             cwd=clone_dir,
@@ -1088,7 +1156,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 {
                     "id": 42,
                     "draft": True,
-                    "tag_name": "v1.2.3",
+                    "tag_name": "v1.2.3-rc2",
                     "name": "Apache Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
@@ -1370,12 +1438,85 @@ class CommandsIntegrationTest(unittest.TestCase):
                 {
                     "id": 42,
                     "draft": True,
+                    "tag_name": "v1.2.3-rc0",
+                    "name": "Apache Buildish Example 1.2.3",
+                    "body": release_body,
+                    "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+                }
+            ],
+        )
+        completed = run_cli(
+            [
+                "sync-draft-github-release",
+                "--component-config",
+                str(config_path),
+                "--rc-tag",
+                "v1.2.3-rc0",
+                "1.2.3",
+            ],
+            cwd=clone_dir,
+            env=cli_env(
+                manifest_path,
+                extra_env={"FAKE_GH_STATE_DIR": str(gh_state_dir)},
+                prepend_dirs=(gh_path.parent,),
+            ),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual("reused", manifest["sync_mode"])
+        self.assertEqual("", manifest["deleted_release_ids"])
+        self.assertFalse((gh_state_dir / "deleted-endpoints.log").exists())
+        self.assertFalse((gh_state_dir / "create-release-request.json").exists())
+
+    def test_sync_draft_github_release_retags_legacy_final_tag_release(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        manifest_path = sandbox_dir / "sync-draft-github-release.json"
+        git_create_branch(origin_dir, "release/1.x")
+        git_create_branch(origin_dir, "release/1.2.x")
+        fetch_git_origin_refs(clone_dir)
+        set_github_origin_url(clone_dir, "apache/buildish-example")
+        expected_commit = git_rev_parse(clone_dir, "refs/remotes/origin/release/1.2.x^{commit}")
+        self._write_component_config(
+            config_path,
+            component_id="buildish-example",
+            dev_base_url="https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+            release_base_url="https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+        )
+        release_body = "\n".join(
+            [
+                "Draft GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                "",
+                "RC tag: v1.2.3-rc0",
+                "Final tag: v1.2.3",
+                f"Resolved source ref: {expected_commit}",
+                "ASF SVN staging URL: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/",
+                "Final tag mode: rc-source-commit",
+                "",
+                "This draft release is convenience metadata only and must remain unpublished until the ASF vote passes.",
+            ]
+        )
+        gh_path, gh_state_dir = create_fake_gh_launcher(
+            sandbox_dir,
+            list_response=[
+                {
+                    "id": 42,
+                    "draft": True,
                     "tag_name": "v1.2.3",
                     "name": "Apache Buildish Example 1.2.3",
                     "body": release_body,
                     "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3",
                 }
             ],
+            update_release_response={
+                "id": 42,
+                "draft": True,
+                "tag_name": "v1.2.3-rc0",
+                "name": "Apache Buildish Example 1.2.3",
+                "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+            },
         )
         completed = run_cli(
             [
@@ -1393,10 +1534,13 @@ class CommandsIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        self.assertEqual("reused", manifest["sync_mode"])
-        self.assertEqual("", manifest["deleted_release_ids"])
-        self.assertFalse((gh_state_dir / "deleted-endpoints.log").exists())
-        self.assertFalse((gh_state_dir / "create-release-request.json").exists())
+        self.assertEqual("updated", manifest["sync_mode"])
+        self.assertEqual("v1.2.3-rc0", manifest["release_tag"])
+        update_request = json.loads(
+            (gh_state_dir / "update-release-request.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual("v1.2.3-rc0", update_request["tag_name"])
+        self.assertEqual(expected_commit, update_request["target_commitish"])
 
     def test_sync_draft_github_release_rejects_higher_existing_rc(self) -> None:
         sandbox_dir = create_build_test_sandbox()
@@ -1437,6 +1581,8 @@ class CommandsIntegrationTest(unittest.TestCase):
                 "sync-draft-github-release",
                 "--component-config",
                 str(config_path),
+                "--rc-tag",
+                "v1.2.3-rc0",
                 "1.2.3",
             ],
             cwd=clone_dir,
@@ -1819,6 +1965,8 @@ class CommandsIntegrationTest(unittest.TestCase):
         )
         self.assertFalse(update_request["draft"])
         self.assertFalse(update_request["prerelease"])
+        self.assertEqual("v1.2.3", update_request["tag_name"])
+        self.assertEqual(expected_commit, update_request["target_commitish"])
         self.assertEqual("Apache Buildish Example 1.2.3", update_request["name"])
         self.assertEqual(
             [
@@ -1943,6 +2091,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 "build-source-rc",
                 "--component-config",
                 str(config_path),
+                "--allow-non-production-release-targets",
                 "--rc-tag",
                 "v1.2.3-rc0",
                 "1.2.3",
@@ -1959,6 +2108,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 "create-rc-materialization-tag",
                 "--component-config",
                 str(config_path),
+                "--allow-non-production-release-targets",
                 "--rc-tag",
                 "v1.2.3-rc0",
                 "1.2.3",
@@ -1975,9 +2125,9 @@ class CommandsIntegrationTest(unittest.TestCase):
                 {
                     "id": 42,
                     "draft": True,
-                    "tag_name": "v1.2.3",
+                    "tag_name": "v1.2.3-rc0",
                     "name": "Apache Buildish Example 1.2.3",
-                    "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3",
+                    "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
                     "assets": [],
                 }
             ],
@@ -1987,6 +2137,7 @@ class CommandsIntegrationTest(unittest.TestCase):
                 "finalize-rc-vote-materials",
                 "--component-config",
                 str(config_path),
+                "--allow-non-production-release-targets",
                 "--secondary-artifact-manifest",
                 str(secondary_manifest_path),
                 "--rc-tag",
@@ -2044,9 +2195,10 @@ class CommandsIntegrationTest(unittest.TestCase):
             staged_manifest["vote_materials"]["secondary_artifacts"][0]["uri"],
         )
         self.assertEqual(
-            "https://github.com/apache/buildish-example/releases/tag/v1.2.3",
+            "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
             staged_manifest["draft_github_release"]["url"],
         )
+        self.assertEqual("v1.2.3-rc0", staged_manifest["draft_github_release"]["tag"])
         self.assertEqual(
             [
                 str(clone_dir / "build" / "release-artifacts" / component_id / "rc-vote-manifest.json"),
@@ -2054,6 +2206,10 @@ class CommandsIntegrationTest(unittest.TestCase):
                 str(clone_dir / "build" / "release-artifacts" / component_id / "rc-vote-manifest.json.asc"),
             ],
             (gh_state_dir / "release-upload-files.log").read_text(encoding="utf-8").splitlines(),
+        )
+        self.assertEqual(
+            "v1.2.3-rc0",
+            (gh_state_dir / "release-upload-tag.txt").read_text(encoding="utf-8").strip(),
         )
         summary_text = finalize_manifest_path.with_suffix(".summary.md").read_text(encoding="utf-8")
         self.assertIn("Finalize RC vote materials for version 1.2.3", summary_text)
@@ -2063,6 +2219,181 @@ class CommandsIntegrationTest(unittest.TestCase):
         self.assertIn("Project vote subject", summary_text)
         self.assertIn("Please vote in the next 72 hours.", summary_text)
         self.assertIn(f"{release_base_url.rsplit('/', 1)[0]}/KEYS", summary_text)
+
+    def test_finalize_rc_vote_materials_rejects_staged_source_artifact_drift(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for RC vote-manifest signing")
+        if not command_available("svnadmin") or not command_available("svn"):
+            self.skipTest("svnadmin and svn are required for the SVN integration test")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
+        _repo_dir, repo_url, working_copy_dir = init_svn_repo_and_checkout(sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        source_manifest_path = sandbox_dir / "build-source-rc.json"
+        rc_tag_manifest_path = sandbox_dir / "create-rc-materialization-tag.json"
+        finalize_manifest_path = sandbox_dir / "finalize-rc-vote-materials.json"
+        client = AsfSvnClient()
+        component_id = "buildish-example"
+        dev_base_url = f"{repo_url}/dist/dev/incubator/buildish/{component_id}"
+        release_base_url = f"{repo_url}/dist/release/incubator/buildish/{component_id}"
+        keys_path = working_copy_dir / "dist" / "release" / "incubator" / "buildish" / "KEYS"
+        source_home = sandbox_dir / "gpg-source"
+        source_home.mkdir(parents=True, exist_ok=True)
+        source_home.chmod(0o700)
+
+        git_create_branch(origin_dir, "release/1.x")
+        git_create_branch(origin_dir, "release/1.2.x")
+        fetch_git_origin_refs(clone_dir)
+        self._write_component_config(
+            config_path,
+            component_id=component_id,
+            dev_base_url=dev_base_url,
+            release_base_url=release_base_url,
+        )
+        client.mkdir_url(dev_base_url, "create dev component path")
+        client.mkdir_url(release_base_url, "create release component path")
+
+        subprocess.run(
+            [
+                "gpg",
+                "--batch",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                "",
+                "--quick-gen-key",
+                "Release Tooling Tests <release-tooling-tests@example.invalid>",
+                "ed25519",
+                "sign",
+                "1d",
+            ],
+            env={**os.environ, "GNUPGHOME": str(source_home)},
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        public_key = subprocess.run(
+            [
+                "gpg",
+                "--armor",
+                "--export",
+                "Release Tooling Tests <release-tooling-tests@example.invalid>",
+            ],
+            env={**os.environ, "GNUPGHOME": str(source_home)},
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        secret_key = subprocess.run(
+            [
+                "gpg",
+                "--armor",
+                "--export-secret-keys",
+                "Release Tooling Tests <release-tooling-tests@example.invalid>",
+            ],
+            env={**os.environ, "GNUPGHOME": str(source_home)},
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        keys_path.write_text(public_key, encoding="utf-8")
+        subprocess.run(["svn", "add", str(keys_path)], check=True)
+        subprocess.run(["svn", "commit", "-m", "add KEYS", str(working_copy_dir)], check=True)
+
+        completed = run_cli(
+            [
+                "build-source-rc",
+                "--component-config",
+                str(config_path),
+                "--allow-non-production-release-targets",
+                "--rc-tag",
+                "v1.2.3-rc0",
+                "1.2.3",
+            ],
+            cwd=clone_dir,
+            env=cli_env(
+                source_manifest_path,
+                extra_env={"BUILDISH_GPG_PRIVATE_KEY": secret_key},
+            ),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        completed = run_cli(
+            [
+                "create-rc-materialization-tag",
+                "--component-config",
+                str(config_path),
+                "--allow-non-production-release-targets",
+                "--rc-tag",
+                "v1.2.3-rc0",
+                "1.2.3",
+            ],
+            cwd=clone_dir,
+            env=cli_env(rc_tag_manifest_path),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+
+        subprocess.run(["svn", "update", str(working_copy_dir)], check=True, capture_output=True, text=True)
+        drifted_artifact = (
+            working_copy_dir
+            / "dist"
+            / "dev"
+            / "incubator"
+            / "buildish"
+            / component_id
+            / "1.2.3-rc0"
+            / "apache-buildish-example-1.2.3-incubating-src.tar.gz"
+        )
+        drifted_artifact.write_bytes(b"drifted source payload\n")
+        subprocess.run(["svn", "commit", "-m", "drift staged artifact", str(working_copy_dir)], check=True)
+
+        set_github_origin_url(clone_dir, "apache/buildish-example")
+        gh_path, gh_state_dir = create_fake_gh_launcher(
+            sandbox_dir,
+            list_response=[
+                {
+                    "id": 42,
+                    "draft": True,
+                    "tag_name": "v1.2.3-rc0",
+                    "name": "Apache Buildish Example 1.2.3",
+                    "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+                    "body": "\n".join(
+                        [
+                            "Draft GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "",
+                            "RC tag: v1.2.3-rc0",
+                            f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc0^{commit}')}",
+                        ]
+                    ),
+                    "assets": [],
+                }
+            ],
+        )
+        completed = run_cli(
+            [
+                "finalize-rc-vote-materials",
+                "--component-config",
+                str(config_path),
+                "--allow-non-production-release-targets",
+                "--rc-tag",
+                "v1.2.3-rc0",
+                "1.2.3",
+            ],
+            cwd=clone_dir,
+            env=cli_env(
+                finalize_manifest_path,
+                extra_env={
+                    "BUILDISH_GPG_PRIVATE_KEY": secret_key,
+                    "FAKE_GH_STATE_DIR": str(gh_state_dir),
+                },
+                prepend_dirs=(gh_path.parent,),
+            ),
+        )
+        self.assertEqual(1, completed.returncode)
+        self.assertIn(
+            "staged source artifact .sha512 sidecar does not match the staged source artifact bytes",
+            completed.stderr,
+        )
 
     def test_create_release_branch_command_applies_changes_when_requested(self) -> None:
         sandbox_dir = create_build_test_sandbox()

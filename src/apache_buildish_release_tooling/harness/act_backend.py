@@ -1116,6 +1116,7 @@ def _bootstrap_step() -> dict[str, Any]:
             "  printf 'BUILDISH_HARNESS_BASH_ENV_FILE=%s/.buildish-release-harness/bash-env.sh\\n' \"$GITHUB_WORKSPACE\"\n"
             "  printf 'BUILDISH_HARNESS_SUMMARIES_DIR=%s/.buildish-release-harness/summaries\\n' \"$GITHUB_WORKSPACE\"\n"
             "  printf 'BUILDISH_HARNESS_TOOLING_SOURCE_DIR=%s/.buildish-release-harness/repo-sources/apache__buildish-release-tooling\\n' \"$GITHUB_WORKSPACE\"\n"
+            "  printf 'BUILDISH_ALLOW_NON_PRODUCTION_RELEASE_TARGETS=true\\n'\n"
             "  if [[ -n \"${PYTHONPATH:-}\" ]]; then\n"
             "    printf 'PYTHONPATH=%s/.buildish-release-harness/repo-sources/apache__buildish-release-tooling/src:%s\\n' \"$GITHUB_WORKSPACE\" \"$PYTHONPATH\"\n"
             "  else\n"
@@ -1457,6 +1458,9 @@ def _render_uv_shim_script(real_cli_commands: list[str]) -> str:
         '    buildish-release-tooling)',
         "      shift",
         '      command_name="${1:-}"',
+        '      if [[ "$command_name" == "--allow-non-production-release-targets" ]]; then',
+        '        command_name="${2:-}"',
+        "      fi",
         '      if [[ -z "$command_name" ]]; then',
         '        printf "buildish-release-harness: missing buildish-release-tooling command\\n" >&2',
         "        exit 2",
@@ -1480,6 +1484,9 @@ def _render_uv_shim_script(real_cli_commands: list[str]) -> str:
             '      filtered_args=()',
             '      while [[ $# -gt 0 ]]; do',
             '        case "$1" in',
+            '          --allow-non-production-release-targets)',
+            "            shift",
+            "            ;;",
             '          --component-config)',
             "            shift 2",
             "            ;;",

@@ -77,8 +77,15 @@ COMMAND_NAME="$1"
 shift
 
 TOOLING_DIR="$(resolve_tooling_dir)"
+extra_args=()
+case "${BUILDISH_ALLOW_NON_PRODUCTION_RELEASE_TARGETS:-}" in
+  1|true|TRUE|yes|YES)
+    extra_args+=(--allow-non-production-release-targets)
+    ;;
+esac
 
 exec uv run --project "$TOOLING_DIR" --frozen buildish-release-tooling \
   "$COMMAND_NAME" \
+  "${extra_args[@]}" \
   --component-config "$BUILDISH_COMPONENT_CONFIG_PATH" \
   "$@"

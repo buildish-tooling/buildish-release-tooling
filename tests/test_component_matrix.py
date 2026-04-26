@@ -193,7 +193,7 @@ class ComponentMatrixIntegrationTest(unittest.TestCase):
                         {
                             "id": 42,
                             "draft": True,
-                            "tag_name": f"v{case.version}",
+                            "tag_name": case.expected_selected_rc_tag,
                             "name": f"{case.component_id} {case.version}",
                             "body": "\n".join(
                                 [
@@ -210,6 +210,7 @@ class ComponentMatrixIntegrationTest(unittest.TestCase):
                         "release-version",
                         "--component-config",
                         str(config_path),
+                        "--allow-non-production-release-targets",
                         case.version,
                     ],
                     cwd=clone_dir,

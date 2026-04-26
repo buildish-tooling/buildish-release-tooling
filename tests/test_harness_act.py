@@ -153,6 +153,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         self.assertIn("Verbatim original copy in this directory:", rewritten_lines[3])
         self.assertIn("name: Releasey Create Release Branch", rewritten_lines)
         self.assertIn("on:", rewritten_lines)
+        self.assertIn("BUILDISH_ALLOW_NON_PRODUCTION_RELEASE_TARGETS=true", rewritten_text)
         original_copy_path = rewritten_workflow_path.with_name(
             f"{rewritten_workflow_path.stem}.original{rewritten_workflow_path.suffix}"
         )
@@ -708,6 +709,10 @@ class ActWorkflowRewriteUnitTest(unittest.TestCase):
 
         self.assertIn('case "$command_name" in', script)
         self.assertIn("create-release-branch|verify-rc)", script)
+        self.assertIn(
+            'if [[ "$command_name" == "--allow-non-production-release-targets" ]]; then',
+            script,
+        )
         self.assertIn('exec python3 -m apache_buildish_release_tooling "$@"', script)
         self.assertIn(
             'exec python3 -m apache_buildish_release_tooling.harness.shim_entrypoint buildish-release-tooling "${filtered_args[@]}"',
@@ -762,6 +767,7 @@ class ActWorkflowRewriteUnitTest(unittest.TestCase):
                 "--frozen",
                 "buildish-release-tooling",
                 "create-release-branch",
+                "--allow-non-production-release-targets",
                 "--component-config",
                 str(workspace.root / "buildish-release-tooling" / "release-config.yaml"),
                 "--apply",

@@ -54,7 +54,7 @@ tool_behaviors:
       times: 1
       result:
         stdout: |
-          {"id":123,"draft":true,"name":"Apache Buildish Release Tooling 1.2.3","tag_name":"v1.2.3","html_url":"https://github.com/apache/buildish-release-tooling/releases/tag/v1.2.3"}
+          {"id":123,"draft":true,"name":"Apache Buildish Release Tooling 1.2.3","tag_name":"v1.2.3-rc1","html_url":"https://github.com/apache/buildish-release-tooling/releases/tag/v1.2.3-rc1"}
     - match:
         argv:
           - api
@@ -64,12 +64,12 @@ tool_behaviors:
       times: 1
       result:
         stdout: |
-          [{"id":123,"draft":true,"name":"Apache Buildish Release Tooling 1.2.3","tag_name":"v1.2.3","html_url":"https://github.com/apache/buildish-release-tooling/releases/tag/v1.2.3"}]
+          [{"id":123,"draft":true,"name":"Apache Buildish Release Tooling 1.2.3","tag_name":"v1.2.3-rc1","html_url":"https://github.com/apache/buildish-release-tooling/releases/tag/v1.2.3-rc1","body":"Draft GitHub Release placeholder for Apache Buildish Release Tooling 1.2.3.\n\nRC tag: v1.2.3-rc1\nFinal tag: v1.2.3\nResolved source ref: d232c22\nASF SVN staging URL: file:///tmp/placeholder\nFinal tag mode: rc-source-commit\n\nThis draft release is convenience metadata only and must remain unpublished until the ASF vote passes."}]
     - match:
         argv_prefix:
           - release
           - upload
-          - v1.2.3
+          - v1.2.3-rc1
       times: 1
       result:
         stdout: ""

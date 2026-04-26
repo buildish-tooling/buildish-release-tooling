@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -27,7 +28,6 @@ from urllib.request import urlopen
 from apache_buildish_release_tooling.git_repo import GitRepository
 from apache_buildish_release_tooling.github_checks import resolve_repository_slug
 from apache_buildish_release_tooling.models import ComponentConfig, PrepareRcState
-from apache_buildish_release_tooling.process import run_logged_command
 from apache_buildish_release_tooling.release_state import derive_specific_release_line
 
 
@@ -134,8 +134,12 @@ def read_uri_bytes(uri: str) -> bytes:
         local_path = Path(parsed.path)
         if local_path.exists():
             return local_path.read_bytes()
-        completed = run_logged_command(["svn", "cat", uri])
-        return completed.stdout.encode("utf-8")
+        completed = subprocess.run(
+            ["svn", "cat", uri],
+            check=True,
+            capture_output=True,
+        )
+        return completed.stdout
     if parsed.scheme in {"http", "https"}:
         with urlopen(uri) as response:  # noqa: S310
             return response.read()
@@ -167,6 +171,7 @@ def build_rc_vote_manifest(
     component_config: ComponentConfig,
     state: PrepareRcState,
     repository_slug: str,
+    draft_release_tag: str,
     draft_release_url: str,
     rc_tag_target_commit: str,
     source_artifact_sha512: str,
@@ -200,7 +205,7 @@ def build_rc_vote_manifest(
         "trust_roots": trust_root_metadata(component_config.asf_dist_release_base),
         "draft_github_release": {
             "repository": repository_slug,
-            "tag": state.final_tag,
+            "tag": draft_release_tag,
             "url": draft_release_url,
         },
         "vote_materials": {

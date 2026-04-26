@@ -17,10 +17,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 
 from apache_buildish_release_tooling.models import ComponentConfig
+
+_DIST_DEV_PREFIX = "https://dist.apache.org/repos/dist/dev/"
+_DIST_RELEASE_PREFIX = "https://dist.apache.org/repos/dist/release/"
 
 
 def load_component_config(component_config_path: str) -> ComponentConfig:
@@ -30,3 +34,50 @@ def load_component_config(component_config_path: str) -> ComponentConfig:
     with path.open("r", encoding="utf-8") as handle:
         payload = yaml.safe_load(handle) or {}
     return ComponentConfig.model_validate(payload)
+
+
+def validate_release_target_base_urls(
+    component_config: ComponentConfig,
+    *,
+    allow_non_production_release_targets: bool,
+) -> None:
+    """Validate ASF dist base URLs for secure and non-production CLI modes."""
+
+    _validate_release_target_base_url(
+        field_name="asf_dist_dev_base",
+        configured_url=component_config.asf_dist_dev_base,
+        production_prefix=_DIST_DEV_PREFIX,
+        allow_non_production_release_targets=allow_non_production_release_targets,
+    )
+    _validate_release_target_base_url(
+        field_name="asf_dist_release_base",
+        configured_url=component_config.asf_dist_release_base,
+        production_prefix=_DIST_RELEASE_PREFIX,
+        allow_non_production_release_targets=allow_non_production_release_targets,
+    )
+
+
+def _validate_release_target_base_url(
+    *,
+    field_name: str,
+    configured_url: str,
+    production_prefix: str,
+    allow_non_production_release_targets: bool,
+) -> None:
+    """Validate one configured ASF dist base URL against the CLI security mode."""
+
+    if configured_url.startswith(production_prefix):
+        return
+    parsed = urlparse(configured_url)
+    if allow_non_production_release_targets and parsed.scheme in {"file", "http"}:
+        return
+    if allow_non_production_release_targets:
+        raise ValueError(
+            f"{field_name} must use {production_prefix} or a file:// or http:// URI in "
+            f"non-production mode: {configured_url}"
+        )
+    raise ValueError(
+        f"{field_name} must use {production_prefix}; pass "
+        "--allow-non-production-release-targets only for local file:// or http:// test targets: "
+        f"{configured_url}"
+    )

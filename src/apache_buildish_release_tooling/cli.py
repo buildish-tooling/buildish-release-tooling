@@ -34,6 +34,11 @@ def _common_parser() -> argparse.ArgumentParser:
         required=True,
         help="YAML component configuration path.",
     )
+    parser.add_argument(
+        "--allow-non-production-release-targets",
+        action="store_true",
+        help="Allow file:// and http:// ASF dist target URLs for local harness-style test runs.",
+    )
     return parser
 
 

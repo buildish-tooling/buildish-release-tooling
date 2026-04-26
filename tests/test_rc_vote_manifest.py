@@ -128,7 +128,8 @@ class RcVoteManifestTest(unittest.TestCase):
                 component_config=component_config,
                 state=state,
                 repository_slug="apache/buildish-example",
-                draft_release_url="https://github.com/apache/buildish-example/releases/tag/v1.2.3",
+                draft_release_tag="v1.2.3-rc2",
+                draft_release_url="https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc2",
                 rc_tag_target_commit="89abcdef0123456789abcdef0123456789abcdef",
                 source_artifact_sha512="abc123",
                 secondary_artifacts=[
@@ -164,9 +165,10 @@ class RcVoteManifestTest(unittest.TestCase):
             manifest["verification"]["authoritative_manifest"]["uri"],
         )
         self.assertEqual(
-            "https://github.com/apache/buildish-example/releases/tag/v1.2.3",
+            "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc2",
             manifest["draft_github_release"]["url"],
         )
+        self.assertEqual("v1.2.3-rc2", manifest["draft_github_release"]["tag"])
         self.assertEqual(
             "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
             manifest["vote_materials"]["secondary_artifacts"][0]["uri"],
