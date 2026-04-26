@@ -20,8 +20,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from apache_buildish_release_tooling.harness import runtime
-from apache_buildish_release_tooling.harness.backends import get_backend, supported_backends as _supported_backends
-from apache_buildish_release_tooling.harness.models import HarnessBackendName, HarnessScenario
+from apache_buildish_release_tooling.harness.backends import get_backend
+from apache_buildish_release_tooling.harness.models import HarnessScenario
 
 HarnessRunResult = runtime.HarnessRunResult
 HarnessWorkspace = runtime.HarnessWorkspace
@@ -68,9 +68,3 @@ def run_scenario_sequence(
             break
         seed_from = result.workspace.root
     return results
-
-
-def supported_backends() -> tuple[HarnessBackendName, ...]:
-    """Return the list of backend names exposed by the harness CLI."""
-
-    return _supported_backends()

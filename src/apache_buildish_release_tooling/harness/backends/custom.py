@@ -23,6 +23,7 @@ import sys
 from pathlib import Path
 
 from apache_buildish_release_tooling.harness.backends.base import Backend
+from apache_buildish_release_tooling.harness.job_selection import rerunnable_job_ids
 from apache_buildish_release_tooling.harness.models import HarnessScenario, JobScenario
 from apache_buildish_release_tooling.harness.runtime import (
     HarnessRunResult,
@@ -72,7 +73,11 @@ class CustomBackend(Backend):
 
         workspace = load_existing_workspace(workspace_root)
         persisted_statuses = load_job_statuses(workspace)
-        selected_job_ids = _rerunnable_job_ids(scenario, persisted_statuses)
+        selected_job_ids = rerunnable_job_ids(
+            [job.id for job in _topological_jobs(scenario)],
+            {job.id: job.needs for job in scenario.jobs},
+            persisted_statuses,
+        )
         result = _run_jobs(scenario, workspace, selected_job_ids)
         write_job_summaries(
             workspace,
@@ -265,29 +270,6 @@ def _pythonpath_for_subprocess() -> str:
     if existing:
         return f"{src_dir}:{existing}"
     return str(src_dir)
-
-
-def _rerunnable_job_ids(scenario: HarnessScenario, statuses: dict[str, str]) -> list[str]:
-    """Return failed jobs and all of their downstream dependents."""
-
-    failed_or_blocked = {
-        job_id for job_id, status in statuses.items() if status in {"failed", "blocked"}
-    }
-    if not failed_or_blocked:
-        return []
-    dependents: dict[str, set[str]] = {job.id: set() for job in scenario.jobs}
-    for job in scenario.jobs:
-        for need in job.needs:
-            dependents.setdefault(need, set()).add(job.id)
-    selected = set(failed_or_blocked)
-    stack = list(failed_or_blocked)
-    while stack:
-        current = stack.pop()
-        for dependent in dependents.get(current, set()):
-            if dependent not in selected:
-                selected.add(dependent)
-                stack.append(dependent)
-    return [job.id for job in _topological_jobs(scenario, selected)]
 
 
 CUSTOM_BACKEND = CustomBackend()

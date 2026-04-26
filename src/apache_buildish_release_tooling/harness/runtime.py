@@ -313,11 +313,3 @@ def remove_workspace(workspace_root: Path) -> None:
     """Delete a disposable harness workspace."""
 
     shutil.rmtree(workspace_root, ignore_errors=True)
-
-
-_write_workspace_file = write_workspace_file
-_init_git_repository = init_git_repository
-_write_shim_state = write_shim_state
-_write_bash_env_hook = write_bash_env_hook
-_load_job_statuses = load_job_statuses
-_write_job_statuses = write_job_statuses

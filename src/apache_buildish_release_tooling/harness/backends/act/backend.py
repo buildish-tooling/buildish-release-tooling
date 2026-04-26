@@ -29,6 +29,7 @@ from typing import IO
 from apache_buildish_release_tooling.harness.backends.base import Backend
 from apache_buildish_release_tooling.harness.config import load_release_harness_config
 from apache_buildish_release_tooling.harness.errors import HarnessExternalToolError
+from apache_buildish_release_tooling.harness.job_selection import rerunnable_job_ids
 from apache_buildish_release_tooling.harness.models import HarnessScenario, WorkflowScenario
 from apache_buildish_release_tooling.harness.runtime import (
     HarnessRunResult,
@@ -97,7 +98,11 @@ class ActBackend(Backend):
         workspace = load_existing_workspace(workspace_root)
         persisted_statuses = load_job_statuses(workspace)
         job_definitions = workflow._load_job_definitions(Path(workflow_scenario.path))
-        selected_job_ids = _rerunnable_job_ids(job_definitions, persisted_statuses)
+        selected_job_ids = rerunnable_job_ids(
+            workflow._topological_job_ids(job_definitions),
+            {definition.id: definition.needs for definition in job_definitions},
+            persisted_statuses,
+        )
         if not selected_job_ids:
             _progress("no failed jobs to rerun")
             return HarnessRunResult(
@@ -382,32 +387,6 @@ def _job_needs(job_definitions: list[workflow.WorkflowJobDefinition], job_id: st
         if definition.id == job_id:
             return definition.needs
     raise KeyError(job_id)
-
-
-def _rerunnable_job_ids(
-    job_definitions: list[workflow.WorkflowJobDefinition],
-    statuses: dict[str, str],
-) -> list[str]:
-    """Return failed jobs and their downstream dependents in workflow-topological order."""
-
-    failed_or_blocked = {
-        job_id for job_id, status in statuses.items() if status in {"failed", "blocked"}
-    }
-    if not failed_or_blocked:
-        return []
-    dependents: dict[str, set[str]] = {definition.id: set() for definition in job_definitions}
-    for definition in job_definitions:
-        for need in definition.needs:
-            dependents.setdefault(need, set()).add(definition.id)
-    selected = set(failed_or_blocked)
-    stack = list(failed_or_blocked)
-    while stack:
-        current = stack.pop()
-        for dependent in dependents.get(current, set()):
-            if dependent not in selected:
-                selected.add(dependent)
-                stack.append(dependent)
-    return [job_id for job_id in workflow._topological_job_ids(job_definitions) if job_id in selected]
 
 
 def _normalize_job_status(raw_status: str) -> str:

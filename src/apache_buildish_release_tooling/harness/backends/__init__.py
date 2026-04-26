@@ -33,16 +33,9 @@ def get_backend(name: HarnessBackendName) -> Backend:
     return _BACKENDS[name]
 
 
-def supported_backends() -> tuple[HarnessBackendName, ...]:
-    """Return the backend names exposed by the harness CLI."""
-
-    return tuple(_BACKENDS)
-
-
 __all__ = [
     "ACT_BACKEND",
     "CUSTOM_BACKEND",
     "Backend",
     "get_backend",
-    "supported_backends",
 ]
