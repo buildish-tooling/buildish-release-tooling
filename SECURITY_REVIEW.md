@@ -14,148 +14,104 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# Security Review Report
+# Security Review
 
-Date: 2026-04-26
+Reviewed repository state:
 
-Scope: manual review of the repository in its current working tree, focused on release-time trust boundaries, credential handling, filesystem writes, subprocess execution, and harness behavior. I did not perform internet-facing testing or dependency CVE triage.
+- Commit: `ba75417b6f1341e392fd8c0307828adfe9085c08`
+- Review time: `2026-04-26T13:08:19Z`
+- Scope: `src/`, `.github/workflows/`, `buildish-release-tooling/`
+- Process note: this review intentionally replaced the prior `SECURITY_REVIEW.md` without reading it
 
 ## Executive Summary
 
-Review findings and current status:
+I found one high-severity integrity issue and two lower-severity trust-boundary issues.
 
-- Fixed: path traversal and out-of-directory writes when `source_sha` is supplied with an unvalidated `version`
-- Fixed: GitHub tokens and SVN passwords no longer travel in child-process arguments
-- Fixed: final release publication trusted mutable SVN staging contents by filename only
-- Mitigated: the `act` harness no longer imports host `GITHUB_TOKEN` / `GH_TOKEN` into `act.secrets`; remaining harness secret handling is primarily local-test hygiene
+| Severity | Finding |
+| --- | --- |
+| High | Draft GitHub release creation can create the final version tag before the vote passes |
+| Medium | RC vote-manifest finalization signs mutable staging sidecars instead of hashing the staged artifact bytes |
+| Low | Production trust roots and artifact URIs are accepted from raw config strings with `file://` and plain `http://` support |
 
 ## Findings
 
-### 1. High: explicit `source_sha` mode skips version validation and enables path traversal
+### 1. High: Draft GitHub release creation can create the final version tag before the vote passes
 
 Affected code:
 
-- `src/apache_buildish_release_tooling/prepare_rc_state.py:56-86`
-- `src/apache_buildish_release_tooling/commands.py:886-888`
-- `src/apache_buildish_release_tooling/commands.py:921-934`
+- [src/apache_buildish_release_tooling/commands.py](/home/snazy/devel/apache/buildish/buildish-release-tooling/src/apache_buildish_release_tooling/commands.py:1190)
+- [src/apache_buildish_release_tooling/github_releases.py](/home/snazy/devel/apache/buildish/buildish-release-tooling/src/apache_buildish_release_tooling/github_releases.py:166)
+- [.github/workflows/releasey-20-prepare-rc.yml](/home/snazy/devel/apache/buildish/buildish-release-tooling/.github/workflows/releasey-20-prepare-rc.yml:189)
+- [.github/workflows/releasey-30-release-version.yml](/home/snazy/devel/apache/buildish/buildish-release-tooling/.github/workflows/releasey-30-release-version.yml:111)
 
-Details:
+`run_sync_draft_github_release()` creates a draft release on `state.final_tag` and passes `state.resolved_source_ref` as `target_commitish`. That happens during `Releasey Prepare RC`, before the later `create-final-tag` job in `Releasey Release Version`.
 
-- `resolve_prepare_rc_state()` validates the version only when it has to derive a release branch.
-- When `source_sha` is provided, the code takes the caller-supplied `version` verbatim and uses it to build:
-  - `source_artifact_name`
-  - `staging_url`
-  - tag names and other release identifiers
-- `run_create_source_artifact()` and `run_build_source_rc()` then join that derived filename onto `build/release-artifacts/<component>/`.
+GitHub's release-creation API uses `target_commitish` when the requested tag does not already exist. In practice, that means the prepare-RC workflow can create `vX.Y.Z` early, before the ASF vote passes.
 
 Impact:
 
-- A crafted `version` containing slashes and `..` segments can escape the intended artifact directory and write files elsewhere on the runner filesystem with the workflow's privileges.
-- `build-source-rc` also creates `.sha512` and `.asc` sidecars for the escaped path.
-- The same unsanitized value also contaminates the derived SVN staging URL.
-
-Concrete example:
-
-```text
-version = "/../../../../tmp/poc"
-source_artifact_name = "prefix-/../../../../tmp/poc-incubating-src.tar.gz"
-resolved output path = <repo>/tmp/poc-incubating-src.tar.gz
-```
-
-That behavior was reproducible by resolving the joined `Path` locally; the escape does not depend on any unusual filesystem semantics.
+- The workflow can materialize the final tag before approval, which breaks the intended "final tag only after a passed vote" invariant.
+- The later `create-final-tag` step will silently accept a pre-existing same-target tag via `_create_or_reuse_annotated_tag()`, so this early tag creation is not corrected.
+- For detached-materialization components, the early auto-created tag would point at the source commit, not the later materialized commit, creating either a wrong tag target or a later failure.
 
 Recommendation:
 
-- Enforce semantic-version validation in `resolve_prepare_rc_state()` regardless of whether `source_sha` is supplied.
-- Treat `version` as structured data, not as a filesystem fragment.
-- Reject `/`, `\\`, `..`, and any non-semantic-version input before deriving filenames, URLs, or tags.
+- Do not create the draft GitHub release on the final tag before release finalization.
+- Use the RC tag as the draft release tag, or use some other metadata placeholder that cannot create the final release marker.
+- Alternatively, explicitly verify the final tag does not exist before draft-release creation and fail if GitHub would auto-create it.
 
-### 2. Medium: release credentials are exposed in child-process argv
-
-Affected code:
-
-- `src/apache_buildish_release_tooling/asf_svn.py:52-69`
-- `src/apache_buildish_release_tooling/commands.py:265-290`
-
-Details:
-
-- SVN credentials are passed as `svn --username <user> --password <password> ...`.
-- GitHub tokens are embedded directly into the remote URL as `https://x-access-token:<token>@github.com/...` before `git push`.
-- The project redacts these values in its own command logs, but that does not protect against OS-level exposure through:
-  - `/proc/<pid>/cmdline`
-  - process monitors
-  - crash dumps
-  - host audit tooling
-
-Impact:
-
-- On self-hosted or shared runners, another local process can recover the GitHub token or SVN password while the command is running.
-- This is especially relevant because the tool is designed for privileged release workflows.
-
-Recommended mitigation plan:
-
-- Stop placing secrets in argv.
-- For GitHub-backed `git push`, use an ephemeral `GIT_ASKPASS` helper and a normal remote URL without embedded credentials.
-- Keep the token in process environment only for the short-lived helper invocation, not in the remote URL or command arguments.
-- In GitHub Actions, materialize the helper script in a temp directory from the workflow secret, set `GIT_ASKPASS`, `GIT_TERMINAL_PROMPT=0`, and run `git push` against `https://github.com/<owner>/<repo>.git`.
-- In the `act` harness, mirror the same flow by passing scenario-provided tokens through environment and letting the real CLI path use the same helper contract. This keeps harness behavior aligned with the workflow path.
-- For SVN, use `--password-from-stdin` together with `--non-interactive`, `--no-auth-cache`, and `--username <user>` so the password never appears in argv.
-- Feed the password over stdin from the workflow secret in GitHub Actions and from scenario secrets in the `act` harness so both execution modes exercise the same CLI path.
-- Use a temporary `--config-dir` only if you also need isolated SVN auth/cache state; it is not required as the primary password transport.
-
-### 3. Medium: final release publication trusts mutable SVN staging contents by filename only
+### 2. Medium: RC vote-manifest finalization signs mutable staging sidecars instead of hashing the staged artifact bytes
 
 Affected code:
 
-- `src/apache_buildish_release_tooling/commands.py:1135-1164`
-- Related integrity material is produced earlier in `src/apache_buildish_release_tooling/commands.py:1732-1783`
+- [src/apache_buildish_release_tooling/commands.py](/home/snazy/devel/apache/buildish/buildish-release-tooling/src/apache_buildish_release_tooling/commands.py:1937)
 
-Details:
+`run_finalize_rc_vote_materials()` reads the staged source checksum from `apache-...tar.gz.sha512` and the staged signature text from `apache-...tar.gz.asc`, then signs a new authoritative `rc-vote-manifest.json`. It does not recompute the staged tarball's SHA-512 from the tarball bytes before signing the manifest.
 
-- `finalize-rc-vote-materials` creates a signed manifest and records the staged source artifact checksum.
-- `publish-source-release-svn` later checks only that the staged RC directory contains the expected filenames, then copies the entire directory from `dist/dev` to `dist/release`.
-- It does not verify that:
-  - the staged tarball still matches the checksum recorded in the authoritative RC vote manifest
-  - the staged artifact still corresponds to the selected RC tag
-  - no unexpected extra files were introduced into the staging directory
+Relevant lines:
+
+- `source_artifact_sha512 = read_uri_text(f"{source_artifact_url}.sha512").strip().split()[0]`
+- `source_signature_text = read_uri_text(f"{source_artifact_url}.asc").strip()`
 
 Impact:
 
-- If the mutable `dist/dev` staging area is altered after voting but before publication, the tool can publish tampered content.
-- An attacker with temporary write access to staging does not need to compromise the release workflow itself if the publish step never revalidates the staged bytes.
+- If the staged source tarball or its sidecars are modified after `build-source-rc` but before `finalize-rc-vote-materials`, the signed vote manifest can bless the modified staging contents.
+- The later `publish-source-release-svn` step does recompute the staged tarball checksum, but by then the vote manifest has already become the signed authoritative record used during the vote.
 
 Recommendation:
 
-- Before promotion, fetch and verify the authoritative `rc-vote-manifest.json` from staging.
-- Recompute the staged artifact checksum and require an exact match with the manifest.
-- Reject unexpected files unless they are explicitly allowed by policy.
+- Recompute the staged tarball SHA-512 from `source_artifact_url` before constructing the manifest.
+- Compare the recomputed digest to the staged `.sha512` sidecar and fail on mismatch.
+- Optionally verify that the staged `.asc` is a valid detached signature for the staged tarball before signing the vote manifest.
 
-### 4. Low: the harness persists secrets and raw command output in workspace files
+### 3. Low: Production trust roots and artifact URIs are accepted from raw config strings with `file://` and plain `http://` support
 
 Affected code:
 
-- `src/apache_buildish_release_tooling/harness/act_backend.py:421-432`
-- `src/apache_buildish_release_tooling/harness/runtime.py:463-491`
-- `src/apache_buildish_release_tooling/harness/shim_entrypoint.py:445-475`
+- [src/apache_buildish_release_tooling/config.py](/home/snazy/devel/apache/buildish/buildish-release-tooling/src/apache_buildish_release_tooling/config.py:26)
+- [src/apache_buildish_release_tooling/models.py](/home/snazy/devel/apache/buildish/buildish-release-tooling/src/apache_buildish_release_tooling/models.py:25)
+- [src/apache_buildish_release_tooling/rc_vote_manifest.py](/home/snazy/devel/apache/buildish/buildish-release-tooling/src/apache_buildish_release_tooling/rc_vote_manifest.py:116)
 
-Details:
+`ComponentConfig` accepts raw `asf_dist_dev_base` and `asf_dist_release_base` strings without scheme or domain validation. `trust_root_metadata()` then derives a `KEYS` URI from those values, and `read_uri_bytes()` will read:
 
-- The `act` backend writes scenario secrets to `.buildish-release-harness/act.secrets`.
-- Step stdout/stderr is appended verbatim to workspace log files.
-- The shim trace can also persist selected environment variables into `command-trace.jsonl`.
+- local files via `file://`
+- plain HTTP via `http://`
+- HTTPS via `https://`
 
 Impact:
 
-- If scenarios use only synthetic test secrets, the practical impact is low.
-- The remaining concern is local containment: secret-like values and raw step output can remain on disk after a harness run and may be exposed if the workspace is archived, shared, or inspected by other local users.
+- A modified component config on the executed ref can make the signed RC vote manifest bless a non-ASF `KEYS` location.
+- Plain `http://` is accepted, so a production trust root can be downgraded from authenticated transport to cleartext transport.
+- `file://` is useful for the harness, but leaving it enabled in production release paths expands the blast radius of config mistakes and malicious config changes.
 
 Recommendation:
 
-- Write secret files with restrictive permissions (`0600` or equivalent).
-- Avoid importing host GitHub tokens into harness state unless explicitly requested.
-- Document that harness workspaces contain sensitive material and should be deleted after use.
-- Consider redacting captured stdout/stderr and environment snapshots when they include known secret names.
+- Add explicit production validation for release-target URIs.
+- Allow `file://` only under an explicit harness or test mode.
+- Restrict production trust roots and release endpoints to expected schemes and domains such as `https://dist.apache.org/`, `https://downloads.apache.org/`, and GitHub endpoints used for mirrored assets.
 
-## Suggested Remediation Order
+## Positive Notes
 
-1. Tighten remaining harness secret storage and logging behavior if local test-workspace exposure matters for your environment.
+- GitHub and SVN passwords are no longer passed on subprocess argv.
+- Final SVN publication now revalidates the staged RC directory against the mirrored RC vote manifest.
+- The `act` harness no longer copies ambient `GITHUB_TOKEN` or `GH_TOKEN` into its generated secret file.
