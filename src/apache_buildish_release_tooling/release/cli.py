@@ -334,6 +334,32 @@ def _register_artifact_registration_commands(
         help="Python package index URL for the python-distribution kind.",
     )
     record_artifact.add_argument(
+        "--registry",
+        dest="registry",
+        help="OCI registry host for the oci-image kind.",
+    )
+    record_artifact.add_argument(
+        "--repository",
+        dest="repository",
+        help="Repository path within an OCI registry for the oci-image kind.",
+    )
+    record_artifact.add_argument(
+        "--digest",
+        dest="digest",
+        help="Immutable OCI content digest for the oci-image kind, for example sha256:<hex>.",
+    )
+    record_artifact.add_argument(
+        "--image-ref",
+        dest="image_ref",
+        help="Existing OCI image reference to inspect via docker buildx imagetools for the oci-image kind.",
+    )
+    record_artifact.add_argument(
+        "--platform-digest",
+        dest="platform_digests",
+        action="append",
+        help="Repeatable <platform>=<digest> mapping for multi-platform OCI images.",
+    )
+    record_artifact.add_argument(
         "--project-name",
         "--package-name",
         dest="project_name",
