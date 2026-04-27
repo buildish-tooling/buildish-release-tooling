@@ -21,6 +21,9 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from apache_buildish_release_tooling.release.artifact_registration import (
+    registered_artifact_kinds,
+)
 from apache_buildish_release_tooling.release import commands
 
 CommandHandler = Callable[[argparse.Namespace], Path | None]
@@ -233,6 +236,79 @@ def _register_materialization_commands(
     _add_version_and_optional_source_sha_arguments(finalize_rc_vote_materials)
 
 
+def _register_artifact_registration_commands(
+    subparsers: Subparsers,
+    common: argparse.ArgumentParser,
+) -> None:
+    record_artifact = _add_command_parser(
+        subparsers,
+        common,
+        "record-artifact",
+        help_text="Write one typed secondary-artifact registration fragment for later RC finalization.",
+        handler=commands.run_record_artifact,
+    )
+    record_artifact.add_argument(
+        "--kind",
+        required=True,
+        choices=registered_artifact_kinds(),
+        help="Artifact kind to register, for example generic-file.",
+    )
+    record_artifact.add_argument(
+        "--artifact-id",
+        required=True,
+        help="Stable artifact identifier used inside the RC vote-manifest.",
+    )
+    record_artifact.add_argument(
+        "--role",
+        help="Optional artifact role label such as bootstrap-convenience-archive.",
+    )
+    record_artifact.add_argument(
+        "--output-path",
+        dest="output_path",
+        help="Exact JSON fragment path to write. Mutually exclusive with --output-dir.",
+    )
+    record_artifact.add_argument(
+        "--output-dir",
+        dest="output_dir",
+        help="Bundle directory to write. Defaults under build/release-artifacts/<component>/secondary-artifacts/<artifact-id>/.",
+    )
+    record_artifact.add_argument(
+        "--file",
+        dest="file",
+        help="Optional local artifact file used to derive the filename and compute SHA512.",
+    )
+    record_artifact.add_argument(
+        "--filename",
+        dest="filename",
+        help="Published artifact filename override when it differs from --file.",
+    )
+    record_artifact.add_argument(
+        "--uri",
+        required=True,
+        help="Published or staged artifact URI recorded in the vote-manifest.",
+    )
+    record_artifact.add_argument(
+        "--sha512",
+        dest="sha512",
+        help="Explicit SHA512 digest. When omitted and --file is provided, compute it from the file.",
+    )
+    record_artifact.add_argument(
+        "--sha512-uri",
+        dest="sha512_uri",
+        help="Optional SHA512 sidecar URI for the published artifact.",
+    )
+    record_artifact.add_argument(
+        "--artifact-origin",
+        dest="artifact_origin",
+        help="Optional artifact-origin label such as source-commit or release-mirror.",
+    )
+    record_artifact.add_argument(
+        "--git-commit-sha",
+        dest="git_commit_sha",
+        help="Optional Git commit SHA associated with the artifact origin.",
+    )
+
+
 def _register_publication_commands(
     subparsers: Subparsers,
     common: argparse.ArgumentParser,
@@ -436,6 +512,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     _register_source_selection_commands(subparsers, common)
     _register_materialization_commands(subparsers, common)
+    _register_artifact_registration_commands(subparsers, common)
     _register_publication_commands(subparsers, common)
     _register_release_metadata_commands(subparsers, common)
 

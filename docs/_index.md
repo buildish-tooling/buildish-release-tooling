@@ -306,6 +306,7 @@ Summaries are intended for:
 - `build-source-rc [--rc-tag <tag>] <version> [source_sha]`
 - `materialize-rc-git-content [--rc-tag <tag>] --materialized-path <path>... [--materialized-ref-name <ref>] --run-command <shell> <version> [source_sha]`
 - `create-rc-materialization-tag [--rc-tag <tag>] [--target-commit <sha>] <version> [source_sha]`
+- `record-artifact --kind <kind> --artifact-id <id> --uri <uri> ...`
 - `sync-draft-github-release [--rc-tag <tag>] <version> [source_sha]`
 - `finalize-rc-vote-materials [--secondary-artifact-manifest <path>]... [--rc-tag <tag>] <version> [source_sha]`
 - `publish-atr-candidate [--wait-for-checks] [--check-timeout-seconds <seconds>] [--check-interval-ms <ms>] [--rc-tag <tag>] <version> [source_sha]`
@@ -378,11 +379,27 @@ Summaries are intended for:
 - fails if the RC tag already exists, even when it already points at the same commit
 - this prevents concurrent same-version `Prepare RC` runs from silently sharing one RC tag
 
+### `record-artifact`
+
+- writes one typed secondary-artifact manifest fragment for later RC finalization
+- currently supports `--kind generic-file`
+- computes the SHA512 digest from `--file` when one is supplied, or validates an explicit
+  `--sha512` when both are provided
+- writes one registration bundle rooted at
+  `build/release-artifacts/<component>/secondary-artifacts/<artifact-id>/` by default
+- prints the fragment path on stdout so shell steps can pass it directly to later commands
+- appends `artifact_id`, `artifact_kind`, `artifact_manifest_path`, and `artifact_bundle_dir`
+  to `GITHUB_OUTPUT` when that file path is present
+- is intended to be paired with GitHub workflow artifacts for cross-job handoff: producer jobs
+  upload the bundle, and the finalization job downloads it before calling
+  `finalize-rc-vote-materials --secondary-artifact-manifest ...`
+
 ### `finalize-rc-vote-materials`
 
 - requires the RC tag and draft GitHub Release to already exist
 - builds `rc-vote-manifest.json` from resolved live Git/SVN/GitHub state
-- accepts `--secondary-artifact-manifest` inputs for generic voted secondary-artifact inventory
+- accepts `--secondary-artifact-manifest` inputs for typed secondary-artifact fragments, including
+  manifests produced earlier by `record-artifact`
 - accepts `--rc-tag` so reruns keep using the already-selected RC
 - writes `.sha512`
 - creates a detached ASCII-armored signature for the manifest

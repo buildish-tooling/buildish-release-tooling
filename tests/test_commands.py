@@ -2009,6 +2009,137 @@ class CommandsIntegrationTest(unittest.TestCase):
             manifest_path.with_suffix(".summary.md").read_text(encoding="utf-8"),
         )
 
+    def test_record_artifact_generic_file_command_writes_registration_bundle(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        manifest_path = sandbox_dir / "record-artifact.json"
+        github_output_path = sandbox_dir / "record-artifact.outputs"
+        component_id = "buildish-example"
+        artifact_id = "bootstrap-zip"
+        artifact_file_path = sandbox_dir / "buildish-example-bootstrap.zip"
+        artifact_bytes = b"bootstrap payload\n"
+        artifact_file_path.write_bytes(artifact_bytes)
+        expected_sha512 = hashlib.sha512(artifact_bytes).hexdigest()
+        self._write_component_config(
+            config_path,
+            component_id=component_id,
+            dev_base_url="https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+            release_base_url="https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+        )
+
+        completed = run_cli(
+            [
+                "record-artifact",
+                "--component-config",
+                str(config_path),
+                "--kind",
+                "generic-file",
+                "--artifact-id",
+                artifact_id,
+                "--role",
+                "bootstrap-convenience-archive",
+                "--file",
+                str(artifact_file_path),
+                "--uri",
+                "https://github.com/apache/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip",
+                "--sha512-uri",
+                "https://github.com/apache/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip.sha512",
+                "--artifact-origin",
+                "source-commit",
+                "--git-commit-sha",
+                "0123456789abcdef0123456789abcdef01234567",
+            ],
+            cwd=sandbox_dir,
+            env=cli_env(manifest_path, extra_env={"GITHUB_OUTPUT": str(github_output_path)}),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        expected_manifest_path = (
+            sandbox_dir
+            / "build"
+            / "release-artifacts"
+            / component_id
+            / "secondary-artifacts"
+            / artifact_id
+            / "artifact-manifest.json"
+        )
+        self.assertEqual(str(expected_manifest_path), completed.stdout.strip())
+        action_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(component_id, action_manifest["component"])
+        self.assertEqual("record-artifact", action_manifest["action"])
+        self.assertEqual(artifact_id, action_manifest["artifact_id"])
+        self.assertEqual("generic-file", action_manifest["kind"])
+        self.assertEqual(str(expected_manifest_path), action_manifest["artifact_manifest_path"])
+        self.assertEqual(str(expected_manifest_path.parent), action_manifest["artifact_bundle_dir"])
+        self.assertEqual([], action_manifest["inventory_paths"])
+
+        payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            [
+                {
+                    "artifact_id": artifact_id,
+                    "kind": "generic-file",
+                    "role": "bootstrap-convenience-archive",
+                    "filename": "buildish-example-bootstrap.zip",
+                    "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip",
+                    "artifact_origin": "source-commit",
+                    "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                    "checksums": {
+                        "sha512": {
+                            "value": expected_sha512,
+                            "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip.sha512",
+                        }
+                    },
+                    "signatures": [],
+                }
+            ],
+            payload["secondary_artifacts"],
+        )
+        github_outputs = _read_simple_github_outputs(github_output_path)
+        self.assertEqual(artifact_id, github_outputs["artifact_id"])
+        self.assertEqual("generic-file", github_outputs["artifact_kind"])
+        self.assertEqual(str(expected_manifest_path), github_outputs["artifact_manifest_path"])
+        self.assertEqual(str(expected_manifest_path.parent), github_outputs["artifact_bundle_dir"])
+
+    def test_record_artifact_generic_file_rejects_mismatched_explicit_sha512(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        manifest_path = sandbox_dir / "record-artifact.json"
+        artifact_file_path = sandbox_dir / "buildish-example-bootstrap.zip"
+        artifact_file_path.write_bytes(b"bootstrap payload\n")
+        self._write_component_config(
+            config_path,
+            component_id="buildish-example",
+            dev_base_url="https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+            release_base_url="https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+        )
+
+        completed = run_cli(
+            [
+                "record-artifact",
+                "--component-config",
+                str(config_path),
+                "--kind",
+                "generic-file",
+                "--artifact-id",
+                "bootstrap-zip",
+                "--file",
+                str(artifact_file_path),
+                "--uri",
+                "https://github.com/apache/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip",
+                "--sha512",
+                "0" * 128,
+            ],
+            cwd=sandbox_dir,
+            env=cli_env(manifest_path),
+        )
+        self.assertEqual(1, completed.returncode)
+        self.assertIn(
+            "generic-file --sha512 does not match the bytes of --file",
+            completed.stderr,
+        )
+
     def test_finalize_rc_vote_materials_command_stages_manifest_and_mirrors_it(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for RC vote-manifest signing")
@@ -2021,8 +2152,9 @@ class CommandsIntegrationTest(unittest.TestCase):
         config_path = sandbox_dir / "component.yaml"
         source_manifest_path = sandbox_dir / "build-source-rc.json"
         rc_tag_manifest_path = sandbox_dir / "create-rc-materialization-tag.json"
+        record_artifact_manifest_path = sandbox_dir / "record-artifact.json"
+        record_artifact_outputs_path = sandbox_dir / "record-artifact.outputs"
         finalize_manifest_path = sandbox_dir / "finalize-rc-vote-materials.json"
-        secondary_manifest_path = sandbox_dir / "secondary-artifacts.json"
         client = AsfSvnClient()
         component_id = "buildish-example"
         dev_base_url = f"{repo_url}/dist/dev/incubator/buildish/{component_id}"
@@ -2090,29 +2222,44 @@ class CommandsIntegrationTest(unittest.TestCase):
         keys_path.write_text(public_key, encoding="utf-8")
         subprocess.run(["svn", "add", str(keys_path)], check=True)
         subprocess.run(["svn", "commit", "-m", "add KEYS", str(working_copy_dir)], check=True)
-        secondary_manifest_path.write_text(
-            json.dumps(
-                {
-                    "secondary_artifacts": [
-                        {
-                            "target_family": "github-release-assets",
-                            "role": "bootstrap-convenience-archive",
-                            "filename": "buildish-example-bootstrap.zip",
-                            "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
-                            "artifact_origin": "source-commit",
-                            "git_commit_sha": git_rev_parse(clone_dir, "refs/remotes/origin/release/1.2.x^{commit}"),
-                            "checksums": {
-                                "sha512": {
-                                    "value": "deadbeef",
-                                    "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip.sha512",
-                                }
-                            },
-                            "signatures": [],
-                        }
-                    ]
-                }
+        bootstrap_asset_path = sandbox_dir / "buildish-example-bootstrap.zip"
+        bootstrap_asset_path.write_bytes(b"bootstrap payload\n")
+        expected_secondary_commit = git_rev_parse(
+            clone_dir, "refs/remotes/origin/release/1.2.x^{commit}"
+        )
+
+        completed = run_cli(
+            [
+                "record-artifact",
+                "--component-config",
+                str(config_path),
+                "--allow-non-production-release-targets",
+                "--kind",
+                "generic-file",
+                "--artifact-id",
+                "bootstrap-zip",
+                "--role",
+                "bootstrap-convenience-archive",
+                "--file",
+                str(bootstrap_asset_path),
+                "--uri",
+                "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
+                "--sha512-uri",
+                "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip.sha512",
+                "--artifact-origin",
+                "source-commit",
+                "--git-commit-sha",
+                expected_secondary_commit,
+            ],
+            cwd=clone_dir,
+            env=cli_env(
+                record_artifact_manifest_path,
+                extra_env={"GITHUB_OUTPUT": str(record_artifact_outputs_path)},
             ),
-            encoding="utf-8",
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        secondary_manifest_path = Path(
+            _read_simple_github_outputs(record_artifact_outputs_path)["artifact_manifest_path"]
         )
 
         completed = run_cli(
@@ -2219,6 +2366,14 @@ class CommandsIntegrationTest(unittest.TestCase):
         self.assertEqual("rc-vote", staged_manifest["manifest_type"])
         self.assertEqual(component_id, staged_manifest["component_id"])
         self.assertEqual("v1.2.3-rc0", staged_manifest["rc_tag"])
+        self.assertEqual(
+            "bootstrap-zip",
+            staged_manifest["vote_materials"]["secondary_artifacts"][0]["artifact_id"],
+        )
+        self.assertEqual(
+            "generic-file",
+            staged_manifest["vote_materials"]["secondary_artifacts"][0]["kind"],
+        )
         self.assertEqual(
             "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
             staged_manifest["vote_materials"]["secondary_artifacts"][0]["uri"],

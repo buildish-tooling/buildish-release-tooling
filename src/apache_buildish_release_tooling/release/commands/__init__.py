@@ -22,6 +22,9 @@ from apache_buildish_release_tooling.release.commands.atr import (
     run_publish_atr_candidate,
     run_report_atr_checks,
 )
+from apache_buildish_release_tooling.release.commands.artifact_registration import (
+    run_record_artifact,
+)
 from apache_buildish_release_tooling.release.commands.materialization import (
     run_create_rc_materialization_tag,
     run_materialize_rc_git_content,
@@ -67,6 +70,7 @@ __all__ = [
     "run_prune_older_line_releases",
     "run_publish_dockerhub_moving_tags",
     "run_publish_source_release_svn",
+    "run_record_artifact",
     "run_release_version",
     "run_report_atr_checks",
     "run_sync_draft_github_release",
