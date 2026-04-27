@@ -2242,6 +2242,158 @@ class CommandsIntegrationTest(unittest.TestCase):
             completed.stderr,
         )
 
+    def test_record_artifact_python_distribution_command_writes_manifest_bundle(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        manifest_path = sandbox_dir / "record-artifact.json"
+        github_output_path = sandbox_dir / "record-artifact.outputs"
+        artifact_file_path = sandbox_dir / "dist" / "example-1.2.3-py3-none-any.whl"
+        artifact_file_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_file_path.write_bytes(b"wheel payload\n")
+        expected_sha256 = hashlib.sha256(artifact_file_path.read_bytes()).hexdigest()
+        component_id = "buildish-example"
+        artifact_id = "pypi-wheel"
+        self._write_component_config(
+            config_path,
+            component_id=component_id,
+            dev_base_url="https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+            release_base_url="https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+        )
+
+        completed = run_cli(
+            [
+                "record-artifact",
+                "--component-config",
+                str(config_path),
+                "--kind",
+                "python-distribution",
+                "--artifact-id",
+                artifact_id,
+                "--role",
+                "wheel",
+                "--file",
+                str(artifact_file_path),
+                "--uri",
+                "https://test.pypi.org/packages/example-1.2.3-py3-none-any.whl",
+                "--index-url",
+                "https://test.pypi.org/simple/",
+                "--project-name",
+                "example",
+                "--package-version",
+                "1.2.3",
+                "--sha256-uri",
+                "https://test.pypi.org/packages/example-1.2.3-py3-none-any.whl.sha256",
+                "--attestation-repository",
+                "apache/buildish-example",
+                "--artifact-origin",
+                "source-commit",
+                "--git-commit-sha",
+                "0123456789abcdef0123456789abcdef01234567",
+            ],
+            cwd=sandbox_dir,
+            env=cli_env(manifest_path, extra_env={"GITHUB_OUTPUT": str(github_output_path)}),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        expected_bundle_dir = (
+            sandbox_dir
+            / "build"
+            / "release-artifacts"
+            / component_id
+            / "secondary-artifacts"
+            / artifact_id
+        )
+        expected_manifest_path = expected_bundle_dir / "artifact-manifest.json"
+        self.assertEqual(str(expected_manifest_path), completed.stdout.strip())
+        action_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(component_id, action_manifest["component"])
+        self.assertEqual("record-artifact", action_manifest["action"])
+        self.assertEqual(artifact_id, action_manifest["artifact_id"])
+        self.assertEqual("python-distribution", action_manifest["kind"])
+        self.assertEqual(str(expected_manifest_path), action_manifest["artifact_manifest_path"])
+        self.assertEqual(str(expected_bundle_dir), action_manifest["artifact_bundle_dir"])
+        self.assertEqual([], action_manifest["inventory_paths"])
+
+        payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            [
+                {
+                    "artifact_id": artifact_id,
+                    "kind": "python-distribution",
+                    "role": "wheel",
+                    "filename": "example-1.2.3-py3-none-any.whl",
+                    "uri": "https://test.pypi.org/packages/example-1.2.3-py3-none-any.whl",
+                    "index_url": "https://test.pypi.org/simple/",
+                    "project_name": "example",
+                    "version": "1.2.3",
+                    "artifact_origin": "source-commit",
+                    "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                    "checksums": {
+                        "sha256": {
+                            "value": expected_sha256,
+                            "uri": "https://test.pypi.org/packages/example-1.2.3-py3-none-any.whl.sha256",
+                        }
+                    },
+                    "authenticity": {
+                        "scheme": "pypi-attestation",
+                        "repository": "apache/buildish-example",
+                    },
+                }
+            ],
+            payload["secondary_artifacts"],
+        )
+        github_outputs = _read_simple_github_outputs(github_output_path)
+        self.assertEqual(artifact_id, github_outputs["artifact_id"])
+        self.assertEqual("python-distribution", github_outputs["artifact_kind"])
+        self.assertEqual(str(expected_manifest_path), github_outputs["artifact_manifest_path"])
+        self.assertEqual(str(expected_bundle_dir), github_outputs["artifact_bundle_dir"])
+
+    def test_record_artifact_python_distribution_rejects_mismatched_explicit_sha256(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        manifest_path = sandbox_dir / "record-artifact.json"
+        artifact_file_path = sandbox_dir / "dist" / "example-1.2.3-py3-none-any.whl"
+        artifact_file_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_file_path.write_bytes(b"wheel payload\n")
+        self._write_component_config(
+            config_path,
+            component_id="buildish-example",
+            dev_base_url="https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+            release_base_url="https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+        )
+
+        completed = run_cli(
+            [
+                "record-artifact",
+                "--component-config",
+                str(config_path),
+                "--kind",
+                "python-distribution",
+                "--artifact-id",
+                "pypi-wheel",
+                "--file",
+                str(artifact_file_path),
+                "--uri",
+                "https://test.pypi.org/packages/example-1.2.3-py3-none-any.whl",
+                "--index-url",
+                "https://test.pypi.org/simple/",
+                "--project-name",
+                "example",
+                "--package-version",
+                "1.2.3",
+                "--sha256",
+                "0" * 64,
+            ],
+            cwd=sandbox_dir,
+            env=cli_env(manifest_path),
+        )
+        self.assertEqual(1, completed.returncode)
+        self.assertIn(
+            "python-distribution --sha256 does not match the bytes of --file",
+            completed.stderr,
+        )
+
     def test_record_artifact_maven_repository_command_writes_inventory_bundle(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)

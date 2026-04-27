@@ -319,6 +319,37 @@ def _register_artifact_registration_commands(
         help="Optional SHA512 sidecar URI for the published artifact.",
     )
     record_artifact.add_argument(
+        "--sha256",
+        dest="sha256",
+        help="Explicit SHA256 digest. When omitted and --file is provided, compute it from the file.",
+    )
+    record_artifact.add_argument(
+        "--sha256-uri",
+        dest="sha256_uri",
+        help="Optional SHA256 sidecar or registry checksum URI for the published artifact.",
+    )
+    record_artifact.add_argument(
+        "--index-url",
+        dest="index_url",
+        help="Python package index URL for the python-distribution kind.",
+    )
+    record_artifact.add_argument(
+        "--project-name",
+        "--package-name",
+        dest="project_name",
+        help="Published project or package name for typed package-distribution kinds.",
+    )
+    record_artifact.add_argument(
+        "--package-version",
+        dest="package_version",
+        help="Published package version for typed package-distribution kinds.",
+    )
+    record_artifact.add_argument(
+        "--attestation-repository",
+        dest="attestation_repository",
+        help="Expected repository identity for ecosystems that publish attestations, such as PyPI.",
+    )
+    record_artifact.add_argument(
         "--artifact-origin",
         dest="artifact_origin",
         help="Optional artifact-origin label such as source-commit or release-mirror.",

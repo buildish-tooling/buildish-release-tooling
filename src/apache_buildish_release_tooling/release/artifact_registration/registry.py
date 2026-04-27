@@ -26,6 +26,9 @@ from apache_buildish_release_tooling.release.artifact_registration.kinds.generic
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     build_maven_repository_registration,
 )
+from apache_buildish_release_tooling.release.artifact_registration.kinds.python_distribution import (
+    build_python_distribution_registration,
+)
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationResult,
 )
@@ -35,6 +38,7 @@ ArtifactRegistrationHandler = Callable[[Namespace, Path], ArtifactRegistrationRe
 _HANDLERS: dict[str, ArtifactRegistrationHandler] = {
     "generic-file": build_generic_file_registration,
     "maven-repository": build_maven_repository_registration,
+    "python-distribution": build_python_distribution_registration,
 }
 
 
