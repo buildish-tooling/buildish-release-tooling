@@ -30,3 +30,9 @@ but the docs tree includes maintainer guides for the current structure:
 - [Test suite layout and layering](docs/test-suite.md)
 
 Use `make check` as the standard local and CI gate.
+
+Planning and assessment documents:
+
+- [Verify RC implementation plan](verify-rc-implementation-plan.md)
+- [ATR integration assessment](atr-integration-assessment.md)
+- [ASF project fit assessment](asf-project-fit-assessment.md)

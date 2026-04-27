@@ -1,3 +1,8 @@
+---
+title: "Verify RC Implementation Plan"
+description: "Design proposal for a read-only verifier driven by the signed RC vote manifest."
+---
+
 <!--
 Copyright 2026 The Apache Software Foundation
 
@@ -29,6 +34,10 @@ The main recommendations are:
 - separate required authenticity and integrity checks from optional or project-graded reproducibility checks
 - support common secondary artifact families with built-in typed verifiers, and use project-local build recipes only as a controlled extension point
 - do not execute shell commands from the remote manifest; project-specific commands must come from local project config
+
+Related planning:
+
+- [ATR Integration Assessment](atr-integration-assessment.md)
 
 ## Goals
 
