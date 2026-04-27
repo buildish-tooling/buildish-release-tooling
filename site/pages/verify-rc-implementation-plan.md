@@ -29,7 +29,8 @@ The main recommendations are:
 
 - make the signed `rc-vote-manifest.json` the authoritative inventory for what must be verified
 - switch the public `verify-rc` command from `version`-based input to `rc-vote-manifest` URL input
-- keep the verifier read-only: it may download artifacts, build locally, and write reports to a temp/work directory, but it must not push, tag, publish, or mutate Git state
+- keep the verifier non-publishing and non-Git-mutating: it may download artifacts, build locally, and write reports to a temp/work directory, but it must not push, tag, publish, or mutate Git state
+- default to `integrity-only`; treat `full` as explicit untrusted-code execution with isolation requirements
 - require the KEYS URL as an explicit verifier input; only use manifest or local config KEYS URLs as cross-check material
 - separate required authenticity and integrity checks from optional or project-graded reproducibility checks
 - support common secondary artifact families with built-in typed verifiers, and use project-local build recipes only as a controlled extension point
@@ -158,6 +159,29 @@ That means:
 
 If project-specific build commands are needed, they must come from local, version-controlled project config.
 
+## Security Assessment
+
+This section records the residual security concerns.
+
+### Open Issue. The bootstrap trust chain is still too weak
+
+Phase 1 may keep the commit-pinned bootstrap path as an explicitly accepted risk, but it should not be treated as the long-term secure end state.
+
+The current bootstrap example verifies the manifest, extracts a tooling commit SHA from it, and then clones `buildish-release-tooling` from GitHub at that commit. That is better than following a floating branch, but it is still too weak to serve as the main executable trust anchor.
+
+The core concern is authorization, not just transport integrity:
+
+- a project signing key compromise would let an attacker sign a bootstrap script that executes arbitrary shell before the typed verifier logic runs
+- a bare GitHub clone plus commit SHA does not give a strong, durable verification story for the verifier itself
+- the plan does not yet require a separately signed verifier artifact, signed source snapshot, or digest-pinned tooling bundle
+
+Recommended direction:
+
+- keep the phase-1 bootstrap path only as an explicitly documented temporary risk
+- solve this early by shipping a verifier distribution whose exact bytes are authenticated independently of the project RC, for example a signed tooling source snapshot or verifier artifact with a digest recorded in the signed manifest
+- if Git remains in the trust path, bind to more than a repository URL plus commit SHA and define how the verifier's own authenticity is checked
+- treat the manual, non-executing verification path as the normative baseline, with the bootstrap script treated as convenience only
+
 ## Proposed CLI Contract
 
 Recommended public CLI:
@@ -166,16 +190,107 @@ Recommended public CLI:
 buildish-release-tooling verify-rc <rc-vote-manifest-url> <keys-url>
 ```
 
+Companion inspection CLI:
+
+```text
+buildish-release-tooling inspect-repro <report-json>
+```
+
 Recommended optional flags:
 
 - `--work-dir <path>`: keep downloads, local builds, and reports in a caller-chosen directory
-- `--report-json <path>`: write machine-readable verification report
-- `--report-md <path>`: write human-readable verification report
-- `--mode <integrity-only|full>`: remote verification only, or remote plus local reproducibility checks
+- `--report-json <path>`: write machine-readable verification report; when omitted, auto-name it as `verify-rc-report-<component_id>-<version>-<rc_id>-<timestamp>.json`
+- `--report-md <path>`: write human-readable verification report; when omitted, auto-name it from the same base identifier as the JSON report
+- `--mode <integrity-only|full|auto>`: remote verification only, always run local reproducibility checks, or prompt locally after remote checks pass
+- `--build-network <offline|online|prompt>`: choose rebuild network policy explicitly or ask interactively on local TTYs
+- `--keep-work-dir`: keep the verifier work directory after completion
+- `--no-keep-work-dir`: purge an auto-created work directory after completion
+- `--inspection-bundle <path>`: write a curated reproducibility-inspection bundle alongside the main report
+- `--max-download-bytes <n>`: override the default total download budget
+- `--max-artifacts <n>`: override the default artifact-count budget
+- `--max-expanded-bytes <n>`: override the default archive expansion budget
+- `--timeout-seconds <n>`: override the default subprocess timeout budget
+
+Security recommendation:
+
+- use `auto` as the interactive local default so remote checks complete before prompting about candidate-code execution
+- default non-interactive or CI runs to `integrity-only`
+- reserve explicit `full` for callers that want no prompt before candidate-code execution
 
 I would keep the public contract minimal and avoid adding many user-facing flags in the first implementation.
 
 The command must work without write-capable GitHub permissions. It should not require a token for normal public ASF artifacts.
+
+## Rebuild Execution Safety Model
+
+`integrity-only` should remain the safe non-interactive default. On ordinary developer machines with an interactive TTY, the default UX should be `auto`: complete remote authenticity and integrity checks first, then prompt before any candidate build code is executed.
+
+`full` is different in kind, not just in runtime:
+
+- it executes candidate-controlled build code
+- it may invoke transitive build plugins and package-manager tooling
+- it must therefore be treated as untrusted-code execution
+
+Required design rules for `full` mode:
+
+- run rebuilds from a temp work directory, not from the user's normal working tree
+- source the rebuild input from the verified source artifact or from a temp copy derived from trusted local project material
+- start build subprocesses from a scrubbed environment allowlist
+- set `HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, `GNUPGHOME`, and `TMPDIR` to temp locations under the verifier work directory
+- do not forward ambient credentials or agents such as `SSH_AUTH_SOCK`, Git credential helpers, cloud credentials, `~/.m2/settings.xml`, `~/.npmrc`, or custom package-index tokens
+- complete manifest, source-artifact, and remote secondary-artifact verification before any local rebuild step
+- require an explicit rebuild network policy of `offline`, `online`, or interactive `prompt`
+- if the caller chooses `offline`, disable network access for rebuild execution and fail rather than silently relaxing that policy
+- if the caller chooses `online`, record that decision in the verification report because it is a security-relevant allowance
+
+Interactive local behavior:
+
+- if `--mode auto` is in effect on an interactive TTY, prompt after remote checks pass and before any untrusted-code execution begins
+- if the user agrees to continue and no explicit `--build-network` policy was supplied, ask whether rebuild should be `offline-only` or `network-allowed`
+- if the selected project-local rebuild recipe requires network access and the user chose `offline-only`, fail clearly instead of silently switching to `network-allowed`
+
+Deployment guidance:
+
+- on shared CI, `full` should run only inside a dedicated container or ephemeral VM with no injected secrets
+- a GitHub-hosted ephemeral runner may serve as that isolation boundary when the workflow uses only minimal read permissions, injects no secrets, and does not rely on persistent shared state
+- on developer machines, `full` should be treated as a disposable-environment workflow, not the default host workflow
+
+Reporting requirement:
+
+- the verification report should record whether rebuild execution was offline or online
+- the report should record whether any explicit unsafe allowances were used
+- the report should record whether execution and network-policy decisions were made via explicit flags or interactive confirmation
+
+Inspection boundary:
+
+- `verify-rc` should stop at verdicts, evidence capture, and report generation
+- deeper diagnosis of reproducibility mismatches should live in the separate `inspect-repro` command
+- `inspect-repro` should be strictly read-only and should analyze saved artifacts and metadata without executing candidate code
+
+## Operational Budgets
+
+The verifier should enforce sane default operational budgets that work for most ASF release candidates, while still allowing unusually large legitimate candidates to be verified with explicit operator overrides.
+
+Budget policy:
+
+- defaults should come from verifier policy, not from the remote manifest
+- CLI overrides should exist for local operators and CI maintainers
+- the report should record both the effective budget values and any overrides used
+
+Suggested first-phase budgets:
+
+- maximum manifest bytes
+- maximum detached inventory bytes
+- maximum artifact count
+- maximum total download bytes
+- maximum expanded bytes for archive normalization or comparison
+- maximum subprocess runtime per verification step
+- maximum parallel fetch count
+
+Failure behavior:
+
+- if a budget is exceeded, fail with an actionable message that names the exceeded budget and the override knob
+- do not auto-relax limits based on manifest content
 
 ## Bootstrapping UX
 
@@ -381,6 +496,7 @@ verify_rc:
     build:
       command: ["./mvnw", "-Prelease", "package"]
       output_glob: "target/apache-example-*.tar.gz"
+      network: offline-required
     reproducibility:
       mode: exact-bytes
 
@@ -391,6 +507,7 @@ verify_rc:
         command:
           ["./mvnw", "-Prelease", "deploy", "-DaltDeploymentRepository=local::default::file:${WORK_DIR}/m2repo"]
         repository_dir: "${WORK_DIR}/m2repo"
+        network: offline-required
       comparison:
         mode: repository-tree
         require_signatures: true
@@ -418,7 +535,8 @@ Recommended additions:
 - keep `trust_roots.asf_keys.uri`, but source it from explicit config instead of deriving it from release base URLs
 - add typed `kind` fields to secondary artifacts
 - add stable `artifact_id` fields so multiple artifacts of the same `kind` are unambiguous
-- add optional `inventory` subdocuments for large artifact collections such as Maven repositories or image sets
+- add `expected_signer_fingerprints` for source artifacts and signed secondary artifacts when a release wants to pin one signer or one signer set
+- add `inventory` subdocuments for large or mutable artifact collections such as Maven repositories or image sets
 - add optional `reproducibility` expectations per artifact or artifact collection
 
 Hard requirements:
@@ -460,7 +578,7 @@ For large collections, the main manifest may reference a typed inventory file wh
 }
 ```
 
-This keeps the main signed manifest authoritative without forcing it to inline thousands of repository entries. However, inventories should be optional, not mandatory, for artifact families that are already self-describing on the remote side.
+This keeps the main signed manifest authoritative without forcing it to inline thousands of repository entries. For mutable or large remote collections such as staged Maven repositories, the inventory should be treated as the stable verification snapshot, not as an optional convenience.
 
 ## Secondary Artifact Registration Contract
 
@@ -471,18 +589,157 @@ This does not have to be one command per ecosystem, but there must be a typed ha
 Recommended first design:
 
 - keep `finalize-rc-vote-materials --secondary-artifact-manifests ...`
-- add helper commands that emit typed JSON manifest fragments
-- have RC preparation workflows invoke those helper commands after staging each secondary target
+- add one public `record-artifact` command that emits typed JSON manifest fragments
+- require common options such as `--kind`, `--artifact-id`, and optional `--role`
+- let the selected `--kind` handler validate the kind-specific options and produce the typed output
+- hard-fail on unknown, missing, or invalid kind-specific options
+- for large or mutable collections, have `record-artifact` also emit a detached inventory snapshot whose digest is recorded in the signed main manifest
 
-Possible helpers:
+Recommended implementation shape:
 
-- `record-maven-staging-repository`
-- `record-python-distribution`
-- `record-oci-image`
-- `record-npm-package`
-- `record-generic-file`
+- keep the public CLI surface small and stable
+- implement the command behind a registry of typed kind handlers
+- keep each handler responsible only for one kind's validation and fragment generation
+- keep the merge path in `finalize-rc-vote-materials` generic over fragment files rather than hard-coding per-kind behavior there
 
-Each helper should write a small JSON payload that can later be merged into the signed `rc-vote-manifest`.
+Suggested package shape:
+
+```text
+release/
+  commands/
+    artifact_registration.py
+  artifact_registration/
+    __init__.py
+    models.py
+    registry.py
+    kinds/
+      __init__.py
+      generic_file.py
+      generic_file_openpgp.py
+      python_distribution.py
+      maven_repository.py
+      oci_image.py
+      npm_package.py
+```
+
+Suggested responsibility split:
+
+- `commands/artifact_registration.py`: CLI entrypoint and workflow-facing output handling
+- `artifact_registration/models.py`: common request/result models and deterministic fragment-writing helpers
+- `artifact_registration/registry.py`: `kind` to handler dispatch
+- `artifact_registration/kinds/*.py`: per-kind validation, payload construction, and optional inventory emission
+
+Recommended workflow handoff model:
+
+- each producer job should run `record-artifact` after staging its secondary artifact
+- each producer job should write a small artifact-registration bundle to disk
+- that bundle should contain the typed JSON fragment and any detached inventory files produced for that artifact kind
+- `record-artifact` should print the fragment path and append `artifact_manifest_path` plus `artifact_bundle_dir` to `GITHUB_OUTPUT` so the current job can hand those paths to upload steps without extra path guessing
+- producer jobs should upload those bundles as workflow artifacts
+- the final `finalize-rc-vote-materials` job should download all artifact-registration bundles and pass their manifest fragment paths via `--secondary-artifact-manifests ...`
+- use GitHub step or job outputs only for small scalar coordination data such as artifact bundle names, counts, or boolean presence flags, not for the manifest fragments themselves
+
+Example producer job:
+
+```yaml
+jobs:
+  record-bootstrap-asset:
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-rc
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build bootstrap asset
+        env:
+          RC_TAG: ${{ needs.prepare-rc.outputs.rc_tag }}
+          SOURCE_SHA: ${{ needs.prepare-rc.outputs.resolved_source_ref }}
+        run: ./build-bootstrap.sh
+
+      - id: record_artifact
+        name: Record bootstrap asset
+        env:
+          RC_TAG: ${{ needs.prepare-rc.outputs.rc_tag }}
+          SOURCE_SHA: ${{ needs.prepare-rc.outputs.resolved_source_ref }}
+        run: |
+          buildish-release-tooling record-artifact \
+            --component-config buildish-release-tooling/release-config.yaml \
+            --kind generic-file \
+            --artifact-id bootstrap-zip \
+            --role bootstrap-convenience-archive \
+            --file dist/buildish-example-bootstrap.zip \
+            --uri "https://github.com/apache/buildish-example/releases/download/${RC_TAG}/buildish-example-bootstrap.zip" \
+            --sha512-uri "https://github.com/apache/buildish-example/releases/download/${RC_TAG}/buildish-example-bootstrap.zip.sha512" \
+            --artifact-origin source-commit \
+            --git-commit-sha "${SOURCE_SHA}"
+
+      - name: Upload artifact-registration bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: secondary-artifact-bootstrap-zip
+          path: ${{ steps.record_artifact.outputs.artifact_bundle_dir }}
+          if-no-files-found: error
+```
+
+Example finalization job:
+
+```yaml
+jobs:
+  finalize-rc-vote-materials:
+    runs-on: ubuntu-latest
+    needs:
+      - prepare-rc
+      - record-bootstrap-asset
+      - build-source-rc
+      - create-rc-tag
+      - sync-draft-github-release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Download artifact-registration bundles
+        uses: actions/download-artifact@v4
+        with:
+          pattern: secondary-artifact-*
+          path: build/secondary-artifact-bundles
+          merge-multiple: false
+
+      - name: Finalize RC vote materials
+        env:
+          RC_TAG: ${{ needs.prepare-rc.outputs.rc_tag }}
+          VERSION: ${{ needs.prepare-rc.outputs.version }}
+        run: |
+          mapfile -t manifests < <(
+            find build/secondary-artifact-bundles -name artifact-manifest.json -print | sort
+          )
+          manifest_args=()
+          for manifest in "${manifests[@]}"; do
+            manifest_args+=(--secondary-artifact-manifest "$manifest")
+          done
+
+          buildish-release-tooling finalize-rc-vote-materials \
+            --component-config buildish-release-tooling/release-config.yaml \
+            "${manifest_args[@]}" \
+            --rc-tag "${RC_TAG}" \
+            "${VERSION}"
+```
+
+This is a better fit than step outputs because the handoff may need to carry multiple JSON files and detached inventories across several jobs before finalization.
+
+The public UX would look like:
+
+- `record-artifact --kind maven-repository ...`
+- `record-artifact --kind python-distribution ...`
+- `record-artifact --kind oci-image ...`
+- `record-artifact --kind npm-package ...`
+- `record-artifact --kind generic-file ...`
+
+This keeps the workflow surface simple without giving up typed validation.
+
+Each invocation should write a small JSON payload that can later be merged into the signed `rc-vote-manifest`.
 
 For Nexus specifically, the fragment must carry the staging repository ID and base URL, for example:
 
@@ -506,6 +763,10 @@ The same pattern applies to other ecosystems:
 - npm: registry URL, package name, version
 - PyPI or TestPyPI: index URL, project name, version, filenames
 
+For a Nexus staging repository, the `maven-repository` kind handler should also enumerate the staged repository, write an inventory of paths and digests, and have the signed main manifest bind to that inventory digest. `verify-rc` should fetch the inventory, verify that its digest matches the main manifest, and then verify the live repository contents against that fixed snapshot.
+
+For simple kinds, kind-specific flags are fine. For complex kinds with many structured fields, `record-artifact` may also accept a `--spec <path>` input that the selected kind handler validates against its schema instead of forcing a very large flat flag surface.
+
 This keeps RC preparation and RC verification connected by a typed, reviewable contract instead of ad hoc free-form notes.
 
 ## Verification Pipeline
@@ -516,6 +777,14 @@ Required behavior:
 
 - fetch manifest and sidecars over `https://` by default
 - allow `file://` or plain `http://` only in explicit test mode for harness scenarios
+- in production mode, restrict manifest, KEYS, bootstrap, and source-artifact origins to an allowlist of expected hosts
+- in production mode, apply artifact-family origin allowlists with sane defaults:
+  - ASF dist/SVN and GitHub release or mirror hosts for manifest, bootstrap, KEYS, and source-artifact inputs
+  - `repository.apache.org` for Maven staging repositories
+  - `pypi.org`, `test.pypi.org`, and `files.pythonhosted.org` for Python distribution verification
+  - `registry.npmjs.org` for npm package verification
+  - explicit public OCI registry hosts allowed by verifier policy for OCI verification
+- treat redirects as part of origin policy and fail if the final target escapes the allowlist
 - verify manifest checksum sidecar
 - verify manifest signature against KEYS using an isolated ephemeral keyring
 - fail closed on any mismatch
@@ -534,6 +803,7 @@ Required checks:
 - compare the digest to the value embedded in the signed manifest
 - if a checksum sidecar exists, verify it matches the recomputed digest too
 - verify the detached signature against the KEYS file
+- if `expected_signer_fingerprints` is declared, require the source artifact signature to resolve to one of those fingerprints
 
 Optional local rebuild:
 
@@ -559,12 +829,15 @@ This phase should not require local rebuild yet. It should establish:
 
 - the remote artifact bytes or registry object match the signed manifest
 - the ecosystem-specific authenticity mechanism is valid
+- when a collection inventory is present, the live remote state matches that fixed inventory
+- when `expected_signer_fingerprints` is declared, signed artifacts in that family match the declared signer set
 
 ### Phase D. Rebuild and compare secondary artifacts locally
 
 This phase is project- and artifact-kind-specific.
 
 It should use local project config recipes, not manifest-supplied commands.
+It must treat the rebuild as untrusted-code execution and apply the execution safety model above.
 
 Comparison modes should be explicit:
 
@@ -581,6 +854,23 @@ Comparison modes should be explicit:
 - the local build completed
 - the expected artifact kind was produced
 - exact or canonical comparison is not yet claimed
+
+## Default Cryptographic Policy
+
+Phase 1 should define a tool-wide minimum policy instead of treating "GPG accepted it" as the whole answer.
+
+Recommended phase-1 defaults:
+
+- manifest and source-artifact checksum sidecars should use SHA-512
+- secondary ecosystems may use their native strong integrity material, but the verifier should not accept digests below a SHA-256-strength floor
+- detached signature verification should record full signer fingerprint, key algorithm, key size, and key status information
+- hard fail on invalid signatures, missing required signatures, revoked signing keys, or integrity material below the minimum accepted floor
+- report legacy-but-still-valid constructions as warnings first, with a distinct policy verdict separate from basic signature-validity reporting
+
+Extensibility:
+
+- project config may tighten the policy for a repository or artifact family
+- project config should not weaken the tool-wide minimum acceptance floor silently
 
 ## Secondary Artifact Strategy
 
@@ -784,10 +1074,63 @@ This accommodates cases like Quarkus-generated bytecode without weakening the re
 Verifier modes:
 
 - `integrity-only`: verify manifest, source artifact, and remote secondary artifacts only
-- `full`: additionally run configured local rebuild and reproducibility checks
+- `full`: additionally run configured local rebuild and reproducibility checks without prompting
+- `auto`: on an interactive TTY, run remote checks first and then prompt before any local rebuild or other untrusted-code execution
 
 The verifier should let a user opt out of reproducibility checks by choosing `integrity-only`. The report must state that this was not a full reproducibility run.
+On an interactive TTY, `auto` should be the default local usability mode. On non-interactive shells and CI, the verifier should not prompt and should behave like `integrity-only` unless `full` was explicitly selected.
 Project config may additionally declare that `full` is the expected vote path for that project, even though the verifier still allows an explicit `integrity-only` run.
+
+## Reproducibility Inspection Model
+
+I recommend a two-stage design:
+
+- `verify-rc` determines the verification and reproducibility verdicts
+- `inspect-repro` performs deeper post-failure investigation later, using the saved report and evidence bundle
+
+Responsibilities of `verify-rc`:
+
+- compare artifacts according to the selected reproducibility policy
+- classify the failure at a useful high level
+- write a machine-readable report that contains all information needed for later inspection
+- save a curated inspection bundle rather than forcing later tooling to depend on the entire raw work directory
+
+Responsibilities of `inspect-repro`:
+
+- read `report.json` and the associated inspection bundle
+- summarize failure classes first
+- run archive-aware or file-aware analyzers against the saved evidence
+- optionally invoke deeper external tools such as `diffoscope` when installed and requested
+- write a second-layer inspection report without changing the original verification verdict
+
+Inspection-bundle contract:
+
+- the durable contract should be `report.json` plus a curated inspection bundle, not an implicit dependency on the entire work directory
+- paths recorded in the report should be relative to the inspection-bundle root so the bundle remains relocatable after download
+- the bundle should contain only the evidence needed for later diagnosis, not every transient build artifact by default
+- when `--inspection-bundle` is omitted, auto-name the bundle from the same base identifier as the report, for example `verify-rc-inspection-<component_id>-<version>-<rc_id>-<timestamp>/`
+
+Suggested bundle contents for a reproducibility failure:
+
+- failing artifact-pair metadata
+- relative paths to retained RC and local artifacts when they are preserved
+- normalized file manifests or archive entry listings
+- archive metadata dumps
+- built-in mismatch summaries
+- optional extracted subsets or per-path evidence for problematic members
+
+Suggested first analyzers for `inspect-repro`:
+
+- `diff`
+- `tar` with reproducibility-oriented listing options
+- `zipinfo`
+- `zipcmp`
+- optional `diffoscope` when available
+
+Interactive local behavior:
+
+- if `verify-rc` finds reproducibility issues on an interactive TTY, it may offer to launch `inspect-repro` immediately against the just-written report and evidence bundle
+- if the user declines, the saved report and bundle should still be sufficient to run `inspect-repro` later without rerunning verification
 
 ## GitHub Workflow Shape
 
@@ -797,12 +1140,25 @@ Recommended workflow contract:
 - input: `rc_vote_manifest_url`
 - input: `keys_url`
 - checkout the project repository
+- when using `actions/checkout`, set `persist-credentials: false`
+- prefer `integrity-only` on shared CI unless rebuilds run in a separate isolated environment with no ambient secrets
+- if `full` is enabled on CI, run the rebuild step in a dedicated container or ephemeral VM with no injected secrets beyond what is strictly required for public artifact fetches
+- a GitHub-hosted ephemeral runner may satisfy that requirement when the workflow keeps `permissions: contents: read`, injects no additional secrets, and does not rely on persistent shared state or shared caches
+- CI runs should stay non-interactive: if rebuild execution or rebuild network policy is needed, specify them explicitly rather than relying on prompts
+- for RC preparation flows with multiple producer jobs, pass secondary-artifact registration bundles through workflow artifacts and let `finalize-rc-vote-materials` merge them
+- use outputs only for small scalar state such as `rc_tag` or bundle names, not for full artifact-registration JSON payloads or inventory files
 - optionally present a signed bootstrap one-liner in the workflow summary or RC email
 - run `buildish-release-tooling verify-rc <url> <keys-url>`
 - write:
   - markdown summary
   - JSON report
+  - reproducibility inspection bundle when reproducibility checks were attempted
   - optional downloaded inputs and normalized comparison outputs as workflow artifacts
+
+If reproducibility issues are found in CI:
+
+- upload the `report.json` plus inspection bundle as workflow artifacts
+- let humans download those artifacts and run `buildish-release-tooling inspect-repro <report-json>` later on a local machine or a fresh CI rerun
 
 The workflow should not require:
 
@@ -815,8 +1171,15 @@ The workflow should not require:
 Recommended expectations:
 
 - supported on Linux and macOS
-- uses temp directories by default
+- if no `--work-dir` is supplied, create a temp work directory automatically and print its path early
 - uses isolated GPG home or `gpgv`
+- treat `full` mode as untrusted-code execution and run it in an isolated environment with no ambient secrets
+- use a scrubbed environment for rebuild subprocesses and relocate `HOME`-like directories into the temp work area
+- if running on an interactive TTY with no explicit `--mode`, use `auto` and prompt before any local rebuild step
+- if rebuild execution is approved interactively and no explicit `--build-network` was supplied, ask whether rebuild should be `offline-only` or `network-allowed`
+- if the work directory was auto-created and neither `--keep-work-dir` nor `--no-keep-work-dir` was supplied, ask at the end whether to keep or purge it
+- if the run fails and the work directory was auto-created, keep it by default unless the caller explicitly requested purge
+- if reproducibility issues are found on an interactive TTY, the user may be offered an immediate handoff into `inspect-repro`
 - checks for required external tools and fails with actionable messages
 - preflights tools needed for the selected verification mode before doing expensive work
 
@@ -866,6 +1229,15 @@ The verifier should emit:
 - a human-readable markdown report
 - a non-zero exit code on required-check failure
 
+When reproducibility checks are attempted, `verify-rc` should also emit a curated inspection bundle suitable for later use by `inspect-repro`.
+
+Default naming:
+
+- if `--report-json` is omitted, write a default filename such as `verify-rc-report-<component_id>-<version>-<rc_id>-<timestamp>.json`
+- if `--report-md` is omitted, derive its filename from the same identifier
+- if `--inspection-bundle` is omitted, derive its directory name from the same identifier
+- if the user explicitly supplies a path for any of these outputs, honor that path exactly
+
 Each artifact should get a verdict record with:
 
 - artifact ID or filename
@@ -874,7 +1246,31 @@ Each artifact should get a verdict record with:
 - authenticity result
 - integrity result
 - reproducibility result
-- evidence, such as digest values, signature key IDs, or attestation identities
+- evidence, such as digest values, full signer fingerprints, signer algorithm or key-size metadata, or attestation identities
+- effective safety policy data, such as whether origin allowlists, execution isolation, resource-budget overrides, or cryptographic warnings affected the run
+
+The machine-readable report should also record run-level metadata such as:
+
+- `component_id`
+- `version`
+- `rc_id` or equivalent RC label when known
+- `manifest_url`
+- `keys_url`
+- `started_at`
+- `finished_at`
+- `mode`
+- `build_network_policy`
+- `report_format_version`
+
+For reproducibility failures, the machine-readable report should also record:
+
+- the compared artifact pair or collection entry
+- the comparison mode attempted
+- the high-level failure class
+- relative paths into the inspection bundle for retained evidence files
+- whether optional deep-analysis tools were available or used
+
+The report should be sufficient for later inspection tooling to work without rerunning verification, assuming the inspection bundle is still present.
 
 This makes the tool useful both for humans and for CI.
 
@@ -895,6 +1291,8 @@ verification/
   manifest_bootstrap.py
   source_artifact.py
   artifact_models.py
+  inspect_repro.py
+  inspection_bundle.py
   secondary/
     __init__.py
     generic_file.py
@@ -902,6 +1300,11 @@ verification/
     python_distribution.py
     oci_image.py
     npm_package.py
+  inspection/
+    __init__.py
+    analyzers.py
+    archive_metadata.py
+    diffoscope_runner.py
 ```
 
 This keeps verification as a sibling of `release`, not a subdomain inside it. The current `verify-rc` stub in command code should become a thin dispatcher into this verification package.
@@ -919,12 +1322,12 @@ This keeps verification as a sibling of `release`, not a subdomain inside it. Th
 - implement signed bootstrap script generation
 - emit JSON and markdown reports
 
-This is the minimum useful and secure implementation.
+This is the minimum useful implementation. It should not be described as secure-by-default for ordinary developer machines until the open bootstrap trust-chain issue in this document is addressed.
 
 ### Phase 2. Generic secondary file verification
 
 - add typed `generic-file` and `generic-file-with-openpgp`
-- add typed secondary-artifact registration helper commands
+- add the public `record-artifact` command with typed per-kind validation
 - support GitHub Release asset mirrors
 - support collection inventories referenced from the main manifest
 
@@ -956,6 +1359,8 @@ This is probably the highest-value first ecosystem-specific secondary verifier.
 - add canonical comparison helpers
 - allow per-artifact policy upgrades from advisory to required
 - add more exact-match coverage over time
+- add inspection-bundle generation and the `inspect-repro` command
+- support optional deep analyzers such as `diffoscope` without making them required verifier dependencies
 
 ## Recommended Near-Term Decisions
 
@@ -967,9 +1372,15 @@ I would make these decisions now:
 4. The manifest should remain data-only.
 5. Project-specific commands should live in local config.
 6. Authenticity and integrity are required.
-7. Reproducibility is graded per artifact family.
-8. Maven repository verification should be the first secondary-artifact family after generic files.
-9. Phase 1 UX should use a signed bootstrap script rather than `uv` or local Python packaging setup.
+7. On interactive local TTYs, `auto` should be the default; on non-interactive shells and CI, `integrity-only` should remain the default.
+8. Reproducibility is graded per artifact family.
+9. Large or mutable artifact collections should verify against a signed fixed inventory snapshot.
+10. Production verification should use artifact-family origin allowlists with sane defaults and explicit test-mode escape hatches.
+11. The verifier should enforce sane default resource budgets with explicit CLI override knobs.
+12. Phase 1 should ship a tool-wide minimum cryptographic policy and detailed signer reporting.
+13. Reproducibility investigation should be a separate `inspect-repro` capability fed by `verify-rc` reports and curated inspection bundles.
+14. Maven repository verification should be the first secondary-artifact family after generic files.
+15. Phase 1 UX may use a signed bootstrap script rather than `uv` or local Python packaging setup, but the bootstrap trust-chain issue remains open and should be solved early.
 
 ## References
 
