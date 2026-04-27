@@ -43,6 +43,12 @@ def _common_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Allow file:// and http:// ASF dist target URLs for local harness-style test runs.",
     )
+    parser.add_argument(
+        "--progress",
+        choices=("auto", "on", "off"),
+        default="auto",
+        help="Progress reporting mode for long-running operations. Defaults to auto, which reports progress on interactive terminals only.",
+    )
     return parser
 
 
@@ -284,8 +290,23 @@ def _register_artifact_registration_commands(
     )
     record_artifact.add_argument(
         "--uri",
-        required=True,
         help="Published or staged artifact URI recorded in the vote-manifest.",
+    )
+    record_artifact.add_argument(
+        "--base-url",
+        dest="base_url",
+        help="Repository base URL for collection-style kinds such as maven-repository.",
+    )
+    record_artifact.add_argument(
+        "--staging-repository-id",
+        dest="staging_repository_id",
+        help="Nexus staging repository ID for the maven-repository kind.",
+    )
+    record_artifact.add_argument(
+        "--inventory-workers",
+        dest="inventory_workers",
+        type=int,
+        help="Worker count for collection-style inventory discovery and fetches. Defaults to 16 for maven-repository.",
     )
     record_artifact.add_argument(
         "--sha512",

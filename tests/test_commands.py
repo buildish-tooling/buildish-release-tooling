@@ -69,6 +69,108 @@ def _read_simple_github_outputs(path: Path) -> dict[str, str]:
     return outputs
 
 
+def _write_sha512_sidecar(target_path: Path) -> None:
+    """Write a Maven-style bare SHA512 sidecar next to one file."""
+
+    digest_value = hashlib.sha512(target_path.read_bytes()).hexdigest()
+    target_path.with_name(f"{target_path.name}.sha512").write_text(
+        f"{digest_value}\n",
+        encoding="utf-8",
+    )
+
+
+def _write_test_maven_repository(root_path: Path) -> tuple[dict[str, str], dict[str, int]]:
+    """Create one small file-based Maven repository snapshot for artifact-registration tests."""
+
+    expected_sha512_by_path: dict[str, str] = {}
+    expected_sizes_by_path: dict[str, int] = {}
+
+    def write_text(relative_path: str, text: str) -> Path:
+        local_path = root_path / relative_path
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_path.write_text(text, encoding="utf-8")
+        expected_sha512_by_path[relative_path] = hashlib.sha512(text.encode("utf-8")).hexdigest()
+        expected_sizes_by_path[relative_path] = len(text.encode("utf-8"))
+        return local_path
+
+    def write_bytes(relative_path: str, payload: bytes) -> Path:
+        local_path = root_path / relative_path
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_path.write_bytes(payload)
+        expected_sha512_by_path[relative_path] = hashlib.sha512(payload).hexdigest()
+        expected_sizes_by_path[relative_path] = len(payload)
+        return local_path
+
+    archetype_catalog = write_text("archetype-catalog.xml", "<archetypes/>\n")
+    _write_sha512_sidecar(archetype_catalog)
+    expected_sha512_by_path["archetype-catalog.xml.sha512"] = hashlib.sha512(
+        archetype_catalog.with_name("archetype-catalog.xml.sha512").read_bytes()
+    ).hexdigest()
+    expected_sizes_by_path["archetype-catalog.xml.sha512"] = archetype_catalog.with_name(
+        "archetype-catalog.xml.sha512"
+    ).stat().st_size
+
+    metadata = write_text(
+        "org/apache/example/example-artifact/maven-metadata.xml",
+        "<metadata><versioning><release>1.2.3</release></versioning></metadata>\n",
+    )
+    _write_sha512_sidecar(metadata)
+    expected_sha512_by_path[
+        "org/apache/example/example-artifact/maven-metadata.xml.sha512"
+    ] = hashlib.sha512(metadata.with_name("maven-metadata.xml.sha512").read_bytes()).hexdigest()
+    expected_sizes_by_path[
+        "org/apache/example/example-artifact/maven-metadata.xml.sha512"
+    ] = metadata.with_name("maven-metadata.xml.sha512").stat().st_size
+
+    jar_path = write_bytes(
+        "org/apache/example/example-artifact/1.2.3/example-artifact-1.2.3.jar",
+        b"jar payload\n",
+    )
+    _write_sha512_sidecar(jar_path)
+    expected_sha512_by_path[
+        "org/apache/example/example-artifact/1.2.3/example-artifact-1.2.3.jar.sha512"
+    ] = hashlib.sha512(jar_path.with_name("example-artifact-1.2.3.jar.sha512").read_bytes()).hexdigest()
+    expected_sizes_by_path[
+        "org/apache/example/example-artifact/1.2.3/example-artifact-1.2.3.jar.sha512"
+    ] = jar_path.with_name("example-artifact-1.2.3.jar.sha512").stat().st_size
+    jar_path.with_name("example-artifact-1.2.3.jar.md5").write_text(
+        "d41d8cd98f00b204e9800998ecf8427e\n",
+        encoding="utf-8",
+    )
+    expected_sha512_by_path[
+        "org/apache/example/example-artifact/1.2.3/example-artifact-1.2.3.jar.md5"
+    ] = hashlib.sha512(jar_path.with_name("example-artifact-1.2.3.jar.md5").read_bytes()).hexdigest()
+    expected_sizes_by_path[
+        "org/apache/example/example-artifact/1.2.3/example-artifact-1.2.3.jar.md5"
+    ] = jar_path.with_name("example-artifact-1.2.3.jar.md5").stat().st_size
+
+    jar_signature = write_text(
+        "org/apache/example/example-artifact/1.2.3/example-artifact-1.2.3.jar.asc",
+        "-----BEGIN PGP SIGNATURE-----\nabc123\n-----END PGP SIGNATURE-----\n",
+    )
+    _write_sha512_sidecar(jar_signature)
+    expected_sha512_by_path[
+        "org/apache/example/example-artifact/1.2.3/example-artifact-1.2.3.jar.asc.sha512"
+    ] = hashlib.sha512(jar_signature.with_name("example-artifact-1.2.3.jar.asc.sha512").read_bytes()).hexdigest()
+    expected_sizes_by_path[
+        "org/apache/example/example-artifact/1.2.3/example-artifact-1.2.3.jar.asc.sha512"
+    ] = jar_signature.with_name("example-artifact-1.2.3.jar.asc.sha512").stat().st_size
+
+    pom_path = write_text(
+        "org/apache/example/example-artifact/1.2.3/example-artifact-1.2.3.pom",
+        "<project><modelVersion>4.0.0</modelVersion></project>\n",
+    )
+    _write_sha512_sidecar(pom_path)
+    expected_sha512_by_path[
+        "org/apache/example/example-artifact/1.2.3/example-artifact-1.2.3.pom.sha512"
+    ] = hashlib.sha512(pom_path.with_name("example-artifact-1.2.3.pom.sha512").read_bytes()).hexdigest()
+    expected_sizes_by_path[
+        "org/apache/example/example-artifact/1.2.3/example-artifact-1.2.3.pom.sha512"
+    ] = pom_path.with_name("example-artifact-1.2.3.pom.sha512").stat().st_size
+
+    return expected_sha512_by_path, expected_sizes_by_path
+
+
 class CommandCredentialHandlingUnitTest(unittest.TestCase):
     """Verify credential-sensitive command construction without real subprocesses."""
 
@@ -2140,6 +2242,150 @@ class CommandsIntegrationTest(unittest.TestCase):
             completed.stderr,
         )
 
+    def test_record_artifact_maven_repository_command_writes_inventory_bundle(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        manifest_path = sandbox_dir / "record-artifact.json"
+        github_output_path = sandbox_dir / "record-artifact.outputs"
+        component_id = "buildish-example"
+        artifact_id = "maven-staging-main"
+        staging_repository_id = "orgapacheexample-1234"
+        repository_root = sandbox_dir / staging_repository_id
+        expected_sha512_by_path, expected_sizes_by_path = _write_test_maven_repository(repository_root)
+        base_url = f"{repository_root.as_uri()}/"
+        self._write_component_config(
+            config_path,
+            component_id=component_id,
+            dev_base_url="https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+            release_base_url="https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+        )
+
+        completed = run_cli(
+            [
+                "record-artifact",
+                "--component-config",
+                str(config_path),
+                "--kind",
+                "maven-repository",
+                "--artifact-id",
+                artifact_id,
+                "--role",
+                "maven-staging",
+                "--base-url",
+                base_url,
+                "--staging-repository-id",
+                staging_repository_id,
+                "--inventory-workers",
+                "1",
+            ],
+            cwd=sandbox_dir,
+            env=cli_env(manifest_path, extra_env={"GITHUB_OUTPUT": str(github_output_path)}),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        expected_bundle_dir = (
+            sandbox_dir
+            / "build"
+            / "release-artifacts"
+            / component_id
+            / "secondary-artifacts"
+            / artifact_id
+        )
+        expected_manifest_path = expected_bundle_dir / "artifact-manifest.json"
+        expected_inventory_path = expected_bundle_dir / f"{artifact_id}-inventory.json"
+        expected_inventory_sha512 = hashlib.sha512(expected_inventory_path.read_bytes()).hexdigest()
+        self.assertEqual(str(expected_manifest_path), completed.stdout.strip())
+        action_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(component_id, action_manifest["component"])
+        self.assertEqual("record-artifact", action_manifest["action"])
+        self.assertEqual(artifact_id, action_manifest["artifact_id"])
+        self.assertEqual("maven-repository", action_manifest["kind"])
+        self.assertEqual(str(expected_manifest_path), action_manifest["artifact_manifest_path"])
+        self.assertEqual(str(expected_bundle_dir), action_manifest["artifact_bundle_dir"])
+        self.assertEqual([str(expected_inventory_path)], action_manifest["inventory_paths"])
+
+        payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            [
+                {
+                    "artifact_id": artifact_id,
+                    "kind": "maven-repository",
+                    "role": "maven-staging",
+                    "staging_repository_id": staging_repository_id,
+                    "base_url": base_url,
+                    "inventory": {
+                        "filename": f"{artifact_id}-inventory.json",
+                        "sha512": expected_inventory_sha512,
+                        "entry_count": len(expected_sha512_by_path),
+                        "total_size_bytes": sum(expected_sizes_by_path.values()),
+                    },
+                }
+            ],
+            payload["secondary_artifacts"],
+        )
+        inventory_payload = json.loads(expected_inventory_path.read_text(encoding="utf-8"))
+        self.assertEqual("1", inventory_payload["schema_version"])
+        self.assertEqual("maven-repository", inventory_payload["inventory_type"])
+        self.assertEqual(artifact_id, inventory_payload["artifact_id"])
+        self.assertEqual(staging_repository_id, inventory_payload["staging_repository_id"])
+        self.assertEqual(base_url, inventory_payload["base_url"])
+        inventory_entries = {entry["path"]: entry for entry in inventory_payload["entries"]}
+        self.assertEqual(sorted(expected_sha512_by_path), sorted(inventory_entries))
+        for relative_path, expected_sha512 in expected_sha512_by_path.items():
+            self.assertEqual(expected_sha512, inventory_entries[relative_path]["sha512"])
+            self.assertEqual(expected_sizes_by_path[relative_path], inventory_entries[relative_path]["size_bytes"])
+
+        github_outputs = _read_simple_github_outputs(github_output_path)
+        self.assertEqual(artifact_id, github_outputs["artifact_id"])
+        self.assertEqual("maven-repository", github_outputs["artifact_kind"])
+        self.assertEqual(str(expected_manifest_path), github_outputs["artifact_manifest_path"])
+        self.assertEqual(str(expected_bundle_dir), github_outputs["artifact_bundle_dir"])
+
+    def test_record_artifact_maven_repository_command_reports_progress_when_enabled(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        manifest_path = sandbox_dir / "record-artifact.json"
+        component_id = "buildish-example"
+        artifact_id = "maven-staging-main"
+        staging_repository_id = "orgapacheexample-1234"
+        repository_root = sandbox_dir / staging_repository_id
+        _write_test_maven_repository(repository_root)
+        base_url = f"{repository_root.as_uri()}/"
+        self._write_component_config(
+            config_path,
+            component_id=component_id,
+            dev_base_url="https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+            release_base_url="https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+        )
+
+        completed = run_cli(
+            [
+                "record-artifact",
+                "--component-config",
+                str(config_path),
+                "--progress",
+                "on",
+                "--kind",
+                "maven-repository",
+                "--artifact-id",
+                artifact_id,
+                "--base-url",
+                base_url,
+                "--staging-repository-id",
+                staging_repository_id,
+                "--inventory-workers",
+                "1",
+            ],
+            cwd=sandbox_dir,
+            env=cli_env(manifest_path),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        self.assertIn("progress: enumerating maven repository from ", completed.stderr)
+        self.assertIn("progress: building maven repository inventory: 0/", completed.stderr)
+        self.assertIn("progress: wrote maven repository inventory: ", completed.stderr)
+
     def test_finalize_rc_vote_materials_command_stages_manifest_and_mirrors_it(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for RC vote-manifest signing")
@@ -2403,6 +2649,242 @@ class CommandsIntegrationTest(unittest.TestCase):
         self.assertIn("Project vote subject", summary_text)
         self.assertIn("Please vote in the next 72 hours.", summary_text)
         self.assertIn(f"{release_base_url.rsplit('/', 1)[0]}/KEYS", summary_text)
+
+    def test_finalize_rc_vote_materials_command_stages_maven_repository_inventory(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for RC vote-manifest signing")
+        if not command_available("svnadmin") or not command_available("svn"):
+            self.skipTest("svnadmin and svn are required for the SVN integration test")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
+        _repo_dir, repo_url, working_copy_dir = init_svn_repo_and_checkout(sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        source_manifest_path = sandbox_dir / "build-source-rc.json"
+        rc_tag_manifest_path = sandbox_dir / "create-rc-materialization-tag.json"
+        record_artifact_manifest_path = sandbox_dir / "record-artifact.json"
+        record_artifact_outputs_path = sandbox_dir / "record-artifact.outputs"
+        finalize_manifest_path = sandbox_dir / "finalize-rc-vote-materials.json"
+        client = AsfSvnClient()
+        component_id = "buildish-example"
+        dev_base_url = f"{repo_url}/dist/dev/incubator/buildish/{component_id}"
+        release_base_url = f"{repo_url}/dist/release/incubator/buildish/{component_id}"
+        keys_path = working_copy_dir / "dist" / "release" / "incubator" / "buildish" / "KEYS"
+        source_home = sandbox_dir / "gpg-source"
+        source_home.mkdir(parents=True, exist_ok=True)
+        source_home.chmod(0o700)
+        staging_repository_id = "orgapacheexample-1234"
+        repository_root = sandbox_dir / staging_repository_id
+        _write_test_maven_repository(repository_root)
+        base_url = f"{repository_root.as_uri()}/"
+
+        git_create_branch(origin_dir, "release/1.x")
+        git_create_branch(origin_dir, "release/1.2.x")
+        fetch_git_origin_refs(clone_dir)
+        self._write_component_config(
+            config_path,
+            component_id=component_id,
+            dev_base_url=dev_base_url,
+            release_base_url=release_base_url,
+        )
+        client.mkdir_url(dev_base_url, "create dev component path")
+        client.mkdir_url(release_base_url, "create release component path")
+
+        subprocess.run(
+            [
+                "gpg",
+                "--batch",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                "",
+                "--quick-gen-key",
+                "Release Tooling Tests <release-tooling-tests@example.invalid>",
+                "ed25519",
+                "sign",
+                "1d",
+            ],
+            env={**os.environ, "GNUPGHOME": str(source_home)},
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        public_key = subprocess.run(
+            [
+                "gpg",
+                "--armor",
+                "--export",
+                "Release Tooling Tests <release-tooling-tests@example.invalid>",
+            ],
+            env={**os.environ, "GNUPGHOME": str(source_home)},
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        secret_key = subprocess.run(
+            [
+                "gpg",
+                "--armor",
+                "--export-secret-keys",
+                "Release Tooling Tests <release-tooling-tests@example.invalid>",
+            ],
+            env={**os.environ, "GNUPGHOME": str(source_home)},
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        keys_path.write_text(public_key, encoding="utf-8")
+        subprocess.run(["svn", "add", str(keys_path)], check=True)
+        subprocess.run(["svn", "commit", "-m", "add KEYS", str(working_copy_dir)], check=True)
+
+        completed = run_cli(
+            [
+                "record-artifact",
+                "--component-config",
+                str(config_path),
+                "--allow-non-production-release-targets",
+                "--kind",
+                "maven-repository",
+                "--artifact-id",
+                "maven-staging-main",
+                "--role",
+                "maven-staging",
+                "--base-url",
+                base_url,
+                "--staging-repository-id",
+                staging_repository_id,
+                "--inventory-workers",
+                "1",
+            ],
+            cwd=clone_dir,
+            env=cli_env(
+                record_artifact_manifest_path,
+                extra_env={"GITHUB_OUTPUT": str(record_artifact_outputs_path)},
+            ),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        secondary_manifest_path = Path(
+            _read_simple_github_outputs(record_artifact_outputs_path)["artifact_manifest_path"]
+        )
+        local_inventory_path = secondary_manifest_path.parent / "maven-staging-main-inventory.json"
+
+        completed = run_cli(
+            [
+                "build-source-rc",
+                "--component-config",
+                str(config_path),
+                "--allow-non-production-release-targets",
+                "--rc-tag",
+                "v1.2.3-rc0",
+                "1.2.3",
+            ],
+            cwd=clone_dir,
+            env=cli_env(
+                source_manifest_path,
+                extra_env={"BUILDISH_GPG_PRIVATE_KEY": secret_key},
+            ),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        completed = run_cli(
+            [
+                "create-rc-materialization-tag",
+                "--component-config",
+                str(config_path),
+                "--allow-non-production-release-targets",
+                "--rc-tag",
+                "v1.2.3-rc0",
+                "1.2.3",
+            ],
+            cwd=clone_dir,
+            env=cli_env(rc_tag_manifest_path),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+
+        set_github_origin_url(clone_dir, "apache/buildish-example")
+        gh_path, gh_state_dir = create_fake_gh_launcher(
+            sandbox_dir,
+            list_response=[
+                {
+                    "id": 42,
+                    "draft": True,
+                    "tag_name": "v1.2.3-rc0",
+                    "name": "Apache Buildish Example 1.2.3",
+                    "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+                    "assets": [],
+                }
+            ],
+        )
+        completed = run_cli(
+            [
+                "finalize-rc-vote-materials",
+                "--component-config",
+                str(config_path),
+                "--allow-non-production-release-targets",
+                "--secondary-artifact-manifest",
+                str(secondary_manifest_path),
+                "--rc-tag",
+                "v1.2.3-rc0",
+                "1.2.3",
+            ],
+            cwd=clone_dir,
+            env=cli_env(
+                finalize_manifest_path,
+                extra_env={
+                    "BUILDISH_GPG_PRIVATE_KEY": secret_key,
+                    "FAKE_GH_STATE_DIR": str(gh_state_dir),
+                },
+                prepend_dirs=(gh_path.parent,),
+            ),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        staged_manifest = json.loads(
+            subprocess.run(
+                [
+                    "svn",
+                    "cat",
+                    f"{dev_base_url}/1.2.3-rc0/rc-vote-manifest.json",
+                ],
+                check=True,
+                text=True,
+                capture_output=True,
+            ).stdout
+        )
+        secondary_artifact = staged_manifest["vote_materials"]["secondary_artifacts"][0]
+        self.assertEqual("maven-repository", secondary_artifact["kind"])
+        self.assertEqual("maven-staging-main", secondary_artifact["artifact_id"])
+        self.assertEqual(staging_repository_id, secondary_artifact["staging_repository_id"])
+        self.assertEqual(base_url, secondary_artifact["base_url"])
+        self.assertEqual("maven-staging-main-inventory.json", secondary_artifact["inventory"]["filename"])
+        self.assertEqual(
+            f"{dev_base_url}/1.2.3-rc0/maven-staging-main-inventory.json",
+            secondary_artifact["inventory"]["uri"],
+        )
+        self.assertEqual(
+            hashlib.sha512(local_inventory_path.read_bytes()).hexdigest(),
+            secondary_artifact["inventory"]["sha512"],
+        )
+        self.assertIn(
+            "maven-staging-main-inventory.json",
+            client.list_entries(f"{dev_base_url}/1.2.3-rc0"),
+        )
+        staged_inventory = json.loads(
+            subprocess.run(
+                [
+                    "svn",
+                    "cat",
+                    f"{dev_base_url}/1.2.3-rc0/maven-staging-main-inventory.json",
+                ],
+                check=True,
+                text=True,
+                capture_output=True,
+            ).stdout
+        )
+        self.assertEqual(
+            json.loads(local_inventory_path.read_text(encoding="utf-8")),
+            staged_inventory,
+        )
+        uploaded_paths = (gh_state_dir / "release-upload-files.log").read_text(encoding="utf-8").splitlines()
+        self.assertIn(str(local_inventory_path), uploaded_paths)
 
     def test_finalize_rc_vote_materials_rejects_staged_source_artifact_drift(self) -> None:
         if not command_available("gpg"):

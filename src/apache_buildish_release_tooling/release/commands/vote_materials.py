@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import json
+import re
 from argparse import Namespace
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -64,12 +65,78 @@ class RcVoteManifestArtifacts:
     manifest_sha512_path: Path
     manifest_signature_path: Path
     gpg_fingerprint: str
+    supplemental_file_paths: tuple[Path, ...] = ()
 
 
-def _load_secondary_artifacts(manifest_paths: Iterable[str]) -> list[dict[str, Any]]:
+@dataclass(frozen=True)
+class SecondaryArtifactAttachment:
+    """One staged sidecar file attached to a secondary artifact bundle."""
+
+    source_path: Path
+    staged_filename: str
+    sha512: str
+
+
+@dataclass(frozen=True)
+class LoadedSecondaryArtifact:
+    """One secondary artifact plus any local bundle files needed by finalization."""
+
+    manifest_entry: dict[str, Any]
+    attachments: tuple[SecondaryArtifactAttachment, ...] = ()
+
+
+_SHA512_PATTERN = re.compile(r"^[0-9a-fA-F]{128}$")
+
+
+def _validated_supplemental_filename(filename_value: object, *, manifest_path: Path) -> str:
+    if not isinstance(filename_value, str) or not filename_value.strip():
+        raise ValueError(
+            "secondary artifact inventory filename must be a non-empty string in "
+            f"{manifest_path}"
+        )
+    filename = filename_value.strip()
+    if Path(filename).name != filename:
+        raise ValueError(
+            "secondary artifact inventory filename must be a simple file name in "
+            f"{manifest_path}: {filename}"
+        )
+    return filename
+
+
+def _inventory_attachments_for_entry(
+    manifest_path: Path,
+    artifact_entry: dict[str, Any],
+) -> tuple[SecondaryArtifactAttachment, ...]:
+    inventory = artifact_entry.get("inventory")
+    if inventory is None:
+        return ()
+    if not isinstance(inventory, dict):
+        raise ValueError(f"secondary artifact inventory must be a JSON object: {manifest_path}")
+    if "filename" not in inventory:
+        return ()
+    filename = _validated_supplemental_filename(inventory["filename"], manifest_path=manifest_path)
+    sha512_value = inventory.get("sha512")
+    if not isinstance(sha512_value, str) or not _SHA512_PATTERN.fullmatch(sha512_value.strip().lower()):
+        raise ValueError(f"secondary artifact inventory must declare a valid sha512 in {manifest_path}")
+    inventory_path = manifest_path.parent / filename
+    if not inventory_path.is_file():
+        raise ValueError(f"secondary artifact inventory file does not exist: {inventory_path}")
+    normalized_sha512 = sha512_value.strip().lower()
+    if sha512(inventory_path) != normalized_sha512:
+        raise ValueError(f"secondary artifact inventory sha512 does not match the file bytes: {inventory_path}")
+    return (
+        SecondaryArtifactAttachment(
+            source_path=inventory_path,
+            staged_filename=filename,
+            sha512=normalized_sha512,
+        ),
+    )
+
+
+def _load_secondary_artifacts(manifest_paths: Iterable[str]) -> list[LoadedSecondaryArtifact]:
     """Load generic secondary-artifact entries from one or more JSON manifest files."""
 
-    secondary_artifacts: list[dict[str, Any]] = []
+    secondary_artifacts: list[LoadedSecondaryArtifact] = []
     for manifest_argument in manifest_paths:
         manifest_path = Path(manifest_argument)
         if not manifest_path.is_file():
@@ -87,8 +154,61 @@ def _load_secondary_artifacts(manifest_paths: Iterable[str]) -> list[dict[str, A
                 raise ValueError(
                     f"secondary artifact entries must be JSON objects: {manifest_path}"
                 )
-            secondary_artifacts.append(dict(artifact_entry))
+            manifest_entry = dict(artifact_entry)
+            secondary_artifacts.append(
+                LoadedSecondaryArtifact(
+                    manifest_entry=manifest_entry,
+                    attachments=_inventory_attachments_for_entry(manifest_path, manifest_entry),
+                )
+            )
     return secondary_artifacts
+
+
+def _resolved_secondary_artifacts(
+    staging_url: str,
+    secondary_artifacts: list[LoadedSecondaryArtifact],
+) -> tuple[list[dict[str, Any]], tuple[Path, ...]]:
+    resolved_entries: list[dict[str, Any]] = []
+    staged_files_by_name: dict[str, str] = {}
+    supplemental_file_paths: list[Path] = []
+    staging_url = staging_url.rstrip("/")
+    for artifact in secondary_artifacts:
+        manifest_entry = dict(artifact.manifest_entry)
+        inventory = manifest_entry.get("inventory")
+        if artifact.attachments and not isinstance(inventory, dict):
+            raise ValueError(
+                "secondary artifact bundle attachments require an inventory object in the manifest entry"
+            )
+        if isinstance(inventory, dict) and artifact.attachments:
+            inventory_payload = dict(inventory)
+            filename = _validated_supplemental_filename(
+                inventory_payload.get("filename"),
+                manifest_path=artifact.attachments[0].source_path,
+            )
+            attachment = next(
+                (candidate for candidate in artifact.attachments if candidate.staged_filename == filename),
+                None,
+            )
+            if attachment is None:
+                raise ValueError(
+                    "secondary artifact inventory filename did not match any local bundle file: "
+                    f"{filename}"
+                )
+            inventory_payload["sha512"] = attachment.sha512
+            inventory_payload["uri"] = f"{staging_url}/{attachment.staged_filename}"
+            manifest_entry["inventory"] = inventory_payload
+        for attachment in artifact.attachments:
+            existing_sha512 = staged_files_by_name.get(attachment.staged_filename)
+            if existing_sha512 is not None and existing_sha512 != attachment.sha512:
+                raise ValueError(
+                    "duplicate secondary artifact supplemental filename with different content: "
+                    f"{attachment.staged_filename}"
+                )
+            if existing_sha512 is None:
+                staged_files_by_name[attachment.staged_filename] = attachment.sha512
+                supplemental_file_paths.append(attachment.source_path)
+        resolved_entries.append(manifest_entry)
+    return resolved_entries, tuple(supplemental_file_paths)
 
 
 def _build_rc_vote_manifest_artifacts(
@@ -99,6 +219,7 @@ def _build_rc_vote_manifest_artifacts(
     rc_tag_target_commit: str,
     source_artifact_sha512: str,
     secondary_artifacts: list[dict[str, Any]],
+    supplemental_file_paths: tuple[Path, ...],
     output_dir: Path,
 ) -> RcVoteManifestArtifacts:
     """Build and sign the authoritative RC vote-manifest artifacts."""
@@ -130,7 +251,17 @@ def _build_rc_vote_manifest_artifacts(
             manifest_sha512_path=manifest_sha512_path,
             manifest_signature_path=manifest_signature_path,
             gpg_fingerprint=gpg_fingerprint,
+            supplemental_file_paths=supplemental_file_paths,
         )
+
+
+def _rc_vote_manifest_asset_paths(artifacts: RcVoteManifestArtifacts) -> list[Path]:
+    return [
+        artifacts.manifest_file_path,
+        artifacts.manifest_sha512_path,
+        artifacts.manifest_signature_path,
+        *artifacts.supplemental_file_paths,
+    ]
 
 
 def _stage_rc_vote_manifest_and_mirror(
@@ -150,21 +281,12 @@ def _stage_rc_vote_manifest_and_mirror(
     with _temporary_build_dir("finalize-rc-vote-materials-svn") as temp_root:
         staging_wc = temp_root / "staging-wc"
         svn_client.checkout_url(staging_url, staging_wc)
-        svn_client.working_copy_put_file(
-            staging_wc,
-            artifacts.manifest_file_path,
-            artifacts.manifest_file_path.name,
-        )
-        svn_client.working_copy_put_file(
-            staging_wc,
-            artifacts.manifest_sha512_path,
-            artifacts.manifest_sha512_path.name,
-        )
-        svn_client.working_copy_put_file(
-            staging_wc,
-            artifacts.manifest_signature_path,
-            artifacts.manifest_signature_path.name,
-        )
+        for asset_path in _rc_vote_manifest_asset_paths(artifacts):
+            svn_client.working_copy_put_file(
+                staging_wc,
+                asset_path,
+                asset_path.name,
+            )
         svn_client.commit_working_copy(
             staging_wc,
             f"stage RC vote manifest for {context.component_config.component_id} {version}",
@@ -172,11 +294,7 @@ def _stage_rc_vote_manifest_and_mirror(
     upload_release_assets(
         selected_release.repository_slug,
         tag_name=selected_release.require_release_tag(reference_tag=state.rc_tag),
-        asset_paths=[
-            artifacts.manifest_file_path,
-            artifacts.manifest_sha512_path,
-            artifacts.manifest_signature_path,
-        ],
+        asset_paths=_rc_vote_manifest_asset_paths(artifacts),
         clobber=True,
     )
     return f"{staging_url}/{artifacts.manifest_file_path.name}"
@@ -185,11 +303,7 @@ def _stage_rc_vote_manifest_and_mirror(
 def _rc_vote_manifest_asset_names(artifacts: RcVoteManifestArtifacts) -> list[str]:
     """Return the authoritative RC vote-manifest asset names in mirror order."""
 
-    return [
-        artifacts.manifest_file_path.name,
-        artifacts.manifest_sha512_path.name,
-        artifacts.manifest_signature_path.name,
-    ]
+    return [path.name for path in _rc_vote_manifest_asset_paths(artifacts)]
 
 
 def _append_finalize_rc_vote_materials_summary(
@@ -282,7 +396,11 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
     source_artifact_sha512 = verified_staged_source_artifact_sha512(source_artifact_url)
     source_signature_text = read_uri_text(f"{source_artifact_url}.asc").strip()
     output_dir = _artifact_output_dir(context.component_config.component_id)
-    secondary_artifacts = _load_secondary_artifacts(args.secondary_artifact_manifests)
+    loaded_secondary_artifacts = _load_secondary_artifacts(args.secondary_artifact_manifests)
+    secondary_artifacts, supplemental_file_paths = _resolved_secondary_artifacts(
+        state.staging_url,
+        loaded_secondary_artifacts,
+    )
     artifacts = _build_rc_vote_manifest_artifacts(
         context,
         state=state,
@@ -290,6 +408,7 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
         rc_tag_target_commit=rc_tag_target_commit,
         source_artifact_sha512=source_artifact_sha512,
         secondary_artifacts=secondary_artifacts,
+        supplemental_file_paths=supplemental_file_paths,
         output_dir=output_dir,
     )
     authoritative_manifest_url = _stage_rc_vote_manifest_and_mirror(

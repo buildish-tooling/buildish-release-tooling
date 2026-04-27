@@ -382,9 +382,13 @@ Summaries are intended for:
 ### `record-artifact`
 
 - writes one typed secondary-artifact manifest fragment for later RC finalization
-- currently supports `--kind generic-file`
-- computes the SHA512 digest from `--file` when one is supplied, or validates an explicit
-  `--sha512` when both are provided
+- currently supports `--kind generic-file` and `--kind maven-repository`
+- for `generic-file`, computes the SHA512 digest from `--file` when one is supplied, or validates
+  an explicit `--sha512` when both are provided
+- for `maven-repository`, recursively snapshots the repository rooted at `--base-url` and writes a
+  detached inventory file into the registration bundle
+- for `maven-repository`, defaults remote discovery and digest fetching to 16 workers and allows
+  overriding that with `--inventory-workers`
 - writes one registration bundle rooted at
   `build/release-artifacts/<component>/secondary-artifacts/<artifact-id>/` by default
 - prints the fragment path on stdout so shell steps can pass it directly to later commands
@@ -400,6 +404,8 @@ Summaries are intended for:
 - builds `rc-vote-manifest.json` from resolved live Git/SVN/GitHub state
 - accepts `--secondary-artifact-manifest` inputs for typed secondary-artifact fragments, including
   manifests produced earlier by `record-artifact`
+- stages detached secondary-artifact inventory files referenced by those fragments and rewrites
+  their final authoritative URIs into the signed RC vote manifest
 - accepts `--rc-tag` so reruns keep using the already-selected RC
 - writes `.sha512`
 - creates a detached ASCII-armored signature for the manifest

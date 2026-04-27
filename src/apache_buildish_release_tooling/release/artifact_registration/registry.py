@@ -23,6 +23,9 @@ from pathlib import Path
 from apache_buildish_release_tooling.release.artifact_registration.kinds.generic_file import (
     build_generic_file_registration,
 )
+from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
+    build_maven_repository_registration,
+)
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationResult,
 )
@@ -31,6 +34,7 @@ ArtifactRegistrationHandler = Callable[[Namespace, Path], ArtifactRegistrationRe
 
 _HANDLERS: dict[str, ArtifactRegistrationHandler] = {
     "generic-file": build_generic_file_registration,
+    "maven-repository": build_maven_repository_registration,
 }
 
 
