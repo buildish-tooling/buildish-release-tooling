@@ -19,9 +19,10 @@ from __future__ import annotations
 import hashlib
 import io
 import re
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, as_completed, wait
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 from argparse import Namespace
 from dataclasses import dataclass
+from email.message import Message
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
@@ -85,12 +86,19 @@ class _RemoteHttpClient:
                     url,
                     response.status,
                     "unexpected HTTP response",
-                    response.headers,
+                    _http_error_headers(response.headers),
                     io.BytesIO(payload),
                 )
             return payload
         finally:
             response.release_conn()
+
+
+def _http_error_headers(headers: Any) -> Message[str, str]:
+    message: Message[str, str] = Message()
+    for name, value in headers.items():
+        message[name] = value
+    return message
 
 
 class _NexusIndexParser(HTMLParser):
@@ -190,7 +198,7 @@ def _validated_repository_root(base_url: str, staging_repository_id: str) -> Non
         )
 
 
-def _inventory_worker_count(raw_value: object) -> int:
+def _inventory_worker_count(raw_value: int | str | None) -> int:
     if raw_value is None:
         return _DEFAULT_INVENTORY_WORKERS
     worker_count = int(raw_value)
@@ -261,7 +269,7 @@ def _enumerate_remote_repository(
     files: list[_RepositoryFile] = []
 
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        pending_futures: dict[object, str] = {}
+        pending_futures: dict[Future[tuple[str, list[_NexusIndexEntry]]], str] = {}
 
         def submit_directory(directory_url: str) -> None:
             directory_relative = _relative_path_from_url(base_url, directory_url)
@@ -278,7 +286,7 @@ def _enumerate_remote_repository(
 
         submit_directory(base_url)
         while pending_futures:
-            completed, _ = wait(tuple(pending_futures), return_when=FIRST_COMPLETED)
+            completed, _ = wait(tuple(pending_futures.keys()), return_when=FIRST_COMPLETED)
             for future in completed:
                 pending_futures.pop(future)
                 _directory_url, entries = future.result()

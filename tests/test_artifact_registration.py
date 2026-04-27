@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import unittest
 from typing import ClassVar
+from typing import Any, cast
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     _RemoteHttpClient,
@@ -59,7 +60,8 @@ class _FakePoolManager:
         cls.instances = []
         cls.queued_responses = list(responses)
 
-    def request(self, method: str, url: str, preload_content: bool = True) -> _FakeHTTPResponse:
+    def request(self, method: str, url: str, **kwargs: object) -> _FakeHTTPResponse:
+        preload_content = bool(kwargs.get("preload_content", True))
         self.requests.append((method, url, preload_content))
         response = self.__class__.queued_responses.pop(0)
         self.issued_responses.append(response)
@@ -123,7 +125,7 @@ class MavenRepositoryRegistrationUnitTest(unittest.TestCase):
             _FakeHTTPResponse(b"beta"),
         )
         pool_manager = _FakePoolManager()
-        client = _RemoteHttpClient(pool_manager=pool_manager)
+        client = _RemoteHttpClient(pool_manager=cast(Any, pool_manager))
 
         first = client.read_bytes("https://repository.apache.org/content/repositories/orgapachebeam-1427/one")
         second = client.read_bytes("https://repository.apache.org/content/repositories/orgapachebeam-1427/two")
