@@ -20,9 +20,14 @@ import base64
 import binascii
 import re
 from argparse import Namespace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
+from apache_buildish_release_tooling.release.artifact_registration.common import (
+    apply_common_artifact_metadata,
+)
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationResult,
 )
@@ -37,6 +42,15 @@ _EXPECTED_DIGEST_LENGTHS = {
 }
 
 
+@dataclass(frozen=True)
+class _NpmPublication:
+    uri: str
+    registry_url: str
+    package_name: str
+    version: str
+    filename: str
+
+
 def _resolved_local_file(path_text: str | None) -> Path | None:
     if path_text is None:
         return None
@@ -46,15 +60,26 @@ def _resolved_local_file(path_text: str | None) -> Path | None:
     return local_path
 
 
-def _resolved_filename(local_file: Path | None, explicit_filename: str | None) -> str:
+def _resolved_filename(
+    explicit_filename: str | None,
+    *,
+    explicit_uri: str | None,
+    package_name: str,
+    version: str,
+) -> str:
     if explicit_filename is not None:
         filename = explicit_filename.strip()
         if not filename:
             raise ValueError("npm-package --filename must not be empty")
+        if explicit_uri is not None:
+            uri_filename = _filename_from_uri(explicit_uri)
+            if uri_filename is not None and uri_filename != filename:
+                raise ValueError("npm-package --filename does not match the filename encoded in --uri")
         return filename
-    if local_file is None:
-        raise ValueError("npm-package requires --file or --filename")
-    return local_file.name
+    uri_filename = _filename_from_uri(explicit_uri) if explicit_uri is not None else None
+    if uri_filename is not None:
+        return uri_filename
+    return _canonical_tarball_filename(package_name, version)
 
 
 def _required_text(raw_value: str | None, *, option_name: str) -> str:
@@ -70,6 +95,155 @@ def _optional_text(raw_value: str | None, *, option_name: str) -> str | None:
     if not normalized:
         raise ValueError(f"npm-package {option_name} must not be empty")
     return normalized
+
+
+def _normalized_registry_url(raw_value: str | None, *, option_name: str) -> str:
+    normalized = _required_text(raw_value, option_name=option_name).rstrip("/")
+    parsed = urlparse(normalized)
+    if not parsed.scheme or not parsed.netloc:
+        raise ValueError(f"npm-package {option_name} must be an absolute registry URL")
+    return f"{normalized}/"
+
+
+def _optional_registry_url(raw_value: str | None, *, option_name: str) -> str | None:
+    if raw_value is None:
+        return None
+    return _normalized_registry_url(raw_value, option_name=option_name)
+
+
+def _validated_package_name(package_name: str, *, option_name: str) -> str:
+    if package_name.startswith("/") or package_name.endswith("/") or package_name.count("/") > 1:
+        raise ValueError(f"npm-package {option_name} must be a valid npm package name")
+    if "/" in package_name:
+        scope, separator, name = package_name.partition("/")
+        if not separator or not scope.startswith("@") or len(scope) == 1 or not name:
+            raise ValueError(f"npm-package {option_name} must be a valid npm package name")
+        return package_name
+    if package_name.startswith("@"):
+        raise ValueError(f"npm-package {option_name} must be a valid npm package name")
+    return package_name
+
+
+def _normalized_package_name(raw_value: str | None, *, option_name: str) -> str:
+    return _validated_package_name(_required_text(raw_value, option_name=option_name), option_name=option_name)
+
+
+def _optional_package_name(raw_value: str | None, *, option_name: str) -> str | None:
+    if raw_value is None:
+        return None
+    return _validated_package_name(_optional_text(raw_value, option_name=option_name) or "", option_name=option_name)
+
+
+def _filename_from_uri(uri: str) -> str | None:
+    filename = Path(urlparse(uri).path).name
+    if not filename:
+        return None
+    return filename
+
+
+def _canonical_tarball_filename(package_name: str, version: str) -> str:
+    return f"{package_name.rsplit('/', 1)[-1]}-{version}.tgz"
+
+
+def _canonical_publication_uri(registry_url: str, package_name: str, version: str) -> str:
+    return f"{registry_url.rstrip('/')}/{package_name}/-/{_canonical_tarball_filename(package_name, version)}"
+
+
+def _parsed_canonical_publication(uri: str) -> _NpmPublication:
+    parsed = urlparse(uri)
+    if not parsed.scheme or not parsed.netloc or parsed.query or parsed.fragment:
+        raise ValueError(
+            "npm-package --uri must use a canonical npm tarball URL to derive registry and package metadata"
+        )
+    path_segments = [segment for segment in parsed.path.split("/") if segment]
+    if len(path_segments) < 3 or path_segments[-2] != "-":
+        raise ValueError(
+            "npm-package --uri must use a canonical npm tarball URL to derive registry and package metadata"
+        )
+    filename = path_segments[-1]
+    if not filename.endswith(".tgz"):
+        raise ValueError(
+            "npm-package --uri must use a canonical npm tarball URL to derive registry and package metadata"
+        )
+    package_segments = path_segments[:-2]
+    package_leaf = package_segments[-1]
+    filename_stem = filename.removesuffix(".tgz")
+    expected_prefix = f"{package_leaf}-"
+    if not filename_stem.startswith(expected_prefix) or filename_stem == expected_prefix:
+        raise ValueError(
+            "npm-package --uri must use a canonical npm tarball URL to derive registry and package metadata"
+        )
+    version = filename_stem.removeprefix(expected_prefix)
+    if len(package_segments) >= 2 and package_segments[-2].startswith("@"):
+        package_name = f"{package_segments[-2]}/{package_leaf}"
+        registry_segments = package_segments[:-2]
+    else:
+        package_name = package_leaf
+        registry_segments = package_segments[:-1]
+    registry_path = "/".join(registry_segments)
+    registry_url = f"{parsed.scheme}://{parsed.netloc}/"
+    if registry_path:
+        registry_url = f"{registry_url}{registry_path}/"
+    return _NpmPublication(
+        uri=uri,
+        registry_url=registry_url,
+        package_name=package_name,
+        version=version,
+        filename=filename,
+    )
+
+
+def _resolved_publication(
+    args: Namespace,
+) -> _NpmPublication:
+    explicit_uri = _optional_text(getattr(args, "uri", None), option_name="--uri")
+    explicit_registry_url = _optional_registry_url(getattr(args, "registry_url", None), option_name="--registry-url")
+    explicit_package_name = _optional_package_name(getattr(args, "project_name", None), option_name="--package-name")
+    explicit_version = _optional_text(getattr(args, "package_version", None), option_name="--package-version")
+    explicit_filename = _optional_text(getattr(args, "filename", None), option_name="--filename")
+
+    parsed_publication: _NpmPublication | None = None
+    if explicit_uri is not None:
+        try:
+            parsed_publication = _parsed_canonical_publication(explicit_uri)
+        except ValueError:
+            parsed_publication = None
+    if explicit_uri is None and (
+        explicit_registry_url is None or explicit_package_name is None or explicit_version is None
+    ):
+        raise ValueError("npm-package requires --uri or the combination of --registry-url, --package-name, and --package-version")
+    if explicit_uri is not None and (
+        explicit_registry_url is None or explicit_package_name is None or explicit_version is None
+    ) and parsed_publication is None:
+        raise ValueError(
+            "npm-package requires --registry-url, --package-name, and --package-version when --uri is not a canonical npm tarball URL"
+        )
+
+    registry_url = explicit_registry_url or (parsed_publication.registry_url if parsed_publication is not None else None)
+    package_name = explicit_package_name or (parsed_publication.package_name if parsed_publication is not None else None)
+    version = explicit_version or (parsed_publication.version if parsed_publication is not None else None)
+    if registry_url is None or package_name is None or version is None:
+        raise ValueError("npm-package requires complete registry, package, and version metadata")
+    if parsed_publication is not None:
+        if explicit_registry_url is not None and explicit_registry_url != parsed_publication.registry_url:
+            raise ValueError("npm-package --registry-url does not match the canonical registry URL encoded in --uri")
+        if explicit_package_name is not None and explicit_package_name != parsed_publication.package_name:
+            raise ValueError("npm-package --package-name does not match the canonical package name encoded in --uri")
+        if explicit_version is not None and explicit_version != parsed_publication.version:
+            raise ValueError("npm-package --package-version does not match the canonical version encoded in --uri")
+    uri = explicit_uri or _canonical_publication_uri(registry_url, package_name, version)
+    return _NpmPublication(
+        uri=uri,
+        registry_url=registry_url,
+        package_name=package_name,
+        version=version,
+        filename=_resolved_filename(
+            explicit_filename,
+            explicit_uri=uri,
+            package_name=package_name,
+            version=version,
+        ),
+    )
 
 
 def _normalized_hex_digest(raw_value: str | None, *, algorithm: str) -> str:
@@ -156,6 +330,7 @@ def build_npm_package_registration(args: Namespace, bundle_dir: Path) -> Artifac
 
     del bundle_dir  # reserved for future inventory-producing variants
     local_file = _resolved_local_file(getattr(args, "file", None))
+    publication = _resolved_publication(args)
     algorithm, digest_value, integrity_value = _resolved_integrity_material(
         local_file,
         explicit_integrity=getattr(args, "integrity", None),
@@ -165,11 +340,11 @@ def build_npm_package_registration(args: Namespace, bundle_dir: Path) -> Artifac
     artifact: dict[str, Any] = {
         "artifact_id": args.artifact_id,
         "kind": "npm-package",
-        "filename": _resolved_filename(local_file, getattr(args, "filename", None)),
-        "uri": _required_text(getattr(args, "uri", None), option_name="--uri"),
-        "registry_url": _required_text(getattr(args, "registry_url", None), option_name="--registry-url"),
-        "package_name": _required_text(getattr(args, "project_name", None), option_name="--package-name"),
-        "version": _required_text(getattr(args, "package_version", None), option_name="--package-version"),
+        "filename": publication.filename,
+        "uri": publication.uri,
+        "registry_url": publication.registry_url,
+        "package_name": publication.package_name,
+        "version": publication.version,
         "integrity": integrity_value,
         "checksums": {
             algorithm: {
@@ -177,8 +352,6 @@ def build_npm_package_registration(args: Namespace, bundle_dir: Path) -> Artifac
             }
         },
     }
-    if args.role:
-        artifact["role"] = args.role
     checksum_uri = _optional_text(
         getattr(args, f"{algorithm}_uri", None),
         option_name=f"--{algorithm}-uri",
@@ -194,8 +367,5 @@ def build_npm_package_registration(args: Namespace, bundle_dir: Path) -> Artifac
             "scheme": "npm-provenance",
             "repository": attestation_repository,
         }
-    if args.artifact_origin:
-        artifact["artifact_origin"] = args.artifact_origin.strip()
-    if args.git_commit_sha:
-        artifact["git_commit_sha"] = args.git_commit_sha.strip()
+    apply_common_artifact_metadata(artifact, args)
     return ArtifactRegistrationResult(secondary_artifact=artifact)

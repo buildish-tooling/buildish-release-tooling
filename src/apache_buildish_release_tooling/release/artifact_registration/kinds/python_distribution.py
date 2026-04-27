@@ -21,6 +21,9 @@ from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
+from apache_buildish_release_tooling.release.artifact_registration.common import (
+    apply_common_artifact_metadata,
+)
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationResult,
 )
@@ -102,8 +105,6 @@ def build_python_distribution_registration(
             }
         },
     }
-    if args.role:
-        artifact["role"] = args.role
     sha256_uri = _optional_text(getattr(args, "sha256_uri", None), option_name="--sha256-uri")
     if sha256_uri is not None:
         artifact["checksums"]["sha256"]["uri"] = sha256_uri
@@ -116,8 +117,5 @@ def build_python_distribution_registration(
             "scheme": "pypi-attestation",
             "repository": attestation_repository,
         }
-    if args.artifact_origin:
-        artifact["artifact_origin"] = args.artifact_origin.strip()
-    if args.git_commit_sha:
-        artifact["git_commit_sha"] = args.git_commit_sha.strip()
+    apply_common_artifact_metadata(artifact, args)
     return ArtifactRegistrationResult(secondary_artifact=artifact)

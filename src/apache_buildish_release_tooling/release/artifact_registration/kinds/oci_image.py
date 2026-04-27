@@ -22,6 +22,9 @@ from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
+from apache_buildish_release_tooling.release.artifact_registration.common import (
+    apply_common_artifact_metadata,
+)
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationResult,
 )
@@ -231,12 +234,7 @@ def build_oci_image_registration(args: Namespace, bundle_dir: Path) -> ArtifactR
         "repository": repository,
         "digest": digest,
     }
-    if args.role:
-        artifact["role"] = args.role
     if platform_digests:
         artifact["platform_digests"] = platform_digests
-    if args.artifact_origin:
-        artifact["artifact_origin"] = args.artifact_origin.strip()
-    if args.git_commit_sha:
-        artifact["git_commit_sha"] = args.git_commit_sha.strip()
+    apply_common_artifact_metadata(artifact, args)
     return ArtifactRegistrationResult(secondary_artifact=artifact)

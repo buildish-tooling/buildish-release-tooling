@@ -22,6 +22,7 @@ from typing import Any, cast
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     _RemoteHttpClient,
+    _normalized_base_url,
     _parse_nexus_index,
 )
 
@@ -73,6 +74,12 @@ class _FakePoolManager:
 
 class MavenRepositoryRegistrationUnitTest(unittest.TestCase):
     """Verify Nexus-style listing parsing used by the maven-repository kind."""
+
+    def test_normalized_base_url_defaults_to_canonical_nexus_staging_location(self) -> None:
+        self.assertEqual(
+            "https://repository.apache.org/content/repositories/orgapachebeam-1427/",
+            _normalized_base_url(None, staging_repository_id="orgapachebeam-1427"),
+        )
 
     def test_parse_nexus_index_recognizes_directories_and_files(self) -> None:
         base_url = "https://repository.apache.org/content/repositories/orgapachebeam-1427/"

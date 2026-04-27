@@ -584,25 +584,37 @@ This keeps the main signed manifest authoritative without forcing it to inline t
 
 The current design needs an explicit contract for how RC preparation workflows tell release-tooling about staged secondary artifacts.
 
+That contract is now implemented in the `release` CLI through one public `record-artifact` command.
+
+The current built-in registration kinds are:
+
+- `generic-file`
+- `maven-repository`
+- `python-distribution`
+- `oci-image`
+- `npm-package`
+
+The remaining work described elsewhere in this document is verifier-side `verify-rc` support for these kinds and future extensions such as `generic-file-with-openpgp`.
+
 This does not have to be one command per ecosystem, but there must be a typed handoff mechanism.
 
-Recommended first design:
+Current design:
 
 - keep `finalize-rc-vote-materials --secondary-artifact-manifests ...`
-- add one public `record-artifact` command that emits typed JSON manifest fragments
+- use one public `record-artifact` command that emits typed JSON manifest fragments
 - require common options such as `--kind`, `--artifact-id`, and optional `--role`
 - let the selected `--kind` handler validate the kind-specific options and produce the typed output
 - hard-fail on unknown, missing, or invalid kind-specific options
 - for large or mutable collections, have `record-artifact` also emit a detached inventory snapshot whose digest is recorded in the signed main manifest
 
-Recommended implementation shape:
+Current implementation shape:
 
 - keep the public CLI surface small and stable
 - implement the command behind a registry of typed kind handlers
 - keep each handler responsible only for one kind's validation and fragment generation
 - keep the merge path in `finalize-rc-vote-materials` generic over fragment files rather than hard-coding per-kind behavior there
 
-Suggested package shape:
+Current registration package shape:
 
 ```text
 release/
@@ -615,21 +627,22 @@ release/
     kinds/
       __init__.py
       generic_file.py
-      generic_file_openpgp.py
       python_distribution.py
       maven_repository.py
       oci_image.py
       npm_package.py
 ```
 
-Suggested responsibility split:
+Future verifier-oriented extensions such as `generic_file_openpgp.py` still fit this registry pattern cleanly.
+
+Current responsibility split:
 
 - `commands/artifact_registration.py`: CLI entrypoint and workflow-facing output handling
 - `artifact_registration/models.py`: common request/result models and deterministic fragment-writing helpers
 - `artifact_registration/registry.py`: `kind` to handler dispatch
 - `artifact_registration/kinds/*.py`: per-kind validation, payload construction, and optional inventory emission
 
-Recommended workflow handoff model:
+Current workflow handoff model:
 
 - each producer job should run `record-artifact` after staging its secondary artifact
 - each producer job should write a small artifact-registration bundle to disk
@@ -639,51 +652,137 @@ Recommended workflow handoff model:
 - the final `finalize-rc-vote-materials` job should download all artifact-registration bundles and pass their manifest fragment paths via `--secondary-artifact-manifests ...`
 - use GitHub step or job outputs only for small scalar coordination data such as artifact bundle names, counts, or boolean presence flags, not for the manifest fragments themselves
 
-Example producer job:
+Example GitHub workflow steps for all currently implemented kinds:
+
+These examples are intentionally in one place. A real project would usually use only the subset that matches its release shape.
+
+The `generic-file`, `python-distribution`, and `npm-package` examples assume the artifact bytes already exist locally. The `maven-repository` example assumes the Nexus staging repository already exists. The `oci-image` example assumes the image has already been pushed and can be inspected remotely.
+
+These steps can live in one producer job or be split across several producer jobs. The handoff pattern into finalization stays the same either way.
+
+TODO: add a `--prepare-rc-manifest <path>` input here so producer steps that already have recorded RC state can default source-linked fields such as `--git-commit-sha` without guessing from local `HEAD`.
 
 ```yaml
-jobs:
-  record-bootstrap-asset:
-    runs-on: ubuntu-latest
-    needs:
-      - prepare-rc
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
+steps:
+  - id: record_bootstrap_zip
+    name: Record bootstrap asset (generic-file)
+    env:
+      RC_TAG: ${{ needs.prepare-rc.outputs.rc_tag }}
+      SOURCE_SHA: ${{ needs.prepare-rc.outputs.resolved_source_ref }}
+    run: |
+      buildish-release-tooling record-artifact \
+        --component-config buildish-release-tooling/release-config.yaml \
+        --kind generic-file \
+        --artifact-id bootstrap-zip \
+        --role bootstrap-convenience-archive \
+        --file dist/buildish-example-bootstrap.zip \
+        --uri "https://github.com/apache/buildish-example/releases/download/${RC_TAG}/buildish-example-bootstrap.zip" \
+        --sha512-uri "https://github.com/apache/buildish-example/releases/download/${RC_TAG}/buildish-example-bootstrap.zip.sha512" \
+        --git-commit-sha "${SOURCE_SHA}"
 
-      - name: Build bootstrap asset
-        env:
-          RC_TAG: ${{ needs.prepare-rc.outputs.rc_tag }}
-          SOURCE_SHA: ${{ needs.prepare-rc.outputs.resolved_source_ref }}
-        run: ./build-bootstrap.sh
+  - name: Upload bootstrap registration bundle
+    uses: actions/upload-artifact@v4
+    with:
+      name: secondary-artifact-bootstrap-zip
+      path: ${{ steps.record_bootstrap_zip.outputs.artifact_bundle_dir }}
+      if-no-files-found: error
 
-      - id: record_artifact
-        name: Record bootstrap asset
-        env:
-          RC_TAG: ${{ needs.prepare-rc.outputs.rc_tag }}
-          SOURCE_SHA: ${{ needs.prepare-rc.outputs.resolved_source_ref }}
-        run: |
-          buildish-release-tooling record-artifact \
-            --component-config buildish-release-tooling/release-config.yaml \
-            --kind generic-file \
-            --artifact-id bootstrap-zip \
-            --role bootstrap-convenience-archive \
-            --file dist/buildish-example-bootstrap.zip \
-            --uri "https://github.com/apache/buildish-example/releases/download/${RC_TAG}/buildish-example-bootstrap.zip" \
-            --sha512-uri "https://github.com/apache/buildish-example/releases/download/${RC_TAG}/buildish-example-bootstrap.zip.sha512" \
-            --artifact-origin source-commit \
-            --git-commit-sha "${SOURCE_SHA}"
+  - id: record_maven_staging
+    name: Record Maven staging repository (maven-repository)
+    env:
+      NEXUS_REPOSITORY_ID: ${{ steps.publish_nexus.outputs.staging_repository_id }}
+    run: |
+      buildish-release-tooling record-artifact \
+        --component-config buildish-release-tooling/release-config.yaml \
+        --kind maven-repository \
+        --artifact-id maven-staging-main \
+        --role maven-staging \
+        --staging-repository-id "${NEXUS_REPOSITORY_ID}"
 
-      - name: Upload artifact-registration bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: secondary-artifact-bootstrap-zip
-          path: ${{ steps.record_artifact.outputs.artifact_bundle_dir }}
-          if-no-files-found: error
+  - name: Upload Maven registration bundle
+    uses: actions/upload-artifact@v4
+    with:
+      name: secondary-artifact-maven-staging-main
+      path: ${{ steps.record_maven_staging.outputs.artifact_bundle_dir }}
+      if-no-files-found: error
+
+  - id: record_pypi_wheel
+    name: Record Python wheel (python-distribution)
+    env:
+      VERSION: ${{ needs.prepare-rc.outputs.version }}
+      SOURCE_SHA: ${{ needs.prepare-rc.outputs.resolved_source_ref }}
+    run: |
+      buildish-release-tooling record-artifact \
+        --component-config buildish-release-tooling/release-config.yaml \
+        --kind python-distribution \
+        --artifact-id pypi-wheel \
+        --role wheel \
+        --file "dist/buildish_example-${VERSION}-py3-none-any.whl" \
+        --uri "https://test.pypi.org/packages/buildish_example-${VERSION}-py3-none-any.whl" \
+        --index-url "https://test.pypi.org/simple/" \
+        --package-name buildish-example \
+        --package-version "${VERSION}" \
+        --sha256-uri "https://test.pypi.org/packages/buildish_example-${VERSION}-py3-none-any.whl.sha256" \
+        --attestation-repository "apache/buildish-example" \
+        --git-commit-sha "${SOURCE_SHA}"
+
+  - name: Upload Python registration bundle
+    uses: actions/upload-artifact@v4
+    with:
+      name: secondary-artifact-pypi-wheel
+      path: ${{ steps.record_pypi_wheel.outputs.artifact_bundle_dir }}
+      if-no-files-found: error
+
+  - id: record_oci_image
+    name: Record container image (oci-image)
+    env:
+      RC_TAG: ${{ needs.prepare-rc.outputs.rc_tag }}
+      SOURCE_SHA: ${{ needs.prepare-rc.outputs.resolved_source_ref }}
+    run: |
+      buildish-release-tooling record-artifact \
+        --component-config buildish-release-tooling/release-config.yaml \
+        --kind oci-image \
+        --artifact-id ghcr-main-image \
+        --role container-image \
+        --image-ref "ghcr.io/apache/buildish-example:${RC_TAG}" \
+        --git-commit-sha "${SOURCE_SHA}"
+
+  - name: Upload OCI registration bundle
+    uses: actions/upload-artifact@v4
+    with:
+      name: secondary-artifact-ghcr-main-image
+      path: ${{ steps.record_oci_image.outputs.artifact_bundle_dir }}
+      if-no-files-found: error
+
+  - id: record_npm_package
+    name: Record npm package (npm-package)
+    env:
+      VERSION: ${{ needs.prepare-rc.outputs.version }}
+      SOURCE_SHA: ${{ needs.prepare-rc.outputs.resolved_source_ref }}
+    run: |
+      buildish-release-tooling record-artifact \
+        --component-config buildish-release-tooling/release-config.yaml \
+        --kind npm-package \
+        --artifact-id npm-package-main \
+        --role npm-package \
+        --file "dist/apache-buildish-example-${VERSION}.tgz" \
+        --registry-url "https://registry.npmjs.org/" \
+        --package-name "@apache/buildish-example" \
+        --package-version "${VERSION}" \
+        --attestation-repository "apache/buildish-example" \
+        --git-commit-sha "${SOURCE_SHA}"
+
+  - name: Upload npm registration bundle
+    uses: actions/upload-artifact@v4
+    with:
+      name: secondary-artifact-npm-package-main
+      path: ${{ steps.record_npm_package.outputs.artifact_bundle_dir }}
+      if-no-files-found: error
 ```
 
 Example finalization job:
+
+The `needs` list here is illustrative. In a real workflow, include whichever producer jobs emitted `secondary-artifact-*` bundles.
 
 ```yaml
 jobs:
@@ -691,7 +790,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - prepare-rc
-      - record-bootstrap-asset
+      - record-secondary-artifacts
       - build-source-rc
       - create-rc-tag
       - sync-draft-github-release
@@ -729,7 +828,7 @@ jobs:
 
 This is a better fit than step outputs because the handoff may need to carry multiple JSON files and detached inventories across several jobs before finalization.
 
-The public UX would look like:
+The current public UX is:
 
 - `record-artifact --kind maven-repository ...`
 - `record-artifact --kind python-distribution ...`
@@ -757,11 +856,11 @@ For Nexus specifically, the fragment must carry the staging repository ID and ba
 }
 ```
 
-The same pattern applies to other ecosystems:
+The same pattern applies to the other currently implemented ecosystems:
 
 - OCI: registry, repository, digest, optional platform digests
-- npm: registry URL, package name, version
-- PyPI or TestPyPI: index URL, project name, version, filenames
+- npm: registry URL, package name, version, integrity, and optional provenance repository
+- PyPI or TestPyPI: index URL, project name, version, filenames, and optional attestation repository
 
 For a Nexus staging repository, the `maven-repository` kind handler should also enumerate the staged repository, write an inventory of paths and digests, and have the signed main manifest bind to that inventory digest. `verify-rc` should fetch the inventory, verify that its digest matches the main manifest, and then verify the live repository contents against that fixed snapshot.
 
@@ -1311,6 +1410,8 @@ This keeps verification as a sibling of `release`, not a subdomain inside it. Th
 
 ## Phased Implementation Plan
 
+The typed secondary-artifact registration layer described above is already implemented in the `release` CLI. The phases below now focus on verifier-side `verify-rc` work and follow-on verifier kinds, not on adding the current `record-artifact` kinds.
+
 ### Phase 1. Bootstrap and source verification
 
 - change CLI input to `rc_vote_manifest_url`
@@ -1326,8 +1427,8 @@ This is the minimum useful implementation. It should not be described as secure-
 
 ### Phase 2. Generic secondary file verification
 
-- add typed `generic-file` and `generic-file-with-openpgp`
-- add the public `record-artifact` command with typed per-kind validation
+- consume typed registration fragments already emitted by `record-artifact`
+- add verifier-side `generic-file` and `generic-file-with-openpgp` support
 - support GitHub Release asset mirrors
 - support collection inventories referenced from the main manifest
 
@@ -1343,15 +1444,15 @@ This is probably the highest-value first ecosystem-specific secondary verifier.
 
 ### Phase 4. Python distribution verifier
 
-- implement `python-distribution`
+- implement verifier-side `python-distribution` support
 - support PyPI or TestPyPI file resolution and digest checks
 - support PyPI attestations where present
 - implement local rebuild comparison
 
 ### Phase 5. OCI and npm verifiers
 
-- implement `oci-image`
-- implement `npm-package`
+- implement verifier-side `oci-image` support
+- implement verifier-side `npm-package` support
 - keep local reproducibility advisory first
 
 ### Phase 6. Reproducibility hardening

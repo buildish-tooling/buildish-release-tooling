@@ -21,6 +21,9 @@ from argparse import Namespace
 from pathlib import Path
 from typing import Any
 
+from apache_buildish_release_tooling.release.artifact_registration.common import (
+    apply_common_artifact_metadata,
+)
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationResult,
 )
@@ -87,12 +90,7 @@ def build_generic_file_registration(args: Namespace, bundle_dir: Path) -> Artifa
         },
         "signatures": [],
     }
-    if args.role:
-        artifact["role"] = args.role
     if args.sha512_uri:
         artifact["checksums"]["sha512"]["uri"] = args.sha512_uri.strip()
-    if args.artifact_origin:
-        artifact["artifact_origin"] = args.artifact_origin.strip()
-    if args.git_commit_sha:
-        artifact["git_commit_sha"] = args.git_commit_sha.strip()
+    apply_common_artifact_metadata(artifact, args)
     return ArtifactRegistrationResult(secondary_artifact=artifact)

@@ -31,6 +31,9 @@ from urllib.parse import unquote, urljoin, urlparse
 
 import urllib3
 
+from apache_buildish_release_tooling.release.artifact_registration.common import (
+    apply_common_artifact_metadata,
+)
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationResult,
 )
@@ -40,6 +43,7 @@ from apache_buildish_release_tooling.release.source_artifact import sha512
 
 _SHA512_PATTERN = re.compile(r"^[0-9a-fA-F]{128}$")
 _DEFAULT_INVENTORY_WORKERS = 16
+_DEFAULT_NEXUS_STAGING_BASE_URL_PREFIX = "https://repository.apache.org/content/repositories/"
 
 
 @dataclass(frozen=True)
@@ -160,12 +164,15 @@ class _NexusIndexParser(HTMLParser):
         )
 
 
-def _normalized_base_url(base_url_text: str | None) -> str:
-    if base_url_text is None:
-        raise ValueError("maven-repository requires --base-url")
-    normalized = base_url_text.strip()
-    if not normalized:
-        raise ValueError("maven-repository requires --base-url")
+def _default_nexus_staging_base_url(staging_repository_id: str) -> str:
+    return f"{_DEFAULT_NEXUS_STAGING_BASE_URL_PREFIX}{staging_repository_id}/"
+
+
+def _normalized_base_url(base_url_text: str | None, *, staging_repository_id: str) -> str:
+    if base_url_text is None or not base_url_text.strip():
+        normalized = _default_nexus_staging_base_url(staging_repository_id)
+    else:
+        normalized = base_url_text.strip()
     parsed = urlparse(normalized)
     if parsed.scheme not in {"file", "http", "https"}:
         raise ValueError("maven-repository --base-url must use file://, http://, or https://")
@@ -532,7 +539,10 @@ def build_maven_repository_registration(
     """Build one typed secondary-artifact fragment for the `maven-repository` kind."""
 
     staging_repository_id = _staging_repository_id(getattr(args, "staging_repository_id", None))
-    base_url = _normalized_base_url(getattr(args, "base_url", None))
+    base_url = _normalized_base_url(
+        getattr(args, "base_url", None),
+        staging_repository_id=staging_repository_id,
+    )
     worker_count = _inventory_worker_count(getattr(args, "inventory_workers", None))
     progress_reporter = ProgressReporter.from_mode(getattr(args, "progress", "auto"))
     _validated_repository_root(base_url, staging_repository_id)
@@ -577,8 +587,7 @@ def build_maven_repository_registration(
             "total_size_bytes": total_size_bytes,
         },
     }
-    if args.role:
-        artifact["role"] = args.role
+    apply_common_artifact_metadata(artifact, args)
     progress_reporter.emit(
         f"wrote maven repository inventory: {len(repository_files)} entries, {total_size_bytes} bytes"
     )

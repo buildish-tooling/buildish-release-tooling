@@ -386,11 +386,16 @@ Summaries are intended for:
   `--kind oci-image`, `--kind python-distribution`, and `--kind npm-package`
 - for `generic-file`, computes the SHA512 digest from `--file` when one is supplied, or validates
   an explicit `--sha512` when both are provided
-- for `npm-package`, records the registry URL, package name, version, tarball locator, and
-  integrity material derived from `--file` or validated from `--integrity`, `--sha256`, or
-  `--sha512`
+- when `--git-commit-sha` is supplied and `--artifact-origin` is omitted, records
+  `artifact_origin: source-commit`
+- for `npm-package`, can derive the canonical tarball URI from `--registry-url`,
+  `--package-name`, and `--package-version`, or derive those registry fields from a canonical
+  npm tarball `--uri`; it records integrity material derived from `--file` or validated from
+  `--integrity`, `--sha256`, or `--sha512`
 - for `maven-repository`, recursively snapshots the repository rooted at `--base-url` and writes a
   detached inventory file into the registration bundle
+- for `maven-repository`, defaults `--base-url` to
+  `https://repository.apache.org/content/repositories/<staging-repository-id>/` when omitted
 - for `maven-repository`, defaults remote discovery and digest fetching to 16 workers and allows
   overriding that with `--inventory-workers`
 - writes one registration bundle rooted at

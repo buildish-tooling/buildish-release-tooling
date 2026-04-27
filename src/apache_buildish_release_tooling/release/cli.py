@@ -286,16 +286,16 @@ def _register_artifact_registration_commands(
     record_artifact.add_argument(
         "--filename",
         dest="filename",
-        help="Published artifact filename override when it differs from --file.",
+        help="Published artifact filename override when it differs from --file or cannot be derived from other kind-specific metadata.",
     )
     record_artifact.add_argument(
         "--uri",
-        help="Published or staged artifact URI recorded in the vote-manifest.",
+        help="Published or staged artifact URI recorded in the vote-manifest. Some kinds such as npm-package can derive this when omitted.",
     )
     record_artifact.add_argument(
         "--base-url",
         dest="base_url",
-        help="Repository base URL for collection-style kinds such as maven-repository.",
+        help="Repository base URL for collection-style kinds such as maven-repository. Defaults to the canonical repository.apache.org staging URL for maven-repository when omitted.",
     )
     record_artifact.add_argument(
         "--staging-repository-id",
@@ -341,7 +341,7 @@ def _register_artifact_registration_commands(
     record_artifact.add_argument(
         "--registry-url",
         dest="registry_url",
-        help="Package registry base URL for the npm-package kind.",
+        help="Package registry base URL for the npm-package kind. Used to derive the canonical tarball URI when --uri is omitted.",
     )
     record_artifact.add_argument(
         "--registry",
@@ -388,7 +388,7 @@ def _register_artifact_registration_commands(
     record_artifact.add_argument(
         "--artifact-origin",
         dest="artifact_origin",
-        help="Optional artifact-origin label such as source-commit or release-mirror.",
+        help="Optional artifact-origin label such as source-commit or release-mirror. Defaults to source-commit when --git-commit-sha is provided.",
     )
     record_artifact.add_argument(
         "--git-commit-sha",

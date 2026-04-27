@@ -2148,8 +2148,6 @@ class CommandsIntegrationTest(unittest.TestCase):
                 "https://github.com/apache/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip",
                 "--sha512-uri",
                 "https://github.com/apache/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip.sha512",
-                "--artifact-origin",
-                "source-commit",
                 "--git-commit-sha",
                 "0123456789abcdef0123456789abcdef01234567",
             ],
@@ -2282,8 +2280,6 @@ class CommandsIntegrationTest(unittest.TestCase):
                 f"linux/amd64={amd64_digest}",
                 "--platform-digest",
                 f"linux/arm64={arm64_digest}",
-                "--artifact-origin",
-                "source-commit",
                 "--git-commit-sha",
                 "0123456789abcdef0123456789abcdef01234567",
             ],
@@ -2649,8 +2645,6 @@ class CommandsIntegrationTest(unittest.TestCase):
                 "https://test.pypi.org/packages/example-1.2.3-py3-none-any.whl.sha256",
                 "--attestation-repository",
                 "apache/buildish-example",
-                "--artifact-origin",
-                "source-commit",
                 "--git-commit-sha",
                 "0123456789abcdef0123456789abcdef01234567",
             ],
@@ -2765,7 +2759,7 @@ class CommandsIntegrationTest(unittest.TestCase):
         github_output_path = sandbox_dir / "record-artifact.outputs"
         component_id = "buildish-example"
         artifact_id = "npm-package-main"
-        artifact_file_path = sandbox_dir / "dist" / "buildish-example-1.2.3.tgz"
+        artifact_file_path = sandbox_dir / "dist" / "apache-buildish-example-1.2.3.tgz"
         artifact_file_path.parent.mkdir(parents=True, exist_ok=True)
         artifact_bytes = b"npm package payload\n"
         artifact_file_path.write_bytes(artifact_bytes)
@@ -2791,8 +2785,6 @@ class CommandsIntegrationTest(unittest.TestCase):
                 "npm-package",
                 "--file",
                 str(artifact_file_path),
-                "--uri",
-                "https://registry.npmjs.org/@apache/buildish-example/-/buildish-example-1.2.3.tgz",
                 "--registry-url",
                 "https://registry.npmjs.org/",
                 "--package-name",
@@ -2801,8 +2793,6 @@ class CommandsIntegrationTest(unittest.TestCase):
                 "1.2.3",
                 "--attestation-repository",
                 "apache/buildish-example",
-                "--artifact-origin",
-                "source-commit",
                 "--git-commit-sha",
                 "0123456789abcdef0123456789abcdef01234567",
             ],
@@ -2863,6 +2853,80 @@ class CommandsIntegrationTest(unittest.TestCase):
         self.assertEqual(str(expected_manifest_path), github_outputs["artifact_manifest_path"])
         self.assertEqual(str(expected_bundle_dir), github_outputs["artifact_bundle_dir"])
 
+    def test_record_artifact_npm_package_command_derives_registry_metadata_from_canonical_uri(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        manifest_path = sandbox_dir / "record-artifact.json"
+        component_id = "buildish-example"
+        artifact_id = "npm-package-main"
+        artifact_file_path = sandbox_dir / "dist" / "local-package.tgz"
+        artifact_file_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_bytes = b"npm package payload\n"
+        artifact_file_path.write_bytes(artifact_bytes)
+        expected_sha512 = hashlib.sha512(artifact_bytes).hexdigest()
+        expected_integrity = "sha512-" + base64.b64encode(hashlib.sha512(artifact_bytes).digest()).decode("ascii")
+        self._write_component_config(
+            config_path,
+            component_id=component_id,
+            dev_base_url="https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+            release_base_url="https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+        )
+
+        completed = run_cli(
+            [
+                "record-artifact",
+                "--component-config",
+                str(config_path),
+                "--kind",
+                "npm-package",
+                "--artifact-id",
+                artifact_id,
+                "--file",
+                str(artifact_file_path),
+                "--uri",
+                "https://registry.npmjs.org/@apache/buildish-example/-/buildish-example-1.2.3.tgz",
+                "--git-commit-sha",
+                "0123456789abcdef0123456789abcdef01234567",
+            ],
+            cwd=sandbox_dir,
+            env=cli_env(manifest_path),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        expected_manifest_path = (
+            sandbox_dir
+            / "build"
+            / "release-artifacts"
+            / component_id
+            / "secondary-artifacts"
+            / artifact_id
+            / "artifact-manifest.json"
+        )
+
+        payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            [
+                {
+                    "artifact_id": artifact_id,
+                    "kind": "npm-package",
+                    "filename": "buildish-example-1.2.3.tgz",
+                    "uri": "https://registry.npmjs.org/@apache/buildish-example/-/buildish-example-1.2.3.tgz",
+                    "registry_url": "https://registry.npmjs.org/",
+                    "package_name": "@apache/buildish-example",
+                    "version": "1.2.3",
+                    "integrity": expected_integrity,
+                    "artifact_origin": "source-commit",
+                    "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                    "checksums": {
+                        "sha512": {
+                            "value": expected_sha512,
+                        }
+                    },
+                }
+            ],
+            payload["secondary_artifacts"],
+        )
+
     def test_record_artifact_npm_package_rejects_mismatched_explicit_integrity(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
@@ -2892,12 +2956,6 @@ class CommandsIntegrationTest(unittest.TestCase):
                 str(artifact_file_path),
                 "--uri",
                 "https://registry.npmjs.org/@apache/buildish-example/-/buildish-example-1.2.3.tgz",
-                "--registry-url",
-                "https://registry.npmjs.org/",
-                "--package-name",
-                "@apache/buildish-example",
-                "--package-version",
-                "1.2.3",
                 "--integrity",
                 mismatched_integrity,
             ],
@@ -2944,6 +3002,8 @@ class CommandsIntegrationTest(unittest.TestCase):
                 base_url,
                 "--staging-repository-id",
                 staging_repository_id,
+                "--git-commit-sha",
+                "0123456789abcdef0123456789abcdef01234567",
                 "--inventory-workers",
                 "1",
             ],
@@ -2981,6 +3041,8 @@ class CommandsIntegrationTest(unittest.TestCase):
                     "role": "maven-staging",
                     "staging_repository_id": staging_repository_id,
                     "base_url": base_url,
+                    "artifact_origin": "source-commit",
+                    "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
                     "inventory": {
                         "filename": f"{artifact_id}-inventory.json",
                         "sha512": expected_inventory_sha512,
