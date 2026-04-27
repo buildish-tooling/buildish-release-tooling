@@ -18,6 +18,10 @@ from apache_buildish_release_tooling.release.commands.branching import (
     run_create_release_branch,
     run_verify_source_ref_checks,
 )
+from apache_buildish_release_tooling.release.commands.atr import (
+    run_publish_atr_candidate,
+    run_report_atr_checks,
+)
 from apache_buildish_release_tooling.release.commands.materialization import (
     run_create_rc_materialization_tag,
     run_materialize_rc_git_content,
@@ -58,11 +62,13 @@ __all__ = [
     "run_finalize_draft_github_release",
     "run_finalize_rc_vote_materials",
     "run_materialize_rc_git_content",
+    "run_publish_atr_candidate",
     "run_prepare_rc",
     "run_prune_older_line_releases",
     "run_publish_dockerhub_moving_tags",
     "run_publish_source_release_svn",
     "run_release_version",
+    "run_report_atr_checks",
     "run_sync_draft_github_release",
     "run_update_moving_image_aliases",
     "run_update_moving_tags",

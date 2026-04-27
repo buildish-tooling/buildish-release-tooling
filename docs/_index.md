@@ -180,6 +180,17 @@ verify_rc_instructions: |
   Verify the RC on trusted hardware.
 prepare_rc_runs_tests: false
 release_branch_ci_required: true
+atr:
+  enabled: true
+  base_url: https://release-test.apache.org
+  committee: buildish
+  product_line: buildish-example
+  source_artifact_paths:
+    - "**/*-src.tar.gz"
+  binary_artifact_paths:
+    - "**/*.zip"
+  strict_checking: false
+  license_check_mode: both
 ```
 
 Field meanings:
@@ -205,6 +216,26 @@ Field meanings:
 - `verify_rc_instructions`: authoritative RC verification text for humans
 - `prepare_rc_runs_tests`: whether `Prepare RC` runs tests itself
 - `release_branch_ci_required`: whether the component requires CI on `release/*` branches
+- `atr`: optional ATR integration policy block
+  - `enabled`: whether ATR publication and ATR check-reporting commands are enabled for this component
+  - `base_url`: ATR base URL, usually `https://release-test.apache.org`
+  - `committee`: ATR committee key used for release ownership and policy context
+  - `product_line`: current buildish-to-ATR project key used by the official `atr` client wrapper
+  - `source_artifact_paths`: planned ATR source-classification patterns
+  - `binary_artifact_paths`: planned ATR binary-classification patterns
+  - `strict_checking`: whether ATR hard failures should block later release progression when an ATR
+    reporting step is used as a gate
+  - `license_check_mode`: ATR source license-check mode, one of `both`, `lightweight`, or `rat`
+
+ATR credentials are intentionally not stored in `release-config.yaml`.
+
+For the current `publish-atr-candidate` and `report-atr-checks` commands:
+
+- install the official `atr` client first
+- provide `BUILDISH_ATR_ASF_UID` and `BUILDISH_ATR_PAT` in the environment
+- or use the shorter aliases `ATR_ASF_UID` and `ATR_PAT`
+
+The PAT is user-specific and should come from the ATR Tokens page, not from repository config.
 
 ## Output contract
 
@@ -277,6 +308,8 @@ Summaries are intended for:
 - `create-rc-materialization-tag [--rc-tag <tag>] [--target-commit <sha>] <version> [source_sha]`
 - `sync-draft-github-release [--rc-tag <tag>] <version> [source_sha]`
 - `finalize-rc-vote-materials [--secondary-artifact-manifest <path>]... [--rc-tag <tag>] <version> [source_sha]`
+- `publish-atr-candidate [--wait-for-checks] [--check-timeout-seconds <seconds>] [--check-interval-ms <ms>] [--rc-tag <tag>] <version> [source_sha]`
+- `report-atr-checks [--revision <number>] [--verbose-atr-output] [--rc-tag <tag>] <version> [source_sha]`
 
 ### Final release materialization
 
@@ -357,6 +390,22 @@ Summaries are intended for:
 - mirrors the manifest set to the draft GitHub Release
 - emits the project RC vote email template alongside the machine-readable manifest
 - emits a later-use IPMC vote-request template for podlings, with human-fill thread placeholders
+
+### `publish-atr-candidate`
+
+- requires ATR integration to be enabled in the component config
+- wraps the official `atr` client instead of speaking the unstable ATR API directly
+- downloads the staged RC source-release files and the staged authoritative RC vote-manifest files
+- creates or reuses the ATR draft release for the configured product line and version
+- uploads the candidate files into ATR
+- can optionally wait for ATR's initial checks and include a status snapshot in the summary and manifest
+
+### `report-atr-checks`
+
+- fetches ATR check status for the latest ATR revision by default, or for one exact `--revision`
+- records ATR counts and status output in the emitted summary and manifest
+- stays advisory when `atr.strict_checking` is `false`
+- fails the command when ATR reports hard failures or exceptions and `atr.strict_checking` is `true`
 
 ### `release-version`
 

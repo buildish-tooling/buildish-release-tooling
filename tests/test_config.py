@@ -48,6 +48,12 @@ class LoadComponentConfigTest(unittest.TestCase):
                     "  verify",
                     "prepare_rc_runs_tests: false",
                     "release_branch_ci_required: true",
+                    "atr:",
+                    "  enabled: true",
+                    "  base_url: https://release-test.apache.org",
+                    "  committee: buildish",
+                    "  product_line: buildish-example",
+                    "  strict_checking: false",
                 ]
             ),
             encoding="utf-8",
@@ -59,10 +65,44 @@ class LoadComponentConfigTest(unittest.TestCase):
             "https://buildish.apache.org/buildish-example/release-verification/",
             loaded.release_verification_guide_url,
         )
+        self.assertIsNotNone(loaded.atr)
+        self.assertEqual("buildish-example", loaded.atr.product_line if loaded.atr is not None else None)
 
     def test_load_component_config_requires_explicit_yaml_path(self) -> None:
         with self.assertRaises(TypeError):
             load_component_config(None)  # type: ignore[arg-type]
+
+    def test_load_component_config_rejects_incomplete_enabled_atr_config(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        config_path.write_text(
+            "\n".join(
+                [
+                    "component_id: buildish-example",
+                    "source_artifact_prefix: apache-buildish-example",
+                    "asf_dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+                    "asf_dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+                    "moving_tags_enabled: true",
+                    "latest_tag_enabled: false",
+                    "secondary_targets:",
+                    "  - github-action",
+                    "final_tag_mode: rc-source-commit",
+                    "vote_release_name: Apache Buildish Example",
+                    "release_verification_guide_url: https://buildish.apache.org/buildish-example/release-verification/",
+                    "verify_rc_instructions: verify",
+                    "prepare_rc_runs_tests: false",
+                    "release_branch_ci_required: true",
+                    "atr:",
+                    "  enabled: true",
+                    "  base_url: https://release-test.apache.org",
+                    "  committee: buildish",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ValueError, "product_line"):
+            load_component_config(str(config_path))
 
     def test_load_checked_in_component_configs(self) -> None:
         expected_targets = {

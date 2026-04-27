@@ -22,6 +22,52 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+class AtrConfig(BaseModel):
+    """Validated optional ATR integration policy and release coordinates."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    base_url: str | None = None
+    committee: str | None = None
+    product_line: str | None = None
+    source_artifact_paths: list[str] = Field(default_factory=list)
+    binary_artifact_paths: list[str] = Field(default_factory=list)
+    strict_checking: bool = False
+    license_check_mode: str = "both"
+
+    @field_validator("source_artifact_paths", "binary_artifact_paths", mode="before")
+    @classmethod
+    def _normalize_path_patterns(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [item for item in value.splitlines() if item.strip()]
+        if isinstance(value, list):
+            return [str(item) for item in value]
+        raise TypeError("ATR path patterns must be a newline-separated string or a list")
+
+    @field_validator("license_check_mode")
+    @classmethod
+    def _validate_license_check_mode(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"both", "lightweight", "rat"}:
+            raise ValueError("ATR license_check_mode must be one of: both, lightweight, rat")
+        return normalized
+
+    @model_validator(mode="after")
+    def _validate_enabled_config(self) -> AtrConfig:
+        if not self.enabled:
+            return self
+        if not self.base_url:
+            raise ValueError("ATR config must define base_url when enabled")
+        if not self.committee:
+            raise ValueError("ATR config must define committee when enabled")
+        if not self.product_line:
+            raise ValueError("ATR config must define product_line when enabled")
+        return self
+
+
 class ComponentConfig(BaseModel):
     """Validated component policy and release-target configuration."""
 
@@ -42,6 +88,7 @@ class ComponentConfig(BaseModel):
     verify_rc_instructions: str
     prepare_rc_runs_tests: bool = False
     release_branch_ci_required: bool = False
+    atr: AtrConfig | None = None
 
     @field_validator("secondary_targets", mode="before")
     @classmethod

@@ -25,6 +25,7 @@ dist-release-legal/**
 **/uv.lock
 **/.mypy_cache/**
 **/.ruff_cache/**
+**/.pytest_cache/**
 **/*.egg-info/**
 tests/fixtures/second-consumer-workspace/worktrees/rocket-cache-alt/site/assets/logos/mark.txt
 

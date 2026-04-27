@@ -237,6 +237,61 @@ def _register_publication_commands(
     subparsers: Subparsers,
     common: argparse.ArgumentParser,
 ) -> None:
+    publish_atr_candidate = _add_command_parser(
+        subparsers,
+        common,
+        "publish-atr-candidate",
+        help_text="Publish the staged RC source bundle and vote-manifest files to ATR.",
+        handler=commands.run_publish_atr_candidate,
+    )
+    publish_atr_candidate.add_argument(
+        "--wait-for-checks",
+        action="store_true",
+        help="Wait for ATR's initial automated checks and include a summary snapshot.",
+    )
+    publish_atr_candidate.add_argument(
+        "--check-timeout-seconds",
+        dest="check_timeout_seconds",
+        type=int,
+        default=60,
+        help="Maximum time to wait for ATR checks when --wait-for-checks is enabled.",
+    )
+    publish_atr_candidate.add_argument(
+        "--check-interval-ms",
+        dest="check_interval_ms",
+        type=int,
+        default=500,
+        help="Polling interval in milliseconds when waiting for ATR checks.",
+    )
+    _add_rc_tag_argument(
+        publish_atr_candidate,
+        "Exact RC tag whose staged candidate should be mirrored into ATR.",
+    )
+    _add_version_and_optional_source_sha_arguments(publish_atr_candidate)
+
+    report_atr_checks = _add_command_parser(
+        subparsers,
+        common,
+        "report-atr-checks",
+        help_text="Fetch and summarize ATR checks for one candidate release.",
+        handler=commands.run_report_atr_checks,
+    )
+    report_atr_checks.add_argument(
+        "--revision",
+        dest="revision",
+        help="Exact ATR revision number to inspect. Defaults to the latest ATR revision.",
+    )
+    report_atr_checks.add_argument(
+        "--verbose-atr-output",
+        action="store_true",
+        help="Include ATR's verbose failure and warning details in the reported status snapshot.",
+    )
+    _add_rc_tag_argument(
+        report_atr_checks,
+        "Exact RC tag whose ATR candidate status should be reported.",
+    )
+    _add_version_and_optional_source_sha_arguments(report_atr_checks)
+
     publish_source_release_svn = _add_command_parser(
         subparsers,
         common,
