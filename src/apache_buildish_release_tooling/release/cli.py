@@ -329,9 +329,19 @@ def _register_artifact_registration_commands(
         help="Optional SHA256 sidecar or registry checksum URI for the published artifact.",
     )
     record_artifact.add_argument(
+        "--integrity",
+        dest="integrity",
+        help="Subresource Integrity value for kinds such as npm-package, for example sha512-<base64>.",
+    )
+    record_artifact.add_argument(
         "--index-url",
         dest="index_url",
         help="Python package index URL for the python-distribution kind.",
+    )
+    record_artifact.add_argument(
+        "--registry-url",
+        dest="registry_url",
+        help="Package registry base URL for the npm-package kind.",
     )
     record_artifact.add_argument(
         "--registry",
@@ -363,7 +373,7 @@ def _register_artifact_registration_commands(
         "--project-name",
         "--package-name",
         dest="project_name",
-        help="Published project or package name for typed package-distribution kinds.",
+        help="Published project or package name for typed package-distribution kinds such as python-distribution or npm-package.",
     )
     record_artifact.add_argument(
         "--package-version",

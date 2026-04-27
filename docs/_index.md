@@ -382,9 +382,13 @@ Summaries are intended for:
 ### `record-artifact`
 
 - writes one typed secondary-artifact manifest fragment for later RC finalization
-- currently supports `--kind generic-file` and `--kind maven-repository`
+- currently supports `--kind generic-file`, `--kind maven-repository`,
+  `--kind oci-image`, `--kind python-distribution`, and `--kind npm-package`
 - for `generic-file`, computes the SHA512 digest from `--file` when one is supplied, or validates
   an explicit `--sha512` when both are provided
+- for `npm-package`, records the registry URL, package name, version, tarball locator, and
+  integrity material derived from `--file` or validated from `--integrity`, `--sha256`, or
+  `--sha512`
 - for `maven-repository`, recursively snapshots the repository rooted at `--base-url` and writes a
   detached inventory file into the registration bundle
 - for `maven-repository`, defaults remote discovery and digest fetching to 16 workers and allows

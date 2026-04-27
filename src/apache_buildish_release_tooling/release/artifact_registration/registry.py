@@ -26,6 +26,9 @@ from apache_buildish_release_tooling.release.artifact_registration.kinds.generic
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     build_maven_repository_registration,
 )
+from apache_buildish_release_tooling.release.artifact_registration.kinds.npm_package import (
+    build_npm_package_registration,
+)
 from apache_buildish_release_tooling.release.artifact_registration.kinds.oci_image import (
     build_oci_image_registration,
 )
@@ -41,6 +44,7 @@ ArtifactRegistrationHandler = Callable[[Namespace, Path], ArtifactRegistrationRe
 _HANDLERS: dict[str, ArtifactRegistrationHandler] = {
     "generic-file": build_generic_file_registration,
     "maven-repository": build_maven_repository_registration,
+    "npm-package": build_npm_package_registration,
     "oci-image": build_oci_image_registration,
     "python-distribution": build_python_distribution_registration,
 }
