@@ -543,6 +543,11 @@ def _report_markdown(
                         f"- Registry tarball matched: `{registry_resolution['tarball_url_matches_manifest']}`",
                     ]
                 )
+            else:
+                raise ValueError(
+                    "unsupported secondary artifact kind for markdown reporting: "
+                    f"{verification['artifact_id']} ({kind})"
+                )
             lines.append("")
     lines.extend(
         [
