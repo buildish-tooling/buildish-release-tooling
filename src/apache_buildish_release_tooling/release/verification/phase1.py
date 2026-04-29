@@ -17,36 +17,25 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 from apache_buildish_release_tooling.release.git_repo import GitRepository
 from apache_buildish_release_tooling.release.models import ComponentConfig
 from apache_buildish_release_tooling.release.process import run_logged_command
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import create_from_git, sha512
-
-_GPG_ALGORITHM_NAMES = {
-    "1": "rsa",
-    "16": "elgamal",
-    "17": "dsa",
-    "18": "ecdh",
-    "19": "ecdsa",
-    "22": "ed25519",
-}
-
-
-@dataclass(frozen=True)
-class SignatureVerification:
-    """Structured details about one detached-signature verification."""
-
-    signer_fingerprint: str
-    signer_user_id: str | None
-    trust_label: str | None
-    key_algorithm: str | None
-    key_size_bits: int | None
+from apache_buildish_release_tooling.release.verification.common import (
+    GpgVerifier,
+    SignatureVerification,
+    signature_payload,
+    validate_fetch_uri,
+    verify_checksum_sidecar,
+)
+from apache_buildish_release_tooling.release.verification.secondary import (
+    verify_secondary_artifacts,
+)
 
 
 @dataclass(frozen=True)
@@ -73,15 +62,15 @@ def verify_rc_phase1(
     allow_non_production_release_targets: bool,
     work_dir: Path,
 ) -> VerifyRcPhase1Result:
-    """Verify the signed RC vote manifest plus the staged source artifact."""
+    """Verify the signed RC vote manifest, source artifact, and supported secondary artifacts."""
 
     work_dir.mkdir(parents=True, exist_ok=True)
-    _validate_fetch_uri(
+    validate_fetch_uri(
         manifest_url,
         allow_non_production_release_targets=allow_non_production_release_targets,
         purpose="RC vote manifest URL",
     )
-    _validate_fetch_uri(
+    validate_fetch_uri(
         keys_url,
         allow_non_production_release_targets=allow_non_production_release_targets,
         purpose="KEYS URL",
@@ -96,12 +85,13 @@ def verify_rc_phase1(
     keys_path = work_dir / "KEYS"
     keys_path.write_bytes(read_uri_bytes(keys_url))
 
-    manifest_sha512 = _verify_sha512_sidecar(
+    manifest_sha512 = verify_checksum_sidecar(
         manifest_path,
         manifest_sha512_path,
+        algorithm="sha512",
         purpose="RC vote manifest",
     )
-    verifier = _GpgVerifier(work_dir / "gnupg", keys_path)
+    verifier = GpgVerifier(work_dir / "gnupg", keys_path)
     manifest_signature = verifier.verify_detached(
         target_path=manifest_path,
         signature_path=manifest_signature_path,
@@ -121,7 +111,7 @@ def verify_rc_phase1(
         source=manifest_url,
     )
 
-    _validate_fetch_uri(
+    validate_fetch_uri(
         source_repository_url,
         allow_non_production_release_targets=allow_non_production_release_targets,
         purpose="Source repository URL",
@@ -144,7 +134,7 @@ def verify_rc_phase1(
             "manifest source artifact git_commit_sha does not match source_commit_sha"
         )
     source_artifact_url = _required_non_empty_string(source_artifact, "uri", source=manifest_url)
-    _validate_fetch_uri(
+    validate_fetch_uri(
         source_artifact_url,
         allow_non_production_release_targets=allow_non_production_release_targets,
         purpose="Source artifact URL",
@@ -163,22 +153,23 @@ def verify_rc_phase1(
     checksum_uri = _checksum_uri_from_source_artifact(source_artifact)
     source_sha512_sidecar_verified = False
     if checksum_uri is not None:
-        _validate_fetch_uri(
+        validate_fetch_uri(
             checksum_uri,
             allow_non_production_release_targets=allow_non_production_release_targets,
             purpose="Source artifact checksum sidecar URL",
         )
         source_sha512_sidecar_path = work_dir / f"{source_artifact_filename}.sha512"
         source_sha512_sidecar_path.write_bytes(read_uri_bytes(checksum_uri))
-        _verify_sha512_sidecar(
+        verify_checksum_sidecar(
             source_artifact_path,
             source_sha512_sidecar_path,
+            algorithm="sha512",
             purpose="source artifact",
         )
         source_sha512_sidecar_verified = True
 
     source_signature_uri = _source_signature_uri(source_artifact, source=manifest_url)
-    _validate_fetch_uri(
+    validate_fetch_uri(
         source_signature_uri,
         allow_non_production_release_targets=allow_non_production_release_targets,
         purpose="Source artifact signature URL",
@@ -204,10 +195,17 @@ def verify_rc_phase1(
         raise ValueError(
             "staged source artifact does not match the declared source_commit_sha"
         )
+    secondary_artifact_verifications = verify_secondary_artifacts(
+        manifest_payload,
+        manifest_url=manifest_url,
+        work_dir=work_dir / "secondary-artifacts",
+        verifier=verifier,
+        allow_non_production_release_targets=allow_non_production_release_targets,
+    )
 
     report_payload: dict[str, Any] = {
         "schema_version": "1",
-        "report_type": "verify-rc-phase1a",
+        "report_type": "verify-rc",
         "component_id": component_id,
         "version": version,
         "rc_tag": rc_tag,
@@ -221,7 +219,7 @@ def verify_rc_phase1(
             "sha512": manifest_sha512,
             "keys_url_matches_manifest": True,
             "keys_url_matches_component_config": keys_url_matches_component_config,
-            "signature": _signature_payload(manifest_signature),
+            "signature": signature_payload(manifest_signature),
             "rc_tag_target_commit": rc_tag_target_commit,
             "rc_tag_matches_source_commit_sha": True,
         },
@@ -230,10 +228,11 @@ def verify_rc_phase1(
             "uri": source_artifact_url,
             "sha512": actual_source_sha512,
             "sha512_sidecar_verified": source_sha512_sidecar_verified,
-            "signature": _signature_payload(source_artifact_signature),
+            "signature": signature_payload(source_artifact_signature),
             "rebuilt_sha512": rebuilt_source_sha512,
             "matches_source_commit_sha": True,
         },
+        "secondary_artifact_verifications": secondary_artifact_verifications,
     }
 
     report_markdown = _report_markdown(
@@ -249,6 +248,7 @@ def verify_rc_phase1(
         source_artifact_url=source_artifact_url,
         source_artifact_signature=source_artifact_signature,
         actual_source_sha512=actual_source_sha512,
+        secondary_artifact_verifications=secondary_artifact_verifications,
     )
     return VerifyRcPhase1Result(
         component_id=component_id,
@@ -261,79 +261,6 @@ def verify_rc_phase1(
         work_dir=work_dir,
         report_payload=report_payload,
         report_markdown=report_markdown,
-    )
-
-
-class _GpgVerifier:
-    """Small helper for detached-signature verification against one imported KEYS file."""
-
-    def __init__(self, home_dir: Path, keys_path: Path) -> None:
-        self.home_dir = home_dir
-        self.home_dir.mkdir(parents=True, exist_ok=True)
-        self.home_dir.chmod(0o700)
-        run_logged_command(
-            ["gpg", "--batch", "--quiet", "--import", str(keys_path)],
-            env={"GNUPGHOME": str(self.home_dir)},
-            capture_output=False,
-        )
-
-    def verify_detached(self, *, target_path: Path, signature_path: Path) -> SignatureVerification:
-        completed = run_logged_command(
-            [
-                "gpg",
-                "--batch",
-                "--status-fd",
-                "1",
-                "--verify",
-                str(signature_path),
-                str(target_path),
-            ],
-            env={"GNUPGHOME": str(self.home_dir)},
-        )
-        return _signature_verification_from_status(
-            completed.stdout,
-            home_dir=self.home_dir,
-        )
-
-
-def _signature_verification_from_status(status_output: str, *, home_dir: Path) -> SignatureVerification:
-    fingerprint: str | None = None
-    user_id: str | None = None
-    trust_label: str | None = None
-    for line in status_output.splitlines():
-        if line.startswith("[GNUPG:] VALIDSIG "):
-            fields = line.split()
-            if len(fields) > 2:
-                fingerprint = fields[2]
-        elif line.startswith("[GNUPG:] GOODSIG "):
-            fields = line.split(maxsplit=3)
-            if len(fields) > 3:
-                user_id = fields[3]
-        elif line.startswith("[GNUPG:] TRUST_"):
-            trust_label = line.removeprefix("[GNUPG:] ").strip()
-    if fingerprint is None:
-        raise ValueError("gpg verification did not report a signer fingerprint")
-
-    completed = run_logged_command(
-        ["gpg", "--batch", "--with-colons", "--list-keys", fingerprint],
-        env={"GNUPGHOME": str(home_dir)},
-    )
-    key_algorithm: str | None = None
-    key_size_bits: int | None = None
-    for line in completed.stdout.splitlines():
-        parts = line.split(":")
-        if parts and parts[0] == "pub":
-            if len(parts) > 3 and parts[3]:
-                key_algorithm = _GPG_ALGORITHM_NAMES.get(parts[3], parts[3])
-            if len(parts) > 2 and parts[2].isdigit():
-                key_size_bits = int(parts[2])
-            break
-    return SignatureVerification(
-        signer_fingerprint=fingerprint,
-        signer_user_id=user_id,
-        trust_label=trust_label,
-        key_algorithm=key_algorithm,
-        key_size_bits=key_size_bits,
     )
 
 
@@ -479,41 +406,6 @@ def _clone_source_repository(*, source_repository_url: str, work_dir: Path) -> P
     return repository_path
 
 
-def _verify_sha512_sidecar(target_path: Path, sidecar_path: Path, *, purpose: str) -> str:
-    actual_sha512 = sha512(target_path)
-    sidecar_text = sidecar_path.read_text(encoding="utf-8")
-    fields = sidecar_text.strip().split()
-    if not fields or not fields[0]:
-        raise ValueError(f"invalid .sha512 sidecar contents for {purpose}: {sidecar_path}")
-    declared_sha512 = fields[0].strip().lower()
-    if declared_sha512 != actual_sha512:
-        raise ValueError(
-            f"{purpose} .sha512 sidecar does not match the downloaded bytes: "
-            f"{declared_sha512} != {actual_sha512}"
-        )
-    return actual_sha512
-
-
-def _validate_fetch_uri(
-    uri: str,
-    *,
-    allow_non_production_release_targets: bool,
-    purpose: str,
-) -> None:
-    parsed = urlparse(uri)
-    if parsed.scheme == "https":
-        return
-    if allow_non_production_release_targets and parsed.scheme in {"file", "http"}:
-        return
-    raise ValueError(
-        f"{purpose} must use https; pass --allow-non-production-release-targets only for local file:// or http:// test inputs: {uri}"
-    )
-
-
-def _signature_payload(signature: SignatureVerification) -> dict[str, Any]:
-    return asdict(signature)
-
-
 def _report_markdown(
     *,
     component_id: str,
@@ -528,41 +420,80 @@ def _report_markdown(
     source_artifact_url: str,
     source_artifact_signature: SignatureVerification,
     actual_source_sha512: str,
+    secondary_artifact_verifications: list[dict[str, Any]],
 ) -> str:
-    return "\n".join(
+    lines = [
+        "## Verify RC",
+        "",
+        "### Technical details",
+        "",
+        "| Field | Value |",
+        "| --- | --- |",
+        f"| Component | `{component_id}` |",
+        f"| Version | `{version}` |",
+        f"| RC tag | `{rc_tag}` |",
+        f"| Source commit | `{source_commit_sha}` |",
+        f"| Source repository URL | `{source_repository_url}` |",
+        f"| Manifest URL | `{manifest_url}` |",
+        f"| KEYS URL | `{keys_url}` |",
+        "",
+        "### Manifest verification",
+        "",
+        f"- Signature verified: `{manifest_signature.signer_fingerprint}`",
+        f"- RC tag resolves to the declared source commit: `{rc_tag}`",
+        "",
+        "### Source artifact verification",
+        "",
+        f"- Source artifact: `{source_artifact_filename}`",
+        f"- Source artifact URL: `{source_artifact_url}`",
+        f"- SHA512: `{actual_source_sha512}`",
+        f"- Signature verified: `{source_artifact_signature.signer_fingerprint}`",
+        f"- Source artifact matches the declared source commit: `{source_commit_sha}`",
+        "",
+        "### Secondary artifact verification",
+        "",
+    ]
+    if not secondary_artifact_verifications:
+        lines.extend(
+            [
+                "- No secondary artifacts declared.",
+                "",
+            ]
+        )
+    else:
+        for verification in secondary_artifact_verifications:
+            checksum_payload = verification["checksum"]
+            lines.extend(
+                [
+                    f"#### `{verification['artifact_id']}`",
+                    "",
+                    f"- Kind: `{verification['kind']}`",
+                    f"- File: `{verification['filename']}`",
+                    f"- URL: `{verification['uri']}`",
+                    f"- Checksum verified: `{checksum_payload['algorithm']}:{checksum_payload['value']}`",
+                    f"- Checksum sidecar verified: `{checksum_payload['sidecar_verified']}`",
+                ]
+            )
+            signature_verifications = verification.get("signatures", [])
+            if signature_verifications:
+                for signature_verification in signature_verifications:
+                    lines.append(
+                        f"- Signature verified: `{signature_verification['signer_fingerprint']}`"
+                    )
+            inventory_payload = verification.get("inventory")
+            if isinstance(inventory_payload, dict):
+                lines.append(
+                    f"- Inventory verified: `{inventory_payload['filename']}`"
+                )
+            lines.append("")
+    lines.extend(
         [
-            "## Verify RC",
-            "",
-            "### Technical details",
-            "",
-            "| Field | Value |",
-            "| --- | --- |",
-            f"| Component | `{component_id}` |",
-            f"| Version | `{version}` |",
-            f"| RC tag | `{rc_tag}` |",
-            f"| Source commit | `{source_commit_sha}` |",
-            f"| Source repository URL | `{source_repository_url}` |",
-            f"| Manifest URL | `{manifest_url}` |",
-            f"| KEYS URL | `{keys_url}` |",
-            "",
-            "### Manifest verification",
-            "",
-            f"- Signature verified: `{manifest_signature.signer_fingerprint}`",
-            f"- RC tag resolves to the declared source commit: `{rc_tag}`",
-            "",
-            "### Source artifact verification",
-            "",
-            f"- Source artifact: `{source_artifact_filename}`",
-            f"- Source artifact URL: `{source_artifact_url}`",
-            f"- SHA512: `{actual_source_sha512}`",
-            f"- Signature verified: `{source_artifact_signature.signer_fingerprint}`",
-            f"- Source artifact matches the declared source commit: `{source_commit_sha}`",
-            "",
             "### Outcome",
             "",
             "```text",
-            "Verified manifest authenticity, explicit KEYS binding, rc_tag-to-source_commit binding, and the staged source artifact bytes.",
+            "Verified manifest authenticity, explicit KEYS binding, rc_tag-to-source_commit binding, the staged source artifact bytes, and all supported secondary artifacts declared in the signed manifest.",
             "```",
             "",
         ]
     )
+    return "\n".join(lines)

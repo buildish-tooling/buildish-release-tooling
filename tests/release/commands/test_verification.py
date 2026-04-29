@@ -103,6 +103,75 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual("v1.2.3-rc0", github_outputs["rc_tag"])
         self.assertEqual(fixture.source_commit_sha, github_outputs["source_commit_sha"])
 
+    def test_verify_rc_command_verifies_generic_secondary_artifact_with_openpgp(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file-with-openpgp",
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--report-md",
+                str(fixture.report_md_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=cli_env(fixture.manifest_output_path),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        self.assertEqual("verified", report_payload["verdict"])
+        self.assertEqual(1, len(report_payload["secondary_artifact_verifications"]))
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("generic-file-with-openpgp", secondary_verification["kind"])
+        self.assertEqual("verified", secondary_verification["verdict"])
+        self.assertEqual("sha512", secondary_verification["checksum"]["algorithm"])
+        self.assertEqual(1, len(secondary_verification["signatures"]))
+        self.assertIn("Secondary artifact verification", fixture.report_md_path.read_text(encoding="utf-8"))
+
+    def test_verify_rc_command_fails_closed_when_secondary_artifact_digest_mismatches(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            mismatched_secondary_digest=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--work-dir",
+                str(fixture.work_dir),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=cli_env(fixture.manifest_output_path),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn("secondary artifact checksum does not match the signed manifest", completed.stderr)
+
     def test_verify_rc_command_fails_closed_when_manifest_omits_rc_tag(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
@@ -159,6 +228,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         *,
         include_rc_tag: bool = True,
         mismatched_source_commit_sha: bool = False,
+        secondary_kind: str | None = None,
+        mismatched_secondary_digest: bool = False,
     ) -> VerificationFixture:
         origin_dir, _clone_dir = init_git_origin_and_clone(sandbox_dir)
         component_id = "buildish-example"
@@ -253,6 +324,42 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         )
         source_artifact_signature_path = stage_dir / f"{source_artifact_name}.asc"
         self._detached_sign(effective_gpg_home, source_artifact_path, source_artifact_signature_path)
+        secondary_artifacts: list[dict[str, object]] = []
+        if secondary_kind is not None:
+            secondary_name = "buildish-example-bootstrap.zip"
+            secondary_path = stage_dir / secondary_name
+            secondary_path.write_bytes(b"bootstrap zip bytes\n")
+            secondary_sha512 = hashlib.sha512(secondary_path.read_bytes()).hexdigest()
+            secondary_sha512_path = stage_dir / f"{secondary_name}.sha512"
+            secondary_sha512_path.write_text(
+                f"{secondary_sha512}  {secondary_name}\n",
+                encoding="utf-8",
+            )
+            secondary_signature_path = stage_dir / f"{secondary_name}.asc"
+            self._detached_sign(effective_gpg_home, secondary_path, secondary_signature_path)
+            manifest_secondary_sha512 = secondary_sha512
+            if mismatched_secondary_digest:
+                manifest_secondary_sha512 = ("0" * 127) + "1"
+            secondary_artifacts.append(
+                {
+                    "artifact_id": "bootstrap-zip",
+                    "kind": secondary_kind,
+                    "filename": secondary_name,
+                    "uri": secondary_path.as_uri(),
+                    "checksums": {
+                        "sha512": {
+                            "value": manifest_secondary_sha512,
+                            "uri": secondary_sha512_path.as_uri(),
+                        }
+                    },
+                    "signatures": [
+                        {
+                            "type": "openpgp-detached-ascii-armored",
+                            "uri": secondary_signature_path.as_uri(),
+                        }
+                    ],
+                }
+            )
 
         manifest_payload: dict[str, object] = {
             "schema_version": "1",
@@ -300,7 +407,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                         ],
                     }
                 ],
-                "secondary_artifacts": [],
+                "secondary_artifacts": secondary_artifacts,
             },
             "verification": {
                 "staging_svn_url": f"{stage_dir.as_uri()}/",
