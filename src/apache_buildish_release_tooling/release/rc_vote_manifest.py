@@ -134,11 +134,16 @@ def read_uri_bytes(uri: str) -> bytes:
         local_path = Path(parsed.path)
         if local_path.exists():
             return local_path.read_bytes()
-        completed = subprocess.run(
-            ["svn", "cat", uri],
-            check=True,
-            capture_output=True,
-        )
+        try:
+            completed = subprocess.run(
+                ["svn", "cat", uri],
+                check=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            stderr_text = exc.stderr.decode("utf-8", errors="replace").strip()
+            detail = stderr_text or f"svn cat returned exit status {exc.returncode}"
+            raise ValueError(f"file URI could not be read: {uri}: {detail}") from exc
         return completed.stdout
     if parsed.scheme in {"http", "https"}:
         with urlopen(uri) as response:  # noqa: S310

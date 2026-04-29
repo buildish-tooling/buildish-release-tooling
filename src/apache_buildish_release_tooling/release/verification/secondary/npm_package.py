@@ -81,8 +81,9 @@ def verify_npm_package(
             allow_non_production_release_targets=allow_non_production_release_targets,
             purpose=f"npm package URL for {artifact_id}",
         )
-        artifact_path = work_dir / filename
-        artifact_path.write_bytes(read_uri_bytes(artifact_uri))
+        downloaded_artifact_path = work_dir / filename
+        downloaded_artifact_path.write_bytes(read_uri_bytes(artifact_uri))
+        artifact_path = downloaded_artifact_path
     except Exception as exc:
         issues.append(str(exc))
 

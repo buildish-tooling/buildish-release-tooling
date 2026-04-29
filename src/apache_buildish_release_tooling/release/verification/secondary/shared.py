@@ -48,19 +48,14 @@ class DownloadedInventory:
     report_payload: dict[str, Any]
 
 
-def secondary_artifact_entries(manifest_payload: dict[str, Any], *, source: str) -> list[dict[str, Any]]:
+def secondary_artifact_entries(manifest_payload: dict[str, Any], *, source: str) -> list[Any]:
     vote_materials = manifest_payload.get("vote_materials")
     if not isinstance(vote_materials, dict):
         raise ValueError(f"manifest is missing vote_materials: {source}")
     secondary_artifacts = vote_materials.get("secondary_artifacts")
     if not isinstance(secondary_artifacts, list):
         raise ValueError(f"manifest secondary_artifacts must be a list: {source}")
-    entries: list[dict[str, Any]] = []
-    for artifact_entry in secondary_artifacts:
-        if not isinstance(artifact_entry, dict):
-            raise ValueError(f"manifest secondary artifact entries must be objects: {source}")
-        entries.append(artifact_entry)
-    return entries
+    return list(secondary_artifacts)
 
 
 def preferred_checksum_payload(

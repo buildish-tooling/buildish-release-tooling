@@ -37,7 +37,9 @@ from .oci_image import verify_oci_image
 from .python_distribution import verify_python_distribution
 from .shared import required_non_empty_string, safe_path_component, secondary_artifact_entries
 
-__all__ = ["verify_secondary_artifacts"]
+INVALID_SECONDARY_ARTIFACT_KIND = "_invalid-secondary-artifact-entry"
+
+__all__ = ["INVALID_SECONDARY_ARTIFACT_KIND", "verify_secondary_artifacts"]
 
 
 def verify_secondary_artifacts(
@@ -60,16 +62,22 @@ def verify_secondary_artifacts(
         return []
     verifications: list[dict[str, Any]] = []
     for index, artifact_entry in enumerate(artifact_entries, start=1):
-        artifact_id = required_non_empty_string(
-            artifact_entry,
-            "artifact_id",
-            source=manifest_url,
-        )
-        kind = required_non_empty_string(artifact_entry, "kind", source=manifest_url)
-        artifact_work_dir = work_dir / f"{index:02d}-{safe_path_component(artifact_id)}"
-        emit_section(progress_reporter, f"Secondary Artifact {index}/{total_artifacts}: {artifact_id}")
-        emit_detail(progress_reporter, "Kind", kind)
+        artifact_label = _artifact_label(artifact_entry, index=index)
+        declared_kind = _declared_kind(artifact_entry)
+        artifact_work_dir = work_dir / f"{index:02d}-{safe_path_component(artifact_label)}"
+        emit_section(progress_reporter, f"Secondary Artifact {index}/{total_artifacts}: {artifact_label}")
+        emit_detail(progress_reporter, "Kind", declared_kind or "n/a")
         try:
+            if not isinstance(artifact_entry, dict):
+                raise ValueError(
+                    f"manifest secondary artifact entry must be an object: {manifest_url}"
+                )
+            required_non_empty_string(
+                artifact_entry,
+                "artifact_id",
+                source=manifest_url,
+            )
+            kind = required_non_empty_string(artifact_entry, "kind", source=manifest_url)
             if kind == "generic-file":
                 verification = verify_generic_file(
                     artifact_entry,
@@ -119,16 +127,33 @@ def verify_secondary_artifacts(
             else:
                 raise ValueError(f"unsupported secondary artifact kind in manifest: {kind}")
         except Exception as exc:
-            error_message = str(exc)
             verification = {
-                "artifact_id": artifact_id,
-                "kind": kind,
+                "artifact_id": artifact_label,
+                "kind": INVALID_SECONDARY_ARTIFACT_KIND,
+                "declared_kind": declared_kind,
                 "verdict": "failed",
-                "issues": [error_message],
+                "issues": [str(exc)],
             }
         _emit_secondary_artifact_summary(progress_reporter, verification)
         verifications.append(verification)
     return verifications
+
+
+def _artifact_label(artifact_entry: Any, *, index: int) -> str:
+    if isinstance(artifact_entry, dict):
+        raw_artifact_id = artifact_entry.get("artifact_id")
+        if isinstance(raw_artifact_id, str) and raw_artifact_id.strip():
+            return raw_artifact_id.strip()
+    return f"secondary-artifact-{index}"
+
+
+def _declared_kind(artifact_entry: Any) -> str | None:
+    if not isinstance(artifact_entry, dict):
+        return None
+    raw_kind = artifact_entry.get("kind")
+    if not isinstance(raw_kind, str) or not raw_kind.strip():
+        return None
+    return raw_kind.strip()
 
 
 def _emit_secondary_artifact_summary(
@@ -137,6 +162,10 @@ def _emit_secondary_artifact_summary(
 ) -> None:
     kind = verification["kind"]
     issues = [str(issue) for issue in verification.get("issues", [])]
+    if kind == INVALID_SECONDARY_ARTIFACT_KIND:
+        for issue in issues:
+            emit_failure(progress_reporter, issue)
+        return
     if kind in {"generic-file", "generic-file-with-openpgp"}:
         checksum_payload = verification.get("checksum")
         emit_detail(progress_reporter, "File", verification.get("filename", "n/a"))

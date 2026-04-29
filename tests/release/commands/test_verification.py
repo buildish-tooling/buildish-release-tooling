@@ -285,6 +285,57 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual(1, completed.returncode)
         self.assertIn("secondary artifact checksum does not match the signed manifest", completed.stderr)
 
+    def test_verify_rc_command_continues_when_secondary_entry_metadata_is_malformed(self) -> None:
+        for case in ("missing-artifact-id", "missing-kind"):
+            with self.subTest(case=case):
+                sandbox_dir = create_build_test_sandbox()
+                self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+                fixture = self._prepare_verification_fixture(
+                    sandbox_dir,
+                    secondary_kind="generic-file",
+                    include_python_distribution=True,
+                    malformed_secondary_missing_artifact_id=(case == "missing-artifact-id"),
+                    malformed_secondary_missing_kind=(case == "missing-kind"),
+                )
+                completed = run_cli(
+                    [
+                        "verify-rc",
+                        "--component-config",
+                        str(fixture.config_path),
+                        "--allow-non-production-release-targets",
+                        "--work-dir",
+                        str(fixture.work_dir),
+                        "--report-json",
+                        str(fixture.report_json_path),
+                        fixture.manifest_url,
+                        fixture.keys_url,
+                    ],
+                    cwd=fixture.origin_dir,
+                    env=self._fixture_cli_env(fixture),
+                )
+
+                self.assertEqual(1, completed.returncode)
+                report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+                self.assertEqual("failed", report_payload["verdict"])
+                self.assertEqual(2, len(report_payload["secondary_artifact_verifications"]))
+                self.assertEqual(
+                    "failed",
+                    report_payload["secondary_artifact_verifications"][0]["verdict"],
+                )
+                self.assertEqual(
+                    "verified",
+                    report_payload["secondary_artifact_verifications"][1]["verdict"],
+                )
+                self.assertEqual(
+                    "pypi-wheel",
+                    report_payload["secondary_artifact_verifications"][1]["artifact_id"],
+                )
+                if case == "missing-artifact-id":
+                    self.assertIn("manifest field artifact_id must be a non-empty string", completed.stderr)
+                else:
+                    self.assertIn("manifest field kind must be a non-empty string", completed.stderr)
+
     def test_verify_rc_command_reports_progress_for_failed_run(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
@@ -334,6 +385,97 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertNotIn("progress:", completed.stderr)
         self.assertNotIn("+ git", completed.stderr)
         self.assertNotIn("+ gpg", completed.stderr)
+
+    def test_verify_rc_command_reports_missing_source_and_secondary_files_without_crashing(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            missing_source_artifact=True,
+            secondary_kind="generic-file",
+            missing_secondary_artifact=True,
+            include_npm_package=True,
+            missing_npm_tarball=True,
+            include_python_distribution=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--progress",
+                "on",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--report-md",
+                str(fixture.report_md_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn("file URI could not be read:", completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        self.assertEqual("failed", report_payload["verdict"])
+        self.assertIn(
+            "file URI could not be read:",
+            "\n".join(report_payload["source_artifact_verification"]["issues"]),
+        )
+        secondary_by_id = {
+            verification["artifact_id"]: verification
+            for verification in report_payload["secondary_artifact_verifications"]
+        }
+        self.assertEqual("failed", secondary_by_id["bootstrap-zip"]["verdict"])
+        self.assertEqual("failed", secondary_by_id["npm-package-main"]["verdict"])
+        self.assertEqual("verified", secondary_by_id["pypi-wheel"]["verdict"])
+
+    def test_verify_rc_command_progress_off_still_summarizes_missing_file_failures(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            missing_source_artifact=True,
+            secondary_kind="generic-file",
+            missing_secondary_artifact=True,
+            include_python_distribution=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--progress",
+                "off",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--report-md",
+                str(fixture.report_md_path),
+                "--log-path",
+                str(fixture.log_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn("verify-rc failed with 2 issue(s):", completed.stderr)
+        self.assertIn(str(fixture.report_md_path), completed.stderr)
+        self.assertIn(str(fixture.log_path), completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        self.assertEqual("verified", report_payload["secondary_artifact_verifications"][1]["verdict"])
 
     def test_verify_rc_command_emits_low_level_output_to_stderr_in_verbose_mode(self) -> None:
         if not command_available("gpg"):
@@ -806,8 +948,12 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         include_rc_tag: bool = True,
         mismatched_source_commit_sha: bool = False,
         drift_source_artifact: bool = False,
+        missing_source_artifact: bool = False,
         secondary_kind: str | None = None,
         mismatched_secondary_digest: bool = False,
+        missing_secondary_artifact: bool = False,
+        malformed_secondary_missing_artifact_id: bool = False,
+        malformed_secondary_missing_kind: bool = False,
         include_maven_repository: bool = False,
         drift_maven_repository: bool = False,
         include_python_distribution: bool = False,
@@ -815,6 +961,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         include_npm_package: bool = False,
         drift_npm_registry_integrity: bool = False,
         drift_npm_tarball: bool = False,
+        missing_npm_tarball: bool = False,
         include_oci_image: bool = False,
         drift_oci_image: bool = False,
     ) -> VerificationFixture:
@@ -916,6 +1063,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self._detached_sign(effective_gpg_home, source_artifact_path, source_artifact_signature_path)
         if drift_source_artifact:
             source_artifact_path.write_bytes(source_artifact_path.read_bytes() + b"drift\n")
+        if missing_source_artifact:
+            source_artifact_path.unlink()
         secondary_artifacts: list[dict[str, object]] = []
         if secondary_kind is not None:
             secondary_name = "buildish-example-bootstrap.zip"
@@ -932,26 +1081,31 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             manifest_secondary_sha512 = secondary_sha512
             if mismatched_secondary_digest:
                 manifest_secondary_sha512 = ("0" * 127) + "1"
-            secondary_artifacts.append(
-                {
-                    "artifact_id": "bootstrap-zip",
-                    "kind": secondary_kind,
-                    "filename": secondary_name,
-                    "uri": secondary_path.as_uri(),
-                    "checksums": {
-                        "sha512": {
-                            "value": manifest_secondary_sha512,
-                            "uri": secondary_sha512_path.as_uri(),
-                        }
-                    },
-                    "signatures": [
-                        {
-                            "type": "openpgp-detached-ascii-armored",
-                            "uri": secondary_signature_path.as_uri(),
-                        }
-                    ],
-                }
-            )
+            secondary_artifact: dict[str, object] = {
+                "artifact_id": "bootstrap-zip",
+                "kind": secondary_kind,
+                "filename": secondary_name,
+                "uri": secondary_path.as_uri(),
+                "checksums": {
+                    "sha512": {
+                        "value": manifest_secondary_sha512,
+                        "uri": secondary_sha512_path.as_uri(),
+                    }
+                },
+                "signatures": [
+                    {
+                        "type": "openpgp-detached-ascii-armored",
+                        "uri": secondary_signature_path.as_uri(),
+                    }
+                ],
+            }
+            if malformed_secondary_missing_artifact_id:
+                secondary_artifact.pop("artifact_id")
+            if malformed_secondary_missing_kind:
+                secondary_artifact.pop("kind")
+            secondary_artifacts.append(secondary_artifact)
+            if missing_secondary_artifact:
+                secondary_path.unlink()
         if include_maven_repository:
             staging_repository_id = "orgapacheexample-1234"
             repository_root = sandbox_dir / staging_repository_id
@@ -1089,6 +1243,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             )
             if drift_npm_tarball:
                 artifact_file_path.write_bytes(artifact_bytes + b"registry drift\n")
+            if missing_npm_tarball:
+                artifact_file_path.unlink()
         if include_oci_image:
             docker_path, docker_state_dir = create_fake_docker_launcher(sandbox_dir)
             extra_env["FAKE_DOCKER_STATE_DIR"] = str(docker_state_dir)

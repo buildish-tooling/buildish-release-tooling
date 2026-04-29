@@ -41,6 +41,7 @@ from apache_buildish_release_tooling.release.verification.common import (
     verify_checksum_sidecar,
 )
 from apache_buildish_release_tooling.release.verification.secondary import (
+    INVALID_SECONDARY_ARTIFACT_KIND,
     verify_secondary_artifacts,
 )
 
@@ -295,8 +296,9 @@ def verify_rc_phase1(
     if source_artifact is not None and source_artifact_filename is not None and source_artifact_url is not None:
         try:
             emit_info(progress_reporter, "Downloading staged source artifact")
-            source_artifact_path = work_dir / source_artifact_filename
-            source_artifact_path.write_bytes(read_uri_bytes(source_artifact_url))
+            downloaded_source_artifact_path = work_dir / source_artifact_filename
+            downloaded_source_artifact_path.write_bytes(read_uri_bytes(source_artifact_url))
+            source_artifact_path = downloaded_source_artifact_path
             emit_success(progress_reporter, "Downloaded staged source artifact")
             declared_source_sha512 = _required_sha512_from_source_artifact(source_artifact, source=manifest_url)
             actual_source_sha512 = sha512(source_artifact_path)
@@ -409,23 +411,33 @@ def verify_rc_phase1(
                 message=str(exc),
             )
 
-    secondary_artifact_verifications = verify_secondary_artifacts(
-        manifest_payload,
-        manifest_url=manifest_url,
-        work_dir=work_dir / "secondary-artifacts",
-        verifier=verifier,
-        allow_non_production_release_targets=allow_non_production_release_targets,
-        progress_reporter=progress_reporter,
-    )
-    for verification in secondary_artifact_verifications:
-        for issue in verification.get("issues", []):
-            failures.append(
-                VerificationFailure(
-                    scope="secondary-artifact",
-                    subject=str(verification["artifact_id"]),
-                    message=str(issue),
+    try:
+        secondary_artifact_verifications = verify_secondary_artifacts(
+            manifest_payload,
+            manifest_url=manifest_url,
+            work_dir=work_dir / "secondary-artifacts",
+            verifier=verifier,
+            allow_non_production_release_targets=allow_non_production_release_targets,
+            progress_reporter=progress_reporter,
+        )
+        for verification in secondary_artifact_verifications:
+            for issue in verification.get("issues", []):
+                failures.append(
+                    VerificationFailure(
+                        scope="secondary-artifact",
+                        subject=str(verification["artifact_id"]),
+                        message=str(issue),
+                    )
                 )
-            )
+    except Exception as exc:
+        _append_failure(
+            failures,
+            progress_reporter=progress_reporter,
+            scope="secondary-artifact",
+            subject="secondary artifacts manifest",
+            message=str(exc),
+        )
+        secondary_artifact_verifications = []
 
     return _phase1_result(
         manifest_url=manifest_url,
@@ -965,6 +977,9 @@ def _report_markdown(
                         f"- Registry integrity matched: `{registry_resolution['integrity_matches_manifest']}`",
                     ]
                 )
+            elif kind == INVALID_SECONDARY_ARTIFACT_KIND:
+                declared_kind = verification.get("declared_kind")
+                lines.append(f"- Declared kind: `{_md_value(declared_kind if isinstance(declared_kind, str) else None)}`")
             else:
                 raise ValueError(
                     "unsupported secondary artifact kind for markdown reporting: "
