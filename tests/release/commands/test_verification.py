@@ -22,6 +22,9 @@ from dataclasses import dataclass
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     build_maven_repository_registration,
 )
+from apache_buildish_release_tooling.release.artifact_registration.kinds.python_distribution import (
+    build_python_distribution_registration,
+)
 from apache_buildish_release_tooling.release.gpg_signing import _effective_home, secret_key_fingerprint
 from apache_buildish_release_tooling.release.source_artifact import create_from_git
 
@@ -210,6 +213,65 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertTrue(secondary_verification["live_repository"]["matches_signed_inventory"])
         self.assertEqual(1, len(secondary_verification["live_repository"]["signature_verifications"]))
 
+    def test_verify_rc_command_verifies_python_distribution_secondary_artifact(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_python_distribution=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=cli_env(fixture.manifest_output_path),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("python-distribution", secondary_verification["kind"])
+        self.assertTrue(secondary_verification["index_resolution"]["sha256_matches_index"])
+        self.assertEqual("simple-json", secondary_verification["index_resolution"]["found_via"])
+
+    def test_verify_rc_command_fails_closed_when_python_distribution_is_missing_from_index(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_python_distribution=True,
+            missing_python_index_entry=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--work-dir",
+                str(fixture.work_dir),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=cli_env(fixture.manifest_output_path),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn("python-distribution file is not present in the declared simple index", completed.stderr)
+
     def test_verify_rc_command_fails_closed_when_maven_repository_drifts_from_inventory(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
@@ -299,6 +361,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         mismatched_secondary_digest: bool = False,
         include_maven_repository: bool = False,
         drift_maven_repository: bool = False,
+        include_python_distribution: bool = False,
+        missing_python_index_entry: bool = False,
     ) -> VerificationFixture:
         origin_dir, _clone_dir = init_git_origin_and_clone(sandbox_dir)
         component_id = "buildish-example"
@@ -468,6 +532,51 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             secondary_artifacts.append(maven_artifact)
             if drift_maven_repository:
                 artifact_path.write_bytes(b"jar-drift\n")
+        if include_python_distribution:
+            distribution_dir = sandbox_dir / "pypi-files"
+            distribution_dir.mkdir(parents=True, exist_ok=True)
+            distribution_path = distribution_dir / "example-1.2.3-py3-none-any.whl"
+            distribution_path.write_bytes(b"wheel payload\n")
+            distribution_bundle_dir = sandbox_dir / "python-bundle"
+            distribution_bundle_dir.mkdir(parents=True, exist_ok=True)
+            registration = build_python_distribution_registration(
+                Namespace(
+                    artifact_id="pypi-wheel",
+                    file=str(distribution_path),
+                    filename=None,
+                    uri=distribution_path.as_uri(),
+                    index_url=(sandbox_dir / "simple").as_uri() + "/",
+                    project_name="example",
+                    package_version="1.2.3",
+                    sha256=None,
+                    sha256_uri=None,
+                    attestation_repository=None,
+                    role=None,
+                    git_commit_sha=None,
+                    artifact_origin=None,
+                ),
+                distribution_bundle_dir,
+            )
+            python_artifact = dict(registration.secondary_artifact)
+            simple_project_dir = sandbox_dir / "simple" / "example"
+            simple_project_dir.mkdir(parents=True, exist_ok=True)
+            simple_index_path = simple_project_dir / "index.json"
+            simple_index_payload = {
+                "files": [] if missing_python_index_entry else [
+                    {
+                        "filename": python_artifact["filename"],
+                        "url": python_artifact["uri"],
+                        "hashes": {
+                            "sha256": python_artifact["checksums"]["sha256"]["value"],
+                        },
+                    }
+                ]
+            }
+            simple_index_path.write_text(
+                json.dumps(simple_index_payload, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            secondary_artifacts.append(python_artifact)
 
         manifest_payload: dict[str, object] = {
             "schema_version": "1",

@@ -507,6 +507,20 @@ def _report_markdown(
                     lines.append(
                         f"- Signature verified: `{signature_verification['path']}` by `{signature_verification['signature']['signer_fingerprint']}`"
                     )
+            elif kind == "python-distribution":
+                checksum_payload = verification["checksum"]
+                index_resolution = verification["index_resolution"]
+                lines.extend(
+                    [
+                        f"- File: `{verification['filename']}`",
+                        f"- URL: `{verification['uri']}`",
+                        f"- Project: `{verification['project_name']}` `{verification['version']}`",
+                        f"- Checksum verified: `{checksum_payload['algorithm']}:{checksum_payload['value']}`",
+                        f"- Checksum sidecar verified: `{checksum_payload['sidecar_verified']}`",
+                        f"- Simple index verified: `{index_resolution['project_index_url']}`",
+                        f"- Simple index hash matched: `{index_resolution['sha256_matches_index']}`",
+                    ]
+                )
             lines.append("")
     lines.extend(
         [
