@@ -521,6 +521,15 @@ def _report_markdown(
                         f"- Simple index hash matched: `{index_resolution['sha256_matches_index']}`",
                     ]
                 )
+            elif kind == "oci-image":
+                inspection = verification["inspection"]
+                lines.extend(
+                    [
+                        f"- Image: `{inspection['image_ref']}`",
+                        f"- Digest verified: `{verification['digest']}`",
+                        f"- Platform digests matched: `{inspection['platform_digests_match']}`",
+                    ]
+                )
             lines.append("")
     lines.extend(
         [

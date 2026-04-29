@@ -32,6 +32,9 @@ from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_r
     _repository_files,
     _validated_repository_root,
 )
+from apache_buildish_release_tooling.release.artifact_registration.kinds.oci_image import (
+    _inspect_image_ref,
+)
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
@@ -139,6 +142,14 @@ def verify_secondary_artifacts(
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
                     allow_non_production_release_targets=allow_non_production_release_targets,
+                )
+            )
+            continue
+        if kind == "oci-image":
+            verifications.append(
+                _verify_oci_image(
+                    artifact_entry,
+                    manifest_url=manifest_url,
                 )
             )
             continue
@@ -507,6 +518,56 @@ def _verify_python_distribution(
     }
 
 
+def _verify_oci_image(
+    artifact_entry: dict[str, Any],
+    *,
+    manifest_url: str,
+) -> dict[str, Any]:
+    artifact_id = _required_non_empty_string(artifact_entry, "artifact_id", source=manifest_url)
+    registry = _required_non_empty_string(artifact_entry, "registry", source=manifest_url)
+    repository = _required_non_empty_string(artifact_entry, "repository", source=manifest_url)
+    declared_digest = _required_non_empty_string(artifact_entry, "digest", source=manifest_url).lower()
+    uri = _required_non_empty_string(artifact_entry, "uri", source=manifest_url)
+    image_ref = f"{registry}/{repository}@{declared_digest}"
+    _inspected_registry, _inspected_repository, live_digest, live_platform_digests = _inspect_image_ref(image_ref)
+    if live_digest != declared_digest:
+        raise ValueError(
+            "oci-image digest does not match the signed manifest: "
+            f"{live_digest} != {declared_digest}"
+        )
+    expected_platform_digests = _platform_digests_from_manifest(artifact_entry, source=manifest_url)
+    platform_digests_match = True
+    if expected_platform_digests:
+        expected_by_platform = {
+            entry["platform"]: entry["digest"]
+            for entry in expected_platform_digests
+        }
+        live_by_platform = {
+            entry["platform"]: entry["digest"]
+            for entry in live_platform_digests
+        }
+        if live_by_platform != expected_by_platform:
+            raise ValueError(
+                "oci-image platform digests do not match the signed manifest: "
+                f"{live_by_platform} != {expected_by_platform}"
+            )
+    return {
+        "artifact_id": artifact_id,
+        "kind": "oci-image",
+        "verdict": "verified",
+        "uri": uri,
+        "registry": registry,
+        "repository": repository,
+        "digest": declared_digest,
+        "inspection": {
+            "image_ref": image_ref,
+            "digest_matches_manifest": True,
+            "platform_digests_match": platform_digests_match,
+            "platform_digests": live_platform_digests,
+        },
+    }
+
+
 def _preferred_checksum_payload(
     artifact_entry: dict[str, Any],
     *,
@@ -793,6 +854,30 @@ def _required_hex_digest(
 def _safe_path_component(value: str) -> str:
     normalized = _SAFE_PATH_COMPONENT_PATTERN.sub("-", value).strip("-")
     return normalized or "secondary-artifact"
+
+
+def _platform_digests_from_manifest(
+    artifact_entry: dict[str, Any],
+    *,
+    source: str,
+) -> list[dict[str, str]]:
+    raw_entries = artifact_entry.get("platform_digests")
+    if raw_entries is None:
+        return []
+    if not isinstance(raw_entries, list):
+        raise ValueError(f"oci-image platform_digests must be a list: {source}")
+    entries: list[dict[str, str]] = []
+    seen_platforms: set[str] = set()
+    for raw_entry in raw_entries:
+        if not isinstance(raw_entry, dict):
+            raise ValueError(f"oci-image platform_digests entries must be objects: {source}")
+        platform = _required_non_empty_string(raw_entry, "platform", source=source)
+        if platform in seen_platforms:
+            raise ValueError(f"oci-image platform declared more than once in manifest: {platform}")
+        seen_platforms.add(platform)
+        digest_value = _required_non_empty_string(raw_entry, "digest", source=source).lower()
+        entries.append({"platform": platform, "digest": digest_value})
+    return entries
 
 
 def _simple_index_project_url(index_url: str, project_name: str) -> str:

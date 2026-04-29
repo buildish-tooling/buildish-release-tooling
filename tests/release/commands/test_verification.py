@@ -22,6 +22,9 @@ from dataclasses import dataclass
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     build_maven_repository_registration,
 )
+from apache_buildish_release_tooling.release.artifact_registration.kinds.oci_image import (
+    build_oci_image_registration,
+)
 from apache_buildish_release_tooling.release.artifact_registration.kinds.python_distribution import (
     build_python_distribution_registration,
 )
@@ -36,6 +39,7 @@ from tests.release.commands.support import (
     cli_env,
     command_available,
     create_build_test_sandbox,
+    create_fake_docker_launcher,
     git_create_annotated_tag,
     git_rev_parse,
     hashlib,
@@ -60,6 +64,8 @@ class VerificationFixture:
     report_md_path: Path
     source_commit_sha: str
     work_dir: Path
+    extra_env: dict[str, str]
+    prepend_dirs: tuple[Path, ...]
 
 
 class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
@@ -89,8 +95,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 fixture.keys_url,
             ],
             cwd=fixture.origin_dir,
-            env=cli_env(
-                fixture.manifest_output_path,
+            env=self._fixture_cli_env(
+                fixture,
                 extra_env={"GITHUB_OUTPUT": str(outputs_path)},
             ),
         )
@@ -136,7 +142,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 fixture.keys_url,
             ],
             cwd=fixture.origin_dir,
-            env=cli_env(fixture.manifest_output_path),
+            env=self._fixture_cli_env(fixture),
         )
 
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
@@ -173,7 +179,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 fixture.keys_url,
             ],
             cwd=fixture.origin_dir,
-            env=cli_env(fixture.manifest_output_path),
+            env=self._fixture_cli_env(fixture),
         )
 
         self.assertEqual(1, completed.returncode)
@@ -203,7 +209,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 fixture.keys_url,
             ],
             cwd=fixture.origin_dir,
-            env=cli_env(fixture.manifest_output_path),
+            env=self._fixture_cli_env(fixture),
         )
 
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
@@ -235,7 +241,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 fixture.keys_url,
             ],
             cwd=fixture.origin_dir,
-            env=cli_env(fixture.manifest_output_path),
+            env=self._fixture_cli_env(fixture),
         )
 
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
@@ -266,7 +272,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 fixture.keys_url,
             ],
             cwd=fixture.origin_dir,
-            env=cli_env(fixture.manifest_output_path),
+            env=self._fixture_cli_env(fixture),
         )
 
         self.assertEqual(1, completed.returncode)
@@ -295,7 +301,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 fixture.keys_url,
             ],
             cwd=fixture.origin_dir,
-            env=cli_env(fixture.manifest_output_path),
+            env=self._fixture_cli_env(fixture),
         )
 
         self.assertEqual(1, completed.returncode)
@@ -320,7 +326,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 fixture.keys_url,
             ],
             cwd=fixture.origin_dir,
-            env=cli_env(fixture.manifest_output_path),
+            env=self._fixture_cli_env(fixture),
         )
 
         self.assertEqual(1, completed.returncode)
@@ -345,11 +351,70 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 fixture.keys_url,
             ],
             cwd=fixture.origin_dir,
-            env=cli_env(fixture.manifest_output_path),
+            env=self._fixture_cli_env(fixture),
         )
 
         self.assertEqual(1, completed.returncode)
         self.assertIn("manifest rc_tag does not resolve to the declared source_commit_sha", completed.stderr)
+
+    def test_verify_rc_command_verifies_oci_image_secondary_artifact(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_oci_image=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("oci-image", secondary_verification["kind"])
+        self.assertTrue(secondary_verification["inspection"]["digest_matches_manifest"])
+        self.assertTrue(secondary_verification["inspection"]["platform_digests_match"])
+
+    def test_verify_rc_command_fails_closed_when_oci_image_platform_digest_drifts(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_oci_image=True,
+            drift_oci_image=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--work-dir",
+                str(fixture.work_dir),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn("oci-image platform digests do not match the signed manifest", completed.stderr)
 
     def _prepare_verification_fixture(
         self,
@@ -363,6 +428,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         drift_maven_repository: bool = False,
         include_python_distribution: bool = False,
         missing_python_index_entry: bool = False,
+        include_oci_image: bool = False,
+        drift_oci_image: bool = False,
     ) -> VerificationFixture:
         origin_dir, _clone_dir = init_git_origin_and_clone(sandbox_dir)
         component_id = "buildish-example"
@@ -386,6 +453,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         report_md_path = sandbox_dir / "verify-report.md"
         manifest_output_path = sandbox_dir / "verify-rc-command.json"
         gpg_home = sandbox_dir / "gpg-home"
+        extra_env: dict[str, str] = {}
+        prepend_dirs: tuple[Path, ...] = ()
         gpg_home.mkdir(parents=True, exist_ok=True)
         gpg_home.chmod(0o700)
         effective_gpg_home = _effective_home(gpg_home)
@@ -577,6 +646,57 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 encoding="utf-8",
             )
             secondary_artifacts.append(python_artifact)
+        if include_oci_image:
+            docker_path, docker_state_dir = create_fake_docker_launcher(sandbox_dir)
+            extra_env["FAKE_DOCKER_STATE_DIR"] = str(docker_state_dir)
+            prepend_dirs = (docker_path.parent,)
+            top_level_digest = "sha256:" + ("d4" * 32)
+            amd64_digest = "sha256:" + ("a1" * 32)
+            arm64_digest = "sha256:" + ("b2" * 32)
+            live_arm64_digest = "sha256:" + ("c3" * 32) if drift_oci_image else arm64_digest
+            (docker_state_dir / "imagetools-inspect-response.json").write_text(
+                json.dumps(
+                    {
+                        "schemaVersion": 2,
+                        "mediaType": "application/vnd.oci.image.index.v1+json",
+                        "digest": top_level_digest,
+                        "manifests": [
+                            {
+                                "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                                "digest": amd64_digest,
+                                "platform": {"architecture": "amd64", "os": "linux"},
+                            },
+                            {
+                                "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                                "digest": live_arm64_digest,
+                                "platform": {"architecture": "arm64", "os": "linux"},
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            oci_bundle_dir = sandbox_dir / "oci-bundle"
+            oci_bundle_dir.mkdir(parents=True, exist_ok=True)
+            registration = build_oci_image_registration(
+                Namespace(
+                    artifact_id="ghcr-main-image",
+                    image_ref=None,
+                    registry="ghcr.io",
+                    repository="apache/buildish-example",
+                    digest=top_level_digest,
+                    platform_digests=[
+                        f"linux/amd64={amd64_digest}",
+                        f"linux/arm64={arm64_digest}",
+                    ],
+                    uri=None,
+                    role=None,
+                    git_commit_sha=None,
+                    artifact_origin=None,
+                ),
+                oci_bundle_dir,
+            )
+            secondary_artifacts.append(dict(registration.secondary_artifact))
 
         manifest_payload: dict[str, object] = {
             "schema_version": "1",
@@ -655,6 +775,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             report_md_path=report_md_path,
             source_commit_sha=source_commit_sha,
             work_dir=work_dir,
+            extra_env=extra_env,
+            prepend_dirs=prepend_dirs,
         )
 
     @staticmethod
@@ -681,4 +803,19 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             check=True,
             capture_output=True,
             text=True,
+        )
+
+    @staticmethod
+    def _fixture_cli_env(
+        fixture: VerificationFixture,
+        *,
+        extra_env: dict[str, str] | None = None,
+    ) -> dict[str, str]:
+        merged_env = dict(fixture.extra_env)
+        if extra_env is not None:
+            merged_env.update(extra_env)
+        return cli_env(
+            fixture.manifest_output_path,
+            extra_env=merged_env,
+            prepend_dirs=fixture.prepend_dirs,
         )
