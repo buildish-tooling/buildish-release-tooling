@@ -513,14 +513,20 @@ Add a structured verification section for local rebuild recipes and artifact-fam
 ```yaml
 verify_rc:
   source:
-    build:
-      command: ["./mvnw", "-Prelease", "package"]
-      output_glob: "target/apache-example-*.tar.gz"
-      network: offline-required
     reproducibility:
+      profile_id: source-release
       mode: exact-bytes
 
-  secondary_profiles:
+  profiles:
+    source-release:
+      kind: source-artifact
+      build:
+        command: ["./mvnw", "-Prelease", "package"]
+        output_glob: "target/apache-example-*.tar.gz"
+        network: offline-required
+      comparison:
+        mode: exact-bytes
+
     maven-staging:
       kind: maven-repository
       build:
@@ -531,6 +537,13 @@ verify_rc:
       comparison:
         mode: repository-tree
         require_signatures: true
+        path_rules:
+          - pattern: ".+\\.(jar|war|zip)$"
+            mode: content-only
+          - pattern: ".+\\.(pom|module)$"
+            mode: exact-bytes
+          - pattern: "^.*/maven-metadata\\.xml(\\..+)?$"
+            mode: remote-only
 
     pypi-wheel:
       kind: python-distribution
@@ -545,6 +558,16 @@ The exact schema can evolve, but the key design point is:
 
 - project-specific commands live in local config
 - the remote manifest only references typed artifacts and typed verification expectations
+- the manifest should select a reproducibility `profile_id`, not carry raw build commands
+- the canonical recipe should come from the verified source tree at the declared `source_commit_sha`
+- human local runs may opt into local command overrides, but those runs must be reported as non-canonical
+
+Recommended override model:
+
+- `verify-rc` should use the canonical profile from `release-config.yaml` by default
+- CI and release workflow runs should use canonical profiles only
+- human local runs may pass an explicit override flag or override file to adjust command lines or tool paths
+- when an override changes the effective build command, working directory, or selected outputs, the report should record `recipe_source=local-override` and `canonical_recipe_used=false`
 
 ## Proposed Manifest Changes
 
@@ -558,6 +581,7 @@ Recommended additions:
 - add `expected_signer_fingerprints` for source artifacts and signed secondary artifacts when a release wants to pin one signer or one signer set
 - add `inventory` subdocuments for large or mutable artifact collections such as Maven repositories or image sets
 - add optional `reproducibility` expectations per artifact or artifact collection
+- add optional `reproducibility.profile_id` selectors so the signed manifest chooses which canonical local recipe applies without embedding raw commands
 
 Hard requirements:
 
@@ -900,8 +924,16 @@ This phase should not require local rebuild yet. It should establish:
 
 This phase is project- and artifact-kind-specific.
 
-It should use local project config recipes, not manifest-supplied commands.
+It should use local project config recipes selected by manifest `profile_id`, not manifest-supplied commands.
 It must treat the rebuild as untrusted-code execution and apply the execution safety model above.
+
+Recommended execution model:
+
+- the signed manifest selects the reproducibility profile
+- the verified source tree at `source_commit_sha` provides the canonical recipe for that profile
+- CI and bootstrap verification should use only the canonical recipe
+- human local verification may use explicit local overrides for build command lines, but only behind an opt-in flag
+- if a local override changes the effective command or output selection, the run should remain valid as a local diagnostic run but be reported as non-canonical
 
 Comparison modes should be explicit:
 
@@ -964,6 +996,13 @@ Project-local recipes:
 - describe how to rebuild local outputs for one verifier kind
 - live in `release-config.yaml`
 - are optional for projects that only want remote authenticity and integrity verification
+- should be referenced by stable `profile_id` values from the signed manifest
+
+Local override policy:
+
+- human verifiers should be able to override build-tool command lines explicitly when the canonical recipe is too narrow for their machine
+- those overrides should be treated as a local escape hatch, not as the default or CI path
+- override use should be captured in both the JSON and Markdown reports so readers can distinguish canonical reproducibility from locally adapted runs
 
 This gives the tool reusable primitives while still allowing project-specific local build steps.
 
@@ -996,6 +1035,12 @@ This is a strong first-class target to support.
 
 The Maven repository layout is standardized, including checksum and optional `.asc` sidecars. Local and remote repositories use the same layout, which is ideal for verification.
 
+Useful background:
+
+- the reproducible-builds.org [JVM page](https://reproducible-builds.org/docs/jvm/) has practical guidance for the Maven/Gradle ecosystem and explains why JAR packaging is often the main source of nondeterminism
+- the reproducible-builds.org [tools page](https://reproducible-builds.org/tools/) links to both the Reproducible Build Maven Plugin and the Reproducible Builds Gradle Plugin
+- Reproducible Central is a useful external reference point for rebuilding and comparing artifacts published in Maven repositories
+
 Recommended representation:
 
 - one `maven-repository` secondary target in the main manifest
@@ -1020,17 +1065,26 @@ Recommended reproducibility default for Maven repository artifacts:
 
 - use `content-only` by default for ZIP-like artifacts such as JARs
 - allow stricter per-path or regex-based overrides to `zip-normalized` or `exact-bytes`
+- allow weaker per-path or regex-based overrides to `remote-only` for entries that should remain authenticity-and-integrity checked but excluded from local rebuild comparison
 
 Implementation note:
 
 - always check exact digest equality first
 - only unpack or normalize ZIP-like artifacts when exact bytes differ and the policy allows a weaker equivalence mode
+- per-path or regex-based rules should be able to strengthen, weaken, or disable local comparison for selected repository entries
+- a Maven repository profile may therefore be mostly Level 2, move selected paths to Level 3, and leave selected paths at effective Level 1
+- when a project builds Maven-repository artifacts with Gradle, the same repository-level verification model still applies; only the canonical local rebuild recipe changes
 
 ### PyPI or TestPyPI distributions
 
 This should also be a first-class target.
 
 PyPI and TestPyPI expose distribution metadata and hashes through the simple and JSON APIs. PyPI also exposes attestations through the Integrity API.
+
+Background:
+
+- a wheel is a [ZIP-format archive](https://packaging.python.org/specifications/binary-distribution-format/)
+- that means exact-byte reproducibility can be affected by ZIP metadata such as timestamps and extra attributes; see the reproducible-builds notes on [archive metadata](https://reproducible-builds.org/docs/archives/), [timestamps](https://reproducible-builds.org/docs/timestamps/), and [SOURCE_DATE_EPOCH](https://reproducible-builds.org/docs/source-date-epoch/)
 
 Recommended checks:
 
@@ -1041,9 +1095,15 @@ Recommended checks:
 
 Local comparison:
 
-- rebuild via `python -m build`
+- rebuild via [`python -m build`](https://build.pypa.io/en/latest/how-to/basic-usage.html)
 - compare wheels and sdists using `exact-bytes` where possible
 - allow `canonical-archive` if a project is not yet fully wheel-reproducible
+
+Practical recommendation:
+
+- exact-byte wheel reproducibility is achievable for some projects, but should not be assumed by default
+- start at Level 2 when wheel ZIP metadata or generated contents are known to vary
+- move to Level 3 only after the project has demonstrated stable wheel bytes under a pinned toolchain and normalized archive metadata
 
 ### OCI container images
 
@@ -1053,6 +1113,14 @@ Recommended tooling direction:
 
 - prefer daemonless tools such as `crane` or `oras` for registry access
 - use `cosign` for signature or attestation verification where projects publish Sigstore metadata
+
+Background:
+
+- OCI image reproducibility is harder than file or archive reproducibility because the final digest depends on the manifest, config JSON, and every referenced layer blob
+- Docker documents support for [`SOURCE_DATE_EPOCH`](https://docs.docker.com/build/ci/github-actions/reproducible-builds/) in BuildKit so timestamps in the image index, config, and file metadata can be normalized
+- the reproducible-builds.org pages on [formal definition](https://reproducible-builds.org/docs/formal-definition/), [volatile inputs](https://reproducible-builds.org/docs/volatile-inputs/), and [system images](https://reproducible-builds.org/docs/system-images/) are relevant here because container images combine archive metadata, filesystem metadata, and package-manager state
+- reproducible-builds.org also notes that `apt-get` can participate in reproducible image builds when the build rewrites APT sources to a snapshot matched to `SOURCE_DATE_EPOCH`, for example via [`repro-sources-list.sh`](https://github.com/reproducible-containers/repro-sources-list.sh); the problem is live mutable package sources, not `apt-get` itself
+- the reproducible-builds.org [tools page](https://reproducible-builds.org/tools/) also links to `diffoci`, which is a useful image comparison tool for diagnosing OCI reproducibility drift
 
 Recommended remote checks:
 
@@ -1066,6 +1134,23 @@ Local comparison:
 
 - compare platform-specific image digests, OCI layouts, or manifest plus layer digests
 - do not assume Docker daemon access
+
+Practical recommendation:
+
+- do not assume OCI images are byte-reproducible by default
+- Dockerfile steps such as `apt-get update` followed by `apt-get upgrade` against live mutable repositories effectively give up reproducibility because they intentionally resolve whatever package set exists at rebuild time
+- the same `apt-get` workflow can still be compatible with reproducibility when the build rewrites APT sources to a time-matched snapshot and avoids other mutable inputs
+- local OCI reproducibility only becomes credible when the project pins base images by digest, normalizes timestamps, and uses snapshot-pinned or otherwise immutable package sources instead of live mutable repositories
+- if the build recipe uses live package-manager resolution without a snapshot or equivalent pinning, keep the profile at Level 1 or at most advisory Level 2 rather than claiming Level 3
+- exact-byte OCI reproducibility should be treated as an opt-in, demonstrated property of a specific profile, not as the default expectation
+
+Useful `inspect-repro` scope for OCI images:
+
+- compare image manifest and config JSON separately from layer blobs
+- compare per-layer digests and history metadata such as `created`
+- extract and diff filesystem trees path-by-path, including ownership, mode, symlink target, and content hashes
+- let a project profile declare `owned_paths` or similar so `inspect-repro` can distinguish project payload drift from base-image or package-manager drift
+- classify likely causes such as base-image change, mutable package-manager input, timestamp-only drift, label/config drift, or real application-content drift
 
 Recommendation:
 
@@ -1082,6 +1167,12 @@ The npm registry provides:
 - registry signatures
 - provenance attestations that `npm audit signatures` can verify
 
+Background:
+
+- `npm ci` is the right starting point for reproducible dependency installation because it requires a lockfile and refuses to rewrite it; see the official [`npm ci`](https://docs.npmjs.com/cli/v11/commands/npm-ci) and [`package-lock.json`](https://docs.npmjs.com/cli/v11/configuring-npm/package-lock-json/) docs
+- `npm pack` creates the published tarball and runs package lifecycle hooks such as `prepack` and `prepare`; see the official [`npm pack`](https://docs.npmjs.com/cli/v11/commands/npm-pack) and [npm scripts lifecycle](https://docs.npmjs.com/cli/v11/using-npm/scripts/) docs
+- npm package tarballs may still vary in entry mtimes or mode bits because archive formats record timestamps and permissions; see the reproducible-builds notes on [archive metadata](https://reproducible-builds.org/docs/archives/), [timestamps](https://reproducible-builds.org/docs/timestamps/), and [SOURCE_DATE_EPOCH](https://reproducible-builds.org/docs/source-date-epoch/)
+
 Recommended remote checks:
 
 - fetch the package metadata from the registry
@@ -1091,8 +1182,14 @@ Recommended remote checks:
 
 Local comparison:
 
-- rebuild with `npm pack`
+- rebuild with `npm ci` followed by `npm pack` as the default profile for lockfile-based projects
 - compare the produced tarball or canonical unpacked contents
+
+Practical recommendation:
+
+- `npm ci` plus `npm pack` should be the default npm reproducibility profile, but it will not fit every project
+- start npm packages at Level 2 unless the project has demonstrated exact-byte-stable tarballs under a pinned toolchain and normalized archive metadata
+- when exact bytes differ, `inspect-repro` should be ready to diagnose tar entry mtimes, modes, file ordering, and generated-file drift
 
 Recommendation:
 
@@ -1102,6 +1199,8 @@ Recommendation:
 ## Reproducibility Model
 
 I recommend three reproducibility levels.
+
+Projects should be able to opt into stronger guarantees per profile or per artifact collection once they have demonstrated those guarantees in practice. The verifier should not assume Level 3 by default, but it should allow projects to declare and enforce it explicitly where warranted.
 
 Level 1: remote-only
 
@@ -1124,6 +1223,12 @@ Per-artifact policy should decide whether failure is:
 - fatal
 - warning
 - not attempted
+
+For collection artifacts such as `maven-repository`, the effective level may vary by path under explicit per-path or regex-based rules. That means one repository profile may combine:
+
+- Level 3 for selected exact-byte-comparable entries
+- Level 2 for entries compared with `content-only`, `zip-normalized`, or another canonical mode
+- Level 1 for entries explicitly marked `remote-only`
 
 My recommendation:
 
@@ -1310,6 +1415,7 @@ Each artifact should get a verdict record with:
 - authenticity result
 - integrity result
 - reproducibility result
+- recipe source, such as `canonical-profile` or `local-override`, when reproducibility checks were attempted
 - evidence, such as digest values, full signer fingerprints, signer algorithm or key-size metadata, or attestation identities
 - effective safety policy data, such as whether origin allowlists, execution isolation, resource-budget overrides, or cryptographic warnings affected the run
 
@@ -1330,6 +1436,8 @@ For reproducibility failures, the machine-readable report should also record:
 
 - the compared artifact pair or collection entry
 - the comparison mode attempted
+- the selected reproducibility `profile_id`
+- whether local overrides changed the canonical recipe
 - the high-level failure class
 - relative paths into the inspection bundle for retained evidence files
 - whether optional deep-analysis tools were available or used
