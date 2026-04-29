@@ -31,7 +31,7 @@ from apache_buildish_release_tooling.release.email_templates import (
 )
 from apache_buildish_release_tooling.release.git_repo import GitRepository
 from apache_buildish_release_tooling.release.github_release_selection import SelectedGitHubRelease, selected_github_release
-from apache_buildish_release_tooling.release.github_releases import upload_release_assets
+from apache_buildish_release_tooling.release.github_releases import update_release, upload_release_assets
 from apache_buildish_release_tooling.release.gpg_signing import (
     detached_ascii_sign,
     import_private_key_from_secret,
@@ -47,6 +47,10 @@ from apache_buildish_release_tooling.release.rc_vote_manifest import (
 from apache_buildish_release_tooling.release.rc_vote_verification import verified_staged_source_artifact_sha512
 from apache_buildish_release_tooling.release.source_artifact import sha512, write_sha512_file
 from apache_buildish_release_tooling.release.summary import SummaryWriter
+from apache_buildish_release_tooling.release.verification.bootstrap import (
+    VerifyRcBootstrapArtifacts,
+    build_verify_rc_bootstrap_artifacts,
+)
 
 from apache_buildish_release_tooling.release.commands._shared import (
     _artifact_output_dir,
@@ -69,6 +73,7 @@ class RcVoteManifestArtifacts:
     manifest_sha512_path: Path
     manifest_signature_path: Path
     gpg_fingerprint: str
+    bootstrap_artifacts: VerifyRcBootstrapArtifacts
     supplemental_file_paths: tuple[Path, ...] = ()
 
 
@@ -229,8 +234,19 @@ def _build_rc_vote_manifest_artifacts(
     """Build and sign the authoritative RC vote-manifest artifacts."""
 
     manifest_file_path = output_dir / "rc-vote-manifest.json"
+    staging_url = state.staging_url.rstrip("/")
+    manifest_url = f"{staging_url}/{manifest_file_path.name}"
+    keys_url = context.component_config.asf_keys_url
     with _temporary_build_dir("finalize-rc-vote-materials") as temp_root:
         gpg_home = temp_root / "gnupg"
+        import_private_key_from_secret(gpg_home)
+        gpg_fingerprint = secret_key_fingerprint(gpg_home)
+        bootstrap_artifacts = build_verify_rc_bootstrap_artifacts(
+            output_dir=output_dir,
+            manifest_url=manifest_url,
+            keys_url=keys_url,
+            gpg_home=gpg_home,
+        )
         _repository_slug, source_repository_url = origin_repository_metadata(
             GitRepository.from_current_worktree()
         )
@@ -248,8 +264,6 @@ def _build_rc_vote_manifest_artifacts(
         write_manifest(manifest_file_path, manifest_payload)
         manifest_sha512 = sha512(manifest_file_path)
         manifest_sha512_path = write_sha512_file(manifest_file_path, manifest_sha512)
-        import_private_key_from_secret(gpg_home)
-        gpg_fingerprint = secret_key_fingerprint(gpg_home)
         manifest_signature_path = manifest_file_path.with_name(f"{manifest_file_path.name}.asc")
         detached_ascii_sign(gpg_home, manifest_file_path, manifest_signature_path)
         return RcVoteManifestArtifacts(
@@ -259,6 +273,7 @@ def _build_rc_vote_manifest_artifacts(
             manifest_sha512_path=manifest_sha512_path,
             manifest_signature_path=manifest_signature_path,
             gpg_fingerprint=gpg_fingerprint,
+            bootstrap_artifacts=bootstrap_artifacts,
             supplemental_file_paths=supplemental_file_paths,
         )
 
@@ -268,6 +283,9 @@ def _rc_vote_manifest_asset_paths(artifacts: RcVoteManifestArtifacts) -> list[Pa
         artifacts.manifest_file_path,
         artifacts.manifest_sha512_path,
         artifacts.manifest_signature_path,
+        artifacts.bootstrap_artifacts.script_path,
+        artifacts.bootstrap_artifacts.script_sha512_path,
+        artifacts.bootstrap_artifacts.script_signature_path,
         *artifacts.supplemental_file_paths,
     ]
 
@@ -305,13 +323,86 @@ def _stage_rc_vote_manifest_and_mirror(
         asset_paths=_rc_vote_manifest_asset_paths(artifacts),
         clobber=True,
     )
-    return f"{staging_url}/{artifacts.manifest_file_path.name}"
+    authoritative_manifest_url = f"{staging_url}/{artifacts.manifest_file_path.name}"
+    _update_draft_release_body(
+        context,
+        state=state,
+        selected_release=selected_release,
+        authoritative_manifest_url=authoritative_manifest_url,
+        artifacts=artifacts,
+    )
+    return authoritative_manifest_url
 
 
 def _rc_vote_manifest_asset_names(artifacts: RcVoteManifestArtifacts) -> list[str]:
     """Return the authoritative RC vote-manifest asset names in mirror order."""
 
     return [path.name for path in _rc_vote_manifest_asset_paths(artifacts)]
+
+
+def _update_draft_release_body(
+    context: CommandContext,
+    *,
+    state: PrepareRcState,
+    selected_release: SelectedGitHubRelease,
+    authoritative_manifest_url: str,
+    artifacts: RcVoteManifestArtifacts,
+) -> None:
+    """Update the selected draft GitHub Release body with RC verification details."""
+
+    update_release(
+        selected_release.repository_slug,
+        selected_release.require_release_id(reference_tag=state.rc_tag),
+        payload={
+            "body": _draft_release_body(
+                context,
+                state=state,
+                authoritative_manifest_url=authoritative_manifest_url,
+                artifacts=artifacts,
+            )
+        },
+    )
+
+
+def _draft_release_body(
+    context: CommandContext,
+    *,
+    state: PrepareRcState,
+    authoritative_manifest_url: str,
+    artifacts: RcVoteManifestArtifacts,
+) -> str:
+    """Render the finalized draft GitHub Release body with verification bootstrap details."""
+
+    bootstrap_script_url = f"{state.staging_url.rstrip('/')}/{artifacts.bootstrap_artifacts.script_path.name}"
+    return "\n".join(
+        [
+            f"Draft GitHub Release placeholder for {context.component_config.vote_release_name} {state.final_tag.removeprefix('v')}.",
+            "",
+            f"RC tag: {state.rc_tag}",
+            f"Final tag: {state.final_tag}",
+            f"Resolved source ref: {state.resolved_source_ref}",
+            f"ASF SVN staging URL: {state.staging_url}",
+            f"Final tag mode: {context.component_config.final_tag_mode}",
+            "",
+            "Authoritative RC vote manifest:",
+            f"- {authoritative_manifest_url}",
+            f"- {authoritative_manifest_url}.sha512",
+            f"- {authoritative_manifest_url}.asc",
+            "",
+            "Verification bootstrap convenience:",
+            f"- {bootstrap_script_url}",
+            f"- {bootstrap_script_url}.sha512",
+            f"- {bootstrap_script_url}.asc",
+            "",
+            "Verify RC bootstrap one-liner:",
+            "",
+            "```sh",
+            artifacts.bootstrap_artifacts.invoker_snippet,
+            "```",
+            "",
+            "This draft release is convenience metadata only and must remain unpublished until the ASF vote passes.",
+        ]
+    )
 
 
 def _append_finalize_rc_vote_materials_summary(
@@ -360,6 +451,18 @@ def _append_finalize_rc_vote_materials_summary(
     summary.append_bullet_list(
         "Draft GitHub Release mirror assets",
         [_summary_code(asset_name) for asset_name in _rc_vote_manifest_asset_names(artifacts)],
+    )
+    bootstrap_script_url = f"{state.staging_url.rstrip('/')}/{artifacts.bootstrap_artifacts.script_path.name}"
+    summary.append_code_block(
+        "Verification bootstrap one-liner",
+        "sh",
+        artifacts.bootstrap_artifacts.invoker_snippet,
+    )
+    summary.append_plaintext_block(
+        "Verification bootstrap note",
+        "The bootstrap script is a signed convenience layer around the verifier. "
+        "The signed RC vote manifest and ASF KEYS remain the trust anchors.\n"
+        f"Bootstrap script: {bootstrap_script_url}",
     )
     summary.append_json_block("RC vote manifest", artifacts.manifest_payload)
     summary.append_plaintext_block(
@@ -432,6 +535,8 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
         rc_tag_target_commit=rc_tag_target_commit,
         manifest_payload=artifacts.manifest_payload,
         draft_release_url=selected_release.release_url,
+        bootstrap_script_url=f"{state.staging_url.rstrip('/')}/{artifacts.bootstrap_artifacts.script_path.name}",
+        bootstrap_invoker=artifacts.bootstrap_artifacts.invoker_snippet,
     )
     incubator_vote_email = None
     if context.component_config.incubator_vote_enabled:
@@ -439,6 +544,10 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
             component_config=context.component_config,
             state=state,
             manifest_payload=artifacts.manifest_payload,
+            bootstrap_script_url=(
+                f"{state.staging_url.rstrip('/')}/{artifacts.bootstrap_artifacts.script_path.name}"
+            ),
+            bootstrap_invoker=artifacts.bootstrap_artifacts.invoker_snippet,
         )
     manifest_path = _manifest_path(context.component_config.component_id, "finalize-rc-vote-materials")
     summary = SummaryWriter.from_environment()
@@ -455,6 +564,10 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
             "source_artifact_url": source_artifact_url,
             "authoritative_manifest_url": authoritative_manifest_url,
             "authoritative_manifest_sha512": artifacts.manifest_sha512,
+            "bootstrap_script_url": (
+                f"{state.staging_url.rstrip('/')}/{artifacts.bootstrap_artifacts.script_path.name}"
+            ),
+            "bootstrap_script_sha512": artifacts.bootstrap_artifacts.script_sha512,
             "draft_release_url": selected_release.release_url,
             "secondary_artifact_count": str(len(secondary_artifacts)),
             "mirrored_asset_names": ",".join(_rc_vote_manifest_asset_names(artifacts)),

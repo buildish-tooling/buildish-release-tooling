@@ -217,18 +217,26 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             f"{dev_base_url}/1.2.3-rc0/rc-vote-manifest.json",
             manifest["authoritative_manifest_url"],
         )
+        self.assertEqual(
+            f"{dev_base_url}/1.2.3-rc0/verify-rc-bootstrap.sh",
+            manifest["bootstrap_script_url"],
+        )
         self.assertIn("rc-vote-manifest.json.asc", manifest["mirrored_asset_names"])
+        self.assertIn("verify-rc-bootstrap.sh.asc", manifest["mirrored_asset_names"])
         self.assertTrue(manifest["gpg_fingerprint"])
         self.assertEqual(
             [
                 "rc-vote-manifest.json",
                 "rc-vote-manifest.json.asc",
                 "rc-vote-manifest.json.sha512",
+                "verify-rc-bootstrap.sh",
+                "verify-rc-bootstrap.sh.asc",
+                "verify-rc-bootstrap.sh.sha512",
             ],
             sorted(
                 entry
                 for entry in client.list_entries(f"{dev_base_url}/1.2.3-rc0")
-                if entry.startswith("rc-vote-manifest.json")
+                if entry.startswith("rc-vote-manifest.json") or entry.startswith("verify-rc-bootstrap.sh")
             ),
         )
         staged_manifest = json.loads(
@@ -268,6 +276,9 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
                 str(clone_dir / "build" / "release-artifacts" / component_id / "rc-vote-manifest.json"),
                 str(clone_dir / "build" / "release-artifacts" / component_id / "rc-vote-manifest.json.sha512"),
                 str(clone_dir / "build" / "release-artifacts" / component_id / "rc-vote-manifest.json.asc"),
+                str(clone_dir / "build" / "release-artifacts" / component_id / "verify-rc-bootstrap.sh"),
+                str(clone_dir / "build" / "release-artifacts" / component_id / "verify-rc-bootstrap.sh.sha512"),
+                str(clone_dir / "build" / "release-artifacts" / component_id / "verify-rc-bootstrap.sh.asc"),
             ],
             (gh_state_dir / "release-upload-files.log").read_text(encoding="utf-8").splitlines(),
         )
@@ -275,12 +286,19 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             "v1.2.3-rc0",
             (gh_state_dir / "release-upload-tag.txt").read_text(encoding="utf-8").strip(),
         )
+        update_release_request = json.loads(
+            (gh_state_dir / "update-release-request.json").read_text(encoding="utf-8")
+        )
+        self.assertIn("Verify RC bootstrap one-liner:", update_release_request["body"])
+        self.assertIn("verify-rc-bootstrap.sh", update_release_request["body"])
         summary_text = finalize_manifest_path.with_suffix(".summary.md").read_text(encoding="utf-8")
         self.assertIn("Finalize RC vote materials for version 1.2.3", summary_text)
         self.assertIn("### Technical details", summary_text)
         self.assertIn("### RC vote manifest", summary_text)
+        self.assertIn("### Verification bootstrap one-liner", summary_text)
         self.assertIn('"manifest_type": "rc-vote"', summary_text)
         self.assertIn("Project vote subject", summary_text)
+        self.assertIn("Verification bootstrap convenience:", summary_text)
         self.assertIn("Please vote in the next 72 hours.", summary_text)
         self.assertIn(f"{release_base_url.rsplit('/', 1)[0]}/KEYS", summary_text)
 

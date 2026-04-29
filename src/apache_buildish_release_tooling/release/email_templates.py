@@ -139,6 +139,26 @@ def _draft_release_block(draft_release_url: str) -> str:
     )
 
 
+def _verification_bootstrap_block(
+    *,
+    bootstrap_script_url: str | None,
+    bootstrap_invoker: str | None,
+) -> str:
+    """Render the optional verification-bootstrap section for plain-text templates."""
+
+    if not bootstrap_script_url or not bootstrap_invoker:
+        return ""
+    indented_invoker = "\n".join(f"  {line}" for line in bootstrap_invoker.splitlines())
+    return "\n".join(
+        [
+            "Verification bootstrap convenience:",
+            f"* Bootstrap script: {bootstrap_script_url}",
+            "* Example invoker:",
+            indented_invoker,
+        ]
+    )
+
+
 def _project_vote_binding_text(component_config: ComponentConfig) -> str:
     """Render the binding-vote guidance for a project vote email."""
 
@@ -172,6 +192,8 @@ def render_project_rc_vote_email(
     rc_tag_target_commit: str,
     manifest_payload: dict[str, Any],
     draft_release_url: str,
+    bootstrap_script_url: str | None = None,
+    bootstrap_invoker: str | None = None,
 ) -> RenderedEmail:
     """Render the project mailing-list RC vote email from authoritative RC state."""
 
@@ -215,6 +237,7 @@ def render_project_rc_vote_email(
           Signature: ${manifest_signature_url}
 
         ${draft_release_block}
+        ${verification_bootstrap_block}
 
         Please download, verify, and test according to the release verification guide, which can be found at:
         ${release_verification_guide_url}
@@ -253,6 +276,10 @@ def render_project_rc_vote_email(
                 "uri",
             ),
             "draft_release_block": _draft_release_block(draft_release_url),
+            "verification_bootstrap_block": _verification_bootstrap_block(
+                bootstrap_script_url=bootstrap_script_url,
+                bootstrap_invoker=bootstrap_invoker,
+            ),
             "release_verification_guide_url": component_config.release_verification_guide_url,
             "binding_vote_text": _project_vote_binding_text(component_config),
         },
@@ -268,6 +295,8 @@ def render_incubator_rc_vote_email(
     component_config: ComponentConfig,
     state: PrepareRcState,
     manifest_payload: dict[str, Any],
+    bootstrap_script_url: str | None = None,
+    bootstrap_invoker: str | None = None,
 ) -> RenderedEmail:
     """Render the later-use IPMC vote request email for podling releases."""
 
@@ -291,6 +320,8 @@ def render_incubator_rc_vote_email(
         RC vote-manifest:
         * ${manifest_url}
 
+        ${verification_bootstrap_block}
+
         Please download, verify, and test according to the release verification guide, which can be found at:
         ${release_verification_guide_url}
 
@@ -310,6 +341,10 @@ def render_incubator_rc_vote_email(
             "release_display_name": release_display_name,
             "rc_label": _rc_label(state.rc_number),
             "manifest_url": _string_field(authoritative_manifest, "uri"),
+            "verification_bootstrap_block": _verification_bootstrap_block(
+                bootstrap_script_url=bootstrap_script_url,
+                bootstrap_invoker=bootstrap_invoker,
+            ),
             "release_verification_guide_url": component_config.release_verification_guide_url,
             "binding_vote_text": _incubator_vote_binding_text(),
         },

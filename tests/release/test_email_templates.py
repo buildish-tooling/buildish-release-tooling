@@ -139,6 +139,11 @@ class EmailTemplatesTest(unittest.TestCase):
             rc_tag_target_commit="89abcdef0123456789abcdef0123456789abcdef",
             manifest_payload=self._manifest_payload(),
             draft_release_url="https://github.com/apache/buildish-example/releases/tag/v1.2.3",
+            bootstrap_script_url=(
+                "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/"
+                "verify-rc-bootstrap.sh"
+            ),
+            bootstrap_invoker="/bin/sh -eu -c '...'",
         )
         self.assertEqual(
             "[VOTE] Release Apache Buildish Example 1.2.3-incubating (RC2)",
@@ -150,6 +155,8 @@ class EmailTemplatesTest(unittest.TestCase):
         self.assertIn("https://downloads.apache.org/incubator/buildish/KEYS", rendered.body)
         self.assertIn("https://buildish.apache.org/buildish-example/release-verification/", rendered.body)
         self.assertIn("buildish-example.zip", rendered.body)
+        self.assertIn("Verification bootstrap convenience:", rendered.body)
+        self.assertIn("verify-rc-bootstrap.sh", rendered.body)
 
     def test_render_incubator_rc_vote_email_uses_thread_placeholders(self) -> None:
         rendered = render_incubator_rc_vote_email(
