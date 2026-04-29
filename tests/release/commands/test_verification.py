@@ -16,8 +16,12 @@
 
 from __future__ import annotations
 
+from argparse import Namespace
 from dataclasses import dataclass
 
+from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
+    build_maven_repository_registration,
+)
 from apache_buildish_release_tooling.release.gpg_signing import _effective_home, secret_key_fingerprint
 from apache_buildish_release_tooling.release.source_artifact import create_from_git
 
@@ -172,6 +176,69 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual(1, completed.returncode)
         self.assertIn("secondary artifact checksum does not match the signed manifest", completed.stderr)
 
+    def test_verify_rc_command_verifies_maven_repository_secondary_artifact(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_maven_repository=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=cli_env(fixture.manifest_output_path),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("maven-repository", secondary_verification["kind"])
+        self.assertTrue(secondary_verification["live_repository"]["matches_signed_inventory"])
+        self.assertEqual(1, len(secondary_verification["live_repository"]["signature_verifications"]))
+
+    def test_verify_rc_command_fails_closed_when_maven_repository_drifts_from_inventory(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_maven_repository=True,
+            drift_maven_repository=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--work-dir",
+                str(fixture.work_dir),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=cli_env(fixture.manifest_output_path),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn("live maven repository checksum does not match the signed inventory", completed.stderr)
+
     def test_verify_rc_command_fails_closed_when_manifest_omits_rc_tag(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
@@ -230,6 +297,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         mismatched_source_commit_sha: bool = False,
         secondary_kind: str | None = None,
         mismatched_secondary_digest: bool = False,
+        include_maven_repository: bool = False,
+        drift_maven_repository: bool = False,
     ) -> VerificationFixture:
         origin_dir, _clone_dir = init_git_origin_and_clone(sandbox_dir)
         component_id = "buildish-example"
@@ -360,6 +429,45 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                     ],
                 }
             )
+        if include_maven_repository:
+            staging_repository_id = "orgapacheexample-1234"
+            repository_root = sandbox_dir / staging_repository_id
+            repository_root.mkdir(parents=True, exist_ok=True)
+            artifact_relative_path = Path("org/example/app/1.0.0/app-1.0.0.jar")
+            artifact_path = repository_root / artifact_relative_path
+            artifact_path.parent.mkdir(parents=True, exist_ok=True)
+            artifact_path.write_bytes(b"jar-bytes\n")
+            artifact_sha512 = hashlib.sha512(artifact_path.read_bytes()).hexdigest()
+            artifact_sha512_path = artifact_path.with_name(f"{artifact_path.name}.sha512")
+            artifact_sha512_path.write_text(
+                f"{artifact_sha512}  {artifact_path.name}\n",
+                encoding="utf-8",
+            )
+            artifact_signature_path = artifact_path.with_name(f"{artifact_path.name}.asc")
+            self._detached_sign(effective_gpg_home, artifact_path, artifact_signature_path)
+            repository_bundle_dir = sandbox_dir / "maven-bundle"
+            repository_bundle_dir.mkdir(parents=True, exist_ok=True)
+            registration = build_maven_repository_registration(
+                Namespace(
+                    artifact_id="maven-staging-main",
+                    staging_repository_id=staging_repository_id,
+                    base_url=f"{repository_root.as_uri()}/",
+                    inventory_workers=None,
+                    progress="off",
+                    role=None,
+                    git_commit_sha=None,
+                    artifact_origin=None,
+                ),
+                repository_bundle_dir,
+            )
+            maven_artifact = dict(registration.secondary_artifact)
+            inventory = dict(maven_artifact["inventory"])
+            inventory_filename = inventory["filename"]
+            inventory["uri"] = (repository_bundle_dir / inventory_filename).as_uri()
+            maven_artifact["inventory"] = inventory
+            secondary_artifacts.append(maven_artifact)
+            if drift_maven_repository:
+                artifact_path.write_bytes(b"jar-drift\n")
 
         manifest_payload: dict[str, object] = {
             "schema_version": "1",

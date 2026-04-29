@@ -461,11 +461,17 @@ def _inventory_entry_sha512(
     cache: dict[str, bytes],
     remote_http_client: _RemoteHttpClient | None,
 ) -> str:
+    payload = _repository_file_bytes(
+        repository_file,
+        cache=cache,
+        remote_http_client=remote_http_client,
+    )
+    actual_sha512 = hashlib.sha512(payload).hexdigest()
     sidecar_relative_path = f"{repository_file.relative_path}.sha512"
     if not repository_file.relative_path.endswith(".sha512"):
         sidecar_file = files_by_relative_path.get(sidecar_relative_path)
         if sidecar_file is not None:
-            return _parsed_sidecar_sha512(
+            declared_sha512 = _parsed_sidecar_sha512(
                 _repository_file_bytes(
                     sidecar_file,
                     cache=cache,
@@ -473,12 +479,12 @@ def _inventory_entry_sha512(
                 ),
                 relative_path=sidecar_relative_path,
             )
-    payload = _repository_file_bytes(
-        repository_file,
-        cache=cache,
-        remote_http_client=remote_http_client,
-    )
-    return hashlib.sha512(payload).hexdigest()
+            if declared_sha512 != actual_sha512:
+                raise ValueError(
+                    "maven-repository SHA512 sidecar does not match file bytes: "
+                    f"{repository_file.relative_path}"
+                )
+    return actual_sha512
 
 
 def _inventory_payload(

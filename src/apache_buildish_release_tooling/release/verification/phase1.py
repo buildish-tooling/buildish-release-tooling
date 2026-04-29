@@ -462,29 +462,51 @@ def _report_markdown(
         )
     else:
         for verification in secondary_artifact_verifications:
-            checksum_payload = verification["checksum"]
+            kind = verification["kind"]
             lines.extend(
                 [
                     f"#### `{verification['artifact_id']}`",
                     "",
-                    f"- Kind: `{verification['kind']}`",
-                    f"- File: `{verification['filename']}`",
-                    f"- URL: `{verification['uri']}`",
-                    f"- Checksum verified: `{checksum_payload['algorithm']}:{checksum_payload['value']}`",
-                    f"- Checksum sidecar verified: `{checksum_payload['sidecar_verified']}`",
+                    f"- Kind: `{kind}`",
                 ]
             )
-            signature_verifications = verification.get("signatures", [])
-            if signature_verifications:
+            if kind in {"generic-file", "generic-file-with-openpgp"}:
+                checksum_payload = verification["checksum"]
+                lines.extend(
+                    [
+                        f"- File: `{verification['filename']}`",
+                        f"- URL: `{verification['uri']}`",
+                        f"- Checksum verified: `{checksum_payload['algorithm']}:{checksum_payload['value']}`",
+                        f"- Checksum sidecar verified: `{checksum_payload['sidecar_verified']}`",
+                    ]
+                )
+                signature_verifications = verification.get("signatures", [])
+                if signature_verifications:
+                    for signature_verification in signature_verifications:
+                        lines.append(
+                            f"- Signature verified: `{signature_verification['signer_fingerprint']}`"
+                        )
+                inventory_payload = verification.get("inventory")
+                if isinstance(inventory_payload, dict):
+                    lines.append(
+                        f"- Inventory verified: `{inventory_payload['filename']}`"
+                    )
+            elif kind == "maven-repository":
+                inventory_payload = verification["inventory"]
+                live_repository = verification["live_repository"]
+                lines.extend(
+                    [
+                        f"- Base URL: `{verification['base_url']}`",
+                        f"- Inventory verified: `{inventory_payload['filename']}`",
+                        f"- Live repository entry count: `{live_repository['entry_count']}`",
+                        f"- Live repository matches signed inventory: `{live_repository['matches_signed_inventory']}`",
+                    ]
+                )
+                signature_verifications = live_repository.get("signature_verifications", [])
                 for signature_verification in signature_verifications:
                     lines.append(
-                        f"- Signature verified: `{signature_verification['signer_fingerprint']}`"
+                        f"- Signature verified: `{signature_verification['path']}` by `{signature_verification['signature']['signer_fingerprint']}`"
                     )
-            inventory_payload = verification.get("inventory")
-            if isinstance(inventory_payload, dict):
-                lines.append(
-                    f"- Inventory verified: `{inventory_payload['filename']}`"
-                )
             lines.append("")
     lines.extend(
         [

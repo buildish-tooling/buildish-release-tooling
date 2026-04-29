@@ -21,6 +21,8 @@ from typing import ClassVar
 from typing import Any, cast
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
+    _RepositoryFile,
+    _inventory_entry_sha512,
     _RemoteHttpClient,
     _normalized_base_url,
     _parse_nexus_index,
@@ -150,3 +152,38 @@ class MavenRepositoryRegistrationUnitTest(unittest.TestCase):
         )
         self.assertTrue(pool_manager.cleared)
         self.assertTrue(all(response.released for response in pool_manager.issued_responses))
+
+    def test_inventory_entry_sha512_rejects_mismatched_sidecar(self) -> None:
+        repository_file = _RepositoryFile(
+            relative_path="org/example/app-1.0.0.jar",
+            size_bytes=4,
+            local_path=None,
+            source_url="https://repository.apache.org/content/repositories/orgapachebeam-1427/org/example/app-1.0.0.jar",
+        )
+        sidecar_file = _RepositoryFile(
+            relative_path="org/example/app-1.0.0.jar.sha512",
+            size_bytes=129,
+            local_path=None,
+            source_url="https://repository.apache.org/content/repositories/orgapachebeam-1427/org/example/app-1.0.0.jar.sha512",
+        )
+        files_by_relative_path = {
+            repository_file.relative_path: repository_file,
+            sidecar_file.relative_path: sidecar_file,
+        }
+        jar_bytes = b"jar\n"
+        wrong_digest = ("0" * 127) + "1"
+        cache = {
+            repository_file.relative_path: jar_bytes,
+            sidecar_file.relative_path: f"{wrong_digest}  app-1.0.0.jar\n".encode(),
+        }
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "maven-repository SHA512 sidecar does not match file bytes",
+        ):
+            _inventory_entry_sha512(
+                repository_file,
+                files_by_relative_path=files_by_relative_path,
+                cache=cache,
+                remote_http_client=None,
+            )
