@@ -40,6 +40,7 @@ class EmailTemplatesTest(unittest.TestCase):
                 "source_artifact_prefix": "apache-buildish-example",
                 "asf_dist_dev_base": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
                 "asf_dist_release_base": "https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+                "asf_keys_url": "https://downloads.apache.org/incubator/buildish/KEYS",
                 "moving_tags_enabled": True,
                 "latest_tag_enabled": False,
                 "secondary_targets": ["github-action", "github-release"],

@@ -17,8 +17,12 @@ name: Releasey Verify RC
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: Exact version such as 1.2.3
+      rc_vote_manifest_url:
+        description: Exact rc-vote-manifest.json URL to verify
+        required: true
+        type: string
+      keys_url:
+        description: Explicit KEYS URL expected by the signed manifest
         required: true
         type: string
 
@@ -41,7 +45,9 @@ jobs:
           git fetch --force --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
       - name: Draft RC verification
         env:
-          RELEASE_VERSION: ${{ inputs.version }}
+          RC_VOTE_MANIFEST_URL: ${{ inputs.rc_vote_manifest_url }}
+          KEYS_URL: ${{ inputs.keys_url }}
         run: |
           bash buildish-release-tooling/release-tooling.sh verify-rc \
-            "$RELEASE_VERSION"
+            "$RC_VOTE_MANIFEST_URL" \
+            "$KEYS_URL"

@@ -48,7 +48,7 @@ class RcVoteManifestTest(unittest.TestCase):
         keys_path = sandbox_dir / "KEYS"
         keys_payload = b"test-key\n"
         keys_path.write_bytes(keys_payload)
-        metadata = trust_root_metadata(f"{keys_path.parent.as_uri()}/buildish-example")
+        metadata = trust_root_metadata(keys_path.as_uri())
         asf_keys = cast(dict[str, Any], metadata["asf_keys"])
         self.assertEqual(f"{keys_path.as_uri()}", asf_keys["uri"])
         self.assertEqual(len(keys_payload), asf_keys["known_length_bytes"])
@@ -64,6 +64,7 @@ class RcVoteManifestTest(unittest.TestCase):
                 "source_artifact_prefix": "apache-buildish-example",
                 "asf_dist_dev_base": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
                 "asf_dist_release_base": "https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+                "asf_keys_url": "https://downloads.apache.org/incubator/buildish/KEYS",
                 "moving_tags_enabled": True,
                 "latest_tag_enabled": False,
                 "secondary_targets": ["github-action"],
@@ -128,6 +129,7 @@ class RcVoteManifestTest(unittest.TestCase):
                 component_config=component_config,
                 state=state,
                 repository_slug="apache/buildish-example",
+                source_repository_url="https://github.com/apache/buildish-example",
                 draft_release_tag="v1.2.3-rc2",
                 draft_release_url="https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc2",
                 rc_tag_target_commit="89abcdef0123456789abcdef0123456789abcdef",
@@ -167,6 +169,10 @@ class RcVoteManifestTest(unittest.TestCase):
         self.assertEqual(
             "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc2",
             manifest["draft_github_release"]["url"],
+        )
+        self.assertEqual(
+            "https://github.com/apache/buildish-example",
+            manifest["source_repository_url"],
         )
         self.assertEqual("v1.2.3-rc2", manifest["draft_github_release"]["tag"])
         self.assertEqual(

@@ -582,14 +582,40 @@ def _register_release_metadata_commands(
     )
     _add_version_argument(release_version)
 
-    verify_rc = _add_command_parser(
-        subparsers,
-        common,
+
+def _register_verification_commands(subparsers: Subparsers) -> None:
+    verify_rc = subparsers.add_parser(
         "verify-rc",
-        help_text="Emit authoritative RC verification instructions.",
-        handler=commands.run_verify_rc,
+        help="Verify one signed RC vote manifest plus its staged source artifact.",
     )
-    _add_version_argument(verify_rc)
+    verify_rc.set_defaults(handler=commands.run_verify_rc)
+    verify_rc.add_argument(
+        "--component-config",
+        dest="component_config",
+        help="Optional YAML component configuration path used to cross-check the explicit KEYS URL.",
+    )
+    verify_rc.add_argument(
+        "--allow-non-production-release-targets",
+        action="store_true",
+        help="Allow file:// and http:// manifest, KEYS, source-artifact, and source-repository URLs for local harness-style test runs.",
+    )
+    verify_rc.add_argument(
+        "--work-dir",
+        dest="work_dir",
+        help="Optional working directory for downloads, cloned source state, and generated reports.",
+    )
+    verify_rc.add_argument(
+        "--report-json",
+        dest="report_json",
+        help="Optional machine-readable verification report path.",
+    )
+    verify_rc.add_argument(
+        "--report-md",
+        dest="report_md",
+        help="Optional Markdown verification report path.",
+    )
+    verify_rc.add_argument("rc_vote_manifest_url")
+    verify_rc.add_argument("keys_url")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -603,6 +629,7 @@ def build_parser() -> argparse.ArgumentParser:
     _register_artifact_registration_commands(subparsers, common)
     _register_publication_commands(subparsers, common)
     _register_release_metadata_commands(subparsers, common)
+    _register_verification_commands(subparsers)
 
     return parser
 

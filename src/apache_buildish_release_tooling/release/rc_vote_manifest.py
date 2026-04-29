@@ -37,7 +37,7 @@ def _tooling_repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def _origin_repository_metadata(repo: GitRepository) -> tuple[str, str]:
+def origin_repository_metadata(repo: GitRepository) -> tuple[str, str]:
     """Resolve repository slug and normalized HTTPS URL from the `origin` remote."""
 
     try:
@@ -71,7 +71,7 @@ def tooling_provenance() -> dict[str, object]:
     """Build provenance metadata for the checked-out release-tooling source tree."""
 
     repo = GitRepository.from_current_worktree(_tooling_repo_root())
-    repository, repository_url = _origin_repository_metadata(repo)
+    repository, repository_url = origin_repository_metadata(repo)
     git_ref, version = _tooling_git_ref(repo)
     provenance: dict[str, object] = {
         "repository": repository,
@@ -152,10 +152,9 @@ def read_uri_text(uri: str) -> str:
     return read_uri_bytes(uri).decode("utf-8")
 
 
-def trust_root_metadata(release_base_url: str) -> dict[str, object]:
-    """Build the KEYS trust-root block for one component release base."""
+def trust_root_metadata(keys_uri: str) -> dict[str, object]:
+    """Build the KEYS trust-root block for one explicit ASF KEYS URI."""
 
-    keys_uri = derive_asf_keys_uri(release_base_url)
     keys_payload = read_uri_bytes(keys_uri)
     return {
         "asf_keys": {
@@ -171,6 +170,7 @@ def build_rc_vote_manifest(
     component_config: ComponentConfig,
     state: PrepareRcState,
     repository_slug: str,
+    source_repository_url: str,
     draft_release_tag: str,
     draft_release_url: str,
     rc_tag_target_commit: str,
@@ -194,6 +194,7 @@ def build_rc_vote_manifest(
         "version": state.final_tag.removeprefix("v"),
         "release_line": derive_specific_release_line(state.final_tag.removeprefix("v")),
         "release_branch": state.resolved_release_branch,
+        "source_repository_url": source_repository_url,
         "source_commit_sha": state.resolved_source_ref,
         "rc_tag": state.rc_tag,
         "final_tag": state.final_tag,
@@ -202,7 +203,7 @@ def build_rc_vote_manifest(
             "created_at": created_at_utc(),
             "tooling": tooling_provenance(),
         },
-        "trust_roots": trust_root_metadata(component_config.asf_dist_release_base),
+        "trust_roots": trust_root_metadata(component_config.asf_keys_url),
         "draft_github_release": {
             "repository": repository_slug,
             "tag": draft_release_tag,

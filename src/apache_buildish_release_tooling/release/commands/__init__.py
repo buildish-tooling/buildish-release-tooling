@@ -42,13 +42,15 @@ from apache_buildish_release_tooling.release.commands.release_publication import
     run_publish_source_release_svn,
     run_release_version,
     run_sync_draft_github_release,
-    run_verify_rc,
 )
 from apache_buildish_release_tooling.release.commands.secondary_targets import (
     run_attach_github_release_assets,
     run_publish_dockerhub_moving_tags,
     run_update_moving_image_aliases,
     run_update_moving_tags,
+)
+from apache_buildish_release_tooling.release.commands.verification import (
+    run_verify_rc,
 )
 from apache_buildish_release_tooling.release.commands.vote_materials import (
     run_finalize_rc_vote_materials,

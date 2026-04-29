@@ -16,6 +16,7 @@ component_id: buildish-mammoth-cache
 source_artifact_prefix: apache-buildish-mammoth-cache
 asf_dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-mammoth-cache
 asf_dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-mammoth-cache
+asf_keys_url: https://downloads.apache.org/incubator/buildish/KEYS
 moving_tags_enabled: true
 latest_tag_enabled: false
 secondary_targets:

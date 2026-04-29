@@ -16,6 +16,7 @@ component_id: buildish-no-gradle-wrapper-jar
 source_artifact_prefix: apache-buildish-no-gradle-wrapper-jar
 asf_dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-no-gradle-wrapper-jar
 asf_dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-no-gradle-wrapper-jar
+asf_keys_url: https://downloads.apache.org/incubator/buildish/KEYS
 moving_tags_enabled: false
 latest_tag_enabled: false
 secondary_targets:

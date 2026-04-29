@@ -47,7 +47,7 @@ from apache_buildish_release_tooling.release.rc_vote_verification import (
     required_source_release_file_names,
     verify_staged_source_release_against_vote_manifest,
 )
-from apache_buildish_release_tooling.release.release_state import derive_final_tag, require_semantic_version
+from apache_buildish_release_tooling.release.release_state import derive_final_tag
 from apache_buildish_release_tooling.release.summary import SummaryWriter
 
 from apache_buildish_release_tooling.release.commands._shared import (
@@ -467,31 +467,5 @@ def run_release_version(args: Namespace) -> Path:
         "Project vote result",
         vote_result_email.subject,
         vote_result_email.body,
-    )
-    return manifest_path
-
-
-def run_verify_rc(args: Namespace) -> Path:
-    """Emit authoritative RC verification instructions."""
-
-    context = _context(args)
-    repo = GitRepository.from_current_worktree()
-    version = require_semantic_version(args.version)
-    rc_tag = repo.latest_matching_rc_tag(version)
-    manifest_path = _manifest_path(context.component_config.component_id, "verify-rc")
-    summary = SummaryWriter.from_environment()
-    write_manifest(
-        manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "verify-rc",
-            "version": version,
-            "rc_tag": rc_tag,
-            "platforms": "linux,macos",
-        },
-    )
-    summary.append_heading("Verify RC")
-    summary.append_plaintext_block(
-        "Authoritative verification", context.component_config.verify_rc_instructions
     )
     return manifest_path

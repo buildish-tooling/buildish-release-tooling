@@ -230,6 +230,7 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
                     f"source_artifact_prefix: apache-{component_id}",
                     f"asf_dist_dev_base: {dev_base_url}",
                     f"asf_dist_release_base: {release_base_url}",
+                    f"asf_keys_url: {release_base_url.rsplit('/', 1)[0]}/KEYS",
                     f"moving_tags_enabled: {'true' if moving_tags_enabled else 'false'}",
                     f"latest_tag_enabled: {'true' if latest_tag_enabled else 'false'}",
                     "secondary_targets:",
@@ -320,6 +321,7 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
                 "version": version,
                 "release_line": "1.2.x",
                 "release_branch": "release/1.2.x",
+                "source_repository_url": "https://github.com/apache/buildish-example",
                 "source_commit_sha": "0123456789abcdef0123456789abcdef01234567",
                 "rc_tag": f"v{version}-rc{rc_number}",
                 "final_tag": f"v{version}",
@@ -327,7 +329,7 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
                 "provenance": {"created_at": "2026-04-26T12:00:00Z", "tooling": {}},
                 "trust_roots": {
                     "asf_keys": {
-                        "uri": "https://downloads.apache.org/incubator/buildish/KEYS",
+                        "uri": f"{repo_url}/dist/release/incubator/buildish/KEYS",
                         "known_length_bytes": 9,
                         "known_prefix_sha512": "abc123",
                     }

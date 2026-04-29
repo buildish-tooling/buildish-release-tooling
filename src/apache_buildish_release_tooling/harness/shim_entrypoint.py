@@ -189,8 +189,8 @@ def _buildish_release_tooling_heading(command_name: str, arguments: list[str]) -
         return f"Synchronize draft GitHub Release for version {version}"
     if command_name == "release-version" and version is not None:
         return f"Resolve release-version state for {version}"
-    if command_name == "verify-rc" and version is not None:
-        return f"Emit RC verification guidance for version {version}"
+    if command_name == "verify-rc":
+        return "Verify RC"
     if command_name == "create-release-branch":
         return "Create release branch"
     return command_name.replace("-", " ").capitalize()

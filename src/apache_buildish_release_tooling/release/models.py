@@ -77,6 +77,7 @@ class ComponentConfig(BaseModel):
     source_artifact_prefix: str
     asf_dist_dev_base: str
     asf_dist_release_base: str
+    asf_keys_url: str
     moving_tags_enabled: bool
     latest_tag_enabled: bool
     secondary_targets: list[str]

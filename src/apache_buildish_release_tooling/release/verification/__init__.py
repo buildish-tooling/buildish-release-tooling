@@ -12,16 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: releasey-verify-rc
-backend: act
-workflow:
-  path: ../../../.github/workflows/releasey-40-verify-rc.yml
-  harness_config: ../release-harness.yaml
-  inputs:
-    rc_vote_manifest_url: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/9.9.9-rc1/rc-vote-manifest.json
-    keys_url: https://downloads.apache.org/incubator/buildish/KEYS
-  real_cli_commands:
-    - verify-rc
-  repository_fixture:
-    tags:
-      - name: v9.9.9-rc1
+"""Verifier helpers for the read-only `verify-rc` command."""
+
+from apache_buildish_release_tooling.release.verification.phase1 import (
+    VerifyRcPhase1Result,
+    verify_rc_phase1,
+)
+
+__all__ = [
+    "VerifyRcPhase1Result",
+    "verify_rc_phase1",
+]

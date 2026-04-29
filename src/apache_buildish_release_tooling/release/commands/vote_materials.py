@@ -39,7 +39,11 @@ from apache_buildish_release_tooling.release.gpg_signing import (
 )
 from apache_buildish_release_tooling.release.manifest import write_manifest
 from apache_buildish_release_tooling.release.models import CommandContext, PrepareRcState
-from apache_buildish_release_tooling.release.rc_vote_manifest import build_rc_vote_manifest, read_uri_text
+from apache_buildish_release_tooling.release.rc_vote_manifest import (
+    build_rc_vote_manifest,
+    origin_repository_metadata,
+    read_uri_text,
+)
 from apache_buildish_release_tooling.release.rc_vote_verification import verified_staged_source_artifact_sha512
 from apache_buildish_release_tooling.release.source_artifact import sha512, write_sha512_file
 from apache_buildish_release_tooling.release.summary import SummaryWriter
@@ -227,10 +231,14 @@ def _build_rc_vote_manifest_artifacts(
     manifest_file_path = output_dir / "rc-vote-manifest.json"
     with _temporary_build_dir("finalize-rc-vote-materials") as temp_root:
         gpg_home = temp_root / "gnupg"
+        _repository_slug, source_repository_url = origin_repository_metadata(
+            GitRepository.from_current_worktree()
+        )
         manifest_payload = build_rc_vote_manifest(
             component_config=context.component_config,
             state=state,
             repository_slug=selected_release.repository_slug,
+            source_repository_url=source_repository_url,
             draft_release_tag=selected_release.require_release_tag(reference_tag=state.rc_tag),
             draft_release_url=selected_release.release_url,
             rc_tag_target_commit=rc_tag_target_commit,
