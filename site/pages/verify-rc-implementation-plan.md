@@ -40,6 +40,23 @@ Related planning:
 
 - [ATR Integration Assessment](atr-integration-assessment.md)
 
+## Current Status
+
+Implemented already:
+
+- the release-side typed `record-artifact` contract
+- merge of typed secondary-artifact fragments into `finalize-rc-vote-materials`
+- built-in release-side registration kinds for `generic-file`, `maven-repository`, `python-distribution`, `oci-image`, and `npm-package`
+
+Still remaining:
+
+- the verifier-side `verify-rc` engine itself
+- generic secondary-artifact verification
+- ecosystem-specific verifier support for Maven, Python, OCI, and npm
+- bootstrap UX and a stronger long-term verifier bootstrap story
+
+This document now tracks that remaining verifier-side work.
+
 ## Goals
 
 - run in GitHub Actions with `contents: read` permissions only
@@ -117,6 +134,7 @@ Required:
 
 - the manifest is authentic and intact
 - the source artifact is authentic and intact
+- the manifest's declared `rc_tag` resolves to the same Git commit as the declared `source_commit_sha`
 - each declared secondary artifact is authentic and intact according to its artifact kind
 
 Advisory or project-graded:
@@ -142,6 +160,8 @@ The recommended trust chain is:
    - the manifest checksum sidecar matches the manifest bytes
    - the manifest detached signature verifies against the KEYS file
    - the KEYS URL declared in the signed manifest matches the CLI KEYS URL
+   - the manifest carries an explicit `rc_tag`
+   - the manifest `rc_tag` resolves to the same Git commit as the manifest `source_commit_sha`
    - when a local project checkout is present, `release-config.yaml` matches the CLI KEYS URL too
 5. Parse the now-trusted manifest.
 6. Verify the source artifact.
@@ -165,7 +185,7 @@ This section records the residual security concerns.
 
 ### Open Issue. The bootstrap trust chain is still too weak
 
-Phase 1 may keep the commit-pinned bootstrap path as an explicitly accepted risk, but it should not be treated as the long-term secure end state.
+Phase 1b may keep the commit-pinned bootstrap path as an explicitly accepted risk, but it should not be treated as the long-term secure end state.
 
 The current bootstrap example verifies the manifest, extracts a tooling commit SHA from it, and then clones `buildish-release-tooling` from GitHub at that commit. That is better than following a floating branch, but it is still too weak to serve as the main executable trust anchor.
 
@@ -596,53 +616,7 @@ The current built-in registration kinds are:
 
 The remaining work described elsewhere in this document is verifier-side `verify-rc` support for these kinds and future extensions such as `generic-file-with-openpgp`.
 
-This does not have to be one command per ecosystem, but there must be a typed handoff mechanism.
-
-Current design:
-
-- keep `finalize-rc-vote-materials --secondary-artifact-manifests ...`
-- use one public `record-artifact` command that emits typed JSON manifest fragments
-- require common options such as `--kind`, `--artifact-id`, and optional `--role`
-- let the selected `--kind` handler validate the kind-specific options and produce the typed output
-- hard-fail on unknown, missing, or invalid kind-specific options
-- for large or mutable collections, have `record-artifact` also emit a detached inventory snapshot whose digest is recorded in the signed main manifest
-
-Current implementation shape:
-
-- keep the public CLI surface small and stable
-- implement the command behind a registry of typed kind handlers
-- keep each handler responsible only for one kind's validation and fragment generation
-- keep the merge path in `finalize-rc-vote-materials` generic over fragment files rather than hard-coding per-kind behavior there
-
-Current registration package shape:
-
-```text
-release/
-  commands/
-    artifact_registration.py
-  artifact_registration/
-    __init__.py
-    models.py
-    registry.py
-    kinds/
-      __init__.py
-      generic_file.py
-      python_distribution.py
-      maven_repository.py
-      oci_image.py
-      npm_package.py
-```
-
-Future verifier-oriented extensions such as `generic_file_openpgp.py` still fit this registry pattern cleanly.
-
-Current responsibility split:
-
-- `commands/artifact_registration.py`: CLI entrypoint and workflow-facing output handling
-- `artifact_registration/models.py`: common request/result models and deterministic fragment-writing helpers
-- `artifact_registration/registry.py`: `kind` to handler dispatch
-- `artifact_registration/kinds/*.py`: per-kind validation, payload construction, and optional inventory emission
-
-Current workflow handoff model:
+The verifier-relevant handoff contract is:
 
 - each producer job should run `record-artifact` after staging its secondary artifact
 - each producer job should write a small artifact-registration bundle to disk
@@ -828,17 +802,7 @@ jobs:
 
 This is a better fit than step outputs because the handoff may need to carry multiple JSON files and detached inventories across several jobs before finalization.
 
-The current public UX is:
-
-- `record-artifact --kind maven-repository ...`
-- `record-artifact --kind python-distribution ...`
-- `record-artifact --kind oci-image ...`
-- `record-artifact --kind npm-package ...`
-- `record-artifact --kind generic-file ...`
-
-This keeps the workflow surface simple without giving up typed validation.
-
-Each invocation should write a small JSON payload that can later be merged into the signed `rc-vote-manifest`.
+At verifier time, the important contract is the typed fragment shape that ends up in the signed `rc-vote-manifest`, not the exact release-side CLI flags used to produce it.
 
 For Nexus specifically, the fragment must carry the staging repository ID and base URL, for example:
 
@@ -863,8 +827,6 @@ The same pattern applies to the other currently implemented ecosystems:
 - PyPI or TestPyPI: index URL, project name, version, filenames, and optional attestation repository
 
 For a Nexus staging repository, the `maven-repository` kind handler should also enumerate the staged repository, write an inventory of paths and digests, and have the signed main manifest bind to that inventory digest. `verify-rc` should fetch the inventory, verify that its digest matches the main manifest, and then verify the live repository contents against that fixed snapshot.
-
-For simple kinds, kind-specific flags are fine. For complex kinds with many structured fields, `record-artifact` may also accept a `--spec <path>` input that the selected kind handler validates against its schema instead of forcing a very large flat flag surface.
 
 This keeps RC preparation and RC verification connected by a typed, reviewable contract instead of ad hoc free-form notes.
 
@@ -902,6 +864,9 @@ Required checks:
 - compare the digest to the value embedded in the signed manifest
 - if a checksum sidecar exists, verify it matches the recomputed digest too
 - verify the detached signature against the KEYS file
+- require the manifest to carry an explicit `rc_tag`
+- verify that the manifest `rc_tag` resolves to the same Git commit as `source_commit_sha`
+- verify that the staged source artifact matches the declared `source_commit_sha`
 - if `expected_signer_fingerprints` is declared, require the source artifact signature to resolve to one of those fingerprints
 
 Optional local rebuild:
@@ -956,9 +921,9 @@ Comparison modes should be explicit:
 
 ## Default Cryptographic Policy
 
-Phase 1 should define a tool-wide minimum policy instead of treating "GPG accepted it" as the whole answer.
+Phase 1a should define a tool-wide minimum policy instead of treating "GPG accepted it" as the whole answer.
 
-Recommended phase-1 defaults:
+Recommended phase-1a defaults:
 
 - manifest and source-artifact checksum sidecars should use SHA-512
 - secondary ecosystems may use their native strong integrity material, but the verifier should not accept digests below a SHA-256-strength floor
@@ -1410,20 +1375,32 @@ This keeps verification as a sibling of `release`, not a subdomain inside it. Th
 
 ## Phased Implementation Plan
 
-The typed secondary-artifact registration layer described above is already implemented in the `release` CLI. The phases below now focus on verifier-side `verify-rc` work and follow-on verifier kinds, not on adding the current `record-artifact` kinds.
+The typed secondary-artifact registration layer described above is already implemented in the `release` CLI. The phases below focus on remaining verifier-side `verify-rc` work and follow-on verifier kinds.
 
-### Phase 1. Bootstrap and source verification
+### Phase 1a. Core verify-rc MVP
 
-- change CLI input to `rc_vote_manifest_url`
+- change CLI contract to `verify-rc <rc-vote-manifest-url> <keys-url>`
 - require explicit `keys_url` argument
 - add `asf_keys_url` to config
 - make manifest generation record explicit KEYS URL instead of deriving it
 - implement manifest verification
+- require the manifest to carry `rc_tag` explicitly
+- fail closed unless `rc_tag` resolves to the same Git commit as `source_commit_sha`
 - implement source artifact verification
-- implement signed bootstrap script generation
+- verify that the staged source artifact matches the declared `source_commit_sha`
 - emit JSON and markdown reports
+- define the minimum cryptographic policy and signer reporting
 
-This is the minimum useful implementation. It should not be described as secure-by-default for ordinary developer machines until the open bootstrap trust-chain issue in this document is addressed.
+This is the minimum useful verifier implementation.
+
+### Phase 1b. Bootstrap UX
+
+- implement signed bootstrap script generation
+- stage the bootstrap script and sidecars in ASF `dist/dev` and mirror them to the draft GitHub Release
+- wire the invoker snippets into vote-email and draft-release templates
+- document clearly that the bootstrap script is a convenience layer, not the verifier trust anchor
+
+This phase helps adoption, but it should not be described as secure-by-default for ordinary developer machines until the open bootstrap trust-chain issue in this document is addressed.
 
 ### Phase 2. Generic secondary file verification
 
@@ -1478,10 +1455,10 @@ I would make these decisions now:
 9. Large or mutable artifact collections should verify against a signed fixed inventory snapshot.
 10. Production verification should use artifact-family origin allowlists with sane defaults and explicit test-mode escape hatches.
 11. The verifier should enforce sane default resource budgets with explicit CLI override knobs.
-12. Phase 1 should ship a tool-wide minimum cryptographic policy and detailed signer reporting.
+12. Phase 1a should ship a tool-wide minimum cryptographic policy and detailed signer reporting.
 13. Reproducibility investigation should be a separate `inspect-repro` capability fed by `verify-rc` reports and curated inspection bundles.
 14. Maven repository verification should be the first secondary-artifact family after generic files.
-15. Phase 1 UX may use a signed bootstrap script rather than `uv` or local Python packaging setup, but the bootstrap trust-chain issue remains open and should be solved early.
+15. Phase 1b UX may use a signed bootstrap script rather than `uv` or local Python packaging setup, but the bootstrap trust-chain issue remains open and should be solved early.
 
 ## References
 
