@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.process import run_logged_command
 from apache_buildish_release_tooling.release.source_artifact import checksum
 
@@ -60,7 +61,7 @@ class GpgVerifier:
         run_logged_command(
             ["gpg", "--batch", "--quiet", "--import", str(keys_path)],
             env={"GNUPGHOME": str(self.home_dir)},
-            capture_output=False,
+            log_command=False,
         )
 
     def verify_detached(self, *, target_path: Path, signature_path: Path) -> SignatureVerification:
@@ -75,6 +76,7 @@ class GpgVerifier:
                 str(target_path),
             ],
             env={"GNUPGHOME": str(self.home_dir)},
+            log_command=False,
         )
         return _signature_verification_from_status(
             completed.stdout,
@@ -86,6 +88,65 @@ def signature_payload(signature: SignatureVerification) -> dict[str, Any]:
     """Return a JSON-serializable signature-verification payload."""
 
     return asdict(signature)
+
+
+def signature_summary(signature: SignatureVerification) -> str:
+    """Return one compact human-readable detached-signature verification summary."""
+
+    if signature.signer_user_id:
+        return f"{signature.signer_fingerprint} ({signature.signer_user_id})"
+    return signature.signer_fingerprint
+
+
+def emit_title(reporter: ProgressReporter, title: str) -> None:
+    """Emit one top-level heading for the verification transcript."""
+
+    reporter.emit_styled(title, sgr="1")
+    reporter.emit_styled("=" * len(title), sgr="1")
+
+
+def emit_section(reporter: ProgressReporter, title: str) -> None:
+    """Emit one section heading for the verification transcript."""
+
+    reporter.emit("")
+    reporter.emit_styled(title, sgr="1;36")
+    reporter.emit_styled("-" * len(title), sgr="1;36")
+
+
+def emit_info(reporter: ProgressReporter, message: str) -> None:
+    """Emit one informational transcript line."""
+
+    reporter.emit(f"• {message}")
+
+
+def update_info(reporter: ProgressReporter, message: str) -> None:
+    """Emit one rate-limited informational transcript line."""
+
+    reporter.update(f"• {message}")
+
+
+def emit_detail(reporter: ProgressReporter, label: str, value: str) -> None:
+    """Emit one indented detail line."""
+
+    reporter.emit(f"  {label}: {value}")
+
+
+def emit_success(reporter: ProgressReporter, message: str) -> None:
+    """Emit one success transcript line."""
+
+    reporter.emit_styled(f"✓ {message}", sgr="32")
+
+
+def emit_warning(reporter: ProgressReporter, message: str) -> None:
+    """Emit one warning transcript line."""
+
+    reporter.emit_styled(f"⚠ {message}", sgr="33")
+
+
+def emit_failure(reporter: ProgressReporter, message: str) -> None:
+    """Emit one failure transcript line."""
+
+    reporter.emit_styled(f"✗ {message}", sgr="31")
 
 
 def validate_fetch_uri(
@@ -158,6 +219,7 @@ def _signature_verification_from_status(status_output: str, *, home_dir: Path) -
     completed = run_logged_command(
         ["gpg", "--batch", "--with-colons", "--list-keys", fingerprint],
         env={"GNUPGHOME": str(home_dir)},
+        log_command=False,
     )
     key_algorithm: str | None = None
     key_size_bits: int | None = None

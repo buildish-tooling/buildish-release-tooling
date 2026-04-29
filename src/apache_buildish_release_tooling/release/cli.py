@@ -600,6 +600,21 @@ def _register_verification_commands(subparsers: Subparsers) -> None:
         help="Allow file:// and http:// manifest, KEYS, source-artifact, and source-repository URLs for local harness-style test runs.",
     )
     verify_rc.add_argument(
+        "--progress",
+        choices=("auto", "on", "off"),
+        default="auto",
+        help="Progress reporting mode for long-running verification steps. Defaults to auto, which reports progress on interactive terminals only.",
+    )
+    verify_rc.add_argument(
+        "--color",
+        choices=("auto", "always", "never"),
+        default="auto",
+        help=(
+            "Color mode for the human stderr transcript. Defaults to auto, which only colors interactive terminals "
+            "and respects NO_COLOR, CLICOLOR=0, CLICOLOR_FORCE=1, and TERM=dumb."
+        ),
+    )
+    verify_rc.add_argument(
         "--work-dir",
         dest="work_dir",
         help="Optional working directory for downloads, cloned source state, and generated reports.",
@@ -613,6 +628,16 @@ def _register_verification_commands(subparsers: Subparsers) -> None:
         "--report-md",
         dest="report_md",
         help="Optional Markdown verification report path.",
+    )
+    verify_rc.add_argument(
+        "--log-path",
+        dest="log_path",
+        help="Optional combined transcript and low-level command log path.",
+    )
+    verify_rc.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Also emit low-level command traces and captured subprocess output to stderr while still writing them to the log file.",
     )
     verify_rc.add_argument("rc_vote_manifest_url")
     verify_rc.add_argument("keys_url")

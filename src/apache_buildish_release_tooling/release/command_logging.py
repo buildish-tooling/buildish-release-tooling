@@ -19,7 +19,11 @@ from __future__ import annotations
 import os
 import shlex
 import sys
-from collections.abc import Iterable, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass
+from collections.abc import Iterable, Iterator, Sequence
+from threading import local
+from typing import TextIO
 
 _SECRET_ENV_NAMES = (
     "BUILDISH_GIT_ASKPASS_TOKEN",
@@ -33,6 +37,13 @@ _SECRET_ENV_NAMES = (
     "GITHUB_TOKEN",
 )
 _REDACTED_OPTION_NAMES = {"--username", "--password", "--passphrase", "--token", "--oauth-token"}
+_LOG_STATE = local()
+
+
+@dataclass(frozen=True)
+class _ActiveCommandLog:
+    stream: TextIO
+    echo_to_stderr: bool
 
 
 def redacted_token() -> str:
@@ -48,13 +59,19 @@ def _secret_values(extra_values: Iterable[str] | None = None) -> list[str]:
     return values
 
 
-def sanitize_argument(argument: str, extra_secret_values: Iterable[str] | None = None) -> str:
-    """Replace secret material embedded in a single argument."""
+def sanitize_text(text: str, extra_secret_values: Iterable[str] | None = None) -> str:
+    """Replace secret material embedded anywhere in one free-form text block."""
 
-    sanitized = argument
+    sanitized = text
     for secret_value in _secret_values(extra_secret_values):
         sanitized = sanitized.replace(secret_value, redacted_token())
     return sanitized
+
+
+def sanitize_argument(argument: str, extra_secret_values: Iterable[str] | None = None) -> str:
+    """Replace secret material embedded in a single argument."""
+
+    return sanitize_text(argument, extra_secret_values)
 
 
 def format_command(
@@ -77,7 +94,65 @@ def format_command(
     return shlex.join(sanitized_arguments)
 
 
-def print_command(command: Sequence[str], extra_secret_values: Iterable[str] | None = None) -> None:
-    """Emit a sanitized shell trace line to stderr."""
+@contextmanager
+def command_log_sink(stream: TextIO, *, echo_to_stderr: bool) -> Iterator[None]:
+    """Capture low-level command traces in one side log, optionally teeing them to stderr."""
 
-    sys.stderr.write(f"+ {format_command(command, extra_secret_values)}\n")
+    previous = getattr(_LOG_STATE, "active_log", None)
+    _LOG_STATE.active_log = _ActiveCommandLog(
+        stream=stream,
+        echo_to_stderr=echo_to_stderr,
+    )
+    try:
+        yield
+    finally:
+        _LOG_STATE.active_log = previous
+
+
+def print_command(
+    command: Sequence[str],
+    extra_secret_values: Iterable[str] | None = None,
+    *,
+    stderr_enabled: bool = True,
+) -> None:
+    """Emit a sanitized shell trace line."""
+
+    _write_log_line(
+        f"+ {format_command(command, extra_secret_values)}",
+        extra_secret_values=extra_secret_values,
+        stderr_enabled=stderr_enabled,
+    )
+
+
+def log_command_output(
+    stream_name: str,
+    text: str,
+    *,
+    extra_secret_values: Iterable[str] | None = None,
+) -> None:
+    """Emit one sanitized captured subprocess output block."""
+
+    normalized_text = text.rstrip("\n")
+    if not normalized_text:
+        return
+    for line in sanitize_text(normalized_text, extra_secret_values).splitlines():
+        _write_log_line(
+            f"{stream_name} | {line}",
+            extra_secret_values=extra_secret_values,
+            stderr_enabled=False,
+        )
+
+
+def _write_log_line(
+    message: str,
+    *,
+    extra_secret_values: Iterable[str] | None,
+    stderr_enabled: bool,
+) -> None:
+    active_log = getattr(_LOG_STATE, "active_log", None)
+    rendered = f"{sanitize_text(message, extra_secret_values)}\n"
+    if active_log is not None:
+        active_log.stream.write(rendered)
+        active_log.stream.flush()
+    if stderr_enabled or (active_log is not None and active_log.echo_to_stderr):
+        sys.stderr.write(rendered)

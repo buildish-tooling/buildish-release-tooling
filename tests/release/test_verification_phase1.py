@@ -46,11 +46,15 @@ class VerifyRcPhase1ReportTest(unittest.TestCase):
                 source_repository_url="https://github.com/apache/buildish-example.git",
                 manifest_url="https://dist.apache.org/example/rc-vote-manifest.json",
                 keys_url="https://downloads.apache.org/incubator/buildish/KEYS",
+                verdict="verified",
+                failures=[],
                 manifest_signature=signature,
                 source_artifact_filename="apache-buildish-example-1.2.3-incubating-src.tar.gz",
                 source_artifact_url="https://dist.apache.org/example/apache-buildish-example-1.2.3-incubating-src.tar.gz",
                 source_artifact_signature=signature,
                 actual_source_sha512="f" * 128,
+                manifest_issues=[],
+                source_artifact_issues=[],
                 secondary_artifact_verifications=[
                     {
                         "artifact_id": "odd-artifact",

@@ -62,91 +62,127 @@ def verify_python_distribution(
     index_url = required_non_empty_string(artifact_entry, "index_url", source=manifest_url)
     project_name = required_non_empty_string(artifact_entry, "project_name", source=manifest_url)
     version = required_non_empty_string(artifact_entry, "version", source=manifest_url)
+    issues: list[str] = []
     if version not in filename:
-        raise ValueError(
+        issues.append(
             "python-distribution filename does not contain the declared version: "
             f"{filename} vs {version}"
         )
     authenticity = artifact_entry.get("authenticity")
     if authenticity is not None:
-        scheme = required_non_empty_string(authenticity, "scheme", source=manifest_url)
-        if scheme != "pypi-attestation":
-            raise ValueError(f"unsupported python-distribution authenticity scheme: {scheme}")
-        raise ValueError(
-            "python-distribution pypi-attestation verification is not implemented; omit authenticity metadata for now"
-        )
+        try:
+            scheme = required_non_empty_string(authenticity, "scheme", source=manifest_url)
+            if scheme != "pypi-attestation":
+                raise ValueError(f"unsupported python-distribution authenticity scheme: {scheme}")
+            raise ValueError(
+                "python-distribution pypi-attestation verification is not implemented; omit authenticity metadata for now"
+            )
+        except Exception as exc:
+            issues.append(str(exc))
 
-    validate_fetch_uri(
-        artifact_uri,
-        allow_non_production_release_targets=allow_non_production_release_targets,
-        purpose=f"python distribution URL for {artifact_id}",
-    )
     work_dir.mkdir(parents=True, exist_ok=True)
-    artifact_path = work_dir / filename
-    artifact_path.write_bytes(read_uri_bytes(artifact_uri))
-
-    checksum_algorithm, checksum_value, checksum_uri = required_checksum_payload(
-        artifact_entry,
-        source=manifest_url,
-        algorithms=("sha256",),
-    )
-    actual_checksum = checksum(artifact_path, checksum_algorithm)
-    if actual_checksum != checksum_value:
-        raise ValueError(
-            "python-distribution checksum does not match the signed manifest: "
-            f"{artifact_id} {actual_checksum} != {checksum_value}"
-        )
-    checksum_sidecar_verified = False
-    if checksum_uri is not None:
+    artifact_path: Path | None = None
+    try:
         validate_fetch_uri(
-            checksum_uri,
+            artifact_uri,
             allow_non_production_release_targets=allow_non_production_release_targets,
-            purpose=f"python distribution checksum sidecar URL for {artifact_id}",
+            purpose=f"python distribution URL for {artifact_id}",
         )
-        sidecar_path = work_dir / f"{filename}.{checksum_algorithm}"
-        sidecar_path.write_bytes(read_uri_bytes(checksum_uri))
-        verify_checksum_sidecar(
-            artifact_path,
-            sidecar_path,
-            algorithm=checksum_algorithm,
-            purpose=f"python distribution {artifact_id}",
+        artifact_path = work_dir / filename
+        artifact_path.write_bytes(read_uri_bytes(artifact_uri))
+    except Exception as exc:
+        issues.append(str(exc))
+
+    checksum_algorithm: str | None = None
+    checksum_value: str | None = None
+    checksum_uri: str | None = None
+    actual_checksum: str | None = None
+    checksum_matches_manifest = False
+    try:
+        checksum_algorithm, checksum_value, checksum_uri = required_checksum_payload(
+            artifact_entry,
+            source=manifest_url,
+            algorithms=("sha256",),
         )
-        checksum_sidecar_verified = True
+    except Exception as exc:
+        issues.append(str(exc))
+
+    if artifact_path is not None and checksum_algorithm is not None and checksum_value is not None:
+        actual_checksum = checksum(artifact_path, checksum_algorithm)
+        if actual_checksum != checksum_value:
+            issues.append(
+                "python-distribution checksum does not match the signed manifest: "
+                f"{artifact_id} {actual_checksum} != {checksum_value}"
+            )
+        else:
+            checksum_matches_manifest = True
+
+    checksum_sidecar_verified = False
+    if artifact_path is not None and checksum_uri is not None and checksum_algorithm is not None:
+        try:
+            validate_fetch_uri(
+                checksum_uri,
+                allow_non_production_release_targets=allow_non_production_release_targets,
+                purpose=f"python distribution checksum sidecar URL for {artifact_id}",
+            )
+            sidecar_path = work_dir / f"{filename}.{checksum_algorithm}"
+            sidecar_path.write_bytes(read_uri_bytes(checksum_uri))
+            verify_checksum_sidecar(
+                artifact_path,
+                sidecar_path,
+                algorithm=checksum_algorithm,
+                purpose=f"python distribution {artifact_id}",
+            )
+            checksum_sidecar_verified = True
+        except Exception as exc:
+            issues.append(str(exc))
 
     project_index_url = _simple_index_project_url(index_url, project_name)
-    validate_fetch_uri(
-        project_index_url,
-        allow_non_production_release_targets=allow_non_production_release_targets,
-        purpose=f"python simple index URL for {artifact_id}",
-    )
-    project_index_entries = _simple_index_entries(project_index_url)
-    matching_entry = next(
-        (candidate for candidate in project_index_entries if candidate["filename"] == filename),
-        None,
-    )
-    if matching_entry is None:
-        raise ValueError(
-            "python-distribution file is not present in the declared simple index: "
-            f"{project_index_url} -> {filename}"
+    resolved_url: str | None = None
+    found_via: str | None = None
+    sha256_matches_index: bool | None = None
+    try:
+        validate_fetch_uri(
+            project_index_url,
+            allow_non_production_release_targets=allow_non_production_release_targets,
+            purpose=f"python simple index URL for {artifact_id}",
         )
-    resolved_url = url_without_fragment(matching_entry["url"])
-    if resolved_url != url_without_fragment(artifact_uri):
-        raise ValueError(
-            "python-distribution URI does not match the declared simple index entry: "
-            f"{resolved_url} != {url_without_fragment(artifact_uri)}"
+        project_index_entries = _simple_index_entries(project_index_url)
+        matching_entry = next(
+            (candidate for candidate in project_index_entries if candidate["filename"] == filename),
+            None,
         )
-    index_sha256 = matching_entry["hashes"].get("sha256")
-    sha256_matches_index = index_sha256 is None or index_sha256 == checksum_value
-    if index_sha256 is not None and index_sha256 != checksum_value:
-        raise ValueError(
-            "python-distribution sha256 does not match the declared simple index entry: "
-            f"{index_sha256} != {checksum_value}"
-        )
+        if matching_entry is None:
+            raise ValueError(
+                "python-distribution file is not present in the declared simple index: "
+                f"{project_index_url} -> {filename}"
+            )
+        resolved_url = url_without_fragment(matching_entry["url"])
+        found_via = matching_entry["source"]
+        if resolved_url != url_without_fragment(artifact_uri):
+            issues.append(
+                "python-distribution URI does not match the declared simple index entry: "
+                f"{resolved_url} != {url_without_fragment(artifact_uri)}"
+            )
+        index_sha256 = matching_entry["hashes"].get("sha256")
+        sha256_matches_index = index_sha256 is None or index_sha256 == checksum_value
+        if (
+            index_sha256 is not None
+            and checksum_value is not None
+            and index_sha256 != checksum_value
+        ):
+            issues.append(
+                "python-distribution sha256 does not match the declared simple index entry: "
+                f"{index_sha256} != {checksum_value}"
+            )
+    except Exception as exc:
+        issues.append(str(exc))
 
     return {
         "artifact_id": artifact_id,
         "kind": "python-distribution",
-        "verdict": "verified",
+        "verdict": "failed" if issues else "verified",
+        "issues": issues,
         "filename": filename,
         "uri": artifact_uri,
         "index_url": index_url,
@@ -155,12 +191,13 @@ def verify_python_distribution(
         "checksum": {
             "algorithm": checksum_algorithm,
             "value": actual_checksum,
+            "matches_manifest": checksum_matches_manifest,
             "sidecar_verified": checksum_sidecar_verified,
         },
         "index_resolution": {
             "project_index_url": project_index_url,
             "resolved_url": resolved_url,
-            "found_via": matching_entry["source"],
+            "found_via": found_via,
             "sha256_matches_index": sha256_matches_index,
         },
     }

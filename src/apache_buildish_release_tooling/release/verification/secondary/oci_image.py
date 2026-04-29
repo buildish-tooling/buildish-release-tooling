@@ -36,15 +36,29 @@ def verify_oci_image(
     declared_digest = required_non_empty_string(artifact_entry, "digest", source=manifest_url).lower()
     uri = required_non_empty_string(artifact_entry, "uri", source=manifest_url)
     image_ref = f"{registry}/{repository}@{declared_digest}"
-    _inspected_registry, _inspected_repository, live_digest, live_platform_digests = _inspect_image_ref(image_ref)
-    if live_digest != declared_digest:
-        raise ValueError(
+    issues: list[str] = []
+    live_digest: str | None = None
+    live_platform_digests: list[dict[str, str]] = []
+    try:
+        _inspected_registry, _inspected_repository, live_digest, live_platform_digests = _inspect_image_ref(
+            image_ref,
+            log_commands=False,
+        )
+    except Exception as exc:
+        issues.append(str(exc))
+    digest_matches_manifest = live_digest == declared_digest if live_digest is not None else False
+    if live_digest is not None and not digest_matches_manifest:
+        issues.append(
             "oci-image digest does not match the signed manifest: "
             f"{live_digest} != {declared_digest}"
         )
-    expected_platform_digests = _platform_digests_from_manifest(artifact_entry, source=manifest_url)
-    platform_digests_match = True
-    if expected_platform_digests:
+    platform_digests_match: bool | None = None
+    try:
+        expected_platform_digests = _platform_digests_from_manifest(artifact_entry, source=manifest_url)
+    except Exception as exc:
+        issues.append(str(exc))
+        expected_platform_digests = []
+    if expected_platform_digests and live_digest is not None:
         expected_by_platform = {
             entry["platform"]: entry["digest"]
             for entry in expected_platform_digests
@@ -53,22 +67,24 @@ def verify_oci_image(
             entry["platform"]: entry["digest"]
             for entry in live_platform_digests
         }
-        if live_by_platform != expected_by_platform:
-            raise ValueError(
+        platform_digests_match = live_by_platform == expected_by_platform
+        if not platform_digests_match:
+            issues.append(
                 "oci-image platform digests do not match the signed manifest: "
                 f"{live_by_platform} != {expected_by_platform}"
             )
     return {
         "artifact_id": artifact_id,
         "kind": "oci-image",
-        "verdict": "verified",
+        "verdict": "failed" if issues else "verified",
+        "issues": issues,
         "uri": uri,
         "registry": registry,
         "repository": repository,
         "digest": declared_digest,
         "inspection": {
             "image_ref": image_ref,
-            "digest_matches_manifest": True,
+            "digest_matches_manifest": digest_matches_manifest,
             "platform_digests_match": platform_digests_match,
             "platform_digests": live_platform_digests,
         },

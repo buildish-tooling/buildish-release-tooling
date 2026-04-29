@@ -21,7 +21,11 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from apache_buildish_release_tooling.release.command_logging import format_command, print_command
+from apache_buildish_release_tooling.release.command_logging import (
+    format_command,
+    log_command_output,
+    print_command,
+)
 
 
 class CommandExecutionError(RuntimeError):
@@ -36,6 +40,7 @@ def run_logged_command(
     input_text: str | None = None,
     capture_output: bool = True,
     check: bool = True,
+    log_command: bool = True,
     extra_secret_values: Sequence[str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run a subprocess with sanitized command logging and optional captured output."""
@@ -43,7 +48,18 @@ def run_logged_command(
     merged_env = dict(os.environ)
     if env is not None:
         merged_env.update(env)
-    print_command(command, extra_secret_values)
+    if log_command:
+        print_command(
+            command,
+            extra_secret_values,
+            stderr_enabled=True,
+        )
+    else:
+        print_command(
+            command,
+            extra_secret_values,
+            stderr_enabled=False,
+        )
     completed = subprocess.run(  # noqa: S603
         list(command),
         cwd=str(cwd) if cwd is not None else None,
@@ -53,6 +69,9 @@ def run_logged_command(
         capture_output=capture_output,
         check=False,
     )
+    if capture_output:
+        log_command_output("stdout", completed.stdout or "", extra_secret_values=extra_secret_values)
+        log_command_output("stderr", completed.stderr or "", extra_secret_values=extra_secret_values)
     if check and completed.returncode != 0:
         stderr = (completed.stderr or "").strip()
         stdout = (completed.stdout or "").strip()

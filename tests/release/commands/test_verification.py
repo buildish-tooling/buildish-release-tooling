@@ -61,6 +61,7 @@ class VerificationFixture:
     manifest_url: str
     manifest_output_path: Path
     origin_dir: Path
+    log_path: Path
     report_json_path: Path
     report_md_path: Path
     source_commit_sha: str
@@ -71,6 +72,104 @@ class VerificationFixture:
 
 class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
     """End-to-end coverage for the Phase 1a verify-rc command."""
+
+    def test_verify_rc_command_reports_progress_for_successful_run(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_maven_repository=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--progress",
+                "on",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--report-md",
+                str(fixture.report_md_path),
+                "--log-path",
+                str(fixture.log_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        self.assertEqual("", completed.stdout)
+        self.assertIn("Verify RC\n=========", completed.stderr)
+        self.assertIn("Vote Manifest\n-------------", completed.stderr)
+        self.assertIn("Source Artifact\n---------------", completed.stderr)
+        self.assertIn("Secondary Artifacts\n-------------------", completed.stderr)
+        self.assertIn("Secondary Artifact 1/1: maven-staging-main", completed.stderr)
+        self.assertIn("✓ Verified manifest signature: ", completed.stderr)
+        self.assertIn("✓ Verified rc_tag binding: v1.2.3-rc0 -> ", completed.stderr)
+        self.assertIn("✓ Verified staged source SHA512: ", completed.stderr)
+        self.assertIn("✓ Verified source artifact signature: ", completed.stderr)
+        self.assertIn("• Enumerating live repository from ", completed.stderr)
+        self.assertIn("✓ Verified maven repository inventory: ", completed.stderr)
+        self.assertIn("Outcome\n-------", completed.stderr)
+        self.assertIn("✓ Verified RC: buildish-example 1.2.3 (v1.2.3-rc0)", completed.stderr)
+        self.assertIn("  Report JSON: ", completed.stderr)
+        self.assertIn("  Report Markdown: ", completed.stderr)
+        self.assertIn(f"  Transcript log: {fixture.log_path}", completed.stderr)
+        self.assertNotIn("progress:", completed.stderr)
+        self.assertNotIn("+ git", completed.stderr)
+        self.assertNotIn("+ gpg", completed.stderr)
+        self.assertTrue(fixture.log_path.is_file())
+        log_text = fixture.log_path.read_text(encoding="utf-8")
+        self.assertIn("Verify RC\n=========", log_text)
+        self.assertIn("+ git clone --quiet", log_text)
+        self.assertIn("+ gpg --batch --quiet --import", log_text)
+
+    def test_verify_rc_command_colors_human_transcript_but_not_log_file(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_maven_repository=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--progress",
+                "on",
+                "--color",
+                "always",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--log-path",
+                str(fixture.log_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        self.assertIn("\x1b[1mVerify RC\x1b[0m", completed.stderr)
+        self.assertIn("\x1b[1;36mVote Manifest\x1b[0m", completed.stderr)
+        self.assertIn("\x1b[32m✓ Verified manifest signature: ", completed.stderr)
+        self.assertIn("\x1b[32m✓ Verified RC: buildish-example 1.2.3 (v1.2.3-rc0)\x1b[0m", completed.stderr)
+        self.assertNotIn("\x1b[", fixture.log_path.read_text(encoding="utf-8"))
 
     def test_verify_rc_command_verifies_manifest_source_and_rc_tag_binding(self) -> None:
         if not command_available("gpg"):
@@ -185,6 +284,230 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
 
         self.assertEqual(1, completed.returncode)
         self.assertIn("secondary artifact checksum does not match the signed manifest", completed.stderr)
+
+    def test_verify_rc_command_reports_progress_for_failed_run(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            mismatched_secondary_digest=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--progress",
+                "on",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--log-path",
+                str(fixture.log_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertEqual("", completed.stdout)
+        self.assertIn("Verify RC\n=========", completed.stderr)
+        self.assertIn("Secondary Artifact 1/1: bootstrap-zip", completed.stderr)
+        self.assertIn("Outcome\n-------", completed.stderr)
+        self.assertIn("✗ Verification failed with 1 issue(s)", completed.stderr)
+        self.assertIn(
+            f"  Report JSON: {fixture.work_dir / 'verify-rc-report-buildish-example-v1.2.3-rc0.json'}",
+            completed.stderr,
+        )
+        self.assertIn(
+            f"  Report Markdown: {fixture.work_dir / 'verify-rc-report-buildish-example-v1.2.3-rc0.md'}",
+            completed.stderr,
+        )
+        self.assertIn(str(fixture.log_path), completed.stderr)
+        self.assertIn("secondary artifact checksum does not match the signed manifest", completed.stderr)
+        self.assertNotIn("progress:", completed.stderr)
+        self.assertNotIn("+ git", completed.stderr)
+        self.assertNotIn("+ gpg", completed.stderr)
+
+    def test_verify_rc_command_emits_low_level_output_to_stderr_in_verbose_mode(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_maven_repository=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--progress",
+                "on",
+                "--verbose",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--log-path",
+                str(fixture.log_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        self.assertEqual("", completed.stdout)
+        self.assertIn("Verify RC\n=========", completed.stderr)
+        self.assertIn("+ git clone --quiet", completed.stderr)
+        self.assertIn("+ gpg --batch --quiet --import", completed.stderr)
+        self.assertIn("stdout | [GNUPG:] VALIDSIG ", completed.stderr)
+        self.assertIn(
+            f"  Report JSON: {fixture.work_dir / 'verify-rc-report-buildish-example-v1.2.3-rc0.json'}",
+            completed.stderr,
+        )
+        self.assertIn(
+            f"  Report Markdown: {fixture.work_dir / 'verify-rc-report-buildish-example-v1.2.3-rc0.md'}",
+            completed.stderr,
+        )
+        self.assertIn("+ git -C ", fixture.log_path.read_text(encoding="utf-8"))
+
+    def test_verify_rc_command_collects_independent_failures_before_exiting(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            mismatched_secondary_digest=True,
+            include_python_distribution=True,
+            missing_python_index_entry=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--report-md",
+                str(fixture.report_md_path),
+                "--log-path",
+                str(fixture.log_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertEqual("", completed.stdout)
+        self.assertIn("secondary artifact checksum does not match the signed manifest", completed.stderr)
+        self.assertIn("python-distribution file is not present in the declared simple index", completed.stderr)
+        self.assertTrue(fixture.report_json_path.is_file())
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        self.assertEqual("failed", report_payload["verdict"])
+        self.assertEqual(2, len(report_payload["failures"]))
+        failed_artifacts = [
+            verification["artifact_id"]
+            for verification in report_payload["secondary_artifact_verifications"]
+            if verification["verdict"] == "failed"
+        ]
+        self.assertEqual(["bootstrap-zip", "pypi-wheel"], failed_artifacts)
+
+    def test_verify_rc_command_collects_multiple_safe_failures_within_and_across_artifacts(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_maven_repository=True,
+            drift_maven_repository=True,
+            include_npm_package=True,
+            drift_npm_tarball=True,
+            drift_source_artifact=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--progress",
+                "on",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--report-md",
+                str(fixture.report_md_path),
+                "--log-path",
+                str(fixture.log_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn("staged source artifact checksum does not match the signed manifest", completed.stderr)
+        self.assertIn("source artifact .sha512 sidecar does not match the downloaded bytes", completed.stderr)
+        self.assertIn("staged source artifact does not match the declared source_commit_sha", completed.stderr)
+        self.assertIn("npm-package checksum does not match the signed manifest", completed.stderr)
+        self.assertIn("npm-package integrity does not match the downloaded tarball bytes", completed.stderr)
+        self.assertIn("live maven repository checksum does not match the signed inventory", completed.stderr)
+        self.assertIn("BAD signature from", completed.stderr)
+
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        self.assertEqual("failed", report_payload["verdict"])
+        self.assertGreaterEqual(len(report_payload["failures"]), 8)
+        self.assertEqual(
+            [
+                "staged source checksum",
+                "source artifact checksum sidecar",
+                "source artifact signature",
+                "source artifact reproducibility",
+            ],
+            [
+                failure["subject"]
+                for failure in report_payload["failures"]
+                if failure["scope"] == "source-artifact"
+            ],
+        )
+        secondary_by_id = {
+            verification["artifact_id"]: verification
+            for verification in report_payload["secondary_artifact_verifications"]
+        }
+        self.assertEqual(
+            2,
+            len(secondary_by_id["npm-package-main"]["issues"]),
+        )
+        self.assertGreaterEqual(
+            len(secondary_by_id["maven-staging-main"]["issues"]),
+            2,
+        )
+        report_markdown = fixture.report_md_path.read_text(encoding="utf-8")
+        self.assertIn("staged source artifact checksum does not match the signed manifest", report_markdown)
+        self.assertIn("npm-package integrity does not match the downloaded tarball bytes", report_markdown)
+        self.assertIn("live maven repository checksum does not match the signed inventory", report_markdown)
 
     def test_verify_rc_command_verifies_maven_repository_secondary_artifact(self) -> None:
         if not command_available("gpg"):
@@ -482,6 +805,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         *,
         include_rc_tag: bool = True,
         mismatched_source_commit_sha: bool = False,
+        drift_source_artifact: bool = False,
         secondary_kind: str | None = None,
         mismatched_secondary_digest: bool = False,
         include_maven_repository: bool = False,
@@ -490,6 +814,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         missing_python_index_entry: bool = False,
         include_npm_package: bool = False,
         drift_npm_registry_integrity: bool = False,
+        drift_npm_tarball: bool = False,
         include_oci_image: bool = False,
         drift_oci_image: bool = False,
     ) -> VerificationFixture:
@@ -511,6 +836,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         keys_path = release_dir / "KEYS"
         config_path = sandbox_dir / "component.yaml"
         work_dir = sandbox_dir / "verify-work"
+        log_path = sandbox_dir / "verify.log"
         report_json_path = sandbox_dir / "verify-report.json"
         report_md_path = sandbox_dir / "verify-report.md"
         manifest_output_path = sandbox_dir / "verify-rc-command.json"
@@ -588,6 +914,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         )
         source_artifact_signature_path = stage_dir / f"{source_artifact_name}.asc"
         self._detached_sign(effective_gpg_home, source_artifact_path, source_artifact_signature_path)
+        if drift_source_artifact:
+            source_artifact_path.write_bytes(source_artifact_path.read_bytes() + b"drift\n")
         secondary_artifacts: list[dict[str, object]] = []
         if secondary_kind is not None:
             secondary_name = "buildish-example-bootstrap.zip"
@@ -759,6 +1087,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                     },
                 }
             )
+            if drift_npm_tarball:
+                artifact_file_path.write_bytes(artifact_bytes + b"registry drift\n")
         if include_oci_image:
             docker_path, docker_state_dir = create_fake_docker_launcher(sandbox_dir)
             extra_env["FAKE_DOCKER_STATE_DIR"] = str(docker_state_dir)
@@ -884,6 +1214,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             manifest_url=manifest_path.as_uri(),
             manifest_output_path=manifest_output_path,
             origin_dir=origin_dir,
+            log_path=log_path,
             report_json_path=report_json_path,
             report_md_path=report_md_path,
             source_commit_sha=source_commit_sha,

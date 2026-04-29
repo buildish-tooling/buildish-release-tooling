@@ -1437,6 +1437,7 @@ This is probably the highest-value first ecosystem-specific secondary verifier.
 - add canonical comparison helpers
 - allow per-artifact policy upgrades from advisory to required
 - add more exact-match coverage over time
+- TODO: add thorough verifier test coverage for missing-file, missing-sidecar, and zero-length-file cases across the source artifact and every secondary-artifact kind; verify that missing inputs are reported without aborting unrelated safe checks, and make the intended zero-byte policy explicit per kind
 - add inspection-bundle generation and the `inspect-repro` command
 - support optional deep analyzers such as `diffoscope` without making them required verifier dependencies
 
@@ -1459,6 +1460,352 @@ I would make these decisions now:
 13. Reproducibility investigation should be a separate `inspect-repro` capability fed by `verify-rc` reports and curated inspection bundles.
 14. Maven repository verification should be the first secondary-artifact family after generic files.
 15. Phase 1b UX may use a signed bootstrap script rather than `uv` or local Python packaging setup, but the bootstrap trust-chain issue remains open and should be solved early.
+
+## Simulated `verify-rc` Output
+
+These examples reflect the current CLI behavior.
+
+- With `--progress on` and with `auto` on an interactive terminal, `verify-rc` emits a sectioned verification transcript to stderr.
+- With `--color auto` on an interactive terminal, `verify-rc` colors the human stderr transcript; the examples below omit ANSI escapes for readability.
+- `verify-rc` always writes a combined transcript and low-level command log file. By default that file is `<work-dir>/verify-rc.log`, or a caller may override it with `--log-path`.
+- `--verbose` additionally mirrors the low-level command traces and captured subprocess output to stderr.
+- `verify-rc` does not print report paths to stdout; humans get the transcript on stderr and automation should pass `--report-json` when it needs a deterministic machine-readable output path.
+- On failure, `verify-rc` still writes the JSON report, Markdown report, and combined log file, then exits with status `1`.
+- When the transcript is suppressed because `--progress` is off or `auto` resolves off, failures still surface a fallback stderr summary line.
+- The trust gate still fails fast on manifest fetch, checksum, signature, or KEYS-binding problems.
+- After the trust gate is established, `verify-rc` keeps going across the remaining safe verification surfaces and collects multiple issues into one failed report.
+- That includes multiple issues within a single artifact when they are independently observable, such as source checksum plus sidecar plus signature plus reproducibility drift, or Maven repository checksum plus detached-signature drift.
+- The examples below shorten absolute paths, digests, and fingerprints for readability.
+
+### Successful local run
+
+```console
+$ buildish-release-tooling verify-rc \
+    --component-config buildish-release-tooling/release-config.yaml \
+    --allow-non-production-release-targets \
+    --progress on \
+    --work-dir build/verify-rc-demo \
+    --log-path build/verify-rc-demo/verify.log \
+    file:///tmp/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json \
+    file:///tmp/dist/release/incubator/buildish/KEYS
+Verify RC
+=========
+  Work directory: build/verify-rc-demo
+  Manifest URL: file:///tmp/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json
+  KEYS URL: file:///tmp/dist/release/incubator/buildish/KEYS
+  Transcript log: build/verify-rc-demo/verify.log
+
+Vote Manifest
+-------------
+• Downloading signed RC vote manifest and sidecars
+✓ Downloaded manifest, checksum sidecar, signature, and KEYS
+✓ Verified manifest SHA512: 9f3d2e...
+✓ Verified manifest signature: 8C3F...A91D (Release Manager <rm@example.invalid>)
+  Component: buildish-example
+  Version: 1.2.3
+  RC tag: v1.2.3-rc0
+✓ Cross-checked KEYS URL against the signed manifest
+✓ Cross-checked KEYS URL against component config
+
+Source Artifact
+---------------
+  Source repository: file:///tmp/git/buildish-example.git
+  Source commit: bbafdeb50db5ea832c7674b547d6c07feff46265
+• Cloning source repository
+✓ Cloned source repository
+✓ Verified rc_tag binding: v1.2.3-rc0 -> bbafdeb50db5ea832c7674b547d6c07feff46265
+  Artifact: apache-buildish-example-1.2.3-incubating-src.tar.gz
+  Artifact URL: file:///tmp/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/apache-buildish-example-1.2.3-incubating-src.tar.gz
+• Downloading staged source artifact
+✓ Downloaded staged source artifact
+✓ Verified staged source SHA512: 4e6e7c...
+✓ Verified source artifact SHA512 sidecar
+✓ Verified source artifact signature: 8C3F...A91D (Release Manager <rm@example.invalid>)
+• Rebuilding source artifact from declared source commit
+✓ Rebuilt source artifact SHA512: 4e6e7c...
+✓ Verified staged source artifact matches the declared source commit
+
+Secondary Artifacts
+-------------------
+
+Secondary Artifact 1/1: site-bundle
+-----------------------------------
+  Kind: generic-file-with-openpgp
+  File: buildish-example-site-1.2.3.zip
+  URL: file:///tmp/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/buildish-example-site-1.2.3.zip
+✓ Verified checksum: sha512:33bd2e...
+✓ Verified checksum sidecar
+✓ Verified signature: 8C3F...A91D
+
+Outcome
+-------
+✓ Verified RC: buildish-example 1.2.3 (v1.2.3-rc0)
+  Report JSON: build/verify-rc-demo/verify-rc-report-buildish-example-v1.2.3-rc0.json
+  Report Markdown: build/verify-rc-demo/verify-rc-report-buildish-example-v1.2.3-rc0.md
+  Transcript log: build/verify-rc-demo/verify.log
+
+$ sed -n '1,80p' build/verify-rc-demo/verify-rc-report-buildish-example-v1.2.3-rc0.md
+```
+
+~~~md
+## Verify RC
+
+### Technical details
+
+| Field | Value |
+| --- | --- |
+| Component | `buildish-example` |
+| Version | `1.2.3` |
+| RC tag | `v1.2.3-rc0` |
+| Source commit | `bbafdeb50db5ea832c7674b547d6c07feff46265` |
+| Source repository URL | `file:///tmp/git/buildish-example.git` |
+| Manifest URL | `file:///tmp/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json` |
+| KEYS URL | `file:///tmp/dist/release/incubator/buildish/KEYS` |
+
+### Manifest verification
+
+- ✓ Signature verified: `8C3F...A91D`
+- ✓ RC tag resolved from the signed manifest: `v1.2.3-rc0`
+
+### Source artifact verification
+
+- Source artifact: `apache-buildish-example-1.2.3-incubating-src.tar.gz`
+- Source artifact URL: `file:///tmp/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/apache-buildish-example-1.2.3-incubating-src.tar.gz`
+- SHA512: `4e6e7c...`
+- ✓ Signature verified: `8C3F...A91D`
+- ✓ Declared source commit: `bbafdeb50db5ea832c7674b547d6c07feff46265`
+
+### Secondary artifact verification
+
+#### `site-bundle`
+
+- Kind: `generic-file-with-openpgp`
+- File: `buildish-example-site-1.2.3.zip`
+- URL: `file:///tmp/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/buildish-example-site-1.2.3.zip`
+- Checksum observed: `sha512:33bd2e...`
+- Checksum matched signed manifest: `True`
+- Checksum sidecar verified: `True`
+- Signature verified: `8C3F...A91D`
+
+### Outcome
+
+```text
+Verified manifest authenticity, explicit KEYS binding, rc_tag-to-source_commit binding, the staged source artifact bytes, and all supported secondary artifacts declared in the signed manifest.
+```
+~~~
+
+### Successful run with `--verbose`
+
+```console
+$ buildish-release-tooling verify-rc \
+    --component-config buildish-release-tooling/release-config.yaml \
+    --allow-non-production-release-targets \
+    --progress on \
+    --verbose \
+    --work-dir build/verify-rc-demo \
+    --log-path build/verify-rc-demo/verify.log \
+    file:///tmp/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json \
+    file:///tmp/dist/release/incubator/buildish/KEYS
+Verify RC
+=========
+  Work directory: build/verify-rc-demo
+  Manifest URL: file:///tmp/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json
+  KEYS URL: file:///tmp/dist/release/incubator/buildish/KEYS
+
+Vote Manifest
+-------------
+• Downloading signed RC vote manifest and sidecars
++ gpg --batch --quiet --import build/verify-rc-demo/KEYS
+✓ Downloaded manifest, checksum sidecar, signature, and KEYS
+✓ Verified manifest SHA512: 9f3d2e...
++ gpg --batch --status-fd 1 --verify build/verify-rc-demo/rc-vote-manifest.json.asc build/verify-rc-demo/rc-vote-manifest.json
+stdout | [GNUPG:] VALIDSIG 8C3F...A91D ...
+✓ Verified manifest signature: 8C3F...A91D (Release Manager <rm@example.invalid>)
+...
++ git clone --quiet file:///tmp/git/buildish-example.git build/verify-rc-demo/source-repository
++ git -C build/verify-rc-demo/source-repository rev-parse --verify --quiet 'v1.2.3-rc0^{commit}'
+...
+```
+
+### Failure: aggregated secondary-artifact mismatches
+
+```console
+$ buildish-release-tooling verify-rc \
+    --component-config buildish-release-tooling/release-config.yaml \
+    --allow-non-production-release-targets \
+    --progress on \
+    --work-dir build/verify-rc-demo \
+    --log-path build/verify-rc-demo/verify.log \
+    file:///tmp/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json \
+    file:///tmp/dist/release/incubator/buildish/KEYS
+Verify RC
+=========
+  Work directory: build/verify-rc-demo
+  Manifest URL: file:///tmp/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json
+  KEYS URL: file:///tmp/dist/release/incubator/buildish/KEYS
+  Transcript log: build/verify-rc-demo/verify.log
+
+Vote Manifest
+-------------
+• Downloading signed RC vote manifest and sidecars
+✓ Downloaded manifest, checksum sidecar, signature, and KEYS
+✓ Verified manifest SHA512: 9f3d2e...
+✓ Verified manifest signature: 8C3F...A91D (Release Manager <rm@example.invalid>)
+  Component: buildish-example
+  Version: 1.2.3
+  RC tag: v1.2.3-rc0
+✓ Cross-checked KEYS URL against the signed manifest
+✓ Cross-checked KEYS URL against component config
+
+Source Artifact
+---------------
+  Source repository: file:///tmp/git/buildish-example.git
+  Source commit: bbafdeb50db5ea832c7674b547d6c07feff46265
+• Cloning source repository
+✓ Cloned source repository
+✓ Verified rc_tag binding: v1.2.3-rc0 -> bbafdeb50db5ea832c7674b547d6c07feff46265
+  Artifact: apache-buildish-example-1.2.3-incubating-src.tar.gz
+  Artifact URL: file:///tmp/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/apache-buildish-example-1.2.3-incubating-src.tar.gz
+• Downloading staged source artifact
+✓ Downloaded staged source artifact
+✓ Verified staged source SHA512: 4e6e7c...
+✓ Verified source artifact SHA512 sidecar
+✓ Verified source artifact signature: 8C3F...A91D (Release Manager <rm@example.invalid>)
+• Rebuilding source artifact from declared source commit
+✓ Rebuilt source artifact SHA512: 4e6e7c...
+✓ Verified staged source artifact matches the declared source commit
+
+Secondary Artifacts
+-------------------
+
+Secondary Artifact 1/1: bootstrap-zip
+-------------------------------------
+  Kind: generic-file
+✗ secondary artifact checksum does not match the signed manifest: bootstrap-zip 5f0c2b... != 33bd2e...
+
+Secondary Artifact 2/2: pypi-wheel
+----------------------------------
+  Kind: python-distribution
+✗ python-distribution file is not present in the declared simple index: file:///tmp/simple/example/ -> example-1.2.3-py3-none-any.whl
+
+Outcome
+-------
+✗ Verification failed with 2 issue(s)
+  Report JSON: build/verify-rc-demo/verify-rc-report-buildish-example-v1.2.3-rc0.json
+  Report Markdown: build/verify-rc-demo/verify-rc-report-buildish-example-v1.2.3-rc0.md
+  Transcript log: build/verify-rc-demo/verify.log
+
+$ echo $?
+1
+```
+
+### Failure: source artifact plus npm plus maven issues
+
+This example reflects the current behavior precisely:
+
+- `verify-rc` keeps going after the trust gate and continues through the remaining safe checks.
+- The final JSON and Markdown reports contain all collected failures.
+- One artifact may contribute multiple issues when the verifier can observe them independently.
+
+```console
+$ buildish-release-tooling verify-rc \
+    --component-config buildish-release-tooling/release-config.yaml \
+    --allow-non-production-release-targets \
+    --progress on \
+    --work-dir build/verify-rc-demo \
+    --log-path build/verify-rc-demo/verify.log \
+    file:///tmp/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json \
+    file:///tmp/dist/release/incubator/buildish/KEYS
+Verify RC
+=========
+  Work directory: build/verify-rc-demo
+  Manifest URL: file:///tmp/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json
+  KEYS URL: file:///tmp/dist/release/incubator/buildish/KEYS
+  Transcript log: build/verify-rc-demo/verify.log
+
+Vote Manifest
+-------------
+• Downloading signed RC vote manifest and sidecars
+✓ Downloaded manifest, checksum sidecar, signature, and KEYS
+✓ Verified manifest SHA512: 9f3d2e...
+✓ Verified manifest signature: 8C3F...A91D (Release Manager <rm@example.invalid>)
+  Component: buildish-example
+  Version: 1.2.3
+  RC tag: v1.2.3-rc0
+✓ Cross-checked KEYS URL against the signed manifest
+✓ Cross-checked KEYS URL against component config
+
+Source Artifact
+---------------
+  Source repository: file:///tmp/git/buildish-example.git
+  Source commit: bbafdeb50db5ea832c7674b547d6c07feff46265
+• Cloning source repository
+✓ Cloned source repository
+✓ Verified rc_tag binding: v1.2.3-rc0 -> bbafdeb50db5ea832c7674b547d6c07feff46265
+  Artifact: apache-buildish-example-1.2.3-incubating-src.tar.gz
+  Artifact URL: file:///tmp/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/apache-buildish-example-1.2.3-incubating-src.tar.gz
+• Downloading staged source artifact
+✓ Downloaded staged source artifact
+✗ staged source artifact checksum does not match the signed manifest: d1aa7c... != 4e6e7c...
+✗ source artifact .sha512 sidecar does not match the downloaded bytes: 4e6e7c... != d1aa7c...
+✗ command failed: gpg --batch --status-fd 1 --verify build/verify-rc-demo/apache-buildish-example-1.2.3-incubating-src.tar.gz.asc build/verify-rc-demo/apache-buildish-example-1.2.3-incubating-src.tar.gz: gpg: BAD signature from "Release Manager <rm@example.invalid>" [unknown]
+• Rebuilding source artifact from declared source commit
+✓ Rebuilt source artifact SHA512: 4e6e7c...
+✗ staged source artifact does not match the declared source_commit_sha
+
+Secondary Artifacts
+-------------------
+
+Secondary Artifact 1/2: maven-staging-main
+------------------------------------------
+  Kind: maven-repository
+• Enumerating live repository from file:///tmp/orgapacheexample-1234/
+• Checking live repository against signed inventory (42 entries)
+• Verifying detached signatures present in the live repository
+  Base URL: file:///tmp/orgapacheexample-1234/
+  Inventory: maven-staging-main-inventory.json
+✗ live maven repository paths do not match the signed inventory: missing=['org/example/app/1.0.0/app-1.0.0.jar.sha512'] unexpected=['org/example/app/1.0.0/README.txt']
+✗ live maven repository file size does not match the signed inventory: org/example/app/1.0.0/app-1.0.0.jar 9132 != 8744
+✗ live maven repository checksum does not match the signed inventory: org/example/app/1.0.0/app-1.0.0.jar deadbeef... != cafe1234...
+✗ command failed: gpg --batch --status-fd 1 --verify build/verify-rc-demo/secondary-artifacts/01-maven-staging-main/signatures/org/example/app/1.0.0/app-1.0.0.jar.asc build/verify-rc-demo/secondary-artifacts/01-maven-staging-main/signatures/org/example/app/1.0.0/app-1.0.0.jar: gpg: BAD signature from "Release Manager <rm@example.invalid>" [unknown]
+
+Secondary Artifact 2/2: npm-package-main
+----------------------------------------
+  Kind: npm-package
+  Package: @apache/buildish-example 1.2.3
+  Registry: file:///tmp/npm-registry/
+  Tarball: file:///tmp/npm-dist/buildish-example-1.2.3.tgz
+✓ Verified registry metadata: file:///tmp/npm-registry/@apache/buildish-example
+✗ npm-package checksum does not match the signed manifest: npm-package-main 9abcde... != 123456...
+✗ npm-package integrity does not match the downloaded tarball bytes: npm-package-main 9abcde... != 123456...
+
+Outcome
+-------
+✗ Verification failed with 10 issue(s)
+  Report JSON: build/verify-rc-demo/verify-rc-report-buildish-example-v1.2.3-rc0.json
+  Report Markdown: build/verify-rc-demo/verify-rc-report-buildish-example-v1.2.3-rc0.md
+  Transcript log: build/verify-rc-demo/verify.log
+
+$ sed -n '1,120p' build/verify-rc-demo/verify-rc-report-buildish-example-v1.2.3-rc0.md
+```
+
+~~~md
+## Verify RC
+
+### Outcome
+
+- ✗ Verification failed with `10` issue(s).
+- `source-artifact` / `staged source checksum`: staged source artifact checksum does not match the signed manifest: d1aa7c... != 4e6e7c...
+- `source-artifact` / `source artifact checksum sidecar`: source artifact .sha512 sidecar does not match the downloaded bytes: 4e6e7c... != d1aa7c...
+- `source-artifact` / `source artifact signature`: command failed: gpg --batch --status-fd 1 --verify build/verify-rc-demo/apache-buildish-example-1.2.3-incubating-src.tar.gz.asc build/verify-rc-demo/apache-buildish-example-1.2.3-incubating-src.tar.gz: gpg: BAD signature from "Release Manager <rm@example.invalid>" [unknown]
+- `source-artifact` / `source artifact reproducibility`: staged source artifact does not match the declared source_commit_sha
+- `secondary-artifact` / `maven-staging-main`: live maven repository paths do not match the signed inventory: missing=['org/example/app/1.0.0/app-1.0.0.jar.sha512'] unexpected=['org/example/app/1.0.0/README.txt']
+- `secondary-artifact` / `maven-staging-main`: live maven repository file size does not match the signed inventory: org/example/app/1.0.0/app-1.0.0.jar 9132 != 8744
+- `secondary-artifact` / `maven-staging-main`: live maven repository checksum does not match the signed inventory: org/example/app/1.0.0/app-1.0.0.jar deadbeef... != cafe1234...
+- `secondary-artifact` / `maven-staging-main`: command failed: gpg --batch --status-fd 1 --verify build/verify-rc-demo/secondary-artifacts/01-maven-staging-main/signatures/org/example/app/1.0.0/app-1.0.0.jar.asc build/verify-rc-demo/secondary-artifacts/01-maven-staging-main/signatures/org/example/app/1.0.0/app-1.0.0.jar: gpg: BAD signature from "Release Manager <rm@example.invalid>" [unknown]
+- `secondary-artifact` / `npm-package-main`: npm-package checksum does not match the signed manifest: npm-package-main 9abcde... != 123456...
+- `secondary-artifact` / `npm-package-main`: npm-package integrity does not match the downloaded tarball bytes: npm-package-main 9abcde... != 123456...
+~~~
 
 ## References
 

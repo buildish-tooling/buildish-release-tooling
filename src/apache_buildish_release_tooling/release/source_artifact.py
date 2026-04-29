@@ -20,7 +20,7 @@ import hashlib
 import subprocess
 from pathlib import Path
 
-from apache_buildish_release_tooling.release.command_logging import print_command
+from apache_buildish_release_tooling.release.command_logging import log_command_output, print_command
 
 _SUPPORTED_CHECKSUM_ALGORITHMS = frozenset({"sha256", "sha512"})
 
@@ -31,7 +31,14 @@ def fixed_mtime() -> str:
     return "1980-02-01 00:00:00 UTC"
 
 
-def create_from_git(repo_path: Path, ref: str, archive_prefix: str, output_path: Path) -> None:
+def create_from_git(
+    repo_path: Path,
+    ref: str,
+    archive_prefix: str,
+    output_path: Path,
+    *,
+    log_commands: bool = True,
+) -> None:
     """Build a reproducible source tarball from Git using a fixed mtime and gzip settings."""
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -46,17 +53,40 @@ def create_from_git(repo_path: Path, ref: str, archive_prefix: str, output_path:
         ref,
     ]
     gzip_command = ["gzip", "-6", "--no-name"]
-    print_command(git_command)
-    print_command(gzip_command)
+    print_command(git_command, stderr_enabled=log_commands)
+    print_command(gzip_command, stderr_enabled=log_commands)
     with output_path.open("wb") as handle:
-        archive_process = subprocess.Popen(git_command, stdout=subprocess.PIPE)  # noqa: S603
+        archive_process = subprocess.Popen(  # noqa: S603
+            git_command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
         gzip_process = subprocess.Popen(  # noqa: S603
-            gzip_command, stdin=archive_process.stdout, stdout=handle
+            gzip_command,
+            stdin=archive_process.stdout,
+            stdout=handle,
+            stderr=subprocess.PIPE,
         )
         if archive_process.stdout is not None:
             archive_process.stdout.close()
         archive_return_code = archive_process.wait()
         gzip_return_code = gzip_process.wait()
+        archive_stderr = (
+            archive_process.stderr.read().decode("utf-8", errors="replace")
+            if archive_process.stderr is not None
+            else ""
+        )
+        gzip_stderr = (
+            gzip_process.stderr.read().decode("utf-8", errors="replace")
+            if gzip_process.stderr is not None
+            else ""
+        )
+        if archive_process.stderr is not None:
+            archive_process.stderr.close()
+        if gzip_process.stderr is not None:
+            gzip_process.stderr.close()
+    log_command_output("stderr", archive_stderr)
+    log_command_output("stderr", gzip_stderr)
     if archive_return_code != 0:
         raise RuntimeError("git archive failed while creating the source artifact")
     if gzip_return_code != 0:

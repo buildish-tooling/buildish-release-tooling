@@ -167,7 +167,11 @@ def _derived_platform_digest_entries(manifest_payload: dict[str, Any]) -> list[d
     return platform_digests
 
 
-def _inspect_image_ref(image_ref: str) -> tuple[str, str, str, list[dict[str, str]]]:
+def _inspect_image_ref(
+    image_ref: str,
+    *,
+    log_commands: bool = True,
+) -> tuple[str, str, str, list[dict[str, str]]]:
     try:
         completed = run_logged_command(
             [
@@ -178,7 +182,8 @@ def _inspect_image_ref(image_ref: str) -> tuple[str, str, str, list[dict[str, st
                 "--format",
                 "{{json .Manifest}}",
                 image_ref,
-            ]
+            ],
+            log_command=log_commands,
         )
     except CommandExecutionError as exc:
         raise ValueError(f"oci-image failed to inspect --image-ref {image_ref}: {exc}") from exc

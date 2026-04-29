@@ -19,7 +19,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from apache_buildish_release_tooling.release.verification.common import GpgVerifier
+from apache_buildish_release_tooling.release.progress import ProgressReporter
+from apache_buildish_release_tooling.release.verification.common import (
+    GpgVerifier,
+    emit_detail,
+    emit_failure,
+    emit_info,
+    emit_section,
+    emit_success,
+    emit_warning,
+)
 
 from .generic_file import verify_generic_file
 from .maven_repository import verify_maven_repository
@@ -38,11 +47,17 @@ def verify_secondary_artifacts(
     work_dir: Path,
     verifier: GpgVerifier,
     allow_non_production_release_targets: bool,
+    progress_reporter: ProgressReporter,
 ) -> list[dict[str, Any]]:
     """Verify all supported secondary artifacts declared in the signed vote manifest."""
 
     work_dir.mkdir(parents=True, exist_ok=True)
     artifact_entries = secondary_artifact_entries(manifest_payload, source=manifest_url)
+    total_artifacts = len(artifact_entries)
+    emit_section(progress_reporter, "Secondary Artifacts")
+    if total_artifacts == 0:
+        emit_warning(progress_reporter, "No secondary artifacts declared in the signed manifest")
+        return []
     verifications: list[dict[str, Any]] = []
     for index, artifact_entry in enumerate(artifact_entries, start=1):
         artifact_id = required_non_empty_string(
@@ -52,9 +67,11 @@ def verify_secondary_artifacts(
         )
         kind = required_non_empty_string(artifact_entry, "kind", source=manifest_url)
         artifact_work_dir = work_dir / f"{index:02d}-{safe_path_component(artifact_id)}"
-        if kind == "generic-file":
-            verifications.append(
-                verify_generic_file(
+        emit_section(progress_reporter, f"Secondary Artifact {index}/{total_artifacts}: {artifact_id}")
+        emit_detail(progress_reporter, "Kind", kind)
+        try:
+            if kind == "generic-file":
+                verification = verify_generic_file(
                     artifact_entry,
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
@@ -62,11 +79,8 @@ def verify_secondary_artifacts(
                     allow_non_production_release_targets=allow_non_production_release_targets,
                     require_signature=False,
                 )
-            )
-            continue
-        if kind == "generic-file-with-openpgp":
-            verifications.append(
-                verify_generic_file(
+            elif kind == "generic-file-with-openpgp":
+                verification = verify_generic_file(
                     artifact_entry,
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
@@ -74,46 +88,159 @@ def verify_secondary_artifacts(
                     allow_non_production_release_targets=allow_non_production_release_targets,
                     require_signature=True,
                 )
-            )
-            continue
-        if kind == "maven-repository":
-            verifications.append(
-                verify_maven_repository(
+            elif kind == "maven-repository":
+                verification = verify_maven_repository(
                     artifact_entry,
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
                     verifier=verifier,
                     allow_non_production_release_targets=allow_non_production_release_targets,
+                    progress_reporter=progress_reporter,
                 )
-            )
-            continue
-        if kind == "python-distribution":
-            verifications.append(
-                verify_python_distribution(
+            elif kind == "python-distribution":
+                verification = verify_python_distribution(
                     artifact_entry,
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
                     allow_non_production_release_targets=allow_non_production_release_targets,
                 )
-            )
-            continue
-        if kind == "npm-package":
-            verifications.append(
-                verify_npm_package(
+            elif kind == "npm-package":
+                verification = verify_npm_package(
                     artifact_entry,
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
                     allow_non_production_release_targets=allow_non_production_release_targets,
                 )
-            )
-            continue
-        if kind == "oci-image":
-            verifications.append(
-                verify_oci_image(
+            elif kind == "oci-image":
+                verification = verify_oci_image(
                     artifact_entry,
                     manifest_url=manifest_url,
                 )
-            )
-            continue
-        raise ValueError(f"unsupported secondary artifact kind in manifest: {kind}")
+            else:
+                raise ValueError(f"unsupported secondary artifact kind in manifest: {kind}")
+        except Exception as exc:
+            error_message = str(exc)
+            verification = {
+                "artifact_id": artifact_id,
+                "kind": kind,
+                "verdict": "failed",
+                "issues": [error_message],
+            }
+        _emit_secondary_artifact_summary(progress_reporter, verification)
+        verifications.append(verification)
     return verifications
+
+
+def _emit_secondary_artifact_summary(
+    progress_reporter: ProgressReporter,
+    verification: dict[str, Any],
+) -> None:
+    kind = verification["kind"]
+    issues = [str(issue) for issue in verification.get("issues", [])]
+    if kind in {"generic-file", "generic-file-with-openpgp"}:
+        checksum_payload = verification.get("checksum")
+        emit_detail(progress_reporter, "File", verification.get("filename", "n/a"))
+        emit_detail(progress_reporter, "URL", verification.get("uri", "n/a"))
+        if (
+            isinstance(checksum_payload, dict)
+            and checksum_payload.get("matches_manifest")
+            and checksum_payload.get("algorithm")
+            and checksum_payload.get("value")
+        ):
+            emit_success(
+                progress_reporter,
+                f"Verified checksum: {checksum_payload['algorithm']}:{checksum_payload['value']}",
+            )
+        if isinstance(checksum_payload, dict) and checksum_payload.get("sidecar_verified"):
+            emit_success(progress_reporter, "Verified checksum sidecar")
+        signature_verifications = verification.get("signatures", [])
+        for signature_verification in signature_verifications:
+            emit_success(
+                progress_reporter,
+                f"Verified signature: {signature_verification['signer_fingerprint']}",
+            )
+        inventory_payload = verification.get("inventory")
+        if isinstance(inventory_payload, dict):
+            emit_success(
+                progress_reporter,
+                f"Verified inventory: {inventory_payload['filename']}",
+            )
+        for issue in issues:
+            emit_failure(progress_reporter, issue)
+        return
+    if kind == "maven-repository":
+        inventory_payload = verification["inventory"]
+        live_repository = verification["live_repository"]
+        emit_detail(progress_reporter, "Base URL", verification["base_url"])
+        if isinstance(inventory_payload, dict):
+            emit_detail(progress_reporter, "Inventory", inventory_payload["filename"])
+        if live_repository.get("matches_signed_inventory") and live_repository.get("entry_count") is not None:
+            emit_success(
+                progress_reporter,
+                f"Verified live repository against signed inventory: {live_repository['entry_count']} entries",
+            )
+        signature_verifications = live_repository.get("signature_verifications", [])
+        if signature_verifications:
+            emit_info(
+                progress_reporter,
+                f"Verified detached signatures for {len(signature_verifications)} repository files",
+            )
+        for issue in issues:
+            emit_failure(progress_reporter, issue)
+        return
+    if kind == "python-distribution":
+        checksum_payload = verification["checksum"]
+        index_resolution = verification["index_resolution"]
+        emit_detail(progress_reporter, "Project", f"{verification['project_name']} {verification['version']}")
+        emit_detail(progress_reporter, "File", verification["filename"])
+        emit_detail(progress_reporter, "URL", verification["uri"])
+        emit_detail(progress_reporter, "Simple index", index_resolution["project_index_url"])
+        if checksum_payload.get("matches_manifest") and checksum_payload.get("algorithm") and checksum_payload.get("value"):
+            emit_success(
+                progress_reporter,
+                f"Verified checksum: {checksum_payload['algorithm']}:{checksum_payload['value']}",
+            )
+        if checksum_payload["sidecar_verified"]:
+            emit_success(progress_reporter, "Verified checksum sidecar")
+        if index_resolution.get("resolved_url") is not None:
+            emit_success(progress_reporter, "Verified simple index entry")
+        for issue in issues:
+            emit_failure(progress_reporter, issue)
+        return
+    if kind == "oci-image":
+        inspection = verification["inspection"]
+        emit_detail(progress_reporter, "Image", inspection["image_ref"])
+        if inspection.get("digest_matches_manifest"):
+            emit_success(progress_reporter, f"Verified digest: {verification['digest']}")
+        if inspection.get("platform_digests_match"):
+            emit_success(progress_reporter, "Verified platform digests")
+        for issue in issues:
+            emit_failure(progress_reporter, issue)
+        return
+    if kind == "npm-package":
+        checksum_payload = verification["checksum"]
+        registry_resolution = verification["registry_resolution"]
+        emit_detail(progress_reporter, "Package", f"{verification['package_name']} {verification['version']}")
+        emit_detail(progress_reporter, "Registry", verification["registry_url"])
+        emit_detail(progress_reporter, "Tarball", verification["uri"])
+        if verification["integrity"].get("matches_downloaded_bytes"):
+            emit_success(progress_reporter, f"Verified integrity: {verification['integrity']['value']}")
+        if checksum_payload.get("matches_manifest") and checksum_payload.get("algorithm") and checksum_payload.get("value"):
+            emit_success(
+                progress_reporter,
+                f"Verified checksum: {checksum_payload['algorithm']}:{checksum_payload['value']}",
+            )
+        if checksum_payload["sidecar_verified"]:
+            emit_success(progress_reporter, "Verified checksum sidecar")
+        if registry_resolution.get("metadata_url") is not None:
+            emit_success(
+                progress_reporter,
+                f"Verified registry metadata: {registry_resolution['metadata_url']}",
+            )
+        for issue in issues:
+            emit_failure(progress_reporter, issue)
+        return
+    raise ValueError(
+        "unsupported secondary artifact kind for console reporting: "
+        f"{verification['artifact_id']} ({kind})"
+    )

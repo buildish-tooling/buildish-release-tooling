@@ -49,118 +49,177 @@ def verify_npm_package(
     registry_url = required_non_empty_string(artifact_entry, "registry_url", source=manifest_url)
     package_name = required_non_empty_string(artifact_entry, "package_name", source=manifest_url)
     version = required_non_empty_string(artifact_entry, "version", source=manifest_url)
-    integrity_algorithm, integrity_digest, integrity_value = _required_npm_integrity(
-        artifact_entry,
-        source=manifest_url,
-    )
+    issues: list[str] = []
+    integrity_algorithm: str | None = None
+    integrity_digest: str | None = None
+    integrity_value: str | None = None
+    try:
+        integrity_algorithm, integrity_digest, integrity_value = _required_npm_integrity(
+            artifact_entry,
+            source=manifest_url,
+        )
+    except Exception as exc:
+        issues.append(str(exc))
 
     authenticity = artifact_entry.get("authenticity")
     if authenticity is not None:
-        scheme = required_non_empty_string(authenticity, "scheme", source=manifest_url)
-        if scheme != "npm-provenance":
-            raise ValueError(f"unsupported npm-package authenticity scheme: {scheme}")
-        raise ValueError(
-            "npm-package provenance verification is not implemented; omit authenticity metadata for now"
-        )
+        try:
+            scheme = required_non_empty_string(authenticity, "scheme", source=manifest_url)
+            if scheme != "npm-provenance":
+                raise ValueError(f"unsupported npm-package authenticity scheme: {scheme}")
+            raise ValueError(
+                "npm-package provenance verification is not implemented; omit authenticity metadata for now"
+            )
+        except Exception as exc:
+            issues.append(str(exc))
 
-    validate_fetch_uri(
-        artifact_uri,
-        allow_non_production_release_targets=allow_non_production_release_targets,
-        purpose=f"npm package URL for {artifact_id}",
-    )
     work_dir.mkdir(parents=True, exist_ok=True)
-    artifact_path = work_dir / filename
-    artifact_path.write_bytes(read_uri_bytes(artifact_uri))
+    artifact_path: Path | None = None
+    try:
+        validate_fetch_uri(
+            artifact_uri,
+            allow_non_production_release_targets=allow_non_production_release_targets,
+            purpose=f"npm package URL for {artifact_id}",
+        )
+        artifact_path = work_dir / filename
+        artifact_path.write_bytes(read_uri_bytes(artifact_uri))
+    except Exception as exc:
+        issues.append(str(exc))
 
-    checksum_algorithm, checksum_value, checksum_uri = preferred_checksum_payload(
-        artifact_entry,
-        source=manifest_url,
-    )
-    actual_checksum = checksum(artifact_path, checksum_algorithm)
-    if actual_checksum != checksum_value:
-        raise ValueError(
-            "npm-package checksum does not match the signed manifest: "
-            f"{artifact_id} {actual_checksum} != {checksum_value}"
+    checksum_algorithm: str | None = None
+    checksum_value: str | None = None
+    checksum_uri: str | None = None
+    actual_checksum: str | None = None
+    checksum_matches_manifest = False
+    try:
+        checksum_algorithm, checksum_value, checksum_uri = preferred_checksum_payload(
+            artifact_entry,
+            source=manifest_url,
         )
-    if integrity_algorithm == checksum_algorithm and integrity_digest != checksum_value:
-        raise ValueError(
-            "npm-package integrity does not match the signed manifest checksum: "
-            f"{integrity_value} != {checksum_algorithm}:{checksum_value}"
+    except Exception as exc:
+        issues.append(str(exc))
+
+    if artifact_path is not None and checksum_algorithm is not None and checksum_value is not None:
+        actual_checksum = checksum(artifact_path, checksum_algorithm)
+        if actual_checksum != checksum_value:
+            issues.append(
+                "npm-package checksum does not match the signed manifest: "
+                f"{artifact_id} {actual_checksum} != {checksum_value}"
+            )
+        else:
+            checksum_matches_manifest = True
+
+    actual_integrity_digest: str | None = None
+    integrity_matches_manifest_checksum: bool | None = None
+    integrity_matches_downloaded_bytes: bool | None = None
+    if (
+        artifact_path is not None
+        and integrity_algorithm is not None
+        and integrity_digest is not None
+        and checksum_algorithm is not None
+        and checksum_value is not None
+    ):
+        if integrity_algorithm == checksum_algorithm:
+            integrity_matches_manifest_checksum = integrity_digest == checksum_value
+            if not integrity_matches_manifest_checksum:
+                issues.append(
+                    "npm-package integrity does not match the signed manifest checksum: "
+                    f"{integrity_value} != {checksum_algorithm}:{checksum_value}"
+                )
+        actual_integrity_digest = (
+            actual_checksum
+            if integrity_algorithm == checksum_algorithm
+            else checksum(artifact_path, integrity_algorithm)
         )
-    actual_integrity_digest = (
-        actual_checksum
-        if integrity_algorithm == checksum_algorithm
-        else checksum(artifact_path, integrity_algorithm)
-    )
-    if actual_integrity_digest != integrity_digest:
-        raise ValueError(
-            "npm-package integrity does not match the downloaded tarball bytes: "
-            f"{artifact_id} {actual_integrity_digest} != {integrity_digest}"
-        )
+        integrity_matches_downloaded_bytes = actual_integrity_digest == integrity_digest
+        if not integrity_matches_downloaded_bytes:
+            issues.append(
+                "npm-package integrity does not match the downloaded tarball bytes: "
+                f"{artifact_id} {actual_integrity_digest} != {integrity_digest}"
+            )
 
     checksum_sidecar_verified = False
-    if checksum_uri is not None:
-        validate_fetch_uri(
-            checksum_uri,
-            allow_non_production_release_targets=allow_non_production_release_targets,
-            purpose=f"npm package checksum sidecar URL for {artifact_id}",
-        )
-        sidecar_path = work_dir / f"{filename}.{checksum_algorithm}"
-        sidecar_path.write_bytes(read_uri_bytes(checksum_uri))
-        verify_checksum_sidecar(
-            artifact_path,
-            sidecar_path,
-            algorithm=checksum_algorithm,
-            purpose=f"npm package {artifact_id}",
-        )
-        checksum_sidecar_verified = True
+    if artifact_path is not None and checksum_uri is not None and checksum_algorithm is not None:
+        try:
+            validate_fetch_uri(
+                checksum_uri,
+                allow_non_production_release_targets=allow_non_production_release_targets,
+                purpose=f"npm package checksum sidecar URL for {artifact_id}",
+            )
+            sidecar_path = work_dir / f"{filename}.{checksum_algorithm}"
+            sidecar_path.write_bytes(read_uri_bytes(checksum_uri))
+            verify_checksum_sidecar(
+                artifact_path,
+                sidecar_path,
+                algorithm=checksum_algorithm,
+                purpose=f"npm package {artifact_id}",
+            )
+            checksum_sidecar_verified = True
+        except Exception as exc:
+            issues.append(str(exc))
 
-    metadata_url, metadata_payload, found_via = _npm_registry_package_metadata(
-        registry_url,
-        package_name,
-        allow_non_production_release_targets=allow_non_production_release_targets,
-    )
-    version_payload = _npm_registry_version_payload(
-        metadata_payload,
-        package_name=package_name,
-        version=version,
-        source=metadata_url,
-    )
-    dist_payload = version_payload.get("dist")
-    if not isinstance(dist_payload, dict):
-        raise ValueError(f"npm-package registry metadata is missing dist for {package_name}@{version}: {metadata_url}")
-    tarball_url = required_non_empty_string(dist_payload, "tarball", source=metadata_url)
-    if url_without_fragment(tarball_url) != url_without_fragment(artifact_uri):
-        raise ValueError(
-            "npm-package registry tarball URL does not match the signed manifest: "
-            f"{tarball_url} != {artifact_uri}"
+    metadata_url: str | None = None
+    found_via: str | None = None
+    tarball_url_matches_manifest: bool | None = None
+    registry_integrity_matches_manifest: bool | None = None
+    signatures_count = 0
+    try:
+        metadata_url, metadata_payload, found_via = _npm_registry_package_metadata(
+            registry_url,
+            package_name,
+            allow_non_production_release_targets=allow_non_production_release_targets,
         )
-    registry_integrity = required_non_empty_string(dist_payload, "integrity", source=metadata_url)
-    registry_integrity_algorithm, registry_integrity_digest, registry_integrity_value = _parsed_npm_integrity(
-        registry_integrity,
-        source=metadata_url,
-    )
-    if (
-        registry_integrity_algorithm != integrity_algorithm
-        or registry_integrity_digest != integrity_digest
-        or registry_integrity_value != integrity_value
-    ):
-        raise ValueError(
-            "npm-package registry integrity does not match the signed manifest: "
-            f"{registry_integrity_value} != {integrity_value}"
+        version_payload = _npm_registry_version_payload(
+            metadata_payload,
+            package_name=package_name,
+            version=version,
+            source=metadata_url,
         )
-    registry_signatures = dist_payload.get("signatures")
-    if registry_signatures is None:
-        signatures_count = 0
-    elif isinstance(registry_signatures, list):
-        signatures_count = len(registry_signatures)
-    else:
-        raise ValueError(f"npm-package registry signatures must be a list when present: {metadata_url}")
+        dist_payload = version_payload.get("dist")
+        if not isinstance(dist_payload, dict):
+            raise ValueError(
+                f"npm-package registry metadata is missing dist for {package_name}@{version}: {metadata_url}"
+            )
+        tarball_url = required_non_empty_string(dist_payload, "tarball", source=metadata_url)
+        tarball_url_matches_manifest = url_without_fragment(tarball_url) == url_without_fragment(artifact_uri)
+        if not tarball_url_matches_manifest:
+            issues.append(
+                "npm-package registry tarball URL does not match the signed manifest: "
+                f"{tarball_url} != {artifact_uri}"
+            )
+        registry_integrity = required_non_empty_string(dist_payload, "integrity", source=metadata_url)
+        registry_integrity_algorithm, registry_integrity_digest, registry_integrity_value = _parsed_npm_integrity(
+            registry_integrity,
+            source=metadata_url,
+        )
+        registry_integrity_matches_manifest = (
+            integrity_algorithm is not None
+            and integrity_digest is not None
+            and integrity_value is not None
+            and registry_integrity_algorithm == integrity_algorithm
+            and registry_integrity_digest == integrity_digest
+            and registry_integrity_value == integrity_value
+        )
+        if not registry_integrity_matches_manifest:
+            issues.append(
+                "npm-package registry integrity does not match the signed manifest: "
+                f"{registry_integrity_value} != {integrity_value}"
+            )
+        registry_signatures = dist_payload.get("signatures")
+        if registry_signatures is None:
+            signatures_count = 0
+        elif isinstance(registry_signatures, list):
+            signatures_count = len(registry_signatures)
+        else:
+            issues.append(f"npm-package registry signatures must be a list when present: {metadata_url}")
+    except Exception as exc:
+        issues.append(str(exc))
 
     return {
         "artifact_id": artifact_id,
         "kind": "npm-package",
-        "verdict": "verified",
+        "verdict": "failed" if issues else "verified",
+        "issues": issues,
         "filename": filename,
         "uri": artifact_uri,
         "registry_url": registry_url,
@@ -169,17 +228,20 @@ def verify_npm_package(
         "integrity": {
             "algorithm": integrity_algorithm,
             "value": integrity_value,
+            "matches_manifest_checksum": integrity_matches_manifest_checksum,
+            "matches_downloaded_bytes": integrity_matches_downloaded_bytes,
         },
         "checksum": {
             "algorithm": checksum_algorithm,
             "value": actual_checksum,
+            "matches_manifest": checksum_matches_manifest,
             "sidecar_verified": checksum_sidecar_verified,
         },
         "registry_resolution": {
             "metadata_url": metadata_url,
             "found_via": found_via,
-            "tarball_url_matches_manifest": True,
-            "integrity_matches_manifest": True,
+            "tarball_url_matches_manifest": tarball_url_matches_manifest,
+            "integrity_matches_manifest": registry_integrity_matches_manifest,
             "signatures_count": signatures_count,
         },
     }

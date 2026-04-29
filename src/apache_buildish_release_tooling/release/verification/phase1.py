@@ -21,15 +21,22 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from apache_buildish_release_tooling.release.git_repo import GitRepository
 from apache_buildish_release_tooling.release.models import ComponentConfig
+from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.process import run_logged_command
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import create_from_git, sha512
 from apache_buildish_release_tooling.release.verification.common import (
     GpgVerifier,
     SignatureVerification,
+    emit_detail,
+    emit_failure,
+    emit_info,
+    emit_section,
+    emit_success,
+    emit_warning,
     signature_payload,
+    signature_summary,
     validate_fetch_uri,
     verify_checksum_sidecar,
 )
@@ -39,17 +46,28 @@ from apache_buildish_release_tooling.release.verification.secondary import (
 
 
 @dataclass(frozen=True)
-class VerifyRcPhase1Result:
-    """Structured result for one successful Phase 1a RC verification run."""
+class VerificationFailure:
+    """One collected verification failure surfaced in the final report."""
 
-    component_id: str
-    version: str
-    rc_tag: str
-    source_commit_sha: str
-    source_repository_url: str
+    scope: str
+    subject: str
+    message: str
+
+
+@dataclass(frozen=True)
+class VerifyRcPhase1Result:
+    """Structured result for one Phase 1a RC verification run."""
+
+    verdict: str
+    component_id: str | None
+    version: str | None
+    rc_tag: str | None
+    source_commit_sha: str | None
+    source_repository_url: str | None
     manifest_url: str
     keys_url: str
     work_dir: Path
+    failures: tuple[VerificationFailure, ...]
     report_payload: dict[str, Any]
     report_markdown: str
 
@@ -61,6 +79,7 @@ def verify_rc_phase1(
     component_config: ComponentConfig | None,
     allow_non_production_release_targets: bool,
     work_dir: Path,
+    progress_reporter: ProgressReporter,
 ) -> VerifyRcPhase1Result:
     """Verify the signed RC vote manifest, source artifact, and supported secondary artifacts."""
 
@@ -76,133 +95,418 @@ def verify_rc_phase1(
         purpose="KEYS URL",
     )
 
-    manifest_path = work_dir / "rc-vote-manifest.json"
-    manifest_path.write_bytes(read_uri_bytes(manifest_url))
-    manifest_sha512_path = work_dir / "rc-vote-manifest.json.sha512"
-    manifest_sha512_path.write_bytes(read_uri_bytes(f"{manifest_url}.sha512"))
-    manifest_signature_path = work_dir / "rc-vote-manifest.json.asc"
-    manifest_signature_path.write_bytes(read_uri_bytes(f"{manifest_url}.asc"))
-    keys_path = work_dir / "KEYS"
-    keys_path.write_bytes(read_uri_bytes(keys_url))
-
-    manifest_sha512 = verify_checksum_sidecar(
-        manifest_path,
-        manifest_sha512_path,
-        algorithm="sha512",
-        purpose="RC vote manifest",
-    )
-    verifier = GpgVerifier(work_dir / "gnupg", keys_path)
-    manifest_signature = verifier.verify_detached(
-        target_path=manifest_path,
-        signature_path=manifest_signature_path,
-    )
-
-    manifest_payload = _rc_vote_manifest_payload(manifest_path)
-    component_id = _required_non_empty_string(manifest_payload, "component_id", source=manifest_url)
-    version = _required_non_empty_string(manifest_payload, "version", source=manifest_url)
-    source_commit_sha = _required_commit_sha(manifest_payload, "source_commit_sha", source=manifest_url)
-    rc_tag = _required_non_empty_string(manifest_payload, "rc_tag", source=manifest_url)
-    source_repository_url = _source_repository_url(manifest_payload, source=manifest_url)
-
-    keys_url_matches_component_config = _cross_check_keys_url(
-        manifest_payload=manifest_payload,
-        keys_url=keys_url,
-        component_config=component_config,
-        source=manifest_url,
-    )
-
-    validate_fetch_uri(
-        source_repository_url,
-        allow_non_production_release_targets=allow_non_production_release_targets,
-        purpose="Source repository URL",
-    )
-    repository_path = _clone_source_repository(
-        source_repository_url=source_repository_url,
-        work_dir=work_dir,
-    )
-    repository = GitRepository(repository_path)
-    rc_tag_target_commit = repository.resolve_commit(rc_tag)
-    if rc_tag_target_commit != source_commit_sha:
-        raise ValueError(
-            "manifest rc_tag does not resolve to the declared source_commit_sha: "
-            f"{rc_tag} -> {rc_tag_target_commit} != {source_commit_sha}"
-        )
-
-    source_artifact = _source_artifact_entry(manifest_payload, source=manifest_url)
-    if source_artifact.get("git_commit_sha") not in {None, source_commit_sha}:
-        raise ValueError(
-            "manifest source artifact git_commit_sha does not match source_commit_sha"
-        )
-    source_artifact_url = _required_non_empty_string(source_artifact, "uri", source=manifest_url)
-    validate_fetch_uri(
-        source_artifact_url,
-        allow_non_production_release_targets=allow_non_production_release_targets,
-        purpose="Source artifact URL",
-    )
-    source_artifact_filename = _required_non_empty_string(source_artifact, "filename", source=manifest_url)
-    source_artifact_path = work_dir / source_artifact_filename
-    source_artifact_path.write_bytes(read_uri_bytes(source_artifact_url))
-    declared_source_sha512 = _required_sha512_from_source_artifact(source_artifact, source=manifest_url)
-    actual_source_sha512 = sha512(source_artifact_path)
-    if actual_source_sha512 != declared_source_sha512:
-        raise ValueError(
-            "staged source artifact checksum does not match the signed manifest: "
-            f"{actual_source_sha512} != {declared_source_sha512}"
-        )
-
-    checksum_uri = _checksum_uri_from_source_artifact(source_artifact)
+    failures: list[VerificationFailure] = []
+    component_id: str | None = None
+    version: str | None = None
+    rc_tag: str | None = None
+    source_commit_sha: str | None = None
+    source_repository_url: str | None = None
+    manifest_sha512: str | None = None
+    manifest_signature: SignatureVerification | None = None
+    manifest_payload: dict[str, Any] | None = None
+    verifier: GpgVerifier | None = None
+    keys_url_matches_manifest = False
+    keys_url_matches_component_config: bool | None = None
+    rc_tag_target_commit: str | None = None
+    repository_path: Path | None = None
+    source_artifact_filename: str | None = None
+    source_artifact_url: str | None = None
+    actual_source_sha512: str | None = None
     source_sha512_sidecar_verified = False
-    if checksum_uri is not None:
-        validate_fetch_uri(
-            checksum_uri,
-            allow_non_production_release_targets=allow_non_production_release_targets,
-            purpose="Source artifact checksum sidecar URL",
-        )
-        source_sha512_sidecar_path = work_dir / f"{source_artifact_filename}.sha512"
-        source_sha512_sidecar_path.write_bytes(read_uri_bytes(checksum_uri))
-        verify_checksum_sidecar(
-            source_artifact_path,
-            source_sha512_sidecar_path,
+    source_artifact_signature: SignatureVerification | None = None
+    rebuilt_source_sha512: str | None = None
+    source_artifact_matches_source_commit = False
+    secondary_artifact_verifications: list[dict[str, Any]] = []
+
+    emit_section(progress_reporter, "Vote Manifest")
+    emit_info(progress_reporter, "Downloading signed RC vote manifest and sidecars")
+    try:
+        manifest_path = work_dir / "rc-vote-manifest.json"
+        manifest_path.write_bytes(read_uri_bytes(manifest_url))
+        manifest_sha512_path = work_dir / "rc-vote-manifest.json.sha512"
+        manifest_sha512_path.write_bytes(read_uri_bytes(f"{manifest_url}.sha512"))
+        manifest_signature_path = work_dir / "rc-vote-manifest.json.asc"
+        manifest_signature_path.write_bytes(read_uri_bytes(f"{manifest_url}.asc"))
+        keys_path = work_dir / "KEYS"
+        keys_path.write_bytes(read_uri_bytes(keys_url))
+        emit_success(progress_reporter, "Downloaded manifest, checksum sidecar, signature, and KEYS")
+        manifest_sha512 = verify_checksum_sidecar(
+            manifest_path,
+            manifest_sha512_path,
             algorithm="sha512",
-            purpose="source artifact",
+            purpose="RC vote manifest",
         )
-        source_sha512_sidecar_verified = True
-
-    source_signature_uri = _source_signature_uri(source_artifact, source=manifest_url)
-    validate_fetch_uri(
-        source_signature_uri,
-        allow_non_production_release_targets=allow_non_production_release_targets,
-        purpose="Source artifact signature URL",
-    )
-    source_signature_path = work_dir / f"{source_artifact_filename}.asc"
-    source_signature_path.write_bytes(read_uri_bytes(source_signature_uri))
-    source_artifact_signature = verifier.verify_detached(
-        target_path=source_artifact_path,
-        signature_path=source_signature_path,
-    )
-
-    expected_prefix = _archive_prefix_from_source_artifact_filename(source_artifact_filename)
-    rebuilt_source_artifact_path = work_dir / f"rebuilt-{source_artifact_filename}"
-    create_from_git(
-        repository_path,
-        source_commit_sha,
-        expected_prefix,
-        rebuilt_source_artifact_path,
-    )
-    rebuilt_source_sha512 = sha512(rebuilt_source_artifact_path)
-    source_artifact_matches_source_commit = rebuilt_source_artifact_path.read_bytes() == source_artifact_path.read_bytes()
-    if not source_artifact_matches_source_commit:
-        raise ValueError(
-            "staged source artifact does not match the declared source_commit_sha"
+        emit_success(progress_reporter, f"Verified manifest SHA512: {manifest_sha512}")
+        verifier = GpgVerifier(work_dir / "gnupg", keys_path)
+        manifest_signature = verifier.verify_detached(
+            target_path=manifest_path,
+            signature_path=manifest_signature_path,
         )
+        emit_success(
+            progress_reporter,
+            f"Verified manifest signature: {signature_summary(manifest_signature)}",
+        )
+        manifest_payload = _rc_vote_manifest_payload(manifest_path)
+        component_id = _required_non_empty_string(manifest_payload, "component_id", source=manifest_url)
+        version = _required_non_empty_string(manifest_payload, "version", source=manifest_url)
+        source_commit_sha = _required_commit_sha(manifest_payload, "source_commit_sha", source=manifest_url)
+        rc_tag = _required_non_empty_string(manifest_payload, "rc_tag", source=manifest_url)
+        source_repository_url = _source_repository_url(manifest_payload, source=manifest_url)
+    except Exception as exc:
+        _append_failure(
+            failures,
+            progress_reporter=progress_reporter,
+            scope="vote-manifest",
+            subject="manifest trust chain",
+            message=str(exc),
+        )
+        return _phase1_result(
+            manifest_url=manifest_url,
+            keys_url=keys_url,
+            work_dir=work_dir,
+            failures=failures,
+            component_id=component_id,
+            version=version,
+            rc_tag=rc_tag,
+            source_commit_sha=source_commit_sha,
+            source_repository_url=source_repository_url,
+            manifest_sha512=manifest_sha512,
+            manifest_signature=manifest_signature,
+            keys_url_matches_manifest=keys_url_matches_manifest,
+            keys_url_matches_component_config=keys_url_matches_component_config,
+            rc_tag_target_commit=rc_tag_target_commit,
+            source_artifact_filename=source_artifact_filename,
+            source_artifact_url=source_artifact_url,
+            actual_source_sha512=actual_source_sha512,
+            source_sha512_sidecar_verified=source_sha512_sidecar_verified,
+            source_artifact_signature=source_artifact_signature,
+            rebuilt_source_sha512=rebuilt_source_sha512,
+            source_artifact_matches_source_commit=source_artifact_matches_source_commit,
+            secondary_artifact_verifications=secondary_artifact_verifications,
+        )
+
+    if (
+        component_id is None
+        or version is None
+        or rc_tag is None
+        or source_commit_sha is None
+        or source_repository_url is None
+        or manifest_signature is None
+        or manifest_payload is None
+        or verifier is None
+    ):
+        raise RuntimeError("verified manifest extraction produced incomplete state")
+
+    emit_detail(progress_reporter, "Component", component_id)
+    emit_detail(progress_reporter, "Version", version)
+    emit_detail(progress_reporter, "RC tag", rc_tag)
+
+    try:
+        keys_url_matches_component_config = _cross_check_keys_url(
+            manifest_payload=manifest_payload,
+            keys_url=keys_url,
+            component_config=component_config,
+            source=manifest_url,
+        )
+        keys_url_matches_manifest = True
+        emit_success(progress_reporter, "Cross-checked KEYS URL against the signed manifest")
+        if keys_url_matches_component_config:
+            emit_success(progress_reporter, "Cross-checked KEYS URL against component config")
+        else:
+            emit_warning(progress_reporter, "Component config not provided; skipped local KEYS URL cross-check")
+    except Exception as exc:
+        _append_failure(
+            failures,
+            progress_reporter=progress_reporter,
+            scope="vote-manifest",
+            subject="KEYS URL cross-check",
+            message=str(exc),
+        )
+
+    emit_section(progress_reporter, "Source Artifact")
+    emit_detail(progress_reporter, "Source repository", source_repository_url)
+    emit_detail(progress_reporter, "Source commit", source_commit_sha)
+    try:
+        validate_fetch_uri(
+            source_repository_url,
+            allow_non_production_release_targets=allow_non_production_release_targets,
+            purpose="Source repository URL",
+        )
+        emit_info(progress_reporter, "Cloning source repository")
+        repository_path = _clone_source_repository(
+            source_repository_url=source_repository_url,
+            work_dir=work_dir,
+        )
+        emit_success(progress_reporter, "Cloned source repository")
+    except Exception as exc:
+        _append_failure(
+            failures,
+            progress_reporter=progress_reporter,
+            scope="source-artifact",
+            subject="source repository clone",
+            message=str(exc),
+        )
+
+    if repository_path is not None:
+        try:
+            rc_tag_target_commit = _resolved_commit(repository_path, rc_tag)
+            if rc_tag_target_commit != source_commit_sha:
+                raise ValueError(
+                    "manifest rc_tag does not resolve to the declared source_commit_sha: "
+                    f"{rc_tag} -> {rc_tag_target_commit} != {source_commit_sha}"
+                )
+            emit_success(progress_reporter, f"Verified rc_tag binding: {rc_tag} -> {source_commit_sha}")
+        except Exception as exc:
+            _append_failure(
+                failures,
+                progress_reporter=progress_reporter,
+                scope="source-artifact",
+                subject="rc_tag binding",
+                message=str(exc),
+            )
+
+    source_artifact: dict[str, Any] | None = None
+    try:
+        source_artifact = _source_artifact_entry(manifest_payload, source=manifest_url)
+        if source_artifact.get("git_commit_sha") not in {None, source_commit_sha}:
+            raise ValueError(
+                "manifest source artifact git_commit_sha does not match source_commit_sha"
+            )
+        source_artifact_url = _required_non_empty_string(source_artifact, "uri", source=manifest_url)
+        validate_fetch_uri(
+            source_artifact_url,
+            allow_non_production_release_targets=allow_non_production_release_targets,
+            purpose="Source artifact URL",
+        )
+        source_artifact_filename = _required_non_empty_string(source_artifact, "filename", source=manifest_url)
+        emit_detail(progress_reporter, "Artifact", source_artifact_filename)
+        emit_detail(progress_reporter, "Artifact URL", source_artifact_url)
+    except Exception as exc:
+        _append_failure(
+            failures,
+            progress_reporter=progress_reporter,
+            scope="source-artifact",
+            subject="manifest source artifact entry",
+            message=str(exc),
+        )
+
+    source_artifact_path: Path | None = None
+    declared_source_sha512: str | None = None
+    if source_artifact is not None and source_artifact_filename is not None and source_artifact_url is not None:
+        try:
+            emit_info(progress_reporter, "Downloading staged source artifact")
+            source_artifact_path = work_dir / source_artifact_filename
+            source_artifact_path.write_bytes(read_uri_bytes(source_artifact_url))
+            emit_success(progress_reporter, "Downloaded staged source artifact")
+            declared_source_sha512 = _required_sha512_from_source_artifact(source_artifact, source=manifest_url)
+            actual_source_sha512 = sha512(source_artifact_path)
+            if actual_source_sha512 != declared_source_sha512:
+                raise ValueError(
+                    "staged source artifact checksum does not match the signed manifest: "
+                    f"{actual_source_sha512} != {declared_source_sha512}"
+                )
+            emit_success(progress_reporter, f"Verified staged source SHA512: {actual_source_sha512}")
+        except Exception as exc:
+            _append_failure(
+                failures,
+                progress_reporter=progress_reporter,
+                scope="source-artifact",
+                subject="staged source checksum",
+                message=str(exc),
+            )
+
+    if source_artifact is not None and source_artifact_path is not None and source_artifact_filename is not None:
+        checksum_uri = _checksum_uri_from_source_artifact(source_artifact)
+        if checksum_uri is not None:
+            try:
+                validate_fetch_uri(
+                    checksum_uri,
+                    allow_non_production_release_targets=allow_non_production_release_targets,
+                    purpose="Source artifact checksum sidecar URL",
+                )
+                source_sha512_sidecar_path = work_dir / f"{source_artifact_filename}.sha512"
+                source_sha512_sidecar_path.write_bytes(read_uri_bytes(checksum_uri))
+                verify_checksum_sidecar(
+                    source_artifact_path,
+                    source_sha512_sidecar_path,
+                    algorithm="sha512",
+                    purpose="source artifact",
+                )
+                source_sha512_sidecar_verified = True
+                emit_success(progress_reporter, "Verified source artifact SHA512 sidecar")
+            except Exception as exc:
+                _append_failure(
+                    failures,
+                    progress_reporter=progress_reporter,
+                    scope="source-artifact",
+                    subject="source artifact checksum sidecar",
+                    message=str(exc),
+                )
+        else:
+            emit_warning(progress_reporter, "No source artifact SHA512 sidecar URI declared in the manifest")
+
+        try:
+            source_signature_uri = _source_signature_uri(source_artifact, source=manifest_url)
+            validate_fetch_uri(
+                source_signature_uri,
+                allow_non_production_release_targets=allow_non_production_release_targets,
+                purpose="Source artifact signature URL",
+            )
+            source_signature_path = work_dir / f"{source_artifact_filename}.asc"
+            source_signature_path.write_bytes(read_uri_bytes(source_signature_uri))
+            source_artifact_signature = verifier.verify_detached(
+                target_path=source_artifact_path,
+                signature_path=source_signature_path,
+            )
+            emit_success(
+                progress_reporter,
+                f"Verified source artifact signature: {signature_summary(source_artifact_signature)}",
+            )
+        except Exception as exc:
+            _append_failure(
+                failures,
+                progress_reporter=progress_reporter,
+                scope="source-artifact",
+                subject="source artifact signature",
+                message=str(exc),
+            )
+
+    if (
+        repository_path is not None
+        and source_artifact_path is not None
+        and source_artifact_filename is not None
+    ):
+        try:
+            expected_prefix = _archive_prefix_from_source_artifact_filename(source_artifact_filename)
+            rebuilt_source_artifact_path = work_dir / f"rebuilt-{source_artifact_filename}"
+            emit_info(progress_reporter, "Rebuilding source artifact from declared source commit")
+            create_from_git(
+                repository_path,
+                source_commit_sha,
+                expected_prefix,
+                rebuilt_source_artifact_path,
+                log_commands=False,
+            )
+            rebuilt_source_sha512 = sha512(rebuilt_source_artifact_path)
+            emit_success(progress_reporter, f"Rebuilt source artifact SHA512: {rebuilt_source_sha512}")
+            source_artifact_matches_source_commit = (
+                rebuilt_source_artifact_path.read_bytes() == source_artifact_path.read_bytes()
+            )
+            if not source_artifact_matches_source_commit:
+                raise ValueError(
+                    "staged source artifact does not match the declared source_commit_sha"
+                )
+            emit_success(
+                progress_reporter,
+                "Verified staged source artifact matches the declared source commit",
+            )
+        except Exception as exc:
+            _append_failure(
+                failures,
+                progress_reporter=progress_reporter,
+                scope="source-artifact",
+                subject="source artifact reproducibility",
+                message=str(exc),
+            )
+
     secondary_artifact_verifications = verify_secondary_artifacts(
         manifest_payload,
         manifest_url=manifest_url,
         work_dir=work_dir / "secondary-artifacts",
         verifier=verifier,
         allow_non_production_release_targets=allow_non_production_release_targets,
+        progress_reporter=progress_reporter,
+    )
+    for verification in secondary_artifact_verifications:
+        for issue in verification.get("issues", []):
+            failures.append(
+                VerificationFailure(
+                    scope="secondary-artifact",
+                    subject=str(verification["artifact_id"]),
+                    message=str(issue),
+                )
+            )
+
+    return _phase1_result(
+        manifest_url=manifest_url,
+        keys_url=keys_url,
+        work_dir=work_dir,
+        failures=failures,
+        component_id=component_id,
+        version=version,
+        rc_tag=rc_tag,
+        source_commit_sha=source_commit_sha,
+        source_repository_url=source_repository_url,
+        manifest_sha512=manifest_sha512,
+        manifest_signature=manifest_signature,
+        keys_url_matches_manifest=keys_url_matches_manifest,
+        keys_url_matches_component_config=keys_url_matches_component_config,
+        rc_tag_target_commit=rc_tag_target_commit,
+        source_artifact_filename=source_artifact_filename,
+        source_artifact_url=source_artifact_url,
+        actual_source_sha512=actual_source_sha512,
+        source_sha512_sidecar_verified=source_sha512_sidecar_verified,
+        source_artifact_signature=source_artifact_signature,
+        rebuilt_source_sha512=rebuilt_source_sha512,
+        source_artifact_matches_source_commit=source_artifact_matches_source_commit,
+        secondary_artifact_verifications=secondary_artifact_verifications,
     )
 
+
+def _append_failure(
+    failures: list[VerificationFailure],
+    *,
+    progress_reporter: ProgressReporter,
+    scope: str,
+    subject: str,
+    message: str,
+) -> None:
+    failures.append(
+        VerificationFailure(
+            scope=scope,
+            subject=subject,
+            message=message,
+        )
+    )
+    emit_failure(progress_reporter, message)
+
+
+def _failure_messages(
+    failures: list[VerificationFailure],
+    *,
+    scope: str,
+) -> list[str]:
+    return [failure.message for failure in failures if failure.scope == scope]
+
+
+def _phase1_result(
+    *,
+    manifest_url: str,
+    keys_url: str,
+    work_dir: Path,
+    failures: list[VerificationFailure],
+    component_id: str | None,
+    version: str | None,
+    rc_tag: str | None,
+    source_commit_sha: str | None,
+    source_repository_url: str | None,
+    manifest_sha512: str | None,
+    manifest_signature: SignatureVerification | None,
+    keys_url_matches_manifest: bool,
+    keys_url_matches_component_config: bool | None,
+    rc_tag_target_commit: str | None,
+    source_artifact_filename: str | None,
+    source_artifact_url: str | None,
+    actual_source_sha512: str | None,
+    source_sha512_sidecar_verified: bool,
+    source_artifact_signature: SignatureVerification | None,
+    rebuilt_source_sha512: str | None,
+    source_artifact_matches_source_commit: bool,
+    secondary_artifact_verifications: list[dict[str, Any]],
+) -> VerifyRcPhase1Result:
+    verdict = "verified" if not failures else "failed"
+    manifest_issues = _failure_messages(failures, scope="vote-manifest")
+    source_artifact_issues = _failure_messages(failures, scope="source-artifact")
     report_payload: dict[str, Any] = {
         "schema_version": "1",
         "report_type": "verify-rc",
@@ -213,24 +517,58 @@ def verify_rc_phase1(
         "source_repository_url": source_repository_url,
         "manifest_url": manifest_url,
         "keys_url": keys_url,
-        "verdict": "verified",
+        "verdict": verdict,
         "work_dir": str(work_dir),
+        "failures": [
+            {
+                "scope": failure.scope,
+                "subject": failure.subject,
+                "message": failure.message,
+            }
+            for failure in failures
+        ],
         "manifest_verification": {
+            "verdict": "verified"
+            if manifest_signature is not None and keys_url_matches_manifest
+            else "failed",
             "sha512": manifest_sha512,
-            "keys_url_matches_manifest": True,
+            "keys_url_matches_manifest": keys_url_matches_manifest,
             "keys_url_matches_component_config": keys_url_matches_component_config,
-            "signature": signature_payload(manifest_signature),
+            "signature": (
+                signature_payload(manifest_signature)
+                if manifest_signature is not None
+                else None
+            ),
             "rc_tag_target_commit": rc_tag_target_commit,
-            "rc_tag_matches_source_commit_sha": True,
+            "rc_tag_matches_source_commit_sha": (
+                rc_tag_target_commit is not None
+                and source_commit_sha is not None
+                and rc_tag_target_commit == source_commit_sha
+            ),
+            "issues": manifest_issues,
         },
         "source_artifact_verification": {
+            "verdict": "verified"
+            if (
+                source_artifact_filename is not None
+                and source_artifact_url is not None
+                and actual_source_sha512 is not None
+                and source_artifact_signature is not None
+                and source_artifact_matches_source_commit
+            )
+            else "failed",
             "filename": source_artifact_filename,
             "uri": source_artifact_url,
             "sha512": actual_source_sha512,
             "sha512_sidecar_verified": source_sha512_sidecar_verified,
-            "signature": signature_payload(source_artifact_signature),
+            "signature": (
+                signature_payload(source_artifact_signature)
+                if source_artifact_signature is not None
+                else None
+            ),
             "rebuilt_sha512": rebuilt_source_sha512,
-            "matches_source_commit_sha": True,
+            "matches_source_commit_sha": source_artifact_matches_source_commit,
+            "issues": source_artifact_issues,
         },
         "secondary_artifact_verifications": secondary_artifact_verifications,
     }
@@ -243,14 +581,19 @@ def verify_rc_phase1(
         source_repository_url=source_repository_url,
         manifest_url=manifest_url,
         keys_url=keys_url,
+        verdict=verdict,
+        failures=failures,
         manifest_signature=manifest_signature,
         source_artifact_filename=source_artifact_filename,
         source_artifact_url=source_artifact_url,
         source_artifact_signature=source_artifact_signature,
         actual_source_sha512=actual_source_sha512,
+        manifest_issues=manifest_issues,
+        source_artifact_issues=source_artifact_issues,
         secondary_artifact_verifications=secondary_artifact_verifications,
     )
     return VerifyRcPhase1Result(
+        verdict=verdict,
         component_id=component_id,
         version=version,
         rc_tag=rc_tag,
@@ -259,6 +602,7 @@ def verify_rc_phase1(
         manifest_url=manifest_url,
         keys_url=keys_url,
         work_dir=work_dir,
+        failures=tuple(failures),
         report_payload=report_payload,
         report_markdown=report_markdown,
     )
@@ -401,25 +745,48 @@ def _clone_source_repository(*, source_repository_url: str, work_dir: Path) -> P
     repository_path = work_dir / "source-repository"
     run_logged_command(
         ["git", "clone", "--quiet", source_repository_url, str(repository_path)],
-        capture_output=False,
+        log_command=False,
     )
     return repository_path
 
 
+def _resolved_commit(repository_path: Path, ref: str) -> str:
+    completed = run_logged_command(
+        [
+            "git",
+            "-C",
+            str(repository_path),
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            f"{ref}^{{commit}}",
+        ],
+        log_command=False,
+    )
+    resolved = completed.stdout.strip()
+    if not resolved:
+        raise ValueError(f"unable to resolve Git ref: {ref}")
+    return resolved
+
+
 def _report_markdown(
     *,
-    component_id: str,
-    version: str,
-    rc_tag: str,
-    source_commit_sha: str,
-    source_repository_url: str,
+    component_id: str | None,
+    version: str | None,
+    rc_tag: str | None,
+    source_commit_sha: str | None,
+    source_repository_url: str | None,
     manifest_url: str,
     keys_url: str,
-    manifest_signature: SignatureVerification,
-    source_artifact_filename: str,
-    source_artifact_url: str,
-    source_artifact_signature: SignatureVerification,
-    actual_source_sha512: str,
+    verdict: str,
+    failures: list[VerificationFailure],
+    manifest_signature: SignatureVerification | None,
+    source_artifact_filename: str | None,
+    source_artifact_url: str | None,
+    source_artifact_signature: SignatureVerification | None,
+    actual_source_sha512: str | None,
+    manifest_issues: list[str],
+    source_artifact_issues: list[str],
     secondary_artifact_verifications: list[dict[str, Any]],
 ) -> str:
     lines = [
@@ -429,30 +796,58 @@ def _report_markdown(
         "",
         "| Field | Value |",
         "| --- | --- |",
-        f"| Component | `{component_id}` |",
-        f"| Version | `{version}` |",
-        f"| RC tag | `{rc_tag}` |",
-        f"| Source commit | `{source_commit_sha}` |",
-        f"| Source repository URL | `{source_repository_url}` |",
+        f"| Component | `{_md_value(component_id)}` |",
+        f"| Version | `{_md_value(version)}` |",
+        f"| RC tag | `{_md_value(rc_tag)}` |",
+        f"| Source commit | `{_md_value(source_commit_sha)}` |",
+        f"| Source repository URL | `{_md_value(source_repository_url)}` |",
         f"| Manifest URL | `{manifest_url}` |",
         f"| KEYS URL | `{keys_url}` |",
         "",
         "### Manifest verification",
         "",
-        f"- Signature verified: `{manifest_signature.signer_fingerprint}`",
-        f"- RC tag resolves to the declared source commit: `{rc_tag}`",
-        "",
-        "### Source artifact verification",
-        "",
-        f"- Source artifact: `{source_artifact_filename}`",
-        f"- Source artifact URL: `{source_artifact_url}`",
-        f"- SHA512: `{actual_source_sha512}`",
-        f"- Signature verified: `{source_artifact_signature.signer_fingerprint}`",
-        f"- Source artifact matches the declared source commit: `{source_commit_sha}`",
-        "",
-        "### Secondary artifact verification",
-        "",
+        (
+            f"- ✓ Signature verified: `{manifest_signature.signer_fingerprint}`"
+            if manifest_signature is not None
+            else "- ✗ Signature verification did not complete."
+        ),
+        (
+            f"- ✓ RC tag resolved from the signed manifest: `{rc_tag}`"
+            if rc_tag is not None
+            else "- ✗ RC tag could not be read from the signed manifest."
+        ),
     ]
+    for issue in manifest_issues:
+        lines.append(f"- ✗ {issue}")
+    lines.extend(
+        [
+            "",
+            "### Source artifact verification",
+            "",
+            f"- Source artifact: `{_md_value(source_artifact_filename)}`",
+            f"- Source artifact URL: `{_md_value(source_artifact_url)}`",
+            f"- SHA512: `{_md_value(actual_source_sha512)}`",
+            (
+                f"- ✓ Signature verified: `{source_artifact_signature.signer_fingerprint}`"
+                if source_artifact_signature is not None
+                else "- ✗ Source artifact signature verification did not complete."
+            ),
+            (
+                f"- ✓ Declared source commit: `{source_commit_sha}`"
+                if source_commit_sha is not None
+                else "- ✗ Source commit could not be read from the signed manifest."
+            ),
+        ]
+    )
+    for issue in source_artifact_issues:
+        lines.append(f"- ✗ {issue}")
+    lines.extend(
+        [
+            "",
+            "### Secondary artifact verification",
+            "",
+        ]
+    )
     if not secondary_artifact_verifications:
         lines.extend(
             [
@@ -476,9 +871,17 @@ def _report_markdown(
                     [
                         f"- File: `{verification['filename']}`",
                         f"- URL: `{verification['uri']}`",
-                        f"- Checksum verified: `{checksum_payload['algorithm']}:{checksum_payload['value']}`",
-                        f"- Checksum sidecar verified: `{checksum_payload['sidecar_verified']}`",
                     ]
+                )
+                if checksum_payload.get("algorithm") and checksum_payload.get("value"):
+                    lines.append(
+                        f"- Checksum observed: `{checksum_payload['algorithm']}:{checksum_payload['value']}`"
+                    )
+                lines.append(
+                    f"- Checksum matched signed manifest: `{checksum_payload.get('matches_manifest')}`"
+                )
+                lines.append(
+                    f"- Checksum sidecar verified: `{checksum_payload['sidecar_verified']}`"
                 )
                 signature_verifications = verification.get("signatures", [])
                 if signature_verifications:
@@ -497,7 +900,7 @@ def _report_markdown(
                 lines.extend(
                     [
                         f"- Base URL: `{verification['base_url']}`",
-                        f"- Inventory verified: `{inventory_payload['filename']}`",
+                        f"- Inventory verified: `{inventory_payload['filename'] if isinstance(inventory_payload, dict) else 'n/a'}`",
                         f"- Live repository entry count: `{live_repository['entry_count']}`",
                         f"- Live repository matches signed inventory: `{live_repository['matches_signed_inventory']}`",
                     ]
@@ -515,7 +918,15 @@ def _report_markdown(
                         f"- File: `{verification['filename']}`",
                         f"- URL: `{verification['uri']}`",
                         f"- Project: `{verification['project_name']}` `{verification['version']}`",
-                        f"- Checksum verified: `{checksum_payload['algorithm']}:{checksum_payload['value']}`",
+                    ]
+                )
+                if checksum_payload.get("algorithm") and checksum_payload.get("value"):
+                    lines.append(
+                        f"- Checksum observed: `{checksum_payload['algorithm']}:{checksum_payload['value']}`"
+                    )
+                lines.extend(
+                    [
+                        f"- Checksum matched signed manifest: `{checksum_payload.get('matches_manifest')}`",
                         f"- Checksum sidecar verified: `{checksum_payload['sidecar_verified']}`",
                         f"- Simple index verified: `{index_resolution['project_index_url']}`",
                         f"- Simple index hash matched: `{index_resolution['sha256_matches_index']}`",
@@ -538,9 +949,20 @@ def _report_markdown(
                         f"- Package: `{verification['package_name']}` `{verification['version']}`",
                         f"- Tarball: `{verification['uri']}`",
                         f"- Integrity verified: `{verification['integrity']['value']}`",
-                        f"- Checksum verified: `{checksum_payload['algorithm']}:{checksum_payload['value']}`",
+                        f"- Integrity matched downloaded bytes: `{verification['integrity']['matches_downloaded_bytes']}`",
+                        f"- Integrity matched signed manifest checksum: `{verification['integrity']['matches_manifest_checksum']}`",
+                    ]
+                )
+                if checksum_payload.get("algorithm") and checksum_payload.get("value"):
+                    lines.append(
+                        f"- Checksum observed: `{checksum_payload['algorithm']}:{checksum_payload['value']}`"
+                    )
+                lines.extend(
+                    [
+                        f"- Checksum matched signed manifest: `{checksum_payload.get('matches_manifest')}`",
                         f"- Registry metadata verified: `{registry_resolution['metadata_url']}`",
                         f"- Registry tarball matched: `{registry_resolution['tarball_url_matches_manifest']}`",
+                        f"- Registry integrity matched: `{registry_resolution['integrity_matches_manifest']}`",
                     ]
                 )
             else:
@@ -548,15 +970,37 @@ def _report_markdown(
                     "unsupported secondary artifact kind for markdown reporting: "
                     f"{verification['artifact_id']} ({kind})"
                 )
+            for issue in verification.get("issues", []):
+                lines.append(f"- ✗ {issue}")
             lines.append("")
     lines.extend(
         [
             "### Outcome",
             "",
-            "```text",
-            "Verified manifest authenticity, explicit KEYS binding, rc_tag-to-source_commit binding, the staged source artifact bytes, and all supported secondary artifacts declared in the signed manifest.",
-            "```",
-            "",
         ]
     )
+    if verdict == "verified":
+        lines.extend(
+            [
+                "```text",
+                "Verified manifest authenticity, explicit KEYS binding, rc_tag-to-source_commit binding, the staged source artifact bytes, and all supported secondary artifacts declared in the signed manifest.",
+                "```",
+                "",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                f"- ✗ Verification failed with `{len(failures)}` issue(s).",
+            ]
+        )
+        for failure in failures:
+            lines.append(
+                f"- `{failure.scope}` / `{failure.subject}`: {failure.message}"
+            )
+        lines.append("")
     return "\n".join(lines)
+
+
+def _md_value(value: str | None) -> str:
+    return value if value is not None else "n/a"
