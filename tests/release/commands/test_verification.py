@@ -35,6 +35,7 @@ from tests.release.commands.support import (
     Path,
     ReleaseCommandsIntegrationTestSupport,
     _read_simple_github_outputs,
+    base64,
     cleanup_sandbox,
     cli_env,
     command_available,
@@ -278,6 +279,65 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual(1, completed.returncode)
         self.assertIn("python-distribution file is not present in the declared simple index", completed.stderr)
 
+    def test_verify_rc_command_verifies_npm_package_secondary_artifact(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_npm_package=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("npm-package", secondary_verification["kind"])
+        self.assertTrue(secondary_verification["registry_resolution"]["tarball_url_matches_manifest"])
+        self.assertTrue(secondary_verification["registry_resolution"]["integrity_matches_manifest"])
+
+    def test_verify_rc_command_fails_closed_when_npm_registry_integrity_drifts(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_npm_package=True,
+            drift_npm_registry_integrity=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--work-dir",
+                str(fixture.work_dir),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn("npm-package registry integrity does not match the signed manifest", completed.stderr)
+
     def test_verify_rc_command_fails_closed_when_maven_repository_drifts_from_inventory(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
@@ -428,6 +488,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         drift_maven_repository: bool = False,
         include_python_distribution: bool = False,
         missing_python_index_entry: bool = False,
+        include_npm_package: bool = False,
+        drift_npm_registry_integrity: bool = False,
         include_oci_image: bool = False,
         drift_oci_image: bool = False,
     ) -> VerificationFixture:
@@ -646,6 +708,57 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 encoding="utf-8",
             )
             secondary_artifacts.append(python_artifact)
+        if include_npm_package:
+            artifact_bytes = b"npm package payload\n"
+            artifact_file_path = sandbox_dir / "npm-dist" / "buildish-example-1.2.3.tgz"
+            artifact_file_path.parent.mkdir(parents=True, exist_ok=True)
+            artifact_file_path.write_bytes(artifact_bytes)
+            expected_sha512 = hashlib.sha512(artifact_bytes).hexdigest()
+            expected_integrity = "sha512-" + base64.b64encode(hashlib.sha512(artifact_bytes).digest()).decode("ascii")
+            live_integrity = (
+                "sha512-" + base64.b64encode(bytes(64)).decode("ascii")
+                if drift_npm_registry_integrity
+                else expected_integrity
+            )
+            registry_root = sandbox_dir / "npm-registry"
+            metadata_dir = registry_root / "@apache" / "buildish-example"
+            metadata_dir.mkdir(parents=True, exist_ok=True)
+            (metadata_dir / "index.json").write_text(
+                json.dumps(
+                    {
+                        "name": "@apache/buildish-example",
+                        "versions": {
+                            "1.2.3": {
+                                "name": "@apache/buildish-example",
+                                "version": "1.2.3",
+                                "dist": {
+                                    "tarball": artifact_file_path.as_uri(),
+                                    "integrity": live_integrity,
+                                    "signatures": [],
+                                },
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            secondary_artifacts.append(
+                {
+                    "artifact_id": "npm-package-main",
+                    "kind": "npm-package",
+                    "filename": artifact_file_path.name,
+                    "uri": artifact_file_path.as_uri(),
+                    "registry_url": registry_root.as_uri() + "/",
+                    "package_name": "@apache/buildish-example",
+                    "version": "1.2.3",
+                    "integrity": expected_integrity,
+                    "checksums": {
+                        "sha512": {
+                            "value": expected_sha512,
+                        }
+                    },
+                }
+            )
         if include_oci_image:
             docker_path, docker_state_dir = create_fake_docker_launcher(sandbox_dir)
             extra_env["FAKE_DOCKER_STATE_DIR"] = str(docker_state_dir)

@@ -530,6 +530,19 @@ def _report_markdown(
                         f"- Platform digests matched: `{inspection['platform_digests_match']}`",
                     ]
                 )
+            elif kind == "npm-package":
+                checksum_payload = verification["checksum"]
+                registry_resolution = verification["registry_resolution"]
+                lines.extend(
+                    [
+                        f"- Package: `{verification['package_name']}` `{verification['version']}`",
+                        f"- Tarball: `{verification['uri']}`",
+                        f"- Integrity verified: `{verification['integrity']['value']}`",
+                        f"- Checksum verified: `{checksum_payload['algorithm']}:{checksum_payload['value']}`",
+                        f"- Registry metadata verified: `{registry_resolution['metadata_url']}`",
+                        f"- Registry tarball matched: `{registry_resolution['tarball_url_matches_manifest']}`",
+                    ]
+                )
             lines.append("")
     lines.extend(
         [
