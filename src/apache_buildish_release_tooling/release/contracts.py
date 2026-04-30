@@ -557,6 +557,19 @@ class OciInspectionReport(BuildishContractModel):
     platform_digests: list[OciPlatformDigest] = Field(default_factory=list)
 
 
+class ArtifactReproducibilityReport(BuildishContractModel):
+    """Observed local rebuild comparison results for one artifact."""
+
+    profile_id: NonEmptyString
+    verdict: VerificationVerdict
+    comparison_mode: NonEmptyString
+    recipe_source: Literal["canonical-profile", "local-override"] = "canonical-profile"
+    execution_backend: Literal["host-direct"] = "host-direct"
+    output_paths: list[NonEmptyString] = Field(default_factory=list)
+    matches_remote_bytes: bool | None = None
+    issues: list[str] = Field(default_factory=list)
+
+
 class GenericFileVerificationReport(BuildishContractModel):
     """Verification report for one generic secondary file."""
 
@@ -569,6 +582,7 @@ class GenericFileVerificationReport(BuildishContractModel):
     checksum: ChecksumVerificationReport
     signatures: list[SignatureVerificationPayload] = Field(default_factory=list)
     inventory: InventoryVerificationReport | None = None
+    reproducibility: ArtifactReproducibilityReport | None = None
 
 
 class MavenRepositoryVerificationReport(BuildishContractModel):
@@ -682,6 +696,19 @@ class SourceArtifactVerificationSection(BuildishContractModel):
     issues: list[str] = Field(default_factory=list)
 
 
+class ReproducibilityExecutionSection(BuildishContractModel):
+    """Run-level policy and execution summary for build-based reproducibility checks."""
+
+    requested_mode: Literal["auto", "integrity-only", "full"]
+    effective_mode: Literal["integrity-only", "full"]
+    build_checks_attempted: bool
+    execution_backend: Literal["none", "host-direct"] = "none"
+    inherits_host_home: bool | None = None
+    prompt_used: bool = False
+    prompt_confirmed: bool | None = None
+    skipped_reason: str | None = None
+
+
 class VerifyRcReportV1(BuildishContractModel):
     """Machine-readable Phase 1a RC verification report."""
 
@@ -700,6 +727,7 @@ class VerifyRcReportV1(BuildishContractModel):
     failures: list[VerificationFailurePayload] = Field(default_factory=list)
     manifest_verification: ManifestVerificationSection
     source_artifact_verification: SourceArtifactVerificationSection
+    reproducibility_execution: ReproducibilityExecutionSection
     secondary_artifact_verifications: list[AnySecondaryArtifactVerification] = Field(default_factory=list)
 
 
@@ -708,6 +736,7 @@ __all__ = [
     "AnySecondaryArtifactVerification",
     "BuildishContractModel",
     "DraftGithubRelease",
+    "ArtifactReproducibilityReport",
     "GenericFileSecondaryArtifact",
     "GenericFileVerificationReport",
     "GenericFileWithOpenPgpSecondaryArtifact",
@@ -728,5 +757,6 @@ __all__ = [
     "SecondaryArtifactManifestV1",
     "StrictSecondaryArtifactAdapter",
     "SupplementalInventoryReference",
+    "ReproducibilityExecutionSection",
     "VerifyRcReportV1",
 ]

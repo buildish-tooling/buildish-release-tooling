@@ -29,6 +29,7 @@ from apache_buildish_release_tooling.release.models import ComponentConfig
 from apache_buildish_release_tooling.release.verification.rebuild import (
     build_host_direct_environment,
     collect_profile_output_paths,
+    decide_reproducibility_mode,
     resolve_rebuild_profile,
     run_host_direct_profile,
 )
@@ -118,6 +119,38 @@ class VerificationRebuildTest(unittest.TestCase):
             self.assertEqual(str(work_dir / "tmp"), environment["TMPDIR"])
             self.assertNotIn("GITHUB_TOKEN", environment)
             self.assertNotIn("AWS_SECRET_ACCESS_KEY", environment)
+
+    def test_decide_reproducibility_mode_prompts_only_for_auto_interactive_candidates(self) -> None:
+        declined = decide_reproducibility_mode(
+            requested_mode="auto",
+            has_build_candidates=True,
+            is_interactive=True,
+            confirm_callback=lambda: False,
+        )
+        self.assertEqual("integrity-only", declined.effective_mode)
+        self.assertTrue(declined.prompt_used)
+        self.assertFalse(cast(bool, declined.prompt_confirmed))
+        self.assertFalse(declined.build_checks_allowed)
+
+        confirmed = decide_reproducibility_mode(
+            requested_mode="auto",
+            has_build_candidates=True,
+            is_interactive=True,
+            confirm_callback=lambda: True,
+        )
+        self.assertEqual("full", confirmed.effective_mode)
+        self.assertTrue(confirmed.prompt_used)
+        self.assertTrue(cast(bool, confirmed.prompt_confirmed))
+        self.assertTrue(confirmed.build_checks_allowed)
+
+        non_interactive = decide_reproducibility_mode(
+            requested_mode="auto",
+            has_build_candidates=True,
+            is_interactive=False,
+        )
+        self.assertEqual("integrity-only", non_interactive.effective_mode)
+        self.assertFalse(non_interactive.prompt_used)
+        self.assertIn("not interactive", cast(str, non_interactive.build_checks_skipped_reason))
 
     def test_run_host_direct_profile_uses_relative_working_dir_and_root_relative_output_globs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

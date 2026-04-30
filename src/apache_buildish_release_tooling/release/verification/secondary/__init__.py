@@ -22,6 +22,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from apache_buildish_release_tooling.release.contracts import RcVoteManifestReadV1
+from apache_buildish_release_tooling.release.models import ComponentConfig
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.verification.common import (
     GpgVerifier,
@@ -53,6 +54,10 @@ def verify_secondary_artifacts(
     verifier: GpgVerifier,
     allow_non_production_release_targets: bool,
     progress_reporter: ProgressReporter,
+    component_config: ComponentConfig | None,
+    project_root: Path | None,
+    source_date_epoch: int | None,
+    build_checks_allowed: bool,
 ) -> list[dict[str, Any]]:
     """Verify all supported secondary artifacts declared in the signed vote manifest."""
 
@@ -86,6 +91,10 @@ def verify_secondary_artifacts(
                     verifier=verifier,
                     allow_non_production_release_targets=allow_non_production_release_targets,
                     require_signature=False,
+                    component_config=component_config,
+                    project_root=project_root,
+                    source_date_epoch=source_date_epoch,
+                    build_checks_allowed=build_checks_allowed,
                 )
             elif kind == "generic-file-with-openpgp":
                 verification = verify_generic_file(
@@ -95,6 +104,10 @@ def verify_secondary_artifacts(
                     verifier=verifier,
                     allow_non_production_release_targets=allow_non_production_release_targets,
                     require_signature=True,
+                    component_config=component_config,
+                    project_root=project_root,
+                    source_date_epoch=source_date_epoch,
+                    build_checks_allowed=build_checks_allowed,
                 )
             elif kind == "maven-repository":
                 verification = verify_maven_repository(
@@ -210,6 +223,17 @@ def _emit_secondary_artifact_summary(
                 progress_reporter,
                 f"Verified inventory: {inventory_payload['filename']}",
             )
+        reproducibility_payload = verification.get("reproducibility")
+        if isinstance(reproducibility_payload, dict):
+            emit_detail(
+                progress_reporter,
+                "Reproducibility profile",
+                str(reproducibility_payload.get("profile_id", "n/a")),
+            )
+            for output_path in reproducibility_payload.get("output_paths", []):
+                emit_detail(progress_reporter, "Rebuild output", str(output_path))
+            if reproducibility_payload.get("matches_remote_bytes") is True:
+                emit_success(progress_reporter, "Verified rebuilt artifact matches staged bytes")
         for issue in issues:
             emit_failure(progress_reporter, issue)
         return

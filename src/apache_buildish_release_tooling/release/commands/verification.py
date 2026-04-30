@@ -20,6 +20,7 @@ import sys
 import tempfile
 from argparse import Namespace
 from pathlib import Path
+from typing import Literal, cast
 
 from apache_buildish_release_tooling.release.command_logging import command_log_sink
 from apache_buildish_release_tooling.release.config import load_component_config, validate_release_target_base_urls
@@ -34,6 +35,9 @@ from apache_buildish_release_tooling.release.verification.common import (
     emit_section,
     emit_success,
     emit_title,
+)
+from apache_buildish_release_tooling.release.verification.rebuild import (
+    prompt_for_candidate_code_execution,
 )
 
 from apache_buildish_release_tooling.release.commands._shared import _append_github_outputs
@@ -70,6 +74,12 @@ def run_verify_rc(args: Namespace) -> None:
             allow_non_production_release_targets=args.allow_non_production_release_targets,
             work_dir=work_dir,
             progress_reporter=progress_reporter,
+            requested_mode=cast(
+                Literal["auto", "integrity-only", "full"],
+                getattr(args, "mode", "auto"),
+            ),
+            interactive_input_enabled=sys.stdin.isatty() and sys.stdout.isatty(),
+            confirm_candidate_code_execution=prompt_for_candidate_code_execution,
         )
         report_json_path = _report_json_path(args, result)
         report_md_path = _report_md_path(args, result)

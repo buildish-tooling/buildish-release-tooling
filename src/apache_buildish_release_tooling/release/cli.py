@@ -611,6 +611,16 @@ def _register_verification_commands(subparsers: Subparsers) -> None:
         help="Progress reporting mode for long-running verification steps. Defaults to auto, which reports progress on interactive terminals only.",
     )
     verify_rc.add_argument(
+        "--mode",
+        choices=("auto", "integrity-only", "full"),
+        default="auto",
+        help=(
+            "Verification mode. integrity-only skips build-based reproducibility checks, "
+            "full always runs them when configured, and auto prompts on interactive terminals before "
+            "executing candidate build code."
+        ),
+    )
+    verify_rc.add_argument(
         "--color",
         choices=("auto", "always", "never"),
         default="auto",

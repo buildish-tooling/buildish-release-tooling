@@ -263,6 +263,94 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual(1, len(secondary_verification["signatures"]))
         self.assertIn("Secondary artifact verification", fixture.report_md_path.read_text(encoding="utf-8"))
 
+    def test_verify_rc_command_verifies_generic_file_reproducibility_in_full_mode(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--progress",
+                "on",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        self.assertIn("Local Reproducibility", completed.stderr)
+        self.assertIn("Requested mode: full", completed.stderr)
+        self.assertIn("Effective mode: full", completed.stderr)
+        self.assertIn("Verified rebuilt artifact matches staged bytes", completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        self.assertEqual("full", report_payload["reproducibility_execution"]["requested_mode"])
+        self.assertEqual("full", report_payload["reproducibility_execution"]["effective_mode"])
+        self.assertTrue(report_payload["reproducibility_execution"]["build_checks_attempted"])
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("verified", secondary_verification["reproducibility"]["verdict"])
+        self.assertEqual("bootstrap-zip", secondary_verification["reproducibility"]["profile_id"])
+        self.assertEqual(
+            ["dist/buildish-example-bootstrap.zip"],
+            secondary_verification["reproducibility"]["output_paths"],
+        )
+
+    def test_verify_rc_command_reports_generic_file_reproducibility_drift_in_full_mode(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn("generic-file reproducibility output does not match the staged artifact bytes", completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        self.assertEqual("failed", report_payload["verdict"])
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("failed", secondary_verification["reproducibility"]["verdict"])
+        self.assertEqual("failed", secondary_verification["verdict"])
+
     def test_verify_rc_command_fails_closed_when_secondary_artifact_digest_mismatches(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
@@ -971,6 +1059,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         missing_npm_tarball: bool = False,
         include_oci_image: bool = False,
         drift_oci_image: bool = False,
+        include_generic_file_reproducibility: bool = False,
+        drift_generic_file_reproducibility: bool = False,
     ) -> VerificationFixture:
         origin_dir, _clone_dir = init_git_origin_and_clone(sandbox_dir)
         component_id = "buildish-example"
@@ -1000,13 +1090,59 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         gpg_home.mkdir(parents=True, exist_ok=True)
         gpg_home.chmod(0o700)
         effective_gpg_home = _effective_home(gpg_home)
+        verify_rc_lines: tuple[str, ...] = ()
+        if include_generic_file_reproducibility:
+            verify_rc_lines = (
+                "verify_rc:",
+                "  profiles:",
+                "    bootstrap-zip:",
+                f"      kind: {secondary_kind}",
+                "      build:",
+                "        command:",
+                "          - sh",
+                "          - buildish-release-tooling/rebuild-bootstrap.sh",
+                "        output_globs:",
+                "          - dist/buildish-example-bootstrap.zip",
+                "      comparison:",
+                "        mode: exact-bytes",
+            )
 
         self._write_component_config(
             config_path,
             component_id=component_id,
             dev_base_url=(stage_dir.parent).as_uri(),
             release_base_url=(release_dir / component_id).as_uri(),
+            verify_rc_lines=verify_rc_lines,
         )
+
+        if include_generic_file_reproducibility:
+            rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-bootstrap.sh"
+            rebuild_script.parent.mkdir(parents=True, exist_ok=True)
+            rebuild_script.write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env sh",
+                        "set -eu",
+                        "mkdir -p dist",
+                        (
+                            "printf 'bootstrap zip bytes\\n' > dist/buildish-example-bootstrap.zip"
+                            if not drift_generic_file_reproducibility
+                            else "printf 'bootstrap zip drift\\n' > dist/buildish-example-bootstrap.zip"
+                        ),
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            rebuild_script.chmod(0o755)
+            subprocess.run(
+                ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-bootstrap.sh"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(origin_dir), "commit", "-m", "add bootstrap rebuild script"],
+                check=True,
+            )
 
         source_commit_sha = git_rev_parse(origin_dir, "HEAD")
         git_create_annotated_tag(origin_dir, rc_tag)
@@ -1122,6 +1258,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                     }
                 ],
             }
+            if include_generic_file_reproducibility:
+                secondary_artifact["reproducibility"] = {
+                    "profile_id": "bootstrap-zip",
+                }
             if malformed_secondary_missing_artifact_id:
                 secondary_artifact.pop("artifact_id")
             if malformed_secondary_missing_kind:

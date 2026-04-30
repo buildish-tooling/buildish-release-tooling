@@ -19,6 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from apache_buildish_release_tooling.release.models import ComponentConfig
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.common import (
@@ -27,6 +28,10 @@ from apache_buildish_release_tooling.release.verification.common import (
     signature_payload,
     validate_fetch_uri,
     verify_checksum_sidecar,
+)
+from apache_buildish_release_tooling.release.verification.rebuild import (
+    resolve_rebuild_profile,
+    run_host_direct_profile,
 )
 
 from .shared import (
@@ -44,6 +49,10 @@ def verify_generic_file(
     verifier: GpgVerifier,
     allow_non_production_release_targets: bool,
     require_signature: bool,
+    component_config: ComponentConfig | None,
+    project_root: Path | None,
+    source_date_epoch: int | None,
+    build_checks_allowed: bool,
 ) -> dict[str, Any]:
     artifact_id = required_non_empty_string(artifact_entry, "artifact_id", source=manifest_url)
     kind = required_non_empty_string(artifact_entry, "kind", source=manifest_url)
@@ -56,6 +65,7 @@ def verify_generic_file(
     checksum_uri: str | None = None
     checksum_matches_manifest = False
     checksum_sidecar_verified = False
+    reproducibility_verification: dict[str, Any] | None = None
     work_dir.mkdir(parents=True, exist_ok=True)
     artifact_path: Path | None = None
     try:
@@ -137,6 +147,20 @@ def verify_generic_file(
     except Exception as exc:
         issues.append(str(exc))
 
+    if build_checks_allowed and artifact_entry.get("reproducibility") is not None:
+        reproducibility_verification = _generic_file_reproducibility(
+            artifact_entry,
+            manifest_url=manifest_url,
+            artifact_id=artifact_id,
+            kind=kind,
+            artifact_path=artifact_path,
+            work_dir=work_dir / "reproducibility",
+            component_config=component_config,
+            project_root=project_root,
+            source_date_epoch=source_date_epoch,
+        )
+        issues.extend(reproducibility_verification.get("issues", []))
+
     verification: dict[str, Any] = {
         "artifact_id": artifact_id,
         "kind": kind,
@@ -154,7 +178,98 @@ def verify_generic_file(
     }
     if inventory_verification is not None:
         verification["inventory"] = inventory_verification.report_payload
+    if reproducibility_verification is not None:
+        verification["reproducibility"] = reproducibility_verification
     return verification
+
+
+def _generic_file_reproducibility(
+    artifact_entry: dict[str, Any],
+    *,
+    manifest_url: str,
+    artifact_id: str,
+    kind: str,
+    artifact_path: Path | None,
+    work_dir: Path,
+    component_config: ComponentConfig | None,
+    project_root: Path | None,
+    source_date_epoch: int | None,
+) -> dict[str, Any]:
+    raw_reproducibility = artifact_entry.get("reproducibility")
+    if not isinstance(raw_reproducibility, dict):
+        return {
+            "profile_id": "n/a",
+            "verdict": "failed",
+            "comparison_mode": "exact-bytes",
+            "recipe_source": "canonical-profile",
+            "execution_backend": "host-direct",
+            "output_paths": [],
+            "matches_remote_bytes": None,
+            "issues": [f"manifest secondary artifact does not declare a reproducibility profile: {artifact_id}"],
+        }
+    profile_id = required_non_empty_string(raw_reproducibility, "profile_id", source=manifest_url)
+    issues: list[str] = []
+    output_paths: list[str] = []
+    matches_remote_bytes: bool | None = None
+    comparison_mode = "exact-bytes"
+    if component_config is None:
+        issues.append(
+            f"build-based reproducibility for {artifact_id} requires --component-config to resolve profile {profile_id!r}"
+        )
+    if project_root is None:
+        issues.append(
+            f"build-based reproducibility for {artifact_id} requires one verified source checkout"
+        )
+    if artifact_path is None:
+        issues.append(
+            f"build-based reproducibility for {artifact_id} requires the staged artifact bytes"
+        )
+    profile = None
+    if not issues and component_config is not None:
+        try:
+            profile = resolve_rebuild_profile(
+                component_config,
+                profile_id,
+                expected_kinds=(kind,),
+            )
+            comparison_mode = str(profile.comparison.get("mode", comparison_mode))
+        except Exception as exc:
+            issues.append(str(exc))
+    if not issues and profile is not None and project_root is not None and artifact_path is not None:
+        try:
+            build_result = run_host_direct_profile(
+                profile_id=profile_id,
+                profile=profile,
+                project_root=project_root,
+                work_dir=work_dir,
+                source_date_epoch=source_date_epoch,
+            )
+            output_paths = [
+                str(path.relative_to(project_root))
+                for path in build_result.output_paths
+            ]
+            if len(build_result.output_paths) != 1:
+                raise ValueError(
+                    f"generic-file reproducibility profile {profile_id!r} must produce exactly one output file"
+                )
+            built_artifact_path = build_result.output_paths[0]
+            matches_remote_bytes = built_artifact_path.read_bytes() == artifact_path.read_bytes()
+            if not matches_remote_bytes:
+                raise ValueError(
+                    f"generic-file reproducibility output does not match the staged artifact bytes: {artifact_id}"
+                )
+        except Exception as exc:
+            issues.append(str(exc))
+    return {
+        "profile_id": profile_id,
+        "verdict": "failed" if issues else "verified",
+        "comparison_mode": comparison_mode,
+        "recipe_source": "canonical-profile",
+        "execution_backend": "host-direct",
+        "output_paths": output_paths,
+        "matches_remote_bytes": matches_remote_bytes,
+        "issues": issues,
+    }
 
 
 def _signature_verifications_with_issues(

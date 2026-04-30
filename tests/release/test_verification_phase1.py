@@ -20,6 +20,7 @@ import unittest
 
 from apache_buildish_release_tooling.release.verification.common import SignatureVerification
 from apache_buildish_release_tooling.release.verification.phase1 import _report_markdown
+from apache_buildish_release_tooling.release.verification.rebuild import ReproducibilityModeDecision
 
 
 class VerifyRcPhase1ReportTest(unittest.TestCase):
@@ -56,6 +57,15 @@ class VerifyRcPhase1ReportTest(unittest.TestCase):
                 actual_source_sha512="f" * 128,
                 manifest_issues=[],
                 source_artifact_issues=[],
+                reproducibility_decision=ReproducibilityModeDecision(
+                    requested_mode="integrity-only",
+                    effective_mode="integrity-only",
+                    prompt_used=False,
+                    prompt_confirmed=None,
+                    build_checks_allowed=False,
+                    build_checks_skipped_reason="disabled",
+                ),
+                build_checks_attempted=False,
                 secondary_artifact_verifications=[
                     {
                         "artifact_id": "odd-artifact",

@@ -16,9 +16,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import ValidationError
 
@@ -50,6 +51,11 @@ from apache_buildish_release_tooling.release.verification.common import (
 from apache_buildish_release_tooling.release.verification.secondary import (
     INVALID_SECONDARY_ARTIFACT_KIND,
     verify_secondary_artifacts,
+)
+from apache_buildish_release_tooling.release.verification.rebuild import (
+    ReproducibilityModeDecision,
+    decide_reproducibility_mode,
+    ensure_detached_source_checkout,
 )
 
 
@@ -89,6 +95,9 @@ def verify_rc_phase1(
     allow_non_production_release_targets: bool,
     work_dir: Path,
     progress_reporter: ProgressReporter,
+    requested_mode: Literal["auto", "integrity-only", "full"],
+    interactive_input_enabled: bool,
+    confirm_candidate_code_execution: Callable[[], bool],
 ) -> VerifyRcPhase1Result:
     """Verify the signed RC vote manifest, source artifact, and supported secondary artifacts."""
 
@@ -127,6 +136,15 @@ def verify_rc_phase1(
     rebuilt_source_sha512: str | None = None
     source_artifact_matches_source_commit = False
     secondary_artifact_verifications: list[dict[str, Any]] = []
+    reproducibility_decision = ReproducibilityModeDecision(
+        requested_mode=requested_mode,
+        effective_mode="integrity-only",
+        prompt_used=False,
+        prompt_confirmed=None,
+        build_checks_allowed=False,
+        build_checks_skipped_reason="build-based reproducibility checks were not evaluated",
+    )
+    build_checks_attempted = False
 
     emit_section(progress_reporter, "Vote Manifest")
     emit_info(progress_reporter, "Downloading signed RC vote manifest and sidecars")
@@ -197,6 +215,8 @@ def verify_rc_phase1(
             rebuilt_source_sha512=rebuilt_source_sha512,
             source_artifact_matches_source_commit=source_artifact_matches_source_commit,
             secondary_artifact_verifications=secondary_artifact_verifications,
+            reproducibility_decision=reproducibility_decision,
+            build_checks_attempted=build_checks_attempted,
         )
 
     if (
@@ -425,6 +445,45 @@ def verify_rc_phase1(
                 message=str(exc),
             )
 
+    has_build_candidates = manifest_payload is not None and _has_build_reproducibility_candidates(
+        manifest_payload
+    )
+    reproducibility_decision = decide_reproducibility_mode(
+        requested_mode=requested_mode,
+        has_build_candidates=has_build_candidates,
+        is_interactive=interactive_input_enabled,
+        confirm_callback=confirm_candidate_code_execution,
+    )
+    emit_section(progress_reporter, "Local Reproducibility")
+    emit_detail(progress_reporter, "Requested mode", reproducibility_decision.requested_mode)
+    emit_detail(progress_reporter, "Effective mode", reproducibility_decision.effective_mode)
+    if reproducibility_decision.prompt_used:
+        emit_detail(
+            progress_reporter,
+            "Prompt confirmed",
+            str(bool(reproducibility_decision.prompt_confirmed)),
+        )
+    if reproducibility_decision.build_checks_skipped_reason is not None:
+        emit_info(progress_reporter, reproducibility_decision.build_checks_skipped_reason)
+    elif reproducibility_decision.build_checks_allowed:
+        emit_info(progress_reporter, "Build-based reproducibility checks enabled via host-direct executor")
+    if (
+        reproducibility_decision.build_checks_allowed
+        and repository_path is not None
+        and source_commit_sha is not None
+    ):
+        try:
+            ensure_detached_source_checkout(repository_path, source_commit_sha)
+            emit_success(progress_reporter, f"Checked out verified source tree at {source_commit_sha}")
+        except Exception as exc:
+            _append_failure(
+                failures,
+                progress_reporter=progress_reporter,
+                scope="reproducibility",
+                subject="source checkout",
+                message=str(exc),
+            )
+
     try:
         secondary_artifact_verifications = verify_secondary_artifacts(
             manifest_payload,
@@ -433,6 +492,14 @@ def verify_rc_phase1(
             verifier=verifier,
             allow_non_production_release_targets=allow_non_production_release_targets,
             progress_reporter=progress_reporter,
+            component_config=component_config,
+            project_root=repository_path,
+            source_date_epoch=source_date_epoch,
+            build_checks_allowed=reproducibility_decision.build_checks_allowed,
+        )
+        build_checks_attempted = any(
+            verification.get("reproducibility") is not None
+            for verification in secondary_artifact_verifications
         )
         for verification in secondary_artifact_verifications:
             for issue in verification.get("issues", []):
@@ -477,6 +544,8 @@ def verify_rc_phase1(
         rebuilt_source_sha512=rebuilt_source_sha512,
         source_artifact_matches_source_commit=source_artifact_matches_source_commit,
         secondary_artifact_verifications=secondary_artifact_verifications,
+        reproducibility_decision=reproducibility_decision,
+        build_checks_attempted=build_checks_attempted,
     )
 
 
@@ -531,6 +600,8 @@ def _phase1_result(
     rebuilt_source_sha512: str | None,
     source_artifact_matches_source_commit: bool,
     secondary_artifact_verifications: list[dict[str, Any]],
+    reproducibility_decision: ReproducibilityModeDecision,
+    build_checks_attempted: bool,
 ) -> VerifyRcPhase1Result:
     verdict = "verified" if not failures else "failed"
     manifest_issues = _failure_messages(failures, scope="vote-manifest")
@@ -608,6 +679,16 @@ def _phase1_result(
                 "matches_source_commit_sha": source_artifact_matches_source_commit,
                 "issues": source_artifact_issues,
             },
+            "reproducibility_execution": {
+                "requested_mode": reproducibility_decision.requested_mode,
+                "effective_mode": reproducibility_decision.effective_mode,
+                "build_checks_attempted": build_checks_attempted,
+                "execution_backend": "host-direct" if build_checks_attempted else "none",
+                "inherits_host_home": True if build_checks_attempted else None,
+                "prompt_used": reproducibility_decision.prompt_used,
+                "prompt_confirmed": reproducibility_decision.prompt_confirmed,
+                "skipped_reason": reproducibility_decision.build_checks_skipped_reason,
+            },
             "secondary_artifact_verifications": secondary_artifact_verification_payloads,
         }
     )
@@ -630,6 +711,8 @@ def _phase1_result(
         actual_source_sha512=actual_source_sha512,
         manifest_issues=manifest_issues,
         source_artifact_issues=source_artifact_issues,
+        reproducibility_decision=reproducibility_decision,
+        build_checks_attempted=build_checks_attempted,
         secondary_artifact_verifications=secondary_artifact_verification_payloads,
     )
     return VerifyRcPhase1Result(
@@ -673,6 +756,14 @@ def _cross_check_keys_url(
             f"{component_config.asf_keys_url} != {keys_url}"
     )
     return True
+
+
+def _has_build_reproducibility_candidates(manifest_payload: RcVoteManifestReadV1) -> bool:
+    for artifact in manifest_payload.vote_materials.secondary_artifacts:
+        reproducibility = getattr(artifact, "reproducibility", None)
+        if reproducibility is not None:
+            return True
+    return False
 
 
 def _source_artifact_entry(
@@ -762,6 +853,8 @@ def _report_markdown(
     actual_source_sha512: str | None,
     manifest_issues: list[str],
     source_artifact_issues: list[str],
+    reproducibility_decision: ReproducibilityModeDecision,
+    build_checks_attempted: bool,
     secondary_artifact_verifications: list[dict[str, Any]],
 ) -> str:
     lines = [
@@ -779,6 +872,8 @@ def _report_markdown(
         f"| Source repository URL | `{_md_value(source_repository_url)}` |",
         f"| Manifest URL | `{manifest_url}` |",
         f"| KEYS URL | `{keys_url}` |",
+        f"| Requested verify mode | `{reproducibility_decision.requested_mode}` |",
+        f"| Effective verify mode | `{reproducibility_decision.effective_mode}` |",
         "",
         "### Manifest verification",
         "",
@@ -820,6 +915,22 @@ def _report_markdown(
     lines.extend(
         [
             "",
+            "### Build-based reproducibility",
+            "",
+            f"- Requested mode: `{reproducibility_decision.requested_mode}`",
+            f"- Effective mode: `{reproducibility_decision.effective_mode}`",
+            f"- Prompt used: `{reproducibility_decision.prompt_used}`",
+            f"- Prompt confirmed: `{_md_value(str(reproducibility_decision.prompt_confirmed).lower() if reproducibility_decision.prompt_confirmed is not None else None)}`",
+            f"- Build checks attempted: `{build_checks_attempted}`",
+        ]
+    )
+    if reproducibility_decision.build_checks_skipped_reason is not None:
+        lines.append(
+            f"- Skipped reason: `{reproducibility_decision.build_checks_skipped_reason}`"
+        )
+    lines.append("")
+    lines.extend(
+        [
             "### Secondary artifact verification",
             "",
         ]
@@ -870,6 +981,17 @@ def _report_markdown(
                     lines.append(
                         f"- Inventory verified: `{inventory_payload['filename']}`"
                     )
+                reproducibility_payload = verification.get("reproducibility")
+                if isinstance(reproducibility_payload, dict):
+                    lines.extend(
+                        [
+                            f"- Reproducibility profile: `{reproducibility_payload['profile_id']}`",
+                            f"- Reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
+                            f"- Rebuilt bytes matched staged artifact: `{reproducibility_payload['matches_remote_bytes']}`",
+                        ]
+                    )
+                    for output_path in reproducibility_payload.get("output_paths", []):
+                        lines.append(f"- Rebuild output: `{output_path}`")
             elif kind == "maven-repository":
                 inventory_payload = verification["inventory"]
                 live_repository = verification["live_repository"]

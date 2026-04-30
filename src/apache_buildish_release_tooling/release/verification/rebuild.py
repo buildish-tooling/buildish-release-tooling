@@ -17,9 +17,11 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Collection, Mapping
+import sys
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcProfileConfig
 from apache_buildish_release_tooling.release.process import run_logged_command
@@ -74,6 +76,18 @@ class HostDirectBuildResult:
     environment: dict[str, str]
 
 
+@dataclass(frozen=True)
+class ReproducibilityModeDecision:
+    """Resolved verify-rc policy for build-based reproducibility checks."""
+
+    requested_mode: Literal["auto", "integrity-only", "full"]
+    effective_mode: Literal["integrity-only", "full"]
+    prompt_used: bool
+    prompt_confirmed: bool | None
+    build_checks_allowed: bool
+    build_checks_skipped_reason: str | None
+
+
 def resolve_rebuild_profile(
     component_config: ComponentConfig,
     profile_id: str,
@@ -98,6 +112,75 @@ def resolve_rebuild_profile(
             f"expected one of: {expected}"
         )
     return profile
+
+
+def decide_reproducibility_mode(
+    *,
+    requested_mode: Literal["auto", "integrity-only", "full"],
+    has_build_candidates: bool,
+    is_interactive: bool,
+    confirm_callback: Callable[[], bool] | None = None,
+) -> ReproducibilityModeDecision:
+    """Resolve whether build-based reproducibility checks may run for this invocation."""
+
+    if requested_mode == "full":
+        return ReproducibilityModeDecision(
+            requested_mode=requested_mode,
+            effective_mode="full",
+            prompt_used=False,
+            prompt_confirmed=None,
+            build_checks_allowed=has_build_candidates,
+            build_checks_skipped_reason=(
+                None if has_build_candidates else "no build-based reproducibility profiles were selected"
+            ),
+        )
+    if requested_mode == "integrity-only":
+        return ReproducibilityModeDecision(
+            requested_mode=requested_mode,
+            effective_mode="integrity-only",
+            prompt_used=False,
+            prompt_confirmed=None,
+            build_checks_allowed=False,
+            build_checks_skipped_reason="build-based reproducibility checks were disabled by --mode integrity-only",
+        )
+    if not has_build_candidates:
+        return ReproducibilityModeDecision(
+            requested_mode=requested_mode,
+            effective_mode="integrity-only",
+            prompt_used=False,
+            prompt_confirmed=None,
+            build_checks_allowed=False,
+            build_checks_skipped_reason="no build-based reproducibility profiles were selected",
+        )
+    if not is_interactive:
+        return ReproducibilityModeDecision(
+            requested_mode=requested_mode,
+            effective_mode="integrity-only",
+            prompt_used=False,
+            prompt_confirmed=None,
+            build_checks_allowed=False,
+            build_checks_skipped_reason="auto mode stayed integrity-only because stdin/stdout are not interactive",
+        )
+    if confirm_callback is None:
+        return ReproducibilityModeDecision(
+            requested_mode=requested_mode,
+            effective_mode="integrity-only",
+            prompt_used=False,
+            prompt_confirmed=None,
+            build_checks_allowed=False,
+            build_checks_skipped_reason="interactive confirmation callback was not provided",
+        )
+    confirmed = confirm_callback()
+    return ReproducibilityModeDecision(
+        requested_mode=requested_mode,
+        effective_mode="full" if confirmed else "integrity-only",
+        prompt_used=True,
+        prompt_confirmed=confirmed,
+        build_checks_allowed=confirmed,
+        build_checks_skipped_reason=(
+            None if confirmed else "interactive confirmation declined build-based reproducibility checks"
+        ),
+    )
 
 
 def build_host_direct_environment(
@@ -127,6 +210,15 @@ def build_host_direct_environment(
     if extra_env is not None:
         environment.update(extra_env)
     return environment
+
+
+def ensure_detached_source_checkout(project_root: Path, commit_sha: str) -> None:
+    """Checkout the verified source tree at one detached commit for local rebuild steps."""
+
+    run_logged_command(
+        ["git", "-C", str(project_root), "checkout", "--quiet", "--detach", commit_sha],
+        log_command=False,
+    )
 
 
 def collect_profile_output_paths(project_root: Path, output_globs: Collection[str]) -> tuple[Path, ...]:
@@ -171,3 +263,14 @@ def run_host_direct_profile(
         output_paths=collect_profile_output_paths(project_root, profile.build.output_globs),
         environment=environment,
     )
+
+
+def prompt_for_candidate_code_execution() -> bool:
+    """Prompt on the controlling terminal before executing candidate build code."""
+
+    sys.stderr.write(
+        "Run build-based reproducibility checks? This executes candidate build code from the verified source tree. [y/N]: "
+    )
+    sys.stderr.flush()
+    response = sys.stdin.readline().strip().lower()
+    return response in {"y", "yes"}
