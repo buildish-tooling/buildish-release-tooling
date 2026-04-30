@@ -196,6 +196,34 @@ def build_rc_vote_manifest(
     materialized_commit_sha: str | None = None
     if component_config.final_tag_mode == "detached-materialization-commit":
         materialized_commit_sha = rc_tag_target_commit
+    source_reproducibility = (
+        component_config.verify_rc.source.reproducibility
+        if component_config.verify_rc is not None and component_config.verify_rc.source is not None
+        else None
+    )
+    source_artifact_payload: dict[str, Any] = {
+        "role": "asf-source-release",
+        "filename": state.source_artifact_name,
+        "uri": source_artifact_url,
+        "artifact_origin": "source-commit",
+        "git_commit_sha": state.resolved_source_ref,
+        "checksums": {
+            "sha512": {
+                "value": source_artifact_sha512,
+                "uri": f"{source_artifact_url}.sha512",
+            }
+        },
+        "signatures": [
+            {
+                "type": "openpgp-detached-ascii-armored",
+                "uri": f"{source_artifact_url}.asc",
+            }
+        ],
+    }
+    if source_reproducibility is not None:
+        source_artifact_payload["reproducibility"] = {
+            "profile_id": source_reproducibility.profile_id,
+        }
 
     manifest: dict[str, Any] = {
         "schema_version": "1",
@@ -221,27 +249,7 @@ def build_rc_vote_manifest(
             "url": draft_release_url,
         },
         "vote_materials": {
-            "source_artifacts": [
-                {
-                    "role": "asf-source-release",
-                    "filename": state.source_artifact_name,
-                    "uri": source_artifact_url,
-                    "artifact_origin": "source-commit",
-                    "git_commit_sha": state.resolved_source_ref,
-                    "checksums": {
-                        "sha512": {
-                            "value": source_artifact_sha512,
-                            "uri": f"{source_artifact_url}.sha512",
-                        }
-                    },
-                    "signatures": [
-                        {
-                            "type": "openpgp-detached-ascii-armored",
-                            "uri": f"{source_artifact_url}.asc",
-                        }
-                    ],
-                }
-            ],
+            "source_artifacts": [source_artifact_payload],
             "secondary_artifacts": list(secondary_artifacts),
         },
         "verification": {

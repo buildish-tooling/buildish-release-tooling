@@ -58,6 +58,8 @@ class ArtifactRegistrationCommandsIntegrationTest(ReleaseCommandsIntegrationTest
                 "https://github.com/apache/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip.sha512",
                 "--git-commit-sha",
                 "0123456789abcdef0123456789abcdef01234567",
+                "--reproducibility-profile-id",
+                "bootstrap-zip",
             ],
             cwd=sandbox_dir,
             env=cli_env(manifest_path, extra_env={"GITHUB_OUTPUT": str(github_output_path)}),
@@ -93,6 +95,9 @@ class ArtifactRegistrationCommandsIntegrationTest(ReleaseCommandsIntegrationTest
                     "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip",
                     "artifact_origin": "source-commit",
                     "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                    "reproducibility": {
+                        "profile_id": "bootstrap-zip",
+                    },
                     "checksums": {
                         "sha512": {
                             "value": expected_sha512,

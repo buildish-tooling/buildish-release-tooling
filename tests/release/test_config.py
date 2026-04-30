@@ -49,6 +49,20 @@ class LoadComponentConfigTest(unittest.TestCase):
                     "  verify",
                     "prepare_rc_runs_tests: false",
                     "release_branch_ci_required: true",
+                    "verify_rc:",
+                    "  source:",
+                    "    reproducibility:",
+                    "      profile_id: source-release",
+                    "      mode: exact-bytes",
+                    "  profiles:",
+                    "    source-release:",
+                    "      kind: source-artifact",
+                    "      build:",
+                    "        command: [\"./buildish-release-tooling/rebuild-source.sh\"]",
+                    "        output_globs:",
+                    "          - target/apache-example-*.tar.gz",
+                    "      comparison:",
+                    "        mode: exact-bytes",
                     "atr:",
                     "  enabled: true",
                     "  base_url: https://release-test.apache.org",
@@ -65,6 +79,13 @@ class LoadComponentConfigTest(unittest.TestCase):
         self.assertEqual(
             "https://buildish.apache.org/buildish-example/release-verification/",
             loaded.release_verification_guide_url,
+        )
+        self.assertIsNotNone(loaded.verify_rc)
+        self.assertEqual(
+            "source-release",
+            loaded.verify_rc.source.reproducibility.profile_id
+            if loaded.verify_rc is not None and loaded.verify_rc.source is not None and loaded.verify_rc.source.reproducibility is not None
+            else None,
         )
         self.assertIsNotNone(loaded.atr)
         self.assertEqual("buildish-example", loaded.atr.product_line if loaded.atr is not None else None)
@@ -104,6 +125,48 @@ class LoadComponentConfigTest(unittest.TestCase):
             encoding="utf-8",
         )
         with self.assertRaisesRegex(ValueError, "product_line"):
+            load_component_config(str(config_path))
+
+    def test_load_component_config_rejects_unknown_verify_rc_source_profile(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        config_path.write_text(
+            "\n".join(
+                [
+                    "component_id: buildish-example",
+                    "source_artifact_prefix: apache-buildish-example",
+                    "asf_dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+                    "asf_dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+                    "asf_keys_url: https://downloads.apache.org/incubator/buildish/KEYS",
+                    "moving_tags_enabled: true",
+                    "latest_tag_enabled: false",
+                    "secondary_targets:",
+                    "  - github-action",
+                    "final_tag_mode: rc-source-commit",
+                    "vote_release_name: Apache Buildish Example",
+                    "release_verification_guide_url: https://buildish.apache.org/buildish-example/release-verification/",
+                    "verify_rc_instructions: verify",
+                    "prepare_rc_runs_tests: false",
+                    "release_branch_ci_required: true",
+                    "verify_rc:",
+                    "  source:",
+                    "    reproducibility:",
+                    "      profile_id: missing-profile",
+                    "  profiles:",
+                    "    source-release:",
+                    "      kind: source-artifact",
+                    "      build:",
+                    "        command: [\"./buildish-release-tooling/rebuild-source.sh\"]",
+                    "        output_globs:",
+                    "          - target/apache-example-*.tar.gz",
+                    "      comparison:",
+                    "        mode: exact-bytes",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ValueError, "verify_rc.source.reproducibility.profile_id"):
             load_component_config(str(config_path))
 
     def test_load_checked_in_component_configs(self) -> None:

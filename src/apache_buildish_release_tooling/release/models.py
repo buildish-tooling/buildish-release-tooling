@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -70,6 +70,106 @@ class AtrConfig(BuildishContractModel):
         return self
 
 
+class VerifyRcSelectionConfig(BuildishContractModel):
+    """One canonical reproducibility profile selection."""
+
+    profile_id: str
+    mode: str | None = None
+
+
+class VerifyRcSourceConfig(BuildishContractModel):
+    """Source-artifact verification policy for verify-rc."""
+
+    reproducibility: VerifyRcSelectionConfig | None = None
+
+
+class VerifyRcBuildConfig(BuildishContractModel):
+    """Host-direct rebuild recipe configuration for one reproducibility profile."""
+
+    command: list[str]
+    working_dir: str | None = None
+    env: dict[str, str] = Field(default_factory=dict)
+    output_globs: list[str]
+
+    @field_validator("command", mode="after")
+    @classmethod
+    def _validate_command(cls, value: list[str]) -> list[str]:
+        if not value or any(not item.strip() for item in value):
+            raise ValueError("verify_rc build.command must be a non-empty argv list")
+        return value
+
+    @field_validator("working_dir")
+    @classmethod
+    def _validate_working_dir(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("verify_rc build.working_dir must not be empty")
+        if Path(normalized).is_absolute():
+            raise ValueError("verify_rc build.working_dir must be relative to the project root")
+        return normalized
+
+    @field_validator("env", mode="after")
+    @classmethod
+    def _validate_env(cls, value: dict[str, str]) -> dict[str, str]:
+        for key, env_value in value.items():
+            if not key.strip():
+                raise ValueError("verify_rc build.env keys must be non-empty strings")
+            if not isinstance(env_value, str):
+                raise TypeError("verify_rc build.env values must be strings")
+        return value
+
+    @field_validator("output_globs", mode="after")
+    @classmethod
+    def _validate_output_globs(cls, value: list[str]) -> list[str]:
+        if not value or any(not item.strip() for item in value):
+            raise ValueError("verify_rc build.output_globs must contain at least one non-empty glob")
+        return value
+
+
+class VerifyRcProfileConfig(BuildishContractModel):
+    """One canonical reproducibility profile selected by signed manifest metadata."""
+
+    kind: Literal[
+        "source-artifact",
+        "generic-file",
+        "generic-file-with-openpgp",
+        "maven-repository",
+        "npm-package",
+        "oci-image",
+        "python-distribution",
+    ]
+    build: VerifyRcBuildConfig
+    comparison: dict[str, Any]
+
+    @field_validator("comparison", mode="after")
+    @classmethod
+    def _validate_comparison(cls, value: dict[str, Any]) -> dict[str, Any]:
+        mode = value.get("mode")
+        if not isinstance(mode, str) or not mode.strip():
+            raise ValueError("verify_rc profile comparison must declare a non-empty mode")
+        return value
+
+
+class VerifyRcConfig(BuildishContractModel):
+    """Structured verify-rc configuration for rebuild recipes and profile selection."""
+
+    source: VerifyRcSourceConfig | None = None
+    profiles: dict[str, VerifyRcProfileConfig] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_source_profile_reference(self) -> VerifyRcConfig:
+        reproducibility = self.source.reproducibility if self.source is not None else None
+        if reproducibility is None:
+            return self
+        if reproducibility.profile_id not in self.profiles:
+            raise ValueError(
+                "verify_rc.source.reproducibility.profile_id must reference one configured profile"
+            )
+        return self
+
+
 class ComponentConfig(BuildishContractModel):
     """Validated component policy and release-target configuration."""
 
@@ -92,6 +192,7 @@ class ComponentConfig(BuildishContractModel):
     prepare_rc_runs_tests: bool = False
     release_branch_ci_required: bool = False
     atr: AtrConfig | None = None
+    verify_rc: VerifyRcConfig | None = None
 
     @field_validator("secondary_targets", mode="before")
     @classmethod

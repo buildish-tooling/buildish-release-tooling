@@ -68,6 +68,22 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             component_id=component_id,
             dev_base_url=dev_base_url,
             release_base_url=release_base_url,
+            verify_rc_lines=(
+                "verify_rc:",
+                "  source:",
+                "    reproducibility:",
+                "      profile_id: source-release",
+                "      mode: exact-bytes",
+                "  profiles:",
+                "    source-release:",
+                "      kind: source-artifact",
+                "      build:",
+                "        command: [\"./buildish-release-tooling/rebuild-source.sh\"]",
+                "        output_globs:",
+                "          - target/apache-example-*.tar.gz",
+                "      comparison:",
+                "        mode: exact-bytes",
+            ),
         )
         client.mkdir_url(dev_base_url, "create dev component path")
         client.mkdir_url(release_base_url, "create release component path")
@@ -271,6 +287,10 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         self.assertEqual(component_id, staged_manifest["component_id"])
         self.assertEqual("v1.2.3-rc0", staged_manifest["rc_tag"])
         self.assertEqual(expected_source_date_epoch, staged_manifest["source_date_epoch"])
+        self.assertEqual(
+            "source-release",
+            staged_manifest["vote_materials"]["source_artifacts"][0]["reproducibility"]["profile_id"],
+        )
         self.assertEqual(
             "bootstrap-zip",
             staged_manifest["vote_materials"]["secondary_artifacts"][0]["artifact_id"],

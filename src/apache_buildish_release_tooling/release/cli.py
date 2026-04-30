@@ -395,6 +395,11 @@ def _register_artifact_registration_commands(
         dest="git_commit_sha",
         help="Optional Git commit SHA associated with the artifact origin.",
     )
+    record_artifact.add_argument(
+        "--reproducibility-profile-id",
+        dest="reproducibility_profile_id",
+        help="Optional canonical reproducibility profile selected by the signed RC vote-manifest for this artifact.",
+    )
 
 
 def _register_publication_commands(

@@ -38,9 +38,14 @@ def apply_common_artifact_metadata(artifact: dict[str, Any], args: Namespace) ->
         artifact["role"] = args.role
     git_commit_sha = _optional_trimmed_text(getattr(args, "git_commit_sha", None))
     artifact_origin = _optional_trimmed_text(getattr(args, "artifact_origin", None))
+    reproducibility_profile_id = _optional_trimmed_text(
+        getattr(args, "reproducibility_profile_id", None)
+    )
     if artifact_origin is None and git_commit_sha is not None:
         artifact_origin = "source-commit"
     if artifact_origin is not None:
         artifact["artifact_origin"] = artifact_origin
     if git_commit_sha is not None:
         artifact["git_commit_sha"] = git_commit_sha
+    if reproducibility_profile_id is not None:
+        artifact["reproducibility"] = {"profile_id": reproducibility_profile_id}

@@ -220,6 +220,7 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
         secondary_targets: tuple[str, ...] = ("github-action",),
         final_tag_mode: str = "rc-source-commit",
         atr_lines: tuple[str, ...] = (),
+        verify_rc_lines: tuple[str, ...] = (),
     ) -> None:
         """Write a minimal component configuration used by CLI integration tests."""
 
@@ -242,6 +243,7 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
                     "prepare_rc_runs_tests: false",
                     "release_branch_ci_required: true",
                     *atr_lines,
+                    *verify_rc_lines,
                 ]
             ),
             encoding="utf-8",

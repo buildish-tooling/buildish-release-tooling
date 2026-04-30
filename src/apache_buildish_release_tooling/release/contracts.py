@@ -89,6 +89,12 @@ class SignatureReference(BuildishContractModel):
     uri: NonEmptyString
 
 
+class ReproducibilitySelector(BuildishContractModel):
+    """Signed manifest selector for one canonical local reproducibility profile."""
+
+    profile_id: NonEmptyString
+
+
 class SignatureVerificationPayload(BuildishContractModel):
     """Serialized detached-signature verification details."""
 
@@ -186,6 +192,7 @@ class SecondaryArtifactBase(BuildishContractModel):
     role: NonEmptyString | None = None
     artifact_origin: NonEmptyString | None = None
     git_commit_sha: GitCommitSha | None = None
+    reproducibility: ReproducibilitySelector | None = None
     inventory: SupplementalInventoryReference | None = None
 
 
@@ -350,6 +357,7 @@ class SourceArtifactContract(BuildishContractModel):
     uri: NonEmptyString
     artifact_origin: NonEmptyString
     git_commit_sha: GitCommitSha
+    reproducibility: ReproducibilitySelector | None = None
     checksums: Sha512Checksums
     signatures: list[SignatureReference] = Field(min_length=1)
 

@@ -74,6 +74,26 @@ class RcVoteManifestTest(unittest.TestCase):
                 "verify_rc_instructions": "verify",
                 "prepare_rc_runs_tests": False,
                 "release_branch_ci_required": True,
+                "verify_rc": {
+                    "source": {
+                        "reproducibility": {
+                            "profile_id": "source-release",
+                            "mode": "exact-bytes",
+                        }
+                    },
+                    "profiles": {
+                        "source-release": {
+                            "kind": "source-artifact",
+                            "build": {
+                                "command": ["./buildish-release-tooling/rebuild-source.sh"],
+                                "output_globs": ["target/apache-example-*.tar.gz"],
+                            },
+                            "comparison": {
+                                "mode": "exact-bytes",
+                            },
+                        }
+                    },
+                },
             }
         )
         state = PrepareRcState.model_validate(
@@ -144,6 +164,9 @@ class RcVoteManifestTest(unittest.TestCase):
                         "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
                         "artifact_origin": "source-commit",
                         "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                        "reproducibility": {
+                            "profile_id": "bootstrap-zip",
+                        },
                         "checksums": {
                             "sha512": {
                                 "value": "c" * 128,
@@ -164,6 +187,12 @@ class RcVoteManifestTest(unittest.TestCase):
             "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/apache-buildish-example-1.2.3-incubating-src.tar.gz",
             manifest.vote_materials.source_artifacts[0].uri,
         )
+        source_reproducibility = manifest.vote_materials.source_artifacts[0].reproducibility
+        self.assertIsNotNone(source_reproducibility)
+        self.assertEqual(
+            "source-release",
+            cast(Any, source_reproducibility).profile_id,
+        )
         self.assertEqual(
             "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/rc-vote-manifest.json",
             manifest.verification.authoritative_manifest.uri,
@@ -179,6 +208,10 @@ class RcVoteManifestTest(unittest.TestCase):
         self.assertEqual(1714032000, manifest.source_date_epoch)
         self.assertEqual("v1.2.3-rc2", manifest.draft_github_release.tag)
         secondary_artifact = cast(Any, manifest.vote_materials.secondary_artifacts[0])
+        self.assertEqual(
+            "bootstrap-zip",
+            cast(Any, secondary_artifact.reproducibility).profile_id,
+        )
         self.assertEqual(
             "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
             secondary_artifact.uri,
