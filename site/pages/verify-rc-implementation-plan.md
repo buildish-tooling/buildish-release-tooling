@@ -222,7 +222,6 @@ Recommended optional flags:
 - `--report-json <path>`: write machine-readable verification report; when omitted, auto-name it as `verify-rc-report-<component_id>-<version>-<rc_id>-<timestamp>.json`
 - `--report-md <path>`: write human-readable verification report; when omitted, auto-name it from the same base identifier as the JSON report
 - `--mode <integrity-only|full|auto>`: remote verification only, always run local reproducibility checks, or prompt locally after remote checks pass
-- `--build-network <offline|online|prompt>`: choose rebuild network policy explicitly or ask interactively on local TTYs
 - `--keep-work-dir`: keep the verifier work directory after completion
 - `--no-keep-work-dir`: purge an auto-created work directory after completion
 - `--inspection-bundle <path>`: write a curated reproducibility-inspection bundle alongside the main report
@@ -251,23 +250,23 @@ The command must work without write-capable GitHub permissions. It should not re
 - it may invoke transitive build plugins and package-manager tooling
 - it must therefore be treated as untrusted-code execution
 
-Required design rules for `full` mode:
+Near-term design rules for `full` mode:
 
 - run rebuilds from a temp work directory, not from the user's normal working tree
 - source the rebuild input from the verified source artifact or from a temp copy derived from trusted local project material
-- start build subprocesses from a scrubbed environment allowlist
-- set `HOME`, `XDG_CONFIG_HOME`, `XDG_CACHE_HOME`, `GNUPGHOME`, and `TMPDIR` to temp locations under the verifier work directory
-- do not forward ambient credentials or agents such as `SSH_AUTH_SOCK`, Git credential helpers, cloud credentials, `~/.m2/settings.xml`, `~/.npmrc`, or custom package-index tokens
+- start build subprocesses from a scrubbed environment
+- keep inherited `HOME` and existing tool caches/config in the initial host-direct implementation for compatibility and to avoid avoidable false negatives
+- set `TMPDIR` to a temp location under the verifier work directory
+- remove ambient credential, agent, and CI variables such as `SSH_AUTH_SOCK`, cloud credentials, package-publish tokens, and broad `GITHUB_*` or similar workflow state that is not needed by the rebuild itself
+- inject a small fixed runtime environment for rebuilds, such as `BUILDISH_PROJECT_ROOT`, `BUILDISH_WORK_DIR`, and `SOURCE_DATE_EPOCH`; a companion `BUILDISH_SOURCE_DATE_EPOCH` variable is also reasonable for project scripts that want an explicit tool-owned name
 - complete manifest, source-artifact, and remote secondary-artifact verification before any local rebuild step
-- require an explicit rebuild network policy of `offline`, `online`, or interactive `prompt`
-- if the caller chooses `offline`, disable network access for rebuild execution and fail rather than silently relaxing that policy
-- if the caller chooses `online`, record that decision in the verification report because it is a security-relevant allowance
+- if rebuilds run host-direct in the initial implementation, record that fact in the report and do not imply network isolation
+- reserve fully isolated `HOME`, `XDG_*`, cache, and network handling for a later isolated-executor backend
 
 Interactive local behavior:
 
 - if `--mode auto` is in effect on an interactive TTY, prompt after remote checks pass and before any untrusted-code execution begins
-- if the user agrees to continue and no explicit `--build-network` policy was supplied, ask whether rebuild should be `offline-only` or `network-allowed`
-- if the selected project-local rebuild recipe requires network access and the user chose `offline-only`, fail clearly instead of silently switching to `network-allowed`
+- do not add interactive network-policy prompts until there is a real isolated executor that can honor them honestly
 
 Deployment guidance:
 
@@ -280,6 +279,8 @@ Reporting requirement:
 - the verification report should record whether rebuild execution was offline or online
 - the report should record whether any explicit unsafe allowances were used
 - the report should record whether execution and network-policy decisions were made via explicit flags or interactive confirmation
+- the report should record whether the rebuild used inherited host home/config state or an isolated executor environment
+- the report should record the effective `SOURCE_DATE_EPOCH` value when reproducibility checks were attempted
 
 Inspection boundary:
 
@@ -521,21 +522,21 @@ verify_rc:
     source-release:
       kind: source-artifact
       build:
-        command: ["./mvnw", "-Prelease", "package"]
-        output_glob: "target/apache-example-*.tar.gz"
-        network: offline-required
+        command: ["./buildish-release-tooling/rebuild-source.sh"]
+        output_globs:
+          - "target/apache-example-*.tar.gz"
       comparison:
         mode: exact-bytes
 
     maven-staging:
       kind: maven-repository
       build:
-        command:
-          ["./mvnw", "-Prelease", "deploy", "-DaltDeploymentRepository=local::default::file:${WORK_DIR}/m2repo"]
-        repository_dir: "${WORK_DIR}/m2repo"
-        network: offline-required
+        command: ["./buildish-release-tooling/rebuild-maven-staging.sh"]
+        output_globs:
+          - ".buildish-out/m2repo/**"
       comparison:
         mode: repository-tree
+        repository_dir: ".buildish-out/m2repo"
         require_signatures: true
         path_rules:
           - pattern: ".+\\.(jar|war|zip)$"
@@ -548,19 +549,47 @@ verify_rc:
     pypi-wheel:
       kind: python-distribution
       build:
+        working_dir: "python-package"
         command: ["python", "-m", "build"]
-        output_glob: "dist/*"
+        env:
+          PYTHONHASHSEED: "0"
+        output_globs:
+          - "python-package/dist/*"
       comparison:
         mode: exact-bytes
 ```
 
-The exact schema can evolve, but the key design point is:
+Recommended first execution schema:
+
+- `build.command`: literal argv list for the canonical rebuild entrypoint
+- `build.working_dir`: optional repo-root-relative directory to run the command in; default is the verified project root
+- `build.env`: optional static string map for additional environment variables
+- `build.output_globs`: repo-root-relative glob list describing expected local outputs for file-like artifacts
+
+Recommended execution semantics:
+
+- all configured paths should be relative to the verified project root unless a kind-specific field explicitly says otherwise
+- `output_globs` should be relative to the project root, not the `working_dir`, so reports and inspection bundles have one stable coordinate system
+- config should not support `${...}` interpolation or other mini-language features
+- the verifier should inject a small fixed runtime environment automatically, for example `BUILDISH_PROJECT_ROOT`, `BUILDISH_WORK_DIR`, and `SOURCE_DATE_EPOCH`
+- `build.env` should be literal-only and additive; it should not be responsible for forwarding runtime values
+- in the initial host-direct implementation, inherited `HOME` should remain available for compatibility with common build-tool caches and local configuration; stronger home/config isolation should come with a later isolated executor
+
+The reasons for keeping it this small are:
 
 - project-specific commands live in local config
 - the remote manifest only references typed artifacts and typed verification expectations
 - the manifest should select a reproducibility `profile_id`, not carry raw build commands
 - the canonical recipe should come from the verified source tree at the declared `source_commit_sha`
 - human local runs may opt into local command overrides, but those runs must be reported as non-canonical
+- avoiding `${...}` placeholders avoids escaping rules, partial expansion, and shell-like ambiguity in a format that is not actually a shell language
+- a checked-in script named in `build.command` remains the escape hatch for project-specific complexity without turning the verifier config into a build DSL
+
+Explicit non-goal:
+
+- do not add a YAML `script: |` block analogous to a GitHub Actions `run:` block
+- embedding shell text inside config would force the verifier to define shell, error-handling, line-ending, and execution semantics that are better handled by normal checked-in script files
+- checked-in script files are easier to review, lint, test locally, and reuse across verification and release workflows
 
 Recommended override model:
 
@@ -568,6 +597,38 @@ Recommended override model:
 - CI and release workflow runs should use canonical profiles only
 - human local runs may pass an explicit override flag or override file to adjust command lines or tool paths
 - when an override changes the effective build command, working directory, or selected outputs, the report should record `recipe_source=local-override` and `canonical_recipe_used=false`
+
+## Future Follow-up: `build.network`
+
+I do not think `build.network` belongs in the first supported execution schema.
+
+Near-term implementation:
+
+- rebuild commands may run host-direct after remote verification completes
+- the verifier should still use a temp work area and a scrubbed environment
+- the report should describe that execution model honestly rather than implying offline isolation
+- `inspect-repro` should stay read-only and should not attempt to enforce any network policy
+
+What `build.network` would need to mean if introduced later:
+
+- it would describe a rebuild profile's required or permitted network policy, not merely document what the script usually does
+- the rebuild executor in `verify-rc`, not `inspect-repro`, would need to enforce it
+- if a profile required offline execution, the executor would need to disable network access for the rebuild or fail closed instead of silently running with normal host networking
+- if a profile allowed or required network access, that fact should be recorded in the report because it materially affects reproducibility and trust interpretation
+
+What is needed to implement it honestly:
+
+- a real isolated execution backend such as a container, VM, or OS-level sandbox with verifiable network controls
+- lifecycle management for that backend, including workspace setup, artifact ingress and egress, and cleanup
+- a stable way for human verifiers to keep and inspect downloaded or produced artifacts after the rebuild
+- backend-specific testing across CI and developer-machine environments
+
+Implications and tradeoffs:
+
+- this is valuable work, but it is materially larger than the first rebuild-comparison implementation
+- many real builds need to download dependencies, especially in fresh environments, so network policy cannot be treated as a cosmetic switch
+- a GitHub Actions runner with read-only permissions and no injected secrets is a useful first containment boundary, but it is still networked and should not be described as offline enforcement
+- until an isolated executor exists, `build.network` should remain a documented future capability rather than part of the initial supported schema
 
 ## Proposed Manifest Changes
 
@@ -582,6 +643,7 @@ Recommended additions:
 - add `inventory` subdocuments for large or mutable artifact collections such as Maven repositories or image sets
 - add optional `reproducibility` expectations per artifact or artifact collection
 - add optional `reproducibility.profile_id` selectors so the signed manifest chooses which canonical local recipe applies without embedding raw commands
+- add optional signed `SOURCE_DATE_EPOCH` metadata for builds that rely on timestamp normalization, so the canonical value can be carried from RC production into `verify-rc`, `inspect-repro`, and any later final-release rebuild that wants to reproduce the same artifact bytes
 
 Hard requirements:
 
@@ -1313,7 +1375,7 @@ Recommended workflow contract:
 - prefer `integrity-only` on shared CI unless rebuilds run in a separate isolated environment with no ambient secrets
 - if `full` is enabled on CI, run the rebuild step in a dedicated container or ephemeral VM with no injected secrets beyond what is strictly required for public artifact fetches
 - a GitHub-hosted ephemeral runner may satisfy that requirement when the workflow keeps `permissions: contents: read`, injects no additional secrets, and does not rely on persistent shared state or shared caches
-- CI runs should stay non-interactive: if rebuild execution or rebuild network policy is needed, specify them explicitly rather than relying on prompts
+- CI runs should stay non-interactive; do not rely on prompts for rebuild execution decisions
 - for RC preparation flows with multiple producer jobs, pass secondary-artifact registration bundles through workflow artifacts and let `finalize-rc-vote-materials` merge them
 - use outputs only for small scalar state such as `rc_tag` or bundle names, not for full artifact-registration JSON payloads or inventory files
 - optionally present a signed bootstrap one-liner in the workflow summary or RC email
@@ -1345,7 +1407,6 @@ Recommended expectations:
 - treat `full` mode as untrusted-code execution and run it in an isolated environment with no ambient secrets
 - use a scrubbed environment for rebuild subprocesses and relocate `HOME`-like directories into the temp work area
 - if running on an interactive TTY with no explicit `--mode`, use `auto` and prompt before any local rebuild step
-- if rebuild execution is approved interactively and no explicit `--build-network` was supplied, ask whether rebuild should be `offline-only` or `network-allowed`
 - if the work directory was auto-created and neither `--keep-work-dir` nor `--no-keep-work-dir` was supplied, ask at the end whether to keep or purge it
 - if the run fails and the work directory was auto-created, keep it by default unless the caller explicitly requested purge
 - if reproducibility issues are found on an interactive TTY, the user may be offered an immediate handoff into `inspect-repro`
