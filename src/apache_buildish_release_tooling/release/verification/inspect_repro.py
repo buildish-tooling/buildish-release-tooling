@@ -26,6 +26,7 @@ from apache_buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityReport,
     GenericFileVerificationReport,
     InspectionEvidenceReference,
+    MavenRepositoryVerificationReport,
     NpmPackageVerificationReport,
     PythonDistributionVerificationReport,
     VerifyRcReportV1,
@@ -130,6 +131,14 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
                 bundle_root=bundle_root,
             )
             continue
+        if verification.kind == "maven-repository":
+            _inspect_maven_repository_reproducibility(
+                progress_reporter,
+                verification=verification,
+                reproducibility=reproducibility,
+                bundle_root=bundle_root,
+            )
+            continue
         emit_warning(
             progress_reporter,
             f"No inspect-repro analyzer is implemented yet for {verification.kind}",
@@ -209,6 +218,67 @@ def _inspect_file_like_reproducibility(
         emit_info(progress_reporter, "Unified text diff")
         for line in inline_diff:
             progress_reporter.emit(f"    {line}")
+
+
+def _inspect_maven_repository_reproducibility(
+    progress_reporter: ProgressReporter,
+    *,
+    verification: MavenRepositoryVerificationReport,
+    reproducibility: ArtifactReproducibilityReport,
+    bundle_root: Path,
+) -> None:
+    metadata_path = _evidence_path(
+        reproducibility.evidence,
+        label="comparison-metadata",
+        bundle_root=bundle_root,
+    )
+    if metadata_path is None:
+        emit_warning(progress_reporter, "No comparison metadata was retained for this artifact")
+        return
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    emit_detail(progress_reporter, "Metadata", str(metadata_path))
+    repository_dir = metadata.get("repository_dir")
+    if isinstance(repository_dir, str):
+        emit_detail(progress_reporter, "Repository dir", repository_dir)
+    output_paths = metadata.get("output_paths")
+    if isinstance(output_paths, list):
+        for output_path in output_paths:
+            if isinstance(output_path, str):
+                emit_detail(progress_reporter, "Rebuild output", output_path)
+    path_results = metadata.get("path_results")
+    if not isinstance(path_results, list):
+        emit_warning(progress_reporter, "No repository path results were retained for this artifact")
+        return
+    failed_results = [
+        path_result
+        for path_result in path_results
+        if isinstance(path_result, dict) and path_result.get("verdict") == "failed"
+    ]
+    skipped_results = [
+        path_result
+        for path_result in path_results
+        if isinstance(path_result, dict) and path_result.get("verdict") == "skipped"
+    ]
+    emit_detail(progress_reporter, "Failed comparable paths", str(len(failed_results)))
+    emit_detail(progress_reporter, "Skipped remote-only paths", str(len(skipped_results)))
+    if not failed_results:
+        emit_success(progress_reporter, "No failed comparable repository paths were retained")
+        return
+    emit_failure(
+        progress_reporter,
+        f"{len(failed_results)} comparable repository path(s) failed local comparison",
+    )
+    for path_result in failed_results[:12]:
+        emit_detail(
+            progress_reporter,
+            "Path failure",
+            f"{path_result.get('path', 'n/a')} [{path_result.get('mode', 'n/a')}] {path_result.get('detail', 'n/a')}",
+        )
+    if len(failed_results) > 12:
+        emit_info(
+            progress_reporter,
+            f"... plus {len(failed_results) - 12} additional failed path(s)",
+        )
 
 
 def _evidence_path(

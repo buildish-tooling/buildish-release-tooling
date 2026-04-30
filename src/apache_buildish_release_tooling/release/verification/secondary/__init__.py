@@ -120,6 +120,11 @@ def verify_secondary_artifacts(
                     verifier=verifier,
                     allow_non_production_release_targets=allow_non_production_release_targets,
                     progress_reporter=progress_reporter,
+                    component_config=component_config,
+                    project_root=project_root,
+                    source_date_epoch=source_date_epoch,
+                    build_checks_allowed=build_checks_allowed,
+                    inspection_bundle_root=inspection_bundle_root,
                 )
             elif kind == "python-distribution":
                 verification = verify_python_distribution(
@@ -267,6 +272,20 @@ def _emit_secondary_artifact_summary(
                 progress_reporter,
                 f"Verified detached signatures for {len(signature_verifications)} repository files",
             )
+        reproducibility_payload = verification.get("reproducibility")
+        if isinstance(reproducibility_payload, dict):
+            emit_detail(
+                progress_reporter,
+                "Reproducibility profile",
+                str(reproducibility_payload.get("profile_id", "n/a")),
+            )
+            for output_path in reproducibility_payload.get("output_paths", []):
+                emit_detail(progress_reporter, "Rebuild output", str(output_path))
+            if reproducibility_payload.get("matches_remote_bytes") is True:
+                emit_success(
+                    progress_reporter,
+                    "Verified rebuilt repository matches the staged repository policy",
+                )
         for issue in issues:
             emit_failure(progress_reporter, issue)
         return

@@ -605,6 +605,7 @@ class MavenRepositoryVerificationReport(BuildishContractModel):
     base_url: NonEmptyString
     inventory: InventoryVerificationReport | None = None
     live_repository: LiveMavenRepositoryReport
+    reproducibility: ArtifactReproducibilityReport | None = None
 
 
 class PythonDistributionVerificationReport(BuildishContractModel):

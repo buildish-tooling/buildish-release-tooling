@@ -1021,6 +1021,28 @@ def _report_markdown(
                     lines.append(
                         f"- Signature verified: `{signature_verification['path']}` by `{signature_verification['signature']['signer_fingerprint']}`"
                     )
+                reproducibility_payload = verification.get("reproducibility")
+                if isinstance(reproducibility_payload, dict):
+                    lines.extend(
+                        [
+                            f"- Reproducibility profile: `{reproducibility_payload['profile_id']}`",
+                            f"- Reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
+                            f"- Rebuilt repository matched staged policy: `{reproducibility_payload['matches_remote_bytes']}`",
+                        ]
+                    )
+                    if reproducibility_payload.get("failure_class") is not None:
+                        lines.append(
+                            f"- Reproducibility failure class: `{reproducibility_payload['failure_class']}`"
+                        )
+                    for output_path in reproducibility_payload.get("output_paths", []):
+                        lines.append(f"- Rebuild output: `{output_path}`")
+                    for evidence_reference in reproducibility_payload.get("evidence", []):
+                        if not isinstance(evidence_reference, dict):
+                            continue
+                        if evidence_reference.get("label") and evidence_reference.get("path"):
+                            lines.append(
+                                f"- Reproducibility evidence `{evidence_reference['label']}`: `{evidence_reference['path']}`"
+                            )
             elif kind == "python-distribution":
                 checksum_payload = verification["checksum"]
                 index_resolution = verification["index_resolution"]

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from argparse import Namespace
 from dataclasses import dataclass
+import zipfile
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     build_maven_repository_registration,
@@ -70,6 +71,20 @@ class VerificationFixture:
     work_dir: Path
     extra_env: dict[str, str]
     prepend_dirs: tuple[Path, ...]
+
+
+def _write_zip_archive(
+    archive_path: Path,
+    *,
+    member_name: str,
+    payload: bytes,
+    timestamp: tuple[int, int, int, int, int, int],
+) -> None:
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+        zip_info = zipfile.ZipInfo(member_name, date_time=timestamp)
+        zip_info.compress_type = zipfile.ZIP_DEFLATED
+        archive.writestr(zip_info, payload)
 
 
 class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
@@ -401,6 +416,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 "--allow-non-production-release-targets",
                 "--mode",
                 "full",
+                "--progress",
+                "on",
                 "--work-dir",
                 str(fixture.work_dir),
                 "--report-json",
@@ -1178,6 +1195,142 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual(1, completed.returncode)
         self.assertIn("live maven repository checksum does not match the signed inventory", completed.stderr)
 
+    def test_verify_rc_command_verifies_maven_repository_reproducibility_in_full_mode(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_maven_repository=True,
+            include_maven_repository_reproducibility=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("verified", secondary_verification["reproducibility"]["verdict"])
+        self.assertEqual("maven-staging", secondary_verification["reproducibility"]["profile_id"])
+        self.assertEqual(
+            [".buildish-out/m2repo"],
+            secondary_verification["reproducibility"]["output_paths"],
+        )
+
+    def test_verify_rc_command_reports_maven_repository_reproducibility_drift_in_full_mode(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_maven_repository=True,
+            include_maven_repository_reproducibility=True,
+            drift_maven_repository_reproducibility=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn(
+            "maven-repository reproducibility exact-bytes comparison failed",
+            completed.stderr,
+        )
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("failed", secondary_verification["reproducibility"]["verdict"])
+        self.assertEqual(
+            "path-comparison-failed",
+            secondary_verification["reproducibility"]["failure_class"],
+        )
+
+    def test_inspect_repro_command_reports_saved_maven_repository_drift(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_maven_repository=True,
+            include_maven_repository_reproducibility=True,
+            drift_maven_repository_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn("Artifact 1/1: maven-staging-main", inspect_completed.stderr)
+        self.assertIn("Failed comparable paths: 1", inspect_completed.stderr)
+        self.assertIn("app-1.0.0.pom [exact-bytes] raw bytes differ", inspect_completed.stderr)
+
     def test_verify_rc_command_fails_closed_when_manifest_omits_rc_tag(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
@@ -1302,6 +1455,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         malformed_secondary_missing_kind: bool = False,
         include_maven_repository: bool = False,
         drift_maven_repository: bool = False,
+        include_maven_repository_reproducibility: bool = False,
+        drift_maven_repository_reproducibility: bool = False,
         include_python_distribution: bool = False,
         missing_python_index_entry: bool = False,
         include_python_distribution_reproducibility: bool = False,
@@ -1390,6 +1545,32 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                     "          - dist/buildish-example-1.2.3.tgz",
                     "      comparison:",
                     "        mode: exact-bytes",
+                ]
+            )
+        if include_maven_repository_reproducibility:
+            verify_rc_line_list.extend(
+                [
+                    "    maven-staging:",
+                    "      kind: maven-repository",
+                    "      build:",
+                    "        command:",
+                    "          - sh",
+                    "          - buildish-release-tooling/rebuild-maven-staging.sh",
+                    "        output_globs:",
+                    "          - .buildish-out/m2repo/**",
+                    "      comparison:",
+                    "        mode: repository-tree",
+                    "        repository_dir: .buildish-out/m2repo",
+                    "        require_signatures: true",
+                    "        path_rules:",
+                    "          - pattern: .+\\.(jar|war|zip)$",
+                    "            mode: content-only",
+                    "          - pattern: .+\\.(pom|module)$",
+                    "            mode: exact-bytes",
+                    "          - pattern: .+\\.(asc|sha512|md5)$",
+                    "            mode: remote-only",
+                    "          - pattern: ^.*/maven-metadata\\.xml(\\..+)?$",
+                    "            mode: remote-only",
                 ]
             )
         verify_rc_lines = (
@@ -1488,6 +1669,45 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             )
             subprocess.run(
                 ["git", "-C", str(origin_dir), "commit", "-m", "add npm rebuild script"],
+                check=True,
+            )
+        if include_maven_repository_reproducibility:
+            rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-maven-staging.sh"
+            rebuild_script.parent.mkdir(parents=True, exist_ok=True)
+            rebuild_script.write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env sh",
+                        "set -eu",
+                        "repo_root=.buildish-out/m2repo/org/example/app/1.0.0",
+                        "mkdir -p \"$repo_root\"",
+                        "python - <<'PY'",
+                        "from pathlib import Path",
+                        "import zipfile",
+                        "repo_root = Path('.buildish-out/m2repo/org/example/app/1.0.0')",
+                        "jar_path = repo_root / 'app-1.0.0.jar'",
+                        "with zipfile.ZipFile(jar_path, mode='w', compression=zipfile.ZIP_DEFLATED) as archive:",
+                        "    info = zipfile.ZipInfo('app.txt', date_time=(2026, 4, 30, 12, 0, 2))",
+                        "    info.compress_type = zipfile.ZIP_DEFLATED",
+                        "    archive.writestr(info, b'jar payload\\n')",
+                        "PY",
+                        (
+                            "printf '<project>drift</project>\\n' > \"$repo_root/app-1.0.0.pom\""
+                            if drift_maven_repository_reproducibility
+                            else "printf '<project>stable</project>\\n' > \"$repo_root/app-1.0.0.pom\""
+                        ),
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            rebuild_script.chmod(0o755)
+            subprocess.run(
+                ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-maven-staging.sh"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(origin_dir), "commit", "-m", "add maven rebuild script"],
                 check=True,
             )
 
@@ -1623,7 +1843,20 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             artifact_relative_path = Path("org/example/app/1.0.0/app-1.0.0.jar")
             artifact_path = repository_root / artifact_relative_path
             artifact_path.parent.mkdir(parents=True, exist_ok=True)
-            artifact_path.write_bytes(b"jar-bytes\n")
+            if include_maven_repository_reproducibility:
+                _write_zip_archive(
+                    artifact_path,
+                    member_name="app.txt",
+                    payload=b"jar payload\n",
+                    timestamp=(2026, 4, 30, 12, 0, 1),
+                )
+                pom_path = artifact_path.with_name("app-1.0.0.pom")
+                pom_path.write_text("<project>stable</project>\n", encoding="utf-8")
+                metadata_path = repository_root / "org/example/app/maven-metadata.xml"
+                metadata_path.parent.mkdir(parents=True, exist_ok=True)
+                metadata_path.write_text("<metadata/>\n", encoding="utf-8")
+            else:
+                artifact_path.write_bytes(b"jar-bytes\n")
             artifact_sha512 = hashlib.sha512(artifact_path.read_bytes()).hexdigest()
             artifact_sha512_path = artifact_path.with_name(f"{artifact_path.name}.sha512")
             artifact_sha512_path.write_text(
@@ -1652,6 +1885,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             inventory_filename = inventory["filename"]
             inventory["uri"] = (repository_bundle_dir / inventory_filename).as_uri()
             maven_artifact["inventory"] = inventory
+            if include_maven_repository_reproducibility:
+                maven_artifact["reproducibility"] = {
+                    "profile_id": "maven-staging",
+                }
             secondary_artifacts.append(maven_artifact)
             if drift_maven_repository:
                 artifact_path.write_bytes(b"jar-drift\n")

@@ -17,16 +17,22 @@
 from __future__ import annotations
 
 import hashlib
+import io
+import re
+import zipfile
 from pathlib import Path
 from typing import Any
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     _RemoteHttpClient,
+    _RepositoryFile,
+    _enumerate_local_repository,
     _inventory_worker_count,
     _repository_file_bytes,
     _repository_files,
     _validated_repository_root,
 )
+from apache_buildish_release_tooling.release.models import ComponentConfig
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.verification.common import emit_info, emit_success, update_info
 from apache_buildish_release_tooling.release.verification.common import (
@@ -35,12 +41,26 @@ from apache_buildish_release_tooling.release.verification.common import (
     signature_payload,
     validate_fetch_uri,
 )
+from apache_buildish_release_tooling.release.verification.inspection_bundle import (
+    write_reproducibility_metadata,
+)
+from apache_buildish_release_tooling.release.verification.rebuild import (
+    resolve_rebuild_profile,
+    run_host_direct_profile,
+)
 
 from .shared import (
     downloaded_inventory,
     required_hex_digest,
     required_non_empty_string,
 )
+
+_SUPPORTED_MAVEN_REPOSITORY_PATH_MODES = {
+    "exact-bytes",
+    "zip-normalized",
+    "content-only",
+    "remote-only",
+}
 
 
 def verify_maven_repository(
@@ -51,6 +71,11 @@ def verify_maven_repository(
     verifier: GpgVerifier,
     allow_non_production_release_targets: bool,
     progress_reporter: ProgressReporter,
+    component_config: ComponentConfig | None,
+    project_root: Path | None,
+    source_date_epoch: int | None,
+    build_checks_allowed: bool,
+    inspection_bundle_root: Path | None,
 ) -> dict[str, Any]:
     artifact_id = required_non_empty_string(artifact_entry, "artifact_id", source=manifest_url)
     staging_repository_id = required_non_empty_string(
@@ -206,6 +231,24 @@ def verify_maven_repository(
             progress_reporter,
             f"Verified maven repository inventory: {len(expected_entries)} entries",
         )
+    reproducibility_verification: dict[str, Any] | None = None
+    if build_checks_allowed and artifact_entry.get("reproducibility") is not None:
+        reproducibility_verification = _verify_maven_repository_reproducibility(
+            artifact_entry,
+            manifest_url=manifest_url,
+            artifact_id=artifact_id,
+            work_dir=work_dir / "reproducibility",
+            component_config=component_config,
+            project_root=project_root,
+            source_date_epoch=source_date_epoch,
+            inspection_bundle_root=inspection_bundle_root,
+            base_url=base_url,
+            staging_repository_id=staging_repository_id,
+            inventory_payload=inventory_payload,
+            allow_non_production_release_targets=allow_non_production_release_targets,
+            progress_reporter=progress_reporter,
+        )
+        issues.extend(str(issue) for issue in reproducibility_verification.get("issues", []))
 
     return {
         "artifact_id": artifact_id,
@@ -228,7 +271,490 @@ def verify_maven_repository(
                 for relative_path, target_path, signature_verification in signature_verifications
             ],
         },
+        "reproducibility": reproducibility_verification,
     }
+
+
+def _verify_maven_repository_reproducibility(
+    artifact_entry: dict[str, Any],
+    *,
+    manifest_url: str,
+    artifact_id: str,
+    work_dir: Path,
+    component_config: ComponentConfig | None,
+    project_root: Path | None,
+    source_date_epoch: int | None,
+    inspection_bundle_root: Path | None,
+    base_url: str,
+    staging_repository_id: str,
+    inventory_payload: dict[str, Any] | None,
+    allow_non_production_release_targets: bool,
+    progress_reporter: ProgressReporter,
+) -> dict[str, Any]:
+    raw_reproducibility = artifact_entry.get("reproducibility")
+    if not isinstance(raw_reproducibility, dict):
+        return {
+            "profile_id": "n/a",
+            "verdict": "failed",
+            "comparison_mode": "repository-tree",
+            "recipe_source": "canonical-profile",
+            "execution_backend": "host-direct",
+            "output_paths": [],
+            "matches_remote_bytes": None,
+            "failure_class": "missing-profile",
+            "evidence": [],
+            "issues": [
+                f"manifest secondary artifact does not declare a reproducibility profile: {artifact_id}"
+            ],
+        }
+    profile_id = required_non_empty_string(raw_reproducibility, "profile_id", source=manifest_url)
+    issues: list[str] = []
+    output_paths: list[str] = []
+    matches_remote_bytes: bool | None = None
+    comparison_mode = "repository-tree"
+    failure_class: str | None = None
+    evidence: list[dict[str, str]] = []
+    repository_dir: str | None = None
+    require_signatures = False
+    path_rules: tuple[dict[str, str], ...] = ()
+    path_results: list[dict[str, Any]] = []
+    built_repository_path: Path | None = None
+    profile = None
+    if component_config is None:
+        failure_class = failure_class or "missing-component-config"
+        issues.append(
+            f"build-based reproducibility for {artifact_id} requires --component-config to resolve profile {profile_id!r}"
+        )
+    if project_root is None:
+        failure_class = failure_class or "missing-project-root"
+        issues.append(
+            f"build-based reproducibility for {artifact_id} requires one verified source checkout"
+        )
+    if inventory_payload is None:
+        failure_class = failure_class or "missing-signed-inventory"
+        issues.append(
+            f"build-based reproducibility for {artifact_id} requires the signed maven inventory"
+        )
+    if not issues and component_config is not None:
+        try:
+            profile = resolve_rebuild_profile(
+                component_config,
+                profile_id,
+                expected_kinds=("maven-repository",),
+            )
+            comparison_mode = required_non_empty_string(
+                profile.comparison,
+                "mode",
+                source=f"verify_rc profile {profile_id!r}",
+            )
+            if comparison_mode != "repository-tree":
+                raise ValueError(
+                    f"verify_rc profile {profile_id!r} must use comparison.mode 'repository-tree' for maven-repository artifacts"
+                )
+            repository_dir = _validated_repository_dir(
+                profile.comparison,
+                source=f"verify_rc profile {profile_id!r}",
+            )
+            require_signatures = bool(profile.comparison.get("require_signatures", False))
+            path_rules = _validated_path_rules(
+                profile.comparison.get("path_rules"),
+                source=f"verify_rc profile {profile_id!r}",
+            )
+        except Exception as exc:
+            failure_class = failure_class or "invalid-profile"
+            issues.append(str(exc))
+    if (
+        not issues
+        and profile is not None
+        and project_root is not None
+        and inventory_payload is not None
+        and repository_dir is not None
+    ):
+        emit_info(progress_reporter, f"Running local reproducibility profile {profile_id}")
+        try:
+            run_host_direct_profile(
+                profile_id=profile_id,
+                profile=profile,
+                project_root=project_root,
+                work_dir=work_dir,
+                source_date_epoch=source_date_epoch,
+            )
+            built_repository_path = project_root / repository_dir
+            output_paths = [repository_dir]
+            if not built_repository_path.is_dir():
+                failure_class = failure_class or "missing-repository-dir"
+                raise ValueError(
+                    f"maven-repository reproducibility profile {profile_id!r} did not create repository_dir {repository_dir!r}"
+                )
+            path_results, comparison_issues, matches_remote_bytes = _compare_maven_repository_trees(
+                artifact_id=artifact_id,
+                base_url=base_url,
+                staging_repository_id=staging_repository_id,
+                rebuilt_repository_path=built_repository_path,
+                path_rules=path_rules,
+                require_signatures=require_signatures,
+                allow_non_production_release_targets=allow_non_production_release_targets,
+                progress_reporter=progress_reporter,
+            )
+            if comparison_issues:
+                failure_class = failure_class or _maven_reproducibility_failure_class(path_results)
+                issues.extend(comparison_issues)
+        except Exception as exc:
+            if failure_class is None:
+                failure_class = "build-failed"
+            issues.append(str(exc))
+    if inspection_bundle_root is not None:
+        metadata_path = write_reproducibility_metadata(
+            inspection_bundle_root,
+            artifact_id=artifact_id,
+            payload={
+                "artifact_id": artifact_id,
+                "kind": "maven-repository",
+                "profile_id": profile_id,
+                "comparison_mode": comparison_mode,
+                "repository_dir": repository_dir,
+                "require_signatures": require_signatures,
+                "path_rules": list(path_rules),
+                "output_paths": output_paths,
+                "matches_remote_bytes": matches_remote_bytes,
+                "failure_class": failure_class,
+                "path_results": path_results,
+                "issues": issues,
+            },
+        )
+        evidence.append({"label": "comparison-metadata", "path": metadata_path})
+    return {
+        "profile_id": profile_id,
+        "verdict": "failed" if issues else "verified",
+        "comparison_mode": comparison_mode,
+        "recipe_source": "canonical-profile",
+        "execution_backend": "host-direct",
+        "output_paths": output_paths,
+        "matches_remote_bytes": matches_remote_bytes,
+        "failure_class": failure_class,
+        "evidence": evidence,
+        "issues": issues,
+    }
+
+
+def _validated_repository_dir(
+    comparison_payload: dict[str, Any],
+    *,
+    source: str,
+) -> str:
+    repository_dir = required_non_empty_string(comparison_payload, "repository_dir", source=source)
+    if Path(repository_dir).is_absolute():
+        raise ValueError(f"verify_rc maven repository_dir must be relative to the project root: {source}")
+    return repository_dir
+
+
+def _validated_path_rules(
+    raw_rules: Any,
+    *,
+    source: str,
+) -> tuple[dict[str, str], ...]:
+    if raw_rules is None:
+        return ()
+    if not isinstance(raw_rules, list):
+        raise ValueError(f"verify_rc maven path_rules must be a list: {source}")
+    rules: list[dict[str, str]] = []
+    for index, raw_rule in enumerate(raw_rules, start=1):
+        if not isinstance(raw_rule, dict):
+            raise ValueError(f"verify_rc maven path_rules[{index}] must be an object: {source}")
+        pattern = required_non_empty_string(raw_rule, "pattern", source=source)
+        mode = required_non_empty_string(raw_rule, "mode", source=source)
+        if mode not in _SUPPORTED_MAVEN_REPOSITORY_PATH_MODES:
+            supported_modes = ", ".join(sorted(_SUPPORTED_MAVEN_REPOSITORY_PATH_MODES))
+            raise ValueError(
+                f"verify_rc maven path_rules[{index}] mode must be one of {supported_modes}: {source}"
+            )
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise ValueError(
+                f"verify_rc maven path_rules[{index}] pattern is not a valid regular expression: {pattern}"
+            ) from exc
+        rules.append({"pattern": pattern, "mode": mode})
+    return tuple(rules)
+
+
+def _path_mode_for_repository_entry(relative_path: str, path_rules: tuple[dict[str, str], ...]) -> str:
+    for rule in path_rules:
+        if re.search(rule["pattern"], relative_path):
+            return rule["mode"]
+    return "exact-bytes"
+
+
+def _compare_maven_repository_trees(
+    *,
+    artifact_id: str,
+    base_url: str,
+    staging_repository_id: str,
+    rebuilt_repository_path: Path,
+    path_rules: tuple[dict[str, str], ...],
+    require_signatures: bool,
+    allow_non_production_release_targets: bool,
+    progress_reporter: ProgressReporter,
+) -> tuple[list[dict[str, Any]], list[str], bool]:
+    validate_fetch_uri(
+        base_url,
+        allow_non_production_release_targets=allow_non_production_release_targets,
+        purpose=f"maven repository base URL for {artifact_id}",
+    )
+    _validated_repository_root(base_url, staging_repository_id)
+    worker_count = _inventory_worker_count(None)
+    remote_http_client: _RemoteHttpClient | None = None
+    if base_url.startswith(("http://", "https://")):
+        remote_http_client = _RemoteHttpClient.for_worker_count(worker_count)
+    try:
+        emit_info(progress_reporter, f"Enumerating staged repository for local comparison from {base_url}")
+        staged_repository_files = _repository_files(
+            base_url,
+            worker_count=worker_count,
+            remote_http_client=remote_http_client,
+            progress_reporter=progress_reporter,
+        )
+        emit_info(
+            progress_reporter,
+            f"Enumerating rebuilt repository output from {rebuilt_repository_path}",
+        )
+        rebuilt_repository_files = _enumerate_local_repository(
+            rebuilt_repository_path,
+            progress_reporter=progress_reporter,
+        )
+        staged_by_path = {
+            repository_file.relative_path: repository_file
+            for repository_file in staged_repository_files
+        }
+        rebuilt_by_path = {
+            repository_file.relative_path: repository_file
+            for repository_file in rebuilt_repository_files
+        }
+        if require_signatures and not any(relative_path.endswith(".asc") for relative_path in staged_by_path):
+            return (
+                [],
+                [
+                    f"maven-repository reproducibility policy requires staged detached signatures for {artifact_id}"
+                ],
+                False,
+            )
+        return _compare_repository_path_sets(
+            staged_by_path=staged_by_path,
+            rebuilt_by_path=rebuilt_by_path,
+            path_rules=path_rules,
+            progress_reporter=progress_reporter,
+            remote_http_client=remote_http_client,
+        )
+    finally:
+        if remote_http_client is not None:
+            remote_http_client.close()
+
+
+def _compare_repository_path_sets(
+    *,
+    staged_by_path: dict[str, _RepositoryFile],
+    rebuilt_by_path: dict[str, _RepositoryFile],
+    path_rules: tuple[dict[str, str], ...],
+    progress_reporter: ProgressReporter,
+    remote_http_client: _RemoteHttpClient | None,
+) -> tuple[list[dict[str, Any]], list[str], bool]:
+    issues: list[str] = []
+    path_results: list[dict[str, Any]] = []
+    staged_cache: dict[str, bytes] = {}
+    rebuilt_cache: dict[str, bytes] = {}
+    all_paths = sorted(set(staged_by_path) | set(rebuilt_by_path))
+    comparable_staged_paths = {
+        relative_path
+        for relative_path in staged_by_path
+        if _path_mode_for_repository_entry(relative_path, path_rules) != "remote-only"
+    }
+    comparable_rebuilt_paths = {
+        relative_path
+        for relative_path in rebuilt_by_path
+        if _path_mode_for_repository_entry(relative_path, path_rules) != "remote-only"
+    }
+    for relative_path in all_paths:
+        mode = _path_mode_for_repository_entry(relative_path, path_rules)
+        if mode != "remote-only":
+            continue
+        path_results.append(
+            {
+                "path": relative_path,
+                "mode": mode,
+                "verdict": "skipped",
+                "detail": "excluded from local comparison by path rule",
+            }
+        )
+    for relative_path in sorted(comparable_staged_paths - comparable_rebuilt_paths):
+        mode = _path_mode_for_repository_entry(relative_path, path_rules)
+        issues.append(
+            "maven-repository reproducibility is missing one comparable rebuilt path: "
+            f"{relative_path}"
+        )
+        path_results.append(
+            {
+                "path": relative_path,
+                "mode": mode,
+                "verdict": "failed",
+                "detail": "missing rebuilt path",
+            }
+        )
+    for relative_path in sorted(comparable_rebuilt_paths - comparable_staged_paths):
+        mode = _path_mode_for_repository_entry(relative_path, path_rules)
+        issues.append(
+            "maven-repository reproducibility produced one unexpected comparable path: "
+            f"{relative_path}"
+        )
+        path_results.append(
+            {
+                "path": relative_path,
+                "mode": mode,
+                "verdict": "failed",
+                "detail": "unexpected rebuilt path",
+            }
+        )
+    common_paths = sorted(comparable_staged_paths & comparable_rebuilt_paths)
+    for index, relative_path in enumerate(common_paths, start=1):
+        mode = _path_mode_for_repository_entry(relative_path, path_rules)
+        staged_payload = _repository_file_bytes(
+            staged_by_path[relative_path],
+            cache=staged_cache,
+            remote_http_client=remote_http_client,
+        )
+        rebuilt_payload = _repository_file_bytes(
+            rebuilt_by_path[relative_path],
+            cache=rebuilt_cache,
+            remote_http_client=None,
+        )
+        raw_bytes_equal = staged_payload == rebuilt_payload
+        normalized_match: bool | None = None
+        detail = "raw bytes matched exactly"
+        verdict = "verified"
+        if not raw_bytes_equal:
+            if mode == "exact-bytes":
+                detail = "raw bytes differ"
+                verdict = "failed"
+                issues.append(
+                    "maven-repository reproducibility exact-bytes comparison failed: "
+                    f"{relative_path}"
+                )
+            elif mode == "content-only":
+                normalized_match, detail = _compare_zip_payloads(
+                    staged_payload,
+                    rebuilt_payload,
+                    compare_permissions=False,
+                )
+                if not normalized_match:
+                    verdict = "failed"
+                    issues.append(
+                        "maven-repository reproducibility content-only comparison failed: "
+                        f"{relative_path}"
+                    )
+            elif mode == "zip-normalized":
+                normalized_match, detail = _compare_zip_payloads(
+                    staged_payload,
+                    rebuilt_payload,
+                    compare_permissions=True,
+                )
+                if not normalized_match:
+                    verdict = "failed"
+                    issues.append(
+                        "maven-repository reproducibility zip-normalized comparison failed: "
+                        f"{relative_path}"
+                    )
+            else:
+                verdict = "failed"
+                detail = f"unsupported comparison mode {mode!r}"
+                issues.append(
+                    "maven-repository reproducibility encountered an unsupported comparison mode: "
+                    f"{relative_path} -> {mode}"
+                )
+        path_results.append(
+            {
+                "path": relative_path,
+                "mode": mode,
+                "verdict": verdict,
+                "detail": detail,
+                "raw_bytes_equal": raw_bytes_equal,
+                "normalized_match": normalized_match,
+                "staged_sha512": hashlib.sha512(staged_payload).hexdigest(),
+                "rebuilt_sha512": hashlib.sha512(rebuilt_payload).hexdigest(),
+            }
+        )
+        update_info(
+            progress_reporter,
+            f"Compared rebuilt repository entries: {index}/{len(common_paths)}",
+        )
+    return path_results, issues, not issues
+
+
+def _compare_zip_payloads(
+    staged_payload: bytes,
+    rebuilt_payload: bytes,
+    *,
+    compare_permissions: bool,
+) -> tuple[bool, str]:
+    try:
+        staged_entries = _normalized_zip_entries(
+            staged_payload,
+            compare_permissions=compare_permissions,
+        )
+        rebuilt_entries = _normalized_zip_entries(
+            rebuilt_payload,
+            compare_permissions=compare_permissions,
+        )
+    except ValueError as exc:
+        return False, str(exc)
+    staged_paths = set(staged_entries)
+    rebuilt_paths = set(rebuilt_entries)
+    missing_paths = sorted(staged_paths - rebuilt_paths)
+    unexpected_paths = sorted(rebuilt_paths - staged_paths)
+    if missing_paths or unexpected_paths:
+        return (
+            False,
+            "archive members differ: "
+            f"missing={missing_paths} unexpected={unexpected_paths}",
+        )
+    for relative_path in sorted(staged_paths):
+        staged_entry = staged_entries[relative_path]
+        rebuilt_entry = rebuilt_entries[relative_path]
+        if staged_entry["is_dir"] != rebuilt_entry["is_dir"]:
+            return False, f"archive member type differs: {relative_path}"
+        if compare_permissions and staged_entry["mode"] != rebuilt_entry["mode"]:
+            return False, f"archive member permissions differ: {relative_path}"
+        if staged_entry["sha512"] != rebuilt_entry["sha512"]:
+            return False, f"archive member contents differ: {relative_path}"
+    if compare_permissions:
+        return True, "archives matched after zip-normalized comparison"
+    return True, "archives matched after content-only comparison"
+
+
+def _normalized_zip_entries(
+    payload: bytes,
+    *,
+    compare_permissions: bool,
+) -> dict[str, dict[str, Any]]:
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(payload))
+    except zipfile.BadZipFile as exc:
+        raise ValueError("comparison requires ZIP-like archives") from exc
+    entries: dict[str, dict[str, Any]] = {}
+    with archive:
+        for info in archive.infolist():
+            if info.filename in entries:
+                raise ValueError(f"archive member is duplicated: {info.filename}")
+            entries[info.filename] = {
+                "is_dir": info.is_dir(),
+                "mode": ((info.external_attr >> 16) & 0o777) if compare_permissions else None,
+                "sha512": None if info.is_dir() else hashlib.sha512(archive.read(info)).hexdigest(),
+            }
+    return entries
+
+
+def _maven_reproducibility_failure_class(path_results: list[dict[str, Any]]) -> str:
+    if any(result.get("detail") in {"missing rebuilt path", "unexpected rebuilt path"} for result in path_results):
+        return "path-set-mismatch"
+    return "path-comparison-failed"
 
 
 def _validated_maven_inventory_payload(
