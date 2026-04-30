@@ -1,0 +1,226 @@
+# Copyright 2026 The Apache Software Foundation
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Unit tests for host-direct reproducibility rebuild helpers."""
+
+from __future__ import annotations
+
+import io
+import os
+import tempfile
+import unittest
+from pathlib import Path
+from typing import Any, cast
+from unittest.mock import patch
+
+from apache_buildish_release_tooling.release.command_logging import command_log_sink
+from apache_buildish_release_tooling.release.models import ComponentConfig
+from apache_buildish_release_tooling.release.verification.rebuild import (
+    build_host_direct_environment,
+    collect_profile_output_paths,
+    resolve_rebuild_profile,
+    run_host_direct_profile,
+)
+
+
+class VerificationRebuildTest(unittest.TestCase):
+    """Coverage for reproducibility profile resolution and host-direct rebuild execution."""
+
+    def test_resolve_rebuild_profile_requires_matching_kind(self) -> None:
+        component_config = ComponentConfig.model_validate(
+            {
+                "component_id": "buildish-example",
+                "source_artifact_prefix": "apache-buildish-example",
+                "asf_dist_dev_base": "https://dist.apache.org/repos/dist/dev/incubator/buildish",
+                "asf_dist_release_base": "https://downloads.apache.org/incubator/buildish",
+                "asf_keys_url": "https://downloads.apache.org/incubator/buildish/KEYS",
+                "moving_tags_enabled": True,
+                "latest_tag_enabled": False,
+                "secondary_targets": ["github-action"],
+                "final_tag_mode": "rc-source-commit",
+                "vote_release_name": "Apache Buildish Example",
+                "release_verification_guide_url": "https://example.invalid/release-verification",
+                "verify_rc_instructions": "verify",
+                "prepare_rc_runs_tests": False,
+                "release_branch_ci_required": True,
+                "verify_rc": {
+                    "profiles": {
+                        "bootstrap-zip": {
+                            "kind": "generic-file",
+                            "build": {
+                                "command": ["sh", "-c", "true"],
+                                "output_globs": ["dist/*.zip"],
+                            },
+                            "comparison": {
+                                "mode": "exact-bytes",
+                            },
+                        }
+                    }
+                },
+            }
+        )
+
+        profile = resolve_rebuild_profile(
+            component_config,
+            "bootstrap-zip",
+            expected_kinds=("generic-file", "generic-file-with-openpgp"),
+        )
+        self.assertEqual("generic-file", profile.kind)
+        with self.assertRaisesRegex(ValueError, "incompatible kind"):
+            resolve_rebuild_profile(
+                component_config,
+                "bootstrap-zip",
+                expected_kinds=("python-distribution",),
+            )
+
+    def test_build_host_direct_environment_keeps_home_and_scrubs_sensitive_process_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir) / "project"
+            work_dir = Path(tmp_dir) / "work"
+            project_root.mkdir()
+            work_dir.mkdir()
+            with patch.dict(
+                os.environ,
+                {
+                    "PATH": "/usr/bin",
+                    "HOME": "/home/tester",
+                    "GITHUB_TOKEN": "secret-gh-token",
+                    "AWS_SECRET_ACCESS_KEY": "secret-aws-key",
+                    "JAVA_HOME": "/opt/java",
+                },
+                clear=True,
+            ):
+                environment = build_host_direct_environment(
+                    project_root=project_root,
+                    work_dir=work_dir,
+                    source_date_epoch=1714032000,
+                    extra_env={"CUSTOM_BUILD_FLAG": "1"},
+                )
+
+            self.assertEqual("/home/tester", environment["HOME"])
+            self.assertEqual("/opt/java", environment["JAVA_HOME"])
+            self.assertEqual("1", environment["CUSTOM_BUILD_FLAG"])
+            self.assertEqual(str(project_root), environment["BUILDISH_PROJECT_ROOT"])
+            self.assertEqual(str(work_dir), environment["BUILDISH_WORK_DIR"])
+            self.assertEqual("1714032000", environment["SOURCE_DATE_EPOCH"])
+            self.assertEqual("1714032000", environment["BUILDISH_SOURCE_DATE_EPOCH"])
+            self.assertEqual(str(work_dir / "tmp"), environment["TMPDIR"])
+            self.assertNotIn("GITHUB_TOKEN", environment)
+            self.assertNotIn("AWS_SECRET_ACCESS_KEY", environment)
+
+    def test_run_host_direct_profile_uses_relative_working_dir_and_root_relative_output_globs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            temp_root = Path(tmp_dir)
+            project_root = temp_root / "project"
+            script_dir = project_root / "subdir"
+            work_dir = temp_root / "work"
+            script_dir.mkdir(parents=True)
+            work_dir.mkdir()
+
+            component_config = ComponentConfig.model_validate(
+                {
+                    "component_id": "buildish-example",
+                    "source_artifact_prefix": "apache-buildish-example",
+                    "asf_dist_dev_base": "https://dist.apache.org/repos/dist/dev/incubator/buildish",
+                    "asf_dist_release_base": "https://downloads.apache.org/incubator/buildish",
+                    "asf_keys_url": "https://downloads.apache.org/incubator/buildish/KEYS",
+                    "moving_tags_enabled": True,
+                    "latest_tag_enabled": False,
+                    "secondary_targets": ["github-action"],
+                    "final_tag_mode": "rc-source-commit",
+                    "vote_release_name": "Apache Buildish Example",
+                    "release_verification_guide_url": "https://example.invalid/release-verification",
+                    "verify_rc_instructions": "verify",
+                    "prepare_rc_runs_tests": False,
+                    "release_branch_ci_required": True,
+                    "verify_rc": {
+                        "profiles": {
+                            "bootstrap-zip": {
+                                "kind": "generic-file",
+                                "build": {
+                                    "command": [
+                                        "sh",
+                                        "-c",
+                                        "mkdir -p build && printf '%s\\n' \"$BUILDISH_PROJECT_ROOT\" > build/result.txt && env | sort > build/env.txt",
+                                    ],
+                                    "working_dir": "subdir",
+                                    "env": {"CUSTOM_BUILD_FLAG": "1"},
+                                    "output_globs": ["subdir/build/*.txt"],
+                                },
+                                "comparison": {
+                                    "mode": "exact-bytes",
+                                },
+                            }
+                        }
+                    },
+                }
+            )
+            self.assertIsNotNone(component_config.verify_rc)
+            verify_rc = cast(Any, component_config.verify_rc)
+            profile = verify_rc.profiles["bootstrap-zip"]
+
+            with patch.dict(
+                os.environ,
+                {
+                    "PATH": os.environ.get("PATH", ""),
+                    "HOME": os.environ.get("HOME", str(temp_root)),
+                    "GITHUB_TOKEN": "should-not-leak",
+                },
+                clear=True,
+            ):
+                with command_log_sink(io.StringIO(), echo_to_stderr=False):
+                    result = run_host_direct_profile(
+                        profile_id="bootstrap-zip",
+                        profile=profile,
+                        project_root=project_root,
+                        work_dir=work_dir,
+                        source_date_epoch=1714032000,
+                    )
+
+            self.assertEqual(project_root / "subdir", result.cwd)
+            self.assertEqual(
+                (
+                    (project_root / "subdir" / "build" / "env.txt").resolve(),
+                    (project_root / "subdir" / "build" / "result.txt").resolve(),
+                ),
+                result.output_paths,
+            )
+            self.assertEqual("1", result.environment["CUSTOM_BUILD_FLAG"])
+            self.assertIn("SOURCE_DATE_EPOCH=1714032000", (project_root / "subdir" / "build" / "env.txt").read_text(encoding="utf-8"))
+            self.assertIn(
+                f"BUILDISH_PROJECT_ROOT={project_root}",
+                (project_root / "subdir" / "build" / "env.txt").read_text(encoding="utf-8"),
+            )
+            self.assertNotIn(
+                "GITHUB_TOKEN=should-not-leak",
+                (project_root / "subdir" / "build" / "env.txt").read_text(encoding="utf-8"),
+            )
+            self.assertEqual(
+                f"{project_root}\n",
+                (project_root / "subdir" / "build" / "result.txt").read_text(encoding="utf-8"),
+            )
+
+    def test_collect_profile_output_paths_ignores_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            (project_root / "dist").mkdir()
+            (project_root / "dist" / "artifact.zip").write_text("zip bytes\n", encoding="utf-8")
+            self.assertEqual(
+                ((project_root / "dist" / "artifact.zip").resolve(),),
+                collect_profile_output_paths(project_root, ("dist/*",)),
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -37,6 +37,7 @@ def run_logged_command(
     *,
     cwd: Path | None = None,
     env: Mapping[str, str] | None = None,
+    inherit_parent_env: bool = True,
     input_text: str | None = None,
     capture_output: bool = True,
     check: bool = True,
@@ -45,7 +46,7 @@ def run_logged_command(
 ) -> subprocess.CompletedProcess[str]:
     """Run a subprocess with sanitized command logging and optional captured output."""
 
-    merged_env = dict(os.environ)
+    merged_env = dict(os.environ) if inherit_parent_env else {}
     if env is not None:
         merged_env.update(env)
     if log_command:
