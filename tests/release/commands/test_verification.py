@@ -1237,6 +1237,45 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             secondary_verification["reproducibility"]["output_paths"],
         )
 
+    def test_verify_rc_command_verifies_maven_repository_reproducibility_with_unrelated_local_repo_files(
+        self,
+    ) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_maven_repository=True,
+            include_maven_repository_reproducibility=True,
+            include_unrelated_local_maven_repository_files=True,
+            omit_maven_repository_sidecar_path_rules=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("verified", secondary_verification["reproducibility"]["verdict"])
+
     def test_verify_rc_command_reports_maven_repository_reproducibility_drift_in_full_mode(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
@@ -1587,6 +1626,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         drift_maven_repository: bool = False,
         include_maven_repository_reproducibility: bool = False,
         drift_maven_repository_reproducibility: bool = False,
+        include_unrelated_local_maven_repository_files: bool = False,
+        omit_maven_repository_sidecar_path_rules: bool = False,
         include_python_distribution: bool = False,
         missing_python_index_entry: bool = False,
         include_python_distribution_reproducibility: bool = False,
@@ -1699,12 +1740,17 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                     "            mode: content-only",
                     "          - pattern: .+\\.(pom|module)$",
                     "            mode: exact-bytes",
-                    "          - pattern: .+\\.(asc|sha512|md5)$",
-                    "            mode: remote-only",
                     "          - pattern: ^.*/maven-metadata\\.xml(\\..+)?$",
                     "            mode: remote-only",
                 ]
             )
+            if not omit_maven_repository_sidecar_path_rules:
+                verify_rc_line_list.extend(
+                    [
+                        "          - pattern: .+\\.(asc|sha512|md5)$",
+                        "            mode: remote-only",
+                    ]
+                )
         if include_oci_image_reproducibility:
             verify_rc_line_list.extend(
                 [
@@ -1843,6 +1889,17 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                             "printf '<project>drift</project>\\n' > \"$repo_root/app-1.0.0.pom\""
                             if drift_maven_repository_reproducibility
                             else "printf '<project>stable</project>\\n' > \"$repo_root/app-1.0.0.pom\""
+                        ),
+                        (
+                            "\n".join(
+                                [
+                                    "extra_root=.buildish-out/m2repo/com/example/dependency/2.0.0",
+                                    "mkdir -p \"$extra_root\"",
+                                    "printf 'dependency bytes\\n' > \"$extra_root/dependency-2.0.0.jar\"",
+                                ]
+                            )
+                            if include_unrelated_local_maven_repository_files
+                            else ""
                         ),
                         "",
                     ]

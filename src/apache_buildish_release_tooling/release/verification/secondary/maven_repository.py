@@ -26,7 +26,6 @@ from typing import Any
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     _RemoteHttpClient,
     _RepositoryFile,
-    _enumerate_local_repository,
     _inventory_worker_count,
     _repository_file_bytes,
     _repository_files,
@@ -127,6 +126,8 @@ def verify_maven_repository(
     total_size_bytes = 0
     signature_verifications: tuple[tuple[str, str, SignatureVerification], ...] = ()
     matches_signed_inventory = False
+    staged_repository_files_by_path: dict[str, _RepositoryFile] = {}
+    staged_repository_cache: dict[str, bytes] = {}
     try:
         if not issues and inventory_payload is not None:
             emit_info(progress_reporter, f"Enumerating live repository from {base_url}")
@@ -140,6 +141,7 @@ def verify_maven_repository(
                 repository_file.relative_path: repository_file
                 for repository_file in repository_files
             }
+            staged_repository_files_by_path = dict(files_by_relative_path)
             total_size_bytes = sum(repository_file.size_bytes for repository_file in repository_files)
             expected_entries = _maven_inventory_entries(
                 inventory_payload,
@@ -160,6 +162,7 @@ def verify_maven_repository(
                 )
 
             cache: dict[str, bytes] = {}
+            staged_repository_cache = cache
             content_issues = 0
             common_paths = sorted(expected_paths & live_paths)
             for index, relative_path in enumerate(common_paths, start=1):
@@ -242,10 +245,13 @@ def verify_maven_repository(
             project_root=project_root,
             source_date_epoch=source_date_epoch,
             inspection_bundle_root=inspection_bundle_root,
-            base_url=base_url,
-            staging_repository_id=staging_repository_id,
             inventory_payload=inventory_payload,
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            staged_by_path={
+                relative_path: staged_repository_files_by_path[relative_path]
+                for relative_path in sorted(expected_entries)
+                if relative_path in staged_repository_files_by_path
+            },
+            staged_cache=dict(staged_repository_cache),
             progress_reporter=progress_reporter,
         )
         issues.extend(str(issue) for issue in reproducibility_verification.get("issues", []))
@@ -285,10 +291,9 @@ def _verify_maven_repository_reproducibility(
     project_root: Path | None,
     source_date_epoch: int | None,
     inspection_bundle_root: Path | None,
-    base_url: str,
-    staging_repository_id: str,
     inventory_payload: dict[str, Any] | None,
-    allow_non_production_release_targets: bool,
+    staged_by_path: dict[str, _RepositoryFile],
+    staged_cache: dict[str, bytes],
     progress_reporter: ProgressReporter,
 ) -> dict[str, Any]:
     raw_reproducibility = artifact_entry.get("reproducibility")
@@ -318,7 +323,7 @@ def _verify_maven_repository_reproducibility(
     require_signatures = False
     path_rules: tuple[dict[str, str], ...] = ()
     path_results: list[dict[str, Any]] = []
-    built_repository_path: Path | None = None
+    rebuilt_repository_path: Path | None = None
     profile = None
     if component_config is None:
         failure_class = failure_class or "missing-component-config"
@@ -379,21 +384,20 @@ def _verify_maven_repository_reproducibility(
                 work_dir=work_dir,
                 source_date_epoch=source_date_epoch,
             )
-            built_repository_path = project_root / repository_dir
+            rebuilt_repository_path = project_root / repository_dir
             output_paths = [repository_dir]
-            if not built_repository_path.is_dir():
+            if not rebuilt_repository_path.is_dir():
                 failure_class = failure_class or "missing-repository-dir"
                 raise ValueError(
                     f"maven-repository reproducibility profile {profile_id!r} did not create repository_dir {repository_dir!r}"
                 )
             path_results, comparison_issues, matches_remote_bytes = _compare_maven_repository_trees(
                 artifact_id=artifact_id,
-                base_url=base_url,
-                staging_repository_id=staging_repository_id,
-                rebuilt_repository_path=built_repository_path,
+                staged_by_path=staged_by_path,
+                staged_cache=staged_cache,
+                rebuilt_repository_path=rebuilt_repository_path,
                 path_rules=path_rules,
                 require_signatures=require_signatures,
-                allow_non_production_release_targets=allow_non_production_release_targets,
                 progress_reporter=progress_reporter,
             )
             if comparison_issues:
@@ -482,98 +486,60 @@ def _path_mode_for_repository_entry(relative_path: str, path_rules: tuple[dict[s
     for rule in path_rules:
         if re.search(rule["pattern"], relative_path):
             return rule["mode"]
+    if _is_default_remote_only_repository_entry(relative_path):
+        return "remote-only"
     return "exact-bytes"
 
 
 def _compare_maven_repository_trees(
     *,
     artifact_id: str,
-    base_url: str,
-    staging_repository_id: str,
+    staged_by_path: dict[str, _RepositoryFile],
+    staged_cache: dict[str, bytes],
     rebuilt_repository_path: Path,
     path_rules: tuple[dict[str, str], ...],
     require_signatures: bool,
-    allow_non_production_release_targets: bool,
     progress_reporter: ProgressReporter,
 ) -> tuple[list[dict[str, Any]], list[str], bool]:
-    validate_fetch_uri(
-        base_url,
-        allow_non_production_release_targets=allow_non_production_release_targets,
-        purpose=f"maven repository base URL for {artifact_id}",
+    emit_info(progress_reporter, f"Reusing staged repository snapshot for local comparison: {artifact_id}")
+    emit_info(
+        progress_reporter,
+        f"Checking rebuilt repository output under {rebuilt_repository_path}",
     )
-    _validated_repository_root(base_url, staging_repository_id)
-    worker_count = _inventory_worker_count(None)
-    remote_http_client: _RemoteHttpClient | None = None
-    if base_url.startswith(("http://", "https://")):
-        remote_http_client = _RemoteHttpClient.for_worker_count(worker_count)
-    try:
-        emit_info(progress_reporter, f"Enumerating staged repository for local comparison from {base_url}")
-        staged_repository_files = _repository_files(
-            base_url,
-            worker_count=worker_count,
-            remote_http_client=remote_http_client,
-            progress_reporter=progress_reporter,
+    if require_signatures and not any(relative_path.endswith(".asc") for relative_path in staged_by_path):
+        return (
+            [],
+            [
+                f"maven-repository reproducibility policy requires staged detached signatures for {artifact_id}"
+            ],
+            False,
         )
-        emit_info(
-            progress_reporter,
-            f"Enumerating rebuilt repository output from {rebuilt_repository_path}",
-        )
-        rebuilt_repository_files = _enumerate_local_repository(
-            rebuilt_repository_path,
-            progress_reporter=progress_reporter,
-        )
-        staged_by_path = {
-            repository_file.relative_path: repository_file
-            for repository_file in staged_repository_files
-        }
-        rebuilt_by_path = {
-            repository_file.relative_path: repository_file
-            for repository_file in rebuilt_repository_files
-        }
-        if require_signatures and not any(relative_path.endswith(".asc") for relative_path in staged_by_path):
-            return (
-                [],
-                [
-                    f"maven-repository reproducibility policy requires staged detached signatures for {artifact_id}"
-                ],
-                False,
-            )
-        return _compare_repository_path_sets(
-            staged_by_path=staged_by_path,
-            rebuilt_by_path=rebuilt_by_path,
-            path_rules=path_rules,
-            progress_reporter=progress_reporter,
-            remote_http_client=remote_http_client,
-        )
-    finally:
-        if remote_http_client is not None:
-            remote_http_client.close()
+    return _compare_repository_path_sets(
+        staged_by_path=staged_by_path,
+        staged_cache=staged_cache,
+        rebuilt_repository_path=rebuilt_repository_path,
+        path_rules=path_rules,
+        progress_reporter=progress_reporter,
+    )
 
 
 def _compare_repository_path_sets(
     *,
     staged_by_path: dict[str, _RepositoryFile],
-    rebuilt_by_path: dict[str, _RepositoryFile],
+    staged_cache: dict[str, bytes],
+    rebuilt_repository_path: Path,
     path_rules: tuple[dict[str, str], ...],
     progress_reporter: ProgressReporter,
-    remote_http_client: _RemoteHttpClient | None,
 ) -> tuple[list[dict[str, Any]], list[str], bool]:
     issues: list[str] = []
     path_results: list[dict[str, Any]] = []
-    staged_cache: dict[str, bytes] = {}
     rebuilt_cache: dict[str, bytes] = {}
-    all_paths = sorted(set(staged_by_path) | set(rebuilt_by_path))
     comparable_staged_paths = {
         relative_path
         for relative_path in staged_by_path
         if _path_mode_for_repository_entry(relative_path, path_rules) != "remote-only"
     }
-    comparable_rebuilt_paths = {
-        relative_path
-        for relative_path in rebuilt_by_path
-        if _path_mode_for_repository_entry(relative_path, path_rules) != "remote-only"
-    }
-    for relative_path in all_paths:
+    for relative_path in sorted(staged_by_path):
         mode = _path_mode_for_repository_entry(relative_path, path_rules)
         if mode != "remote-only":
             continue
@@ -585,44 +551,33 @@ def _compare_repository_path_sets(
                 "detail": "excluded from local comparison by path rule",
             }
         )
-    for relative_path in sorted(comparable_staged_paths - comparable_rebuilt_paths):
-        mode = _path_mode_for_repository_entry(relative_path, path_rules)
-        issues.append(
-            "maven-repository reproducibility is missing one comparable rebuilt path: "
-            f"{relative_path}"
-        )
-        path_results.append(
-            {
-                "path": relative_path,
-                "mode": mode,
-                "verdict": "failed",
-                "detail": "missing rebuilt path",
-            }
-        )
-    for relative_path in sorted(comparable_rebuilt_paths - comparable_staged_paths):
-        mode = _path_mode_for_repository_entry(relative_path, path_rules)
-        issues.append(
-            "maven-repository reproducibility produced one unexpected comparable path: "
-            f"{relative_path}"
-        )
-        path_results.append(
-            {
-                "path": relative_path,
-                "mode": mode,
-                "verdict": "failed",
-                "detail": "unexpected rebuilt path",
-            }
-        )
-    common_paths = sorted(comparable_staged_paths & comparable_rebuilt_paths)
+    common_paths = sorted(comparable_staged_paths)
     for index, relative_path in enumerate(common_paths, start=1):
         mode = _path_mode_for_repository_entry(relative_path, path_rules)
-        staged_payload = _repository_file_bytes(
+        rebuilt_repository_file = _rebuilt_repository_file(
+            rebuilt_repository_path,
+            relative_path=relative_path,
+        )
+        if rebuilt_repository_file is None:
+            issues.append(
+                "maven-repository reproducibility is missing one comparable rebuilt path: "
+                f"{relative_path}"
+            )
+            path_results.append(
+                {
+                    "path": relative_path,
+                    "mode": mode,
+                    "verdict": "failed",
+                    "detail": "missing rebuilt path",
+                }
+            )
+            continue
+        staged_payload = _cached_staged_repository_bytes(
             staged_by_path[relative_path],
             cache=staged_cache,
-            remote_http_client=remote_http_client,
         )
         rebuilt_payload = _repository_file_bytes(
-            rebuilt_by_path[relative_path],
+            rebuilt_repository_file,
             cache=rebuilt_cache,
             remote_http_client=None,
         )
@@ -686,6 +641,40 @@ def _compare_repository_path_sets(
             f"Compared rebuilt repository entries: {index}/{len(common_paths)}",
         )
     return path_results, issues, not issues
+
+
+def _rebuilt_repository_file(
+    rebuilt_repository_path: Path,
+    *,
+    relative_path: str,
+) -> _RepositoryFile | None:
+    local_path = rebuilt_repository_path / Path(relative_path)
+    if not local_path.is_file():
+        return None
+    return _RepositoryFile(
+        relative_path=relative_path,
+        size_bytes=local_path.stat().st_size,
+        local_path=local_path,
+    )
+
+
+def _cached_staged_repository_bytes(
+    repository_file: _RepositoryFile,
+    *,
+    cache: dict[str, bytes],
+) -> bytes:
+    payload = cache.get(repository_file.relative_path)
+    if payload is None:
+        raise ValueError(
+            "staged maven repository snapshot is missing cached bytes for reproducibility comparison: "
+            f"{repository_file.relative_path}"
+        )
+    return payload
+
+
+def _is_default_remote_only_repository_entry(relative_path: str) -> bool:
+    lowered = relative_path.lower()
+    return lowered.endswith((".asc", ".sha512", ".sha256", ".sha1", ".md5"))
 
 
 def _compare_zip_payloads(
