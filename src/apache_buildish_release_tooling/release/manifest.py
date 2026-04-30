@@ -21,11 +21,23 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel
 
-def write_manifest(path: Path, entries: Mapping[str, Any]) -> None:
+
+def write_manifest(
+    path: Path,
+    entries: Mapping[str, Any] | BaseModel,
+    *,
+    exclude_none: bool = False,
+) -> None:
     """Write a JSON manifest file for a workflow step."""
 
+    payload = (
+        entries.model_dump(mode="json", exclude_none=exclude_none)
+        if isinstance(entries, BaseModel)
+        else dict(entries)
+    )
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
-        json.dump(dict(entries), handle, indent=2)
+        json.dump(payload, handle, indent=2)
         handle.write("\n")

@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from apache_buildish_release_tooling.release.contracts import RcVoteManifestReadV1
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.common import (
@@ -48,7 +49,13 @@ class DownloadedInventory:
     report_payload: dict[str, Any]
 
 
-def secondary_artifact_entries(manifest_payload: dict[str, Any], *, source: str) -> list[Any]:
+def secondary_artifact_entries(
+    manifest_payload: RcVoteManifestReadV1 | dict[str, Any],
+    *,
+    source: str,
+) -> list[Any]:
+    if isinstance(manifest_payload, RcVoteManifestReadV1):
+        return list(manifest_payload.vote_materials.secondary_artifacts)
     vote_materials = manifest_payload.get("vote_materials")
     if not isinstance(vote_materials, dict):
         raise ValueError(f"manifest is missing vote_materials: {source}")

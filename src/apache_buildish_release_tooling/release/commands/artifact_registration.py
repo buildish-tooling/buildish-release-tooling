@@ -25,6 +25,7 @@ from apache_buildish_release_tooling.release.artifact_registration import (
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationBundle,
 )
+from apache_buildish_release_tooling.release.contracts import SecondaryArtifactManifestV1
 from apache_buildish_release_tooling.release.manifest import write_manifest
 
 from apache_buildish_release_tooling.release.commands._shared import (
@@ -59,10 +60,10 @@ def _registration_bundle(
 ) -> ArtifactRegistrationBundle:
     bundle_dir, manifest_path = _registration_output_paths(args, component_id)
     registration = build_artifact_registration(args, bundle_dir)
-    manifest_payload = {
-        "secondary_artifacts": [registration.secondary_artifact],
-    }
-    write_manifest(manifest_path, manifest_payload)
+    manifest_payload = SecondaryArtifactManifestV1(
+        secondary_artifacts=[registration.secondary_artifact]
+    )
+    write_manifest(manifest_path, manifest_payload, exclude_none=True)
     return ArtifactRegistrationBundle(
         bundle_dir=bundle_dir,
         manifest_path=manifest_path,

@@ -18,14 +18,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
+from apache_buildish_release_tooling.release.contracts import (
+    AnySecondaryArtifact,
+    SecondaryArtifactManifestV1,
+)
 
 @dataclass(frozen=True)
 class ArtifactRegistrationResult:
     """Typed result returned by one artifact-kind handler."""
 
-    secondary_artifact: dict[str, Any]
+    secondary_artifact: AnySecondaryArtifact
     inventory_paths: tuple[Path, ...] = ()
 
 
@@ -35,5 +38,5 @@ class ArtifactRegistrationBundle:
 
     bundle_dir: Path
     manifest_path: Path
-    manifest_payload: dict[str, Any]
+    manifest_payload: SecondaryArtifactManifestV1
     inventory_paths: tuple[Path, ...] = field(default_factory=tuple)

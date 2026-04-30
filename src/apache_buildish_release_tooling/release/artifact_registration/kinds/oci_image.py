@@ -28,6 +28,7 @@ from apache_buildish_release_tooling.release.artifact_registration.common import
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationResult,
 )
+from apache_buildish_release_tooling.release.contracts import OciImageSecondaryArtifact
 from apache_buildish_release_tooling.release.process import (
     CommandExecutionError,
     run_logged_command,
@@ -242,4 +243,6 @@ def build_oci_image_registration(args: Namespace, bundle_dir: Path) -> ArtifactR
     if platform_digests:
         artifact["platform_digests"] = platform_digests
     apply_common_artifact_metadata(artifact, args)
-    return ArtifactRegistrationResult(secondary_artifact=artifact)
+    return ArtifactRegistrationResult(
+        secondary_artifact=OciImageSecondaryArtifact.model_validate(artifact)
+    )

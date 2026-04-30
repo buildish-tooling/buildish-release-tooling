@@ -327,12 +327,19 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
                 "rc_tag": f"v{version}-rc{rc_number}",
                 "final_tag": f"v{version}",
                 "final_tag_mode": "rc-source-commit",
-                "provenance": {"created_at": "2026-04-26T12:00:00Z", "tooling": {}},
+                "provenance": {
+                    "created_at": "2026-04-26T12:00:00Z",
+                    "tooling": {
+                        "repository": "apache/buildish-release-tooling",
+                        "repository_url": "https://github.com/apache/buildish-release-tooling",
+                        "git_commit_sha": "fedcba9876543210fedcba9876543210fedcba98",
+                    },
+                },
                 "trust_roots": {
                     "asf_keys": {
                         "uri": f"{repo_url}/dist/release/incubator/buildish/KEYS",
                         "known_length_bytes": 9,
-                        "known_prefix_sha512": "abc123",
+                        "known_prefix_sha512": "a" * 128,
                     }
                 },
                 "draft_github_release": {

@@ -27,6 +27,9 @@ from apache_buildish_release_tooling.release.artifact_registration.common import
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationResult,
 )
+from apache_buildish_release_tooling.release.contracts import (
+    PythonDistributionSecondaryArtifact,
+)
 from apache_buildish_release_tooling.release.source_artifact import checksum
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -118,4 +121,6 @@ def build_python_distribution_registration(
             "repository": attestation_repository,
         }
     apply_common_artifact_metadata(artifact, args)
-    return ArtifactRegistrationResult(secondary_artifact=artifact)
+    return ArtifactRegistrationResult(
+        secondary_artifact=PythonDistributionSecondaryArtifact.model_validate(artifact)
+    )

@@ -17,12 +17,16 @@
 from __future__ import annotations
 
 import hashlib
-import json
-from typing import Any
+
+from pydantic import ValidationError
 
 from apache_buildish_release_tooling.release.github_releases import (
     download_release_asset_text,
     release_asset_ids_by_names,
+)
+from apache_buildish_release_tooling.release.contracts import (
+    RcVoteManifestV1,
+    SourceArtifactContract,
 )
 from apache_buildish_release_tooling.release.models import CommandContext
 from apache_buildish_release_tooling.release.prepare_rc_state import prepare_rc_source_artifact_name
@@ -87,80 +91,61 @@ def verify_staged_source_release_against_vote_manifest(
         raise ValueError("RC vote manifest in SVN staging does not match the mirrored GitHub Release asset")
 
     manifest_payload = _rc_vote_manifest_payload(staged_manifest_text, source=staged_manifest_url)
-    if manifest_payload.get("manifest_type") != "rc-vote":
-        raise ValueError(f"unexpected RC vote manifest type in {staged_manifest_url}")
-    if manifest_payload.get("component_id") != context.component_config.component_id:
+    if manifest_payload.component_id != context.component_config.component_id:
         raise ValueError(f"RC vote manifest component does not match {context.component_config.component_id}")
-    if manifest_payload.get("version") != version:
+    if manifest_payload.version != version:
         raise ValueError(f"RC vote manifest version does not match {version}")
-    if manifest_payload.get("rc_tag") != selected_rc_tag:
+    if manifest_payload.rc_tag != selected_rc_tag:
         raise ValueError(f"RC vote manifest RC tag does not match {selected_rc_tag}")
-    if manifest_payload.get("final_tag") != derive_final_tag(version):
+    if manifest_payload.final_tag != derive_final_tag(version):
         raise ValueError(f"RC vote manifest final tag does not match v{version}")
 
     source_artifact = _source_artifact_entry_from_vote_manifest(
         manifest_payload,
         source=staged_manifest_url,
     )
-    manifest_filename = source_artifact.get("filename")
+    manifest_filename = source_artifact.filename
     if manifest_filename != expected_source_artifact_name:
         raise ValueError(
             "RC vote manifest source artifact filename does not match the expected staged source release"
         )
     expected_source_artifact_url = f"{source_url}/{expected_source_artifact_name}"
 
-    expected_sha512 = _manifest_source_artifact_sha512(source_artifact, source=staged_manifest_url)
+    expected_sha512 = _manifest_source_artifact_sha512(source_artifact)
     actual_sha512 = verified_staged_source_artifact_sha512(expected_source_artifact_url)
     if actual_sha512 != expected_sha512:
         raise ValueError("staged source artifact checksum does not match the authoritative RC vote manifest")
     return expected_sha512
 
 
-def _rc_vote_manifest_payload(manifest_text: str, *, source: str) -> dict[str, Any]:
+def _rc_vote_manifest_payload(manifest_text: str, *, source: str) -> RcVoteManifestV1:
     """Parse and validate one RC vote-manifest JSON document."""
 
-    payload = json.loads(manifest_text)
-    if not isinstance(payload, dict):
-        raise ValueError(f"RC vote manifest must be a JSON object: {source}")
-    return payload
+    try:
+        return RcVoteManifestV1.model_validate_json(manifest_text)
+    except ValidationError as exc:
+        raise ValueError(f"RC vote manifest is invalid: {source}") from exc
 
 
 def _source_artifact_entry_from_vote_manifest(
-    manifest_payload: dict[str, Any],
+    manifest_payload: RcVoteManifestV1,
     *,
     source: str,
-) -> dict[str, Any]:
+) -> SourceArtifactContract:
     """Return the single source-artifact entry recorded in one RC vote manifest."""
 
-    vote_materials = manifest_payload.get("vote_materials")
-    if not isinstance(vote_materials, dict):
-        raise ValueError(f"RC vote manifest is missing vote_materials: {source}")
-    source_artifacts = vote_materials.get("source_artifacts")
-    if not isinstance(source_artifacts, list) or len(source_artifacts) != 1:
+    source_artifacts = manifest_payload.vote_materials.source_artifacts
+    if len(source_artifacts) != 1:
         raise ValueError(f"RC vote manifest must contain exactly one source artifact: {source}")
-    source_artifact = source_artifacts[0]
-    if not isinstance(source_artifact, dict):
-        raise ValueError(f"RC vote manifest source artifact must be an object: {source}")
-    return source_artifact
+    return source_artifacts[0]
 
 
 def _manifest_source_artifact_sha512(
-    source_artifact: dict[str, Any],
-    *,
-    source: str,
+    source_artifact: SourceArtifactContract,
 ) -> str:
     """Return the SHA512 recorded for one manifest source artifact."""
 
-    checksums = source_artifact.get("checksums")
-    if not isinstance(checksums, dict):
-        raise ValueError(f"RC vote manifest source artifact is missing checksums: {source}")
-    sha512_payload = checksums.get("sha512")
-    if not isinstance(sha512_payload, dict):
-        raise ValueError(f"RC vote manifest source artifact is missing sha512: {source}")
-    digest_value = sha512_payload.get("value")
-    if not isinstance(digest_value, str) or not digest_value:
-        raise ValueError(f"RC vote manifest source artifact sha512 is invalid: {source}")
-    return digest_value
+    return source_artifact.checksums.sha512.value
 
 
 def _sha512_sidecar_digest(sidecar_text: str, *, source: str) -> str:

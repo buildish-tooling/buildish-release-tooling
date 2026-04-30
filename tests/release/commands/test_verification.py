@@ -1160,7 +1160,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 ),
                 repository_bundle_dir,
             )
-            maven_artifact = dict(registration.secondary_artifact)
+            maven_artifact = registration.secondary_artifact.model_dump(mode="json", exclude_none=True)
             inventory = dict(maven_artifact["inventory"])
             inventory_filename = inventory["filename"]
             inventory["uri"] = (repository_bundle_dir / inventory_filename).as_uri()
@@ -1193,7 +1193,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 ),
                 distribution_bundle_dir,
             )
-            python_artifact = dict(registration.secondary_artifact)
+            python_artifact = registration.secondary_artifact.model_dump(
+                mode="json",
+                exclude_none=True,
+            )
             simple_project_dir = sandbox_dir / "simple" / "example"
             simple_project_dir.mkdir(parents=True, exist_ok=True)
             simple_index_path = simple_project_dir / "index.json"
@@ -1318,7 +1321,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 ),
                 oci_bundle_dir,
             )
-            secondary_artifacts.append(dict(registration.secondary_artifact))
+            secondary_artifacts.append(
+                registration.secondary_artifact.model_dump(mode="json", exclude_none=True)
+            )
 
         manifest_payload: dict[str, object] = {
             "schema_version": "1",

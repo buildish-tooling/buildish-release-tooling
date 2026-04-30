@@ -37,6 +37,10 @@ from apache_buildish_release_tooling.release.artifact_registration.common import
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationResult,
 )
+from apache_buildish_release_tooling.release.contracts import (
+    MavenRepositoryInventoryV1,
+    MavenRepositorySecondaryArtifact,
+)
 from apache_buildish_release_tooling.release.manifest import write_manifest
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.source_artifact import sha512
@@ -496,7 +500,7 @@ def _inventory_payload(
     worker_count: int,
     remote_http_client: _RemoteHttpClient | None,
     progress_reporter: ProgressReporter,
-) -> tuple[dict[str, Any], int]:
+) -> tuple[MavenRepositoryInventoryV1, int]:
     files_by_relative_path = {entry.relative_path: entry for entry in repository_files}
     cache = _prefetched_remote_bytes(
         repository_files,
@@ -526,14 +530,16 @@ def _inventory_payload(
             f"building maven repository inventory: {len(entries)}/{len(repository_files)} entries"
         )
     return (
-        {
-            "schema_version": "1",
-            "inventory_type": "maven-repository",
-            "artifact_id": artifact_id,
-            "staging_repository_id": staging_repository_id,
-            "base_url": base_url,
-            "entries": entries,
-        },
+        MavenRepositoryInventoryV1.model_validate(
+            {
+                "schema_version": "1",
+                "inventory_type": "maven-repository",
+                "artifact_id": artifact_id,
+                "staging_repository_id": staging_repository_id,
+                "base_url": base_url,
+                "entries": entries,
+            }
+        ),
         total_size_bytes,
     )
 
@@ -598,6 +604,6 @@ def build_maven_repository_registration(
         f"wrote maven repository inventory: {len(repository_files)} entries, {total_size_bytes} bytes"
     )
     return ArtifactRegistrationResult(
-        secondary_artifact=artifact,
+        secondary_artifact=MavenRepositorySecondaryArtifact.model_validate(artifact),
         inventory_paths=(inventory_path,),
     )

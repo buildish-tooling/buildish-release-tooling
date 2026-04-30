@@ -117,7 +117,7 @@ class RcVoteManifestTest(unittest.TestCase):
                     "asf_keys": {
                         "uri": "https://downloads.apache.org/incubator/buildish/KEYS",
                         "known_length_bytes": 9,
-                        "known_prefix_sha512": "abc123",
+                        "known_prefix_sha512": "a" * 128,
                     }
                 },
             ),
@@ -134,10 +134,11 @@ class RcVoteManifestTest(unittest.TestCase):
                 draft_release_tag="v1.2.3-rc2",
                 draft_release_url="https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc2",
                 rc_tag_target_commit="89abcdef0123456789abcdef0123456789abcdef",
-                source_artifact_sha512="abc123",
+                source_artifact_sha512="b" * 128,
                 secondary_artifacts=[
                     {
-                        "target_family": "github-release-assets",
+                        "artifact_id": "bootstrap-zip",
+                        "kind": "generic-file",
                         "role": "bootstrap-convenience-archive",
                         "filename": "buildish-example-bootstrap.zip",
                         "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
@@ -145,7 +146,7 @@ class RcVoteManifestTest(unittest.TestCase):
                         "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
                         "checksums": {
                             "sha512": {
-                                "value": "deadbeef",
+                                "value": "c" * 128,
                                 "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip.sha512",
                             }
                         },
@@ -153,31 +154,32 @@ class RcVoteManifestTest(unittest.TestCase):
                     }
                 ],
             )
-        self.assertEqual("rc-vote", manifest["manifest_type"])
-        self.assertEqual("1.2.x", manifest["release_line"])
+        self.assertEqual("rc-vote", manifest.manifest_type)
+        self.assertEqual("1.2.x", manifest.release_line)
         self.assertEqual(
             "89abcdef0123456789abcdef0123456789abcdef",
-            manifest["materialized_commit_sha"],
+            manifest.materialized_commit_sha,
         )
         self.assertEqual(
             "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/apache-buildish-example-1.2.3-incubating-src.tar.gz",
-            manifest["vote_materials"]["source_artifacts"][0]["uri"],
+            manifest.vote_materials.source_artifacts[0].uri,
         )
         self.assertEqual(
             "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/rc-vote-manifest.json",
-            manifest["verification"]["authoritative_manifest"]["uri"],
+            manifest.verification.authoritative_manifest.uri,
         )
         self.assertEqual(
             "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc2",
-            manifest["draft_github_release"]["url"],
+            manifest.draft_github_release.url,
         )
         self.assertEqual(
             "https://github.com/apache/buildish-example",
-            manifest["source_repository_url"],
+            manifest.source_repository_url,
         )
-        self.assertEqual(1714032000, manifest["source_date_epoch"])
-        self.assertEqual("v1.2.3-rc2", manifest["draft_github_release"]["tag"])
+        self.assertEqual(1714032000, manifest.source_date_epoch)
+        self.assertEqual("v1.2.3-rc2", manifest.draft_github_release.tag)
+        secondary_artifact = cast(Any, manifest.vote_materials.secondary_artifacts[0])
         self.assertEqual(
             "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
-            manifest["vote_materials"]["secondary_artifacts"][0]["uri"],
+            secondary_artifact.uri,
         )

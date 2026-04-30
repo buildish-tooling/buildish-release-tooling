@@ -16,11 +16,18 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from pydantic import ValidationError
+
+from apache_buildish_release_tooling.release.contracts import (
+    RcVoteManifestReadV1,
+    SecondaryArtifactVerificationAdapter,
+    SourceArtifactContract,
+    VerifyRcReportV1,
+)
 from apache_buildish_release_tooling.release.models import ComponentConfig
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.process import run_logged_command
@@ -70,7 +77,7 @@ class VerifyRcPhase1Result:
     keys_url: str
     work_dir: Path
     failures: tuple[VerificationFailure, ...]
-    report_payload: dict[str, Any]
+    report_payload: VerifyRcReportV1
     report_markdown: str
 
 
@@ -106,7 +113,7 @@ def verify_rc_phase1(
     source_repository_url: str | None = None
     manifest_sha512: str | None = None
     manifest_signature: SignatureVerification | None = None
-    manifest_payload: dict[str, Any] | None = None
+    manifest_payload: RcVoteManifestReadV1 | None = None
     verifier: GpgVerifier | None = None
     keys_url_matches_manifest = False
     keys_url_matches_component_config: bool | None = None
@@ -150,12 +157,14 @@ def verify_rc_phase1(
             f"Verified manifest signature: {signature_summary(manifest_signature)}",
         )
         manifest_payload = _rc_vote_manifest_payload(manifest_path)
-        component_id = _required_non_empty_string(manifest_payload, "component_id", source=manifest_url)
-        version = _required_non_empty_string(manifest_payload, "version", source=manifest_url)
-        source_commit_sha = _required_commit_sha(manifest_payload, "source_commit_sha", source=manifest_url)
-        source_date_epoch = _optional_epoch_seconds(manifest_payload, "source_date_epoch", source=manifest_url)
-        rc_tag = _required_non_empty_string(manifest_payload, "rc_tag", source=manifest_url)
-        source_repository_url = _source_repository_url(manifest_payload, source=manifest_url)
+        component_id = manifest_payload.component_id
+        version = manifest_payload.version
+        source_commit_sha = manifest_payload.source_commit_sha
+        source_date_epoch = manifest_payload.source_date_epoch
+        rc_tag = manifest_payload.rc_tag
+        if rc_tag is None:
+            raise ValueError(f"manifest field rc_tag must be a non-empty string: {manifest_url}")
+        source_repository_url = manifest_payload.source_repository_url
     except Exception as exc:
         _append_failure(
             failures,
@@ -213,7 +222,6 @@ def verify_rc_phase1(
             manifest_payload=manifest_payload,
             keys_url=keys_url,
             component_config=component_config,
-            source=manifest_url,
         )
         keys_url_matches_manifest = True
         emit_success(progress_reporter, "Cross-checked KEYS URL against the signed manifest")
@@ -272,20 +280,20 @@ def verify_rc_phase1(
                 message=str(exc),
             )
 
-    source_artifact: dict[str, Any] | None = None
+    source_artifact: SourceArtifactContract | None = None
     try:
         source_artifact = _source_artifact_entry(manifest_payload, source=manifest_url)
-        if source_artifact.get("git_commit_sha") not in {None, source_commit_sha}:
+        if source_artifact.git_commit_sha != source_commit_sha:
             raise ValueError(
                 "manifest source artifact git_commit_sha does not match source_commit_sha"
             )
-        source_artifact_url = _required_non_empty_string(source_artifact, "uri", source=manifest_url)
+        source_artifact_url = source_artifact.uri
         validate_fetch_uri(
             source_artifact_url,
             allow_non_production_release_targets=allow_non_production_release_targets,
             purpose="Source artifact URL",
         )
-        source_artifact_filename = _required_non_empty_string(source_artifact, "filename", source=manifest_url)
+        source_artifact_filename = source_artifact.filename
         emit_detail(progress_reporter, "Artifact", source_artifact_filename)
         emit_detail(progress_reporter, "Artifact URL", source_artifact_url)
     except Exception as exc:
@@ -527,72 +535,82 @@ def _phase1_result(
     verdict = "verified" if not failures else "failed"
     manifest_issues = _failure_messages(failures, scope="vote-manifest")
     source_artifact_issues = _failure_messages(failures, scope="source-artifact")
-    report_payload: dict[str, Any] = {
-        "schema_version": "1",
-        "report_type": "verify-rc",
-        "component_id": component_id,
-        "version": version,
-        "rc_tag": rc_tag,
-        "source_commit_sha": source_commit_sha,
-        "source_date_epoch": source_date_epoch,
-        "source_repository_url": source_repository_url,
-        "manifest_url": manifest_url,
-        "keys_url": keys_url,
-        "verdict": verdict,
-        "work_dir": str(work_dir),
-        "failures": [
-            {
-                "scope": failure.scope,
-                "subject": failure.subject,
-                "message": failure.message,
-            }
-            for failure in failures
-        ],
-        "manifest_verification": {
-            "verdict": "verified"
-            if manifest_signature is not None and keys_url_matches_manifest
-            else "failed",
-            "sha512": manifest_sha512,
-            "keys_url_matches_manifest": keys_url_matches_manifest,
-            "keys_url_matches_component_config": keys_url_matches_component_config,
-            "signature": (
-                signature_payload(manifest_signature)
-                if manifest_signature is not None
-                else None
-            ),
-            "rc_tag_target_commit": rc_tag_target_commit,
-            "rc_tag_matches_source_commit_sha": (
-                rc_tag_target_commit is not None
-                and source_commit_sha is not None
-                and rc_tag_target_commit == source_commit_sha
-            ),
-            "issues": manifest_issues,
-        },
-        "source_artifact_verification": {
-            "verdict": "verified"
-            if (
-                source_artifact_filename is not None
-                and source_artifact_url is not None
-                and actual_source_sha512 is not None
-                and source_artifact_signature is not None
-                and source_artifact_matches_source_commit
-            )
-            else "failed",
-            "filename": source_artifact_filename,
-            "uri": source_artifact_url,
-            "sha512": actual_source_sha512,
-            "sha512_sidecar_verified": source_sha512_sidecar_verified,
-            "signature": (
-                signature_payload(source_artifact_signature)
-                if source_artifact_signature is not None
-                else None
-            ),
-            "rebuilt_sha512": rebuilt_source_sha512,
-            "matches_source_commit_sha": source_artifact_matches_source_commit,
-            "issues": source_artifact_issues,
-        },
-        "secondary_artifact_verifications": secondary_artifact_verifications,
-    }
+    validated_secondary_artifact_verifications = [
+        SecondaryArtifactVerificationAdapter.validate_python(verification)
+        for verification in secondary_artifact_verifications
+    ]
+    secondary_artifact_verification_payloads = [
+        verification.model_dump(mode="json")
+        for verification in validated_secondary_artifact_verifications
+    ]
+    report_payload = VerifyRcReportV1.model_validate(
+        {
+            "schema_version": "1",
+            "report_type": "verify-rc",
+            "component_id": component_id,
+            "version": version,
+            "rc_tag": rc_tag,
+            "source_commit_sha": source_commit_sha,
+            "source_date_epoch": source_date_epoch,
+            "source_repository_url": source_repository_url,
+            "manifest_url": manifest_url,
+            "keys_url": keys_url,
+            "verdict": verdict,
+            "work_dir": str(work_dir),
+            "failures": [
+                {
+                    "scope": failure.scope,
+                    "subject": failure.subject,
+                    "message": failure.message,
+                }
+                for failure in failures
+            ],
+            "manifest_verification": {
+                "verdict": "verified"
+                if manifest_signature is not None and keys_url_matches_manifest
+                else "failed",
+                "sha512": manifest_sha512,
+                "keys_url_matches_manifest": keys_url_matches_manifest,
+                "keys_url_matches_component_config": keys_url_matches_component_config,
+                "signature": (
+                    signature_payload(manifest_signature)
+                    if manifest_signature is not None
+                    else None
+                ),
+                "rc_tag_target_commit": rc_tag_target_commit,
+                "rc_tag_matches_source_commit_sha": (
+                    rc_tag_target_commit is not None
+                    and source_commit_sha is not None
+                    and rc_tag_target_commit == source_commit_sha
+                ),
+                "issues": manifest_issues,
+            },
+            "source_artifact_verification": {
+                "verdict": "verified"
+                if (
+                    source_artifact_filename is not None
+                    and source_artifact_url is not None
+                    and actual_source_sha512 is not None
+                    and source_artifact_signature is not None
+                    and source_artifact_matches_source_commit
+                )
+                else "failed",
+                "filename": source_artifact_filename,
+                "uri": source_artifact_url,
+                "sha512": actual_source_sha512,
+                "sha512_sidecar_verified": source_sha512_sidecar_verified,
+                "signature": (
+                    signature_payload(source_artifact_signature)
+                    if source_artifact_signature is not None
+                    else None
+                ),
+                "rebuilt_sha512": rebuilt_source_sha512,
+                "matches_source_commit_sha": source_artifact_matches_source_commit,
+                "issues": source_artifact_issues,
+            },
+            "secondary_artifact_verifications": secondary_artifact_verification_payloads,
+        }
+    )
 
     report_markdown = _report_markdown(
         component_id=component_id,
@@ -612,7 +630,7 @@ def _phase1_result(
         actual_source_sha512=actual_source_sha512,
         manifest_issues=manifest_issues,
         source_artifact_issues=source_artifact_issues,
-        secondary_artifact_verifications=secondary_artifact_verifications,
+        secondary_artifact_verifications=secondary_artifact_verification_payloads,
     )
     return VerifyRcPhase1Result(
         verdict=verdict,
@@ -631,67 +649,20 @@ def _phase1_result(
     )
 
 
-def _rc_vote_manifest_payload(manifest_path: Path) -> dict[str, Any]:
-    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"RC vote manifest must be a JSON object: {manifest_path}")
-    if payload.get("manifest_type") != "rc-vote":
-        raise ValueError(f"unexpected RC vote manifest type in {manifest_path}")
-    return payload
-
-
-def _required_non_empty_string(payload: dict[str, Any], field_name: str, *, source: str) -> str:
-    value = payload.get(field_name)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"manifest field {field_name} must be a non-empty string: {source}")
-    return value.strip()
-
-
-def _required_commit_sha(payload: dict[str, Any], field_name: str, *, source: str) -> str:
-    value = _required_non_empty_string(payload, field_name, source=source)
-    if len(value) != 40 or any(character not in "0123456789abcdefABCDEF" for character in value):
-        raise ValueError(f"manifest field {field_name} must be a full 40-character Git commit SHA: {source}")
-    return value.lower()
-
-
-def _source_repository_url(manifest_payload: dict[str, Any], *, source: str) -> str:
-    source_repository_url = manifest_payload.get("source_repository_url")
-    if isinstance(source_repository_url, str) and source_repository_url.strip():
-        return source_repository_url.strip()
-    draft_release = manifest_payload.get("draft_github_release")
-    if not isinstance(draft_release, dict):
-        raise ValueError(f"manifest is missing source_repository_url and draft_github_release: {source}")
-    repository_slug = draft_release.get("repository")
-    if not isinstance(repository_slug, str) or not repository_slug.strip():
-        raise ValueError(f"manifest is missing source_repository_url: {source}")
-    return f"https://github.com/{repository_slug.strip()}.git"
-
-
-def _optional_epoch_seconds(payload: dict[str, Any], field_name: str, *, source: str) -> int | None:
-    value = payload.get(field_name)
-    if value is None:
-        return None
-    if isinstance(value, int) and value >= 0:
-        return value
-    if isinstance(value, str) and value.isdigit():
-        return int(value)
-    raise ValueError(f"manifest field {field_name} must be a non-negative integer Unix epoch: {source}")
+def _rc_vote_manifest_payload(manifest_path: Path) -> RcVoteManifestReadV1:
+    try:
+        return RcVoteManifestReadV1.model_validate_json(manifest_path.read_text(encoding="utf-8"))
+    except ValidationError as exc:
+        raise ValueError(f"RC vote manifest is invalid: {manifest_path}") from exc
 
 
 def _cross_check_keys_url(
     *,
-    manifest_payload: dict[str, Any],
+    manifest_payload: RcVoteManifestReadV1,
     keys_url: str,
     component_config: ComponentConfig | None,
-    source: str,
 ) -> bool | None:
-    trust_roots = manifest_payload.get("trust_roots")
-    if not isinstance(trust_roots, dict):
-        raise ValueError(f"manifest is missing trust_roots: {source}")
-    asf_keys = trust_roots.get("asf_keys")
-    if not isinstance(asf_keys, dict):
-        raise ValueError(f"manifest is missing trust_roots.asf_keys: {source}")
-    manifest_keys_url = _required_non_empty_string(asf_keys, "uri", source=source)
+    manifest_keys_url = manifest_payload.trust_roots.asf_keys.uri
     if manifest_keys_url != keys_url:
         raise ValueError(f"manifest KEYS URL does not match the explicit keys_url: {manifest_keys_url} != {keys_url}")
     if component_config is None:
@@ -700,71 +671,40 @@ def _cross_check_keys_url(
         raise ValueError(
             "component-config asf_keys_url does not match the explicit keys_url: "
             f"{component_config.asf_keys_url} != {keys_url}"
-        )
+    )
     return True
 
 
-def _source_artifact_entry(manifest_payload: dict[str, Any], *, source: str) -> dict[str, Any]:
-    vote_materials = manifest_payload.get("vote_materials")
-    if not isinstance(vote_materials, dict):
-        raise ValueError(f"manifest is missing vote_materials: {source}")
-    source_artifacts = vote_materials.get("source_artifacts")
-    if not isinstance(source_artifacts, list) or len(source_artifacts) != 1:
+def _source_artifact_entry(
+    manifest_payload: RcVoteManifestReadV1,
+    *,
+    source: str,
+) -> SourceArtifactContract:
+    source_artifacts = manifest_payload.vote_materials.source_artifacts
+    if len(source_artifacts) != 1:
         raise ValueError(f"manifest must contain exactly one source artifact: {source}")
-    source_artifact = source_artifacts[0]
-    if not isinstance(source_artifact, dict):
-        raise ValueError(f"manifest source artifact must be an object: {source}")
-    return source_artifact
+    return source_artifacts[0]
 
 
-def _required_sha512_from_source_artifact(source_artifact: dict[str, Any], *, source: str) -> str:
-    checksums = source_artifact.get("checksums")
-    if not isinstance(checksums, dict):
-        raise ValueError(f"manifest source artifact is missing checksums: {source}")
-    sha512_payload = checksums.get("sha512")
-    if not isinstance(sha512_payload, dict):
-        raise ValueError(f"manifest source artifact is missing sha512: {source}")
-    return _required_commit_sha256_style_digest(sha512_payload, "value", source=source)
-
-
-def _checksum_uri_from_source_artifact(source_artifact: dict[str, Any]) -> str | None:
-    checksums = source_artifact.get("checksums")
-    if not isinstance(checksums, dict):
-        return None
-    sha512_payload = checksums.get("sha512")
-    if not isinstance(sha512_payload, dict):
-        return None
-    checksum_uri = sha512_payload.get("uri")
-    if isinstance(checksum_uri, str) and checksum_uri.strip():
-        return checksum_uri.strip()
-    return None
-
-
-def _source_signature_uri(source_artifact: dict[str, Any], *, source: str) -> str:
-    signatures = source_artifact.get("signatures")
-    if not isinstance(signatures, list) or not signatures:
-        raise ValueError(f"manifest source artifact is missing signatures: {source}")
-    for signature in signatures:
-        if not isinstance(signature, dict):
-            continue
-        if signature.get("type") != "openpgp-detached-ascii-armored":
-            continue
-        signature_uri = signature.get("uri")
-        if isinstance(signature_uri, str) and signature_uri.strip():
-            return signature_uri.strip()
-    raise ValueError(f"manifest source artifact is missing an OpenPGP detached signature URI: {source}")
-
-
-def _required_commit_sha256_style_digest(
-    payload: dict[str, Any],
-    field_name: str,
+def _required_sha512_from_source_artifact(
+    source_artifact: SourceArtifactContract,
     *,
     source: str,
 ) -> str:
-    value = _required_non_empty_string(payload, field_name, source=source).lower()
-    if len(value) != 128 or any(character not in "0123456789abcdef" for character in value):
-        raise ValueError(f"manifest source artifact sha512 must be a 128-character hex digest: {source}")
-    return value
+    sha512_value = source_artifact.checksums.sha512.value
+    if not sha512_value:
+        raise ValueError(f"manifest source artifact is missing sha512: {source}")
+    return sha512_value
+
+
+def _checksum_uri_from_source_artifact(source_artifact: SourceArtifactContract) -> str | None:
+    return source_artifact.checksums.sha512.uri
+
+
+def _source_signature_uri(source_artifact: SourceArtifactContract, *, source: str) -> str:
+    if not source_artifact.signatures:
+        raise ValueError(f"manifest source artifact is missing signatures: {source}")
+    return source_artifact.signatures[0].uri
 
 
 def _archive_prefix_from_source_artifact_filename(filename: str) -> str:

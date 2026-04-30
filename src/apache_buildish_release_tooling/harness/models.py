@@ -19,7 +19,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
+
+from apache_buildish_release_tooling.contracts import BuildishContractModel
 
 HarnessBackendName = Literal["custom", "act"]
 GpgFixtureMode = Literal["disabled", "generated-signing-key"]
@@ -33,7 +35,7 @@ SvnInitialState = Literal[
 ]
 
 
-class WorkspaceFile(BaseModel):
+class WorkspaceFile(BuildishContractModel):
     """A file that should exist in the scenario workspace before job execution starts."""
 
     model_config = ConfigDict(extra="forbid")
@@ -43,7 +45,7 @@ class WorkspaceFile(BaseModel):
     executable: bool = False
 
 
-class GitRepositoryFixture(BaseModel):
+class GitRepositoryFixture(BuildishContractModel):
     """A disposable Git repository that should be initialized inside the workspace."""
 
     model_config = ConfigDict(extra="forbid")
@@ -54,7 +56,7 @@ class GitRepositoryFixture(BaseModel):
     files: list[WorkspaceFile] = Field(default_factory=list)
 
 
-class WorkflowRepositoryBranchFixture(BaseModel):
+class WorkflowRepositoryBranchFixture(BuildishContractModel):
     """A branch that should exist in the workflow repository checkout before execution."""
 
     model_config = ConfigDict(extra="forbid")
@@ -63,7 +65,7 @@ class WorkflowRepositoryBranchFixture(BaseModel):
     start_point: str = "HEAD"
 
 
-class WorkflowRepositoryTagFixture(BaseModel):
+class WorkflowRepositoryTagFixture(BuildishContractModel):
     """A tag that should exist in the workflow repository checkout before execution."""
 
     model_config = ConfigDict(extra="forbid")
@@ -74,7 +76,7 @@ class WorkflowRepositoryTagFixture(BaseModel):
     message: str | None = None
 
 
-class WorkflowRepositoryFixture(BaseModel):
+class WorkflowRepositoryFixture(BuildishContractModel):
     """Git refs that should be created in the workflow repository checkout before execution."""
 
     model_config = ConfigDict(extra="forbid")
@@ -83,7 +85,7 @@ class WorkflowRepositoryFixture(BaseModel):
     tags: list[WorkflowRepositoryTagFixture] = Field(default_factory=list)
 
 
-class SvnRepositoryFixture(BaseModel):
+class SvnRepositoryFixture(BuildishContractModel):
     """Initial ASF SVN state to create inside one harness `act` workspace."""
 
     model_config = ConfigDict(extra="forbid")
@@ -107,7 +109,7 @@ class SvnRepositoryFixture(BaseModel):
         return self
 
 
-class InvocationMatch(BaseModel):
+class InvocationMatch(BuildishContractModel):
     """A matcher for a single intercepted tool invocation."""
 
     model_config = ConfigDict(extra="forbid")
@@ -127,7 +129,7 @@ class InvocationMatch(BaseModel):
         return self
 
 
-class FileWriteAction(BaseModel):
+class FileWriteAction(BuildishContractModel):
     """A file write that a mocked tool invocation should perform."""
 
     model_config = ConfigDict(extra="forbid")
@@ -137,7 +139,7 @@ class FileWriteAction(BaseModel):
     executable: bool = False
 
 
-class ToolBehaviorResult(BaseModel):
+class ToolBehaviorResult(BuildishContractModel):
     """The mocked result of an intercepted tool invocation."""
 
     model_config = ConfigDict(extra="forbid")
@@ -151,7 +153,7 @@ class ToolBehaviorResult(BaseModel):
     writes: list[FileWriteAction] = Field(default_factory=list)
 
 
-class ToolBehavior(BaseModel):
+class ToolBehavior(BuildishContractModel):
     """A scripted behavior for an intercepted tool invocation."""
 
     model_config = ConfigDict(extra="forbid")
@@ -161,7 +163,7 @@ class ToolBehavior(BaseModel):
     times: int | None = None
 
 
-class StepScenario(BaseModel):
+class StepScenario(BuildishContractModel):
     """A single shell step in a harness job."""
 
     model_config = ConfigDict(extra="forbid")
@@ -173,7 +175,7 @@ class StepScenario(BaseModel):
     shell: str = "bash"
 
 
-class JobScenario(BaseModel):
+class JobScenario(BuildishContractModel):
     """A job in the harness scenario."""
 
     model_config = ConfigDict(extra="forbid")
@@ -184,7 +186,7 @@ class JobScenario(BaseModel):
     steps: list[StepScenario]
 
 
-class WorkflowScenario(BaseModel):
+class WorkflowScenario(BuildishContractModel):
     """A real workflow-YAML invocation executed by the `act` backend."""
 
     model_config = ConfigDict(extra="forbid")
@@ -199,7 +201,7 @@ class WorkflowScenario(BaseModel):
     svn_fixture: SvnRepositoryFixture = Field(default_factory=SvnRepositoryFixture)
 
 
-class HarnessScenario(BaseModel):
+class HarnessScenario(BuildishContractModel):
     """A runner-agnostic integration-test scenario."""
 
     model_config = ConfigDict(extra="forbid")

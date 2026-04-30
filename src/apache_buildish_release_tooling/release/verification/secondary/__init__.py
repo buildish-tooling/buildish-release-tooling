@@ -19,6 +19,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel
+
+from apache_buildish_release_tooling.release.contracts import RcVoteManifestReadV1
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.verification.common import (
     GpgVerifier,
@@ -43,7 +46,7 @@ __all__ = ["INVALID_SECONDARY_ARTIFACT_KIND", "verify_secondary_artifacts"]
 
 
 def verify_secondary_artifacts(
-    manifest_payload: dict[str, Any],
+    manifest_payload: RcVoteManifestReadV1 | dict[str, Any],
     *,
     manifest_url: str,
     work_dir: Path,
@@ -68,19 +71,16 @@ def verify_secondary_artifacts(
         emit_section(progress_reporter, f"Secondary Artifact {index}/{total_artifacts}: {artifact_label}")
         emit_detail(progress_reporter, "Kind", declared_kind or "n/a")
         try:
-            if not isinstance(artifact_entry, dict):
-                raise ValueError(
-                    f"manifest secondary artifact entry must be an object: {manifest_url}"
-                )
+            artifact_payload = _artifact_payload(artifact_entry, manifest_url=manifest_url)
             required_non_empty_string(
-                artifact_entry,
+                artifact_payload,
                 "artifact_id",
                 source=manifest_url,
             )
-            kind = required_non_empty_string(artifact_entry, "kind", source=manifest_url)
+            kind = required_non_empty_string(artifact_payload, "kind", source=manifest_url)
             if kind == "generic-file":
                 verification = verify_generic_file(
-                    artifact_entry,
+                    artifact_payload,
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
                     verifier=verifier,
@@ -89,7 +89,7 @@ def verify_secondary_artifacts(
                 )
             elif kind == "generic-file-with-openpgp":
                 verification = verify_generic_file(
-                    artifact_entry,
+                    artifact_payload,
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
                     verifier=verifier,
@@ -98,7 +98,7 @@ def verify_secondary_artifacts(
                 )
             elif kind == "maven-repository":
                 verification = verify_maven_repository(
-                    artifact_entry,
+                    artifact_payload,
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
                     verifier=verifier,
@@ -107,21 +107,21 @@ def verify_secondary_artifacts(
                 )
             elif kind == "python-distribution":
                 verification = verify_python_distribution(
-                    artifact_entry,
+                    artifact_payload,
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
                     allow_non_production_release_targets=allow_non_production_release_targets,
                 )
             elif kind == "npm-package":
                 verification = verify_npm_package(
-                    artifact_entry,
+                    artifact_payload,
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
                     allow_non_production_release_targets=allow_non_production_release_targets,
                 )
             elif kind == "oci-image":
                 verification = verify_oci_image(
-                    artifact_entry,
+                    artifact_payload,
                     manifest_url=manifest_url,
                 )
             else:
@@ -140,6 +140,10 @@ def verify_secondary_artifacts(
 
 
 def _artifact_label(artifact_entry: Any, *, index: int) -> str:
+    if isinstance(artifact_entry, BaseModel):
+        raw_artifact_id = getattr(artifact_entry, "artifact_id", None)
+        if isinstance(raw_artifact_id, str) and raw_artifact_id.strip():
+            return raw_artifact_id.strip()
     if isinstance(artifact_entry, dict):
         raw_artifact_id = artifact_entry.get("artifact_id")
         if isinstance(raw_artifact_id, str) and raw_artifact_id.strip():
@@ -148,12 +152,24 @@ def _artifact_label(artifact_entry: Any, *, index: int) -> str:
 
 
 def _declared_kind(artifact_entry: Any) -> str | None:
+    if isinstance(artifact_entry, BaseModel):
+        raw_kind = getattr(artifact_entry, "kind", None)
+        if isinstance(raw_kind, str) and raw_kind.strip():
+            return raw_kind.strip()
     if not isinstance(artifact_entry, dict):
         return None
     raw_kind = artifact_entry.get("kind")
     if not isinstance(raw_kind, str) or not raw_kind.strip():
         return None
     return raw_kind.strip()
+
+
+def _artifact_payload(artifact_entry: Any, *, manifest_url: str) -> dict[str, Any]:
+    if isinstance(artifact_entry, BaseModel):
+        return artifact_entry.model_dump(mode="json", exclude_none=True)
+    if isinstance(artifact_entry, dict):
+        return dict(artifact_entry)
+    raise ValueError(f"manifest secondary artifact entry must be an object: {manifest_url}")
 
 
 def _emit_secondary_artifact_summary(

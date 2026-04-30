@@ -27,6 +27,7 @@ from apache_buildish_release_tooling.release.artifact_registration.common import
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationResult,
 )
+from apache_buildish_release_tooling.release.contracts import GenericFileSecondaryArtifact
 from apache_buildish_release_tooling.release.source_artifact import sha512
 
 _SHA512_PATTERN = re.compile(r"^[0-9a-fA-F]{128}$")
@@ -93,4 +94,6 @@ def build_generic_file_registration(args: Namespace, bundle_dir: Path) -> Artifa
     if args.sha512_uri:
         artifact["checksums"]["sha512"]["uri"] = args.sha512_uri.strip()
     apply_common_artifact_metadata(artifact, args)
-    return ArtifactRegistrationResult(secondary_artifact=artifact)
+    return ArtifactRegistrationResult(
+        secondary_artifact=GenericFileSecondaryArtifact.model_validate(artifact)
+    )

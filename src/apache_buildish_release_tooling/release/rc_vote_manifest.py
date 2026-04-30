@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import os
 import subprocess
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,10 @@ from urllib.request import urlopen
 
 from apache_buildish_release_tooling.release.git_repo import GitRepository
 from apache_buildish_release_tooling.release.github_checks import resolve_repository_slug
+from apache_buildish_release_tooling.release.contracts import (
+    AnySecondaryArtifact,
+    RcVoteManifestV1,
+)
 from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
 from apache_buildish_release_tooling.release.release_state import derive_specific_release_line
 
@@ -180,8 +185,8 @@ def build_rc_vote_manifest(
     draft_release_url: str,
     rc_tag_target_commit: str,
     source_artifact_sha512: str,
-    secondary_artifacts: list[dict[str, Any]],
-) -> dict[str, Any]:
+    secondary_artifacts: Sequence[AnySecondaryArtifact | dict[str, Any]],
+) -> RcVoteManifestV1:
     """Build the machine-readable RC inventory staged for vote."""
 
     manifest_filename = "rc-vote-manifest.json"
@@ -237,7 +242,7 @@ def build_rc_vote_manifest(
                     ],
                 }
             ],
-            "secondary_artifacts": [dict(artifact) for artifact in secondary_artifacts],
+            "secondary_artifacts": list(secondary_artifacts),
         },
         "verification": {
             "staging_svn_url": f"{staging_url}/",
@@ -260,4 +265,4 @@ def build_rc_vote_manifest(
     github_provenance = github_workflow_provenance(repository_slug)
     if github_provenance is not None:
         manifest["provenance"]["github"] = github_provenance
-    return manifest
+    return RcVoteManifestV1.model_validate(manifest)

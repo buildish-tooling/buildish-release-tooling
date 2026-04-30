@@ -21,14 +21,15 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import ConfigDict, Field
 
+from apache_buildish_release_tooling.contracts import BuildishContractModel
 
 SelfRepositoryCheckoutMode = Literal["when_repository_omitted", "disabled"]
 RepositoryOverrideCheckoutMode = Literal["always", "disabled"]
 
 
-class SelfRepositoryConfig(BaseModel):
+class SelfRepositoryConfig(BuildishContractModel):
     """Committed harness settings for the workflow repository under test."""
 
     model_config = ConfigDict(extra="forbid")
@@ -38,7 +39,7 @@ class SelfRepositoryConfig(BaseModel):
     local_path: str | None = None
 
 
-class RepositoryOverrideConfig(BaseModel):
+class RepositoryOverrideConfig(BuildishContractModel):
     """Committed harness settings for one explicit repository override."""
 
     model_config = ConfigDict(extra="forbid")
@@ -47,12 +48,12 @@ class RepositoryOverrideConfig(BaseModel):
     local_path: str | None = None
 
 
-class ReleaseHarnessConfig(BaseModel):
+class ReleaseHarnessConfig(BuildishContractModel):
     """Committed `release-harness.yaml` plus optional local overrides."""
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: str = "1"
+    schema_version: Literal["1"] = "1"
     self_repository: SelfRepositoryConfig
     repository_overrides: dict[str, RepositoryOverrideConfig] = Field(default_factory=dict)
 

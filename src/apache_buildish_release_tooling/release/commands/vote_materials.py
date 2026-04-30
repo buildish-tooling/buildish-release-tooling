@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 from argparse import Namespace
 from collections.abc import Iterable
@@ -36,6 +35,11 @@ from apache_buildish_release_tooling.release.gpg_signing import (
     detached_ascii_sign,
     import_private_key_from_secret,
     secret_key_fingerprint,
+)
+from apache_buildish_release_tooling.release.contracts import (
+    AnySecondaryArtifact,
+    RcVoteManifestV1,
+    SecondaryArtifactManifestV1,
 )
 from apache_buildish_release_tooling.release.manifest import write_manifest
 from apache_buildish_release_tooling.release.models import CommandContext, PrepareRcState
@@ -67,7 +71,7 @@ from apache_buildish_release_tooling.release.commands._shared import (
 class RcVoteManifestArtifacts:
     """Built and signed authoritative RC vote-manifest artifacts."""
 
-    manifest_payload: dict[str, Any]
+    manifest_payload: RcVoteManifestV1
     manifest_file_path: Path
     manifest_sha512: str
     manifest_sha512_path: Path
@@ -90,7 +94,7 @@ class SecondaryArtifactAttachment:
 class LoadedSecondaryArtifact:
     """One secondary artifact plus any local bundle files needed by finalization."""
 
-    manifest_entry: dict[str, Any]
+    manifest_entry: AnySecondaryArtifact
     attachments: tuple[SecondaryArtifactAttachment, ...] = ()
 
 
@@ -114,18 +118,14 @@ def _validated_supplemental_filename(filename_value: object, *, manifest_path: P
 
 def _inventory_attachments_for_entry(
     manifest_path: Path,
-    artifact_entry: dict[str, Any],
+    artifact_entry: AnySecondaryArtifact,
 ) -> tuple[SecondaryArtifactAttachment, ...]:
-    inventory = artifact_entry.get("inventory")
+    inventory = artifact_entry.inventory
     if inventory is None:
         return ()
-    if not isinstance(inventory, dict):
-        raise ValueError(f"secondary artifact inventory must be a JSON object: {manifest_path}")
-    if "filename" not in inventory:
-        return ()
-    filename = _validated_supplemental_filename(inventory["filename"], manifest_path=manifest_path)
-    sha512_value = inventory.get("sha512")
-    if not isinstance(sha512_value, str) or not _SHA512_PATTERN.fullmatch(sha512_value.strip().lower()):
+    filename = _validated_supplemental_filename(inventory.filename, manifest_path=manifest_path)
+    sha512_value = inventory.sha512
+    if not _SHA512_PATTERN.fullmatch(sha512_value.strip().lower()):
         raise ValueError(f"secondary artifact inventory must declare a valid sha512 in {manifest_path}")
     inventory_path = manifest_path.parent / filename
     if not inventory_path.is_file():
@@ -150,20 +150,10 @@ def _load_secondary_artifacts(manifest_paths: Iterable[str]) -> list[LoadedSecon
         manifest_path = Path(manifest_argument)
         if not manifest_path.is_file():
             raise ValueError(f"secondary artifact manifest does not exist: {manifest_path}")
-        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if not isinstance(payload, dict):
-            raise ValueError(f"secondary artifact manifest must contain a JSON object: {manifest_path}")
-        artifact_entries = payload.get("secondary_artifacts")
-        if not isinstance(artifact_entries, list):
-            raise ValueError(
-                f"secondary artifact manifest must contain a 'secondary_artifacts' list: {manifest_path}"
-            )
-        for artifact_entry in artifact_entries:
-            if not isinstance(artifact_entry, dict):
-                raise ValueError(
-                    f"secondary artifact entries must be JSON objects: {manifest_path}"
-                )
-            manifest_entry = dict(artifact_entry)
+        payload = SecondaryArtifactManifestV1.model_validate_json(
+            manifest_path.read_text(encoding="utf-8")
+        )
+        for manifest_entry in payload.secondary_artifacts:
             secondary_artifacts.append(
                 LoadedSecondaryArtifact(
                     manifest_entry=manifest_entry,
@@ -176,22 +166,21 @@ def _load_secondary_artifacts(manifest_paths: Iterable[str]) -> list[LoadedSecon
 def _resolved_secondary_artifacts(
     staging_url: str,
     secondary_artifacts: list[LoadedSecondaryArtifact],
-) -> tuple[list[dict[str, Any]], tuple[Path, ...]]:
-    resolved_entries: list[dict[str, Any]] = []
+) -> tuple[list[AnySecondaryArtifact], tuple[Path, ...]]:
+    resolved_entries: list[AnySecondaryArtifact] = []
     staged_files_by_name: dict[str, str] = {}
     supplemental_file_paths: list[Path] = []
     staging_url = staging_url.rstrip("/")
     for artifact in secondary_artifacts:
-        manifest_entry = dict(artifact.manifest_entry)
-        inventory = manifest_entry.get("inventory")
-        if artifact.attachments and not isinstance(inventory, dict):
+        manifest_entry = artifact.manifest_entry.model_copy(deep=True)
+        inventory = manifest_entry.inventory
+        if artifact.attachments and inventory is None:
             raise ValueError(
                 "secondary artifact bundle attachments require an inventory object in the manifest entry"
             )
-        if isinstance(inventory, dict) and artifact.attachments:
-            inventory_payload = dict(inventory)
+        if inventory is not None and artifact.attachments:
             filename = _validated_supplemental_filename(
-                inventory_payload.get("filename"),
+                inventory.filename,
                 manifest_path=artifact.attachments[0].source_path,
             )
             attachment = next(
@@ -203,9 +192,12 @@ def _resolved_secondary_artifacts(
                     "secondary artifact inventory filename did not match any local bundle file: "
                     f"{filename}"
                 )
-            inventory_payload["sha512"] = attachment.sha512
-            inventory_payload["uri"] = f"{staging_url}/{attachment.staged_filename}"
-            manifest_entry["inventory"] = inventory_payload
+            manifest_entry.inventory = inventory.model_copy(
+                update={
+                    "sha512": attachment.sha512,
+                    "uri": f"{staging_url}/{attachment.staged_filename}",
+                }
+            )
         for attachment in artifact.attachments:
             existing_sha512 = staged_files_by_name.get(attachment.staged_filename)
             if existing_sha512 is not None and existing_sha512 != attachment.sha512:
@@ -227,7 +219,7 @@ def _build_rc_vote_manifest_artifacts(
     selected_release: SelectedGitHubRelease,
     rc_tag_target_commit: str,
     source_artifact_sha512: str,
-    secondary_artifacts: list[dict[str, Any]],
+    secondary_artifacts: list[AnySecondaryArtifact],
     supplemental_file_paths: tuple[Path, ...],
     output_dir: Path,
 ) -> RcVoteManifestArtifacts:
@@ -261,7 +253,7 @@ def _build_rc_vote_manifest_artifacts(
             source_artifact_sha512=source_artifact_sha512,
             secondary_artifacts=secondary_artifacts,
         )
-        write_manifest(manifest_file_path, manifest_payload)
+        write_manifest(manifest_file_path, manifest_payload, exclude_none=True)
         manifest_sha512 = sha512(manifest_file_path)
         manifest_sha512_path = write_sha512_file(manifest_file_path, manifest_sha512)
         manifest_signature_path = manifest_file_path.with_name(f"{manifest_file_path.name}.asc")
@@ -415,7 +407,7 @@ def _append_finalize_rc_vote_materials_summary(
     rc_tag_target_commit: str,
     source_artifact_sha512: str,
     source_signature_text: str,
-    secondary_artifacts: list[dict[str, Any]],
+    secondary_artifacts: list[AnySecondaryArtifact],
     authoritative_manifest_url: str,
     artifacts: RcVoteManifestArtifacts,
     project_vote_email: Any,
@@ -472,7 +464,7 @@ def _append_finalize_rc_vote_materials_summary(
     )
     summary.append_plaintext_block(
         "Verification trust roots",
-        f"ASF KEYS: {artifacts.manifest_payload['trust_roots']['asf_keys']['uri']}\n"
+        f"ASF KEYS: {artifacts.manifest_payload.trust_roots.asf_keys.uri}\n"
         "Buildish verification guide: "
         f"{context.component_config.release_verification_guide_url}",
     )
@@ -533,7 +525,7 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
         component_config=context.component_config,
         state=state,
         rc_tag_target_commit=rc_tag_target_commit,
-        manifest_payload=artifacts.manifest_payload,
+        manifest_payload=artifacts.manifest_payload.model_dump(mode="json", exclude_none=True),
         draft_release_url=selected_release.release_url,
         bootstrap_script_url=f"{state.staging_url.rstrip('/')}/{artifacts.bootstrap_artifacts.script_path.name}",
         bootstrap_invoker=artifacts.bootstrap_artifacts.invoker_snippet,
@@ -543,7 +535,7 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
         incubator_vote_email = render_incubator_rc_vote_email(
             component_config=context.component_config,
             state=state,
-            manifest_payload=artifacts.manifest_payload,
+            manifest_payload=artifacts.manifest_payload.model_dump(mode="json", exclude_none=True),
             bootstrap_script_url=(
                 f"{state.staging_url.rstrip('/')}/{artifacts.bootstrap_artifacts.script_path.name}"
             ),

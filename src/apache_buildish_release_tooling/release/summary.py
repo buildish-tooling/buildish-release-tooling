@@ -21,6 +21,7 @@ import os
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel
 
 class SummaryWriter:
     """Markdown writer for GitHub workflow summaries."""
@@ -66,7 +67,11 @@ class SummaryWriter:
     def append_json_block(self, title: str, payload: Any) -> None:
         """Append one JSON payload as a fenced code block."""
 
-        self.append_code_block(title, "json", json.dumps(payload, indent=2, sort_keys=True))
+        if isinstance(payload, BaseModel):
+            serialized_payload: Any = payload.model_dump(mode="json", exclude_none=True)
+        else:
+            serialized_payload = payload
+        self.append_code_block(title, "json", json.dumps(serialized_payload, indent=2, sort_keys=True))
 
     def append_bullet_list(self, title: str, items: list[str]) -> None:
         """Append one Markdown bullet list under a level-three heading."""

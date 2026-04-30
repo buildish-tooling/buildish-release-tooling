@@ -21,8 +21,10 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from apache_buildish_release_tooling.contracts import BuildishContractModel
 
-class AtrConfig(BaseModel):
+
+class AtrConfig(BuildishContractModel):
     """Validated optional ATR integration policy and release coordinates."""
 
     model_config = ConfigDict(extra="forbid")
@@ -68,7 +70,7 @@ class AtrConfig(BaseModel):
         return self
 
 
-class ComponentConfig(BaseModel):
+class ComponentConfig(BuildishContractModel):
     """Validated component policy and release-target configuration."""
 
     model_config = ConfigDict(extra="forbid")
@@ -107,6 +109,7 @@ class ComponentConfig(BaseModel):
                 "component policy must enable prepare_rc_runs_tests or release_branch_ci_required"
             )
         return self
+
 
 class PrepareRcState(BaseModel):
     """Resolved source and artifact state for an RC workflow run."""
