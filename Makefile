@@ -34,6 +34,6 @@ rat: ## Run Apache RAT license checks.
 	tools/rat/rat-check.sh
 
 test: ## Run the Python unit and integration test suite.
-	$(UV_RUN) python -m unittest discover -s tests -p 'test_*.py' -v
+	$(UV_RUN) python -m unittest discover -s tests -p 'test_*.py'
 
 check: lint typecheck test rat ## Run lint, type checks, and tests.

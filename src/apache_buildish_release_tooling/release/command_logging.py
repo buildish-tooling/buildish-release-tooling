@@ -37,6 +37,7 @@ _SECRET_ENV_NAMES = (
     "GITHUB_TOKEN",
 )
 _REDACTED_OPTION_NAMES = {"--username", "--password", "--passphrase", "--token", "--oauth-token"}
+_STDERR_CONTROL_ENV_NAME = "BUILDISH_COMMAND_LOG_STDERR"
 _LOG_STATE = local()
 
 
@@ -50,6 +51,15 @@ def redacted_token() -> str:
     """Return the placeholder used for sanitized command arguments."""
 
     return "***"
+
+
+def _stderr_enabled_by_default() -> bool:
+    """Return whether command traces should be echoed to stderr outside one active log sink."""
+
+    raw_value = os.environ.get(_STDERR_CONTROL_ENV_NAME)
+    if raw_value is None:
+        return True
+    return raw_value.strip().lower() not in {"0", "false", "no", "off"}
 
 
 def _secret_values(extra_values: Iterable[str] | None = None) -> list[str]:
@@ -154,5 +164,10 @@ def _write_log_line(
     if active_log is not None:
         active_log.stream.write(rendered)
         active_log.stream.flush()
-    if stderr_enabled or (active_log is not None and active_log.echo_to_stderr):
+    should_echo_to_stderr = (
+        active_log.echo_to_stderr
+        if active_log is not None
+        else stderr_enabled and _stderr_enabled_by_default()
+    )
+    if should_echo_to_stderr:
         sys.stderr.write(rendered)

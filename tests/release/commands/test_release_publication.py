@@ -402,7 +402,7 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
             repo_url=repo_url,
             artifact_sha512=artifact_sha512,
         )
-        subprocess.run(["svn", "update", str(working_copy_dir)], check=True, capture_output=True, text=True)
+        run_quiet(["svn", "update", str(working_copy_dir)], check=True)
         drifted_artifact = (
             working_copy_dir
             / "dist"
@@ -414,7 +414,7 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
             / "apache-buildish-example-1.2.3-incubating-src.tar.gz"
         )
         drifted_artifact.write_bytes(b"drifted source payload\n")
-        subprocess.run(["svn", "commit", "-m", "drift staged artifact", str(working_copy_dir)], check=True)
+        run_quiet(["svn", "commit", "-m", "drift staged artifact", str(working_copy_dir)], check=True)
         gh_path, gh_state_dir = create_fake_gh_launcher(
             sandbox_dir,
             list_response=[

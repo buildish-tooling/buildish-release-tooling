@@ -52,6 +52,7 @@ from tests.support import (
     git_rev_parse,
     init_git_origin_and_clone,
     init_svn_repo_and_checkout,
+    run_quiet,
     run_cli,
     set_github_origin_url,
 )
@@ -87,6 +88,7 @@ __all__ = [
     "os",
     "push_remote_ref",
     "re",
+    "run_quiet",
     "run_cli",
     "set_github_origin_url",
     "subprocess",
@@ -261,7 +263,7 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
         """Stage the minimal ASF source-release files in one SVN working copy RC directory."""
 
         client = AsfSvnClient()
-        subprocess.run(["svn", "update", str(working_copy_dir)], check=True, capture_output=True, text=True)
+        run_quiet(["svn", "update", str(working_copy_dir)], check=True)
         artifact_name = f"apache-{component_id}-{version}-incubating-src.tar.gz"
         artifact_path = sandbox_dir / artifact_name
         artifact_bytes = b"dummy source payload\n"
@@ -281,11 +283,9 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
             / f"{version}-rc{rc_number}"
         )
         target_dir.mkdir(parents=True, exist_ok=True)
-        subprocess.run(
+        run_quiet(
             ["svn", "add", "--force", str(target_dir)],
             check=True,
-            capture_output=True,
-            text=True,
         )
         for source_path, destination_name in (
             (artifact_path, artifact_name),
@@ -294,11 +294,9 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
         ):
             destination_path = target_dir / destination_name
             destination_path.write_bytes(source_path.read_bytes())
-            subprocess.run(
+            run_quiet(
                 ["svn", "add", "--force", str(destination_path)],
                 check=True,
-                capture_output=True,
-                text=True,
             )
         client.commit_working_copy(working_copy_dir, "stage source release files")
         return artifact_sha512
@@ -421,11 +419,9 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
             / component_id
             / f"{version}-rc{rc_number}"
         )
-        subprocess.run(
+        run_quiet(
             ["svn", "add", "--force", str(manifest_dir)],
             check=True,
-            capture_output=True,
-            text=True,
         )
         files = {
             "rc-vote-manifest.json": manifest_text,
@@ -437,7 +433,7 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
         for file_name, content in files.items():
             path = manifest_dir / file_name
             path.write_text(content, encoding="utf-8")
-            subprocess.run(["svn", "add", "--force", str(path)], check=True, capture_output=True, text=True)
+            run_quiet(["svn", "add", "--force", str(path)], check=True)
         AsfSvnClient().commit_working_copy(working_copy_dir, "stage rc vote manifest")
         return manifest_text
 
@@ -450,11 +446,11 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
         config_path = sandbox_dir / "component.yaml"
         git_create_branch(origin_dir, "release/1.x")
         git_create_branch(origin_dir, "release/1.2.x")
-        subprocess.run(["git", "-C", str(origin_dir), "checkout", "release/1.2.x"], check=True)
+        run_quiet(["git", "-C", str(origin_dir), "checkout", "release/1.2.x"], check=True)
         (origin_dir / ".gitignore").write_text("/dist/\n", encoding="utf-8")
-        subprocess.run(["git", "-C", str(origin_dir), "add", ".gitignore"], check=True)
-        subprocess.run(["git", "-C", str(origin_dir), "commit", "-m", "ignore dist"], check=True)
-        subprocess.run(["git", "-C", str(origin_dir), "checkout", "main"], check=True)
+        run_quiet(["git", "-C", str(origin_dir), "add", ".gitignore"], check=True)
+        run_quiet(["git", "-C", str(origin_dir), "commit", "-m", "ignore dist"], check=True)
+        run_quiet(["git", "-C", str(origin_dir), "checkout", "main"], check=True)
         fetch_git_origin_refs(clone_dir)
         self._write_component_config(
             config_path,

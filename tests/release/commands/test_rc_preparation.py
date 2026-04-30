@@ -35,7 +35,7 @@ class RcPreparationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             clone_dir,
             "refs/remotes/origin/release/1.2.x^{commit}",
         )
-        expected_source_date_epoch = subprocess.run(
+        expected_source_date_epoch = run_quiet(
             [
                 "git",
                 "-C",
@@ -46,8 +46,6 @@ class RcPreparationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
                 expected_commit,
             ],
             check=True,
-            capture_output=True,
-            text=True,
         ).stdout.strip()
         self._write_component_config(
             config_path,

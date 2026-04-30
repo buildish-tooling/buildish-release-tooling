@@ -18,13 +18,17 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
-import subprocess
 import tarfile
 import unittest
 
 from apache_buildish_release_tooling.release.source_artifact import checksum, create_from_git, write_checksum_file
 
-from tests.support import cleanup_sandbox, create_build_test_sandbox, init_git_origin_and_clone
+from tests.support import (
+    cleanup_sandbox,
+    create_build_test_sandbox,
+    init_git_origin_and_clone,
+    run_quiet,
+)
 
 
 class SourceArtifactIntegrationTest(unittest.TestCase):
@@ -39,15 +43,13 @@ class SourceArtifactIntegrationTest(unittest.TestCase):
         docs_dir.mkdir(parents=True, exist_ok=True)
         (docs_dir / "README.md").write_text("alpha\n", encoding="utf-8")
         (origin_dir / "LICENSE.txt").write_text("beta\n", encoding="utf-8")
-        subprocess.run(["git", "-C", str(origin_dir), "add", "docs/README.md", "LICENSE.txt"], check=True)
-        subprocess.run(["git", "-C", str(origin_dir), "commit", "-m", "add archive content"], check=True)
-        subprocess.run(["git", "-C", str(clone_a), "pull", "--ff-only"], check=True)
-        subprocess.run(["git", "clone", str(origin_dir), str(clone_b)], check=True)
-        commit = subprocess.run(
+        run_quiet(["git", "-C", str(origin_dir), "add", "docs/README.md", "LICENSE.txt"], check=True)
+        run_quiet(["git", "-C", str(origin_dir), "commit", "-m", "add archive content"], check=True)
+        run_quiet(["git", "-C", str(clone_a), "pull", "--ff-only"], check=True)
+        run_quiet(["git", "clone", str(origin_dir), str(clone_b)], check=True)
+        commit = run_quiet(
             ["git", "-C", str(clone_a), "rev-parse", "HEAD"],
             check=True,
-            text=True,
-            capture_output=True,
         )
         ref = commit.stdout.strip()
         artifact_a = sandbox_dir / "a.tar.gz"

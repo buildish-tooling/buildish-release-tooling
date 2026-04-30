@@ -16,12 +16,17 @@
 
 from __future__ import annotations
 
-import subprocess
 import unittest
 
 from apache_buildish_release_tooling.release.git_repo import GitRepository
 
-from tests.support import cleanup_sandbox, create_build_test_sandbox, fetch_git_origin_refs, init_git_origin_and_clone
+from tests.support import (
+    cleanup_sandbox,
+    create_build_test_sandbox,
+    fetch_git_origin_refs,
+    init_git_origin_and_clone,
+    run_quiet,
+)
 
 
 class GitRepositoryIntegrationTest(unittest.TestCase):
@@ -31,23 +36,21 @@ class GitRepositoryIntegrationTest(unittest.TestCase):
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
         origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
-        subprocess.run(["git", "-C", str(origin_dir), "branch", "release/1.x", "main"], check=True)
-        subprocess.run(["git", "-C", str(origin_dir), "branch", "release/1.2.x", "main"], check=True)
-        subprocess.run(
+        run_quiet(["git", "-C", str(origin_dir), "branch", "release/1.x", "main"], check=True)
+        run_quiet(["git", "-C", str(origin_dir), "branch", "release/1.2.x", "main"], check=True)
+        run_quiet(
             ["git", "-C", str(origin_dir), "tag", "-a", "v1.2.3-rc0", "-m", "rc0", "main"], check=True
         )
-        subprocess.run(
+        run_quiet(
             ["git", "-C", str(origin_dir), "tag", "-a", "v1.2.3-rc2", "-m", "rc2", "main"], check=True
         )
         fetch_git_origin_refs(clone_dir)
         repo = GitRepository(clone_dir)
         resolved_branch = repo.resolve_release_branch_for_version("1.2.3")
         resolved_commit = repo.resolve_commit("release/1.2.x")
-        release_head = subprocess.run(
+        release_head = run_quiet(
             ["git", "-C", str(clone_dir), "rev-parse", "refs/remotes/origin/release/1.2.x^{commit}"],
             check=True,
-            text=True,
-            capture_output=True,
         ).stdout.strip()
         self.assertEqual("release/1.2.x", resolved_branch)
         self.assertEqual(release_head, resolved_commit)
@@ -58,20 +61,16 @@ class GitRepositoryIntegrationTest(unittest.TestCase):
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
         origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
-        subprocess.run(["git", "-C", str(origin_dir), "branch", "release/1.x", "main"], check=True)
+        run_quiet(["git", "-C", str(origin_dir), "branch", "release/1.x", "main"], check=True)
         fetch_git_origin_refs(clone_dir)
         repo = GitRepository(clone_dir)
         repo.create_branch("release/1.2.x", "release/1.x")
-        source_commit = subprocess.run(
+        source_commit = run_quiet(
             ["git", "-C", str(clone_dir), "rev-parse", "refs/remotes/origin/release/1.x^{commit}"],
             check=True,
-            text=True,
-            capture_output=True,
         ).stdout.strip()
-        created_commit = subprocess.run(
+        created_commit = run_quiet(
             ["git", "-C", str(clone_dir), "rev-parse", "refs/heads/release/1.2.x^{commit}"],
             check=True,
-            text=True,
-            capture_output=True,
         ).stdout.strip()
         self.assertEqual(source_commit, created_commit)

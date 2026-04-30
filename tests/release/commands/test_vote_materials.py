@@ -48,7 +48,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         git_create_branch(origin_dir, "release/1.2.x")
         fetch_git_origin_refs(clone_dir)
         expected_source_date_epoch = int(
-            subprocess.run(
+            run_quiet(
                 [
                     "git",
                     "-C",
@@ -59,8 +59,6 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
                     "refs/remotes/origin/release/1.2.x^{commit}",
                 ],
                 check=True,
-                capture_output=True,
-                text=True,
             ).stdout.strip()
         )
         self._write_component_config(
@@ -88,7 +86,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         client.mkdir_url(dev_base_url, "create dev component path")
         client.mkdir_url(release_base_url, "create release component path")
 
-        subprocess.run(
+        run_quiet(
             [
                 "gpg",
                 "--batch",
@@ -104,10 +102,8 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             ],
             env={**os.environ, "GNUPGHOME": str(source_home)},
             check=True,
-            capture_output=True,
-            text=True,
         )
-        public_key = subprocess.run(
+        public_key = run_quiet(
             [
                 "gpg",
                 "--armor",
@@ -116,10 +112,8 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             ],
             env={**os.environ, "GNUPGHOME": str(source_home)},
             check=True,
-            capture_output=True,
-            text=True,
         ).stdout
-        secret_key = subprocess.run(
+        secret_key = run_quiet(
             [
                 "gpg",
                 "--armor",
@@ -128,12 +122,10 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             ],
             env={**os.environ, "GNUPGHOME": str(source_home)},
             check=True,
-            capture_output=True,
-            text=True,
         ).stdout
         keys_path.write_text(public_key, encoding="utf-8")
-        subprocess.run(["svn", "add", str(keys_path)], check=True)
-        subprocess.run(["svn", "commit", "-m", "add KEYS", str(working_copy_dir)], check=True)
+        run_quiet(["svn", "add", str(keys_path)], check=True)
+        run_quiet(["svn", "commit", "-m", "add KEYS", str(working_copy_dir)], check=True)
         bootstrap_asset_path = sandbox_dir / "buildish-example-bootstrap.zip"
         bootstrap_asset_path.write_bytes(b"bootstrap payload\n")
         expected_secondary_commit = git_rev_parse(
@@ -371,7 +363,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         git_create_branch(origin_dir, "release/1.2.x")
         fetch_git_origin_refs(clone_dir)
         expected_source_date_epoch = int(
-            subprocess.run(
+            run_quiet(
                 [
                     "git",
                     "-C",
@@ -382,8 +374,6 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
                     "refs/remotes/origin/release/1.2.x^{commit}",
                 ],
                 check=True,
-                capture_output=True,
-                text=True,
             ).stdout.strip()
         )
         self._write_component_config(
@@ -395,7 +385,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         client.mkdir_url(dev_base_url, "create dev component path")
         client.mkdir_url(release_base_url, "create release component path")
 
-        subprocess.run(
+        run_quiet(
             [
                 "gpg",
                 "--batch",
@@ -411,10 +401,8 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             ],
             env={**os.environ, "GNUPGHOME": str(source_home)},
             check=True,
-            capture_output=True,
-            text=True,
         )
-        public_key = subprocess.run(
+        public_key = run_quiet(
             [
                 "gpg",
                 "--armor",
@@ -423,10 +411,8 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             ],
             env={**os.environ, "GNUPGHOME": str(source_home)},
             check=True,
-            capture_output=True,
-            text=True,
         ).stdout
-        secret_key = subprocess.run(
+        secret_key = run_quiet(
             [
                 "gpg",
                 "--armor",
@@ -435,12 +421,10 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             ],
             env={**os.environ, "GNUPGHOME": str(source_home)},
             check=True,
-            capture_output=True,
-            text=True,
         ).stdout
         keys_path.write_text(public_key, encoding="utf-8")
-        subprocess.run(["svn", "add", str(keys_path)], check=True)
-        subprocess.run(["svn", "commit", "-m", "add KEYS", str(working_copy_dir)], check=True)
+        run_quiet(["svn", "add", str(keys_path)], check=True)
+        run_quiet(["svn", "commit", "-m", "add KEYS", str(working_copy_dir)], check=True)
 
         completed = run_cli(
             [
@@ -626,7 +610,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         client.mkdir_url(dev_base_url, "create dev component path")
         client.mkdir_url(release_base_url, "create release component path")
 
-        subprocess.run(
+        run_quiet(
             [
                 "gpg",
                 "--batch",
@@ -642,10 +626,8 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             ],
             env={**os.environ, "GNUPGHOME": str(source_home)},
             check=True,
-            capture_output=True,
-            text=True,
         )
-        public_key = subprocess.run(
+        public_key = run_quiet(
             [
                 "gpg",
                 "--armor",
@@ -654,10 +636,8 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             ],
             env={**os.environ, "GNUPGHOME": str(source_home)},
             check=True,
-            capture_output=True,
-            text=True,
         ).stdout
-        secret_key = subprocess.run(
+        secret_key = run_quiet(
             [
                 "gpg",
                 "--armor",
@@ -666,12 +646,10 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             ],
             env={**os.environ, "GNUPGHOME": str(source_home)},
             check=True,
-            capture_output=True,
-            text=True,
         ).stdout
         keys_path.write_text(public_key, encoding="utf-8")
-        subprocess.run(["svn", "add", str(keys_path)], check=True)
-        subprocess.run(["svn", "commit", "-m", "add KEYS", str(working_copy_dir)], check=True)
+        run_quiet(["svn", "add", str(keys_path)], check=True)
+        run_quiet(["svn", "commit", "-m", "add KEYS", str(working_copy_dir)], check=True)
 
         completed = run_cli(
             [
@@ -705,7 +683,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         )
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
 
-        subprocess.run(["svn", "update", str(working_copy_dir)], check=True, capture_output=True, text=True)
+        run_quiet(["svn", "update", str(working_copy_dir)], check=True)
         drifted_artifact = (
             working_copy_dir
             / "dist"
@@ -717,7 +695,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             / "apache-buildish-example-1.2.3-incubating-src.tar.gz"
         )
         drifted_artifact.write_bytes(b"drifted source payload\n")
-        subprocess.run(["svn", "commit", "-m", "drift staged artifact", str(working_copy_dir)], check=True)
+        run_quiet(["svn", "commit", "-m", "drift staged artifact", str(working_copy_dir)], check=True)
 
         set_github_origin_url(clone_dir, "apache/buildish-example")
         gh_path, gh_state_dir = create_fake_gh_launcher(

@@ -16,10 +16,16 @@
 
 from __future__ import annotations
 
+import io
 import os
+from unittest import mock
 import unittest
 
-from apache_buildish_release_tooling.release.command_logging import format_command
+from apache_buildish_release_tooling.release.command_logging import (
+    command_log_sink,
+    format_command,
+    print_command,
+)
 
 
 class CommandLoggingTest(unittest.TestCase):
@@ -52,3 +58,36 @@ class CommandLoggingTest(unittest.TestCase):
         os.environ["BUILDISH_SVN_DEV_PASSWORD"] = secret_value
         actual = format_command(["curl", f"https://release-user:{secret_value}@example.invalid/path"])
         self.assertEqual("curl 'https://***:***@example.invalid/path'", actual)
+
+    def test_command_logging_can_disable_default_stderr_echo_via_environment(self) -> None:
+        original_env = dict(os.environ)
+
+        def restore_env() -> None:
+            os.environ.clear()
+            os.environ.update(original_env)
+
+        self.addCleanup(restore_env)
+        os.environ["BUILDISH_COMMAND_LOG_STDERR"] = "0"
+        stderr_buffer = io.StringIO()
+        with mock.patch("sys.stderr", stderr_buffer):
+            print_command(["git", "status"])
+        self.assertEqual("", stderr_buffer.getvalue())
+
+    def test_active_command_log_can_still_echo_to_stderr_when_default_echo_is_disabled(self) -> None:
+        original_env = dict(os.environ)
+
+        def restore_env() -> None:
+            os.environ.clear()
+            os.environ.update(original_env)
+
+        self.addCleanup(restore_env)
+        os.environ["BUILDISH_COMMAND_LOG_STDERR"] = "0"
+        stderr_buffer = io.StringIO()
+        log_buffer = io.StringIO()
+        with (
+            mock.patch("sys.stderr", stderr_buffer),
+            command_log_sink(log_buffer, echo_to_stderr=True),
+        ):
+            print_command(["git", "status"])
+        self.assertIn("+ git status\n", stderr_buffer.getvalue())
+        self.assertIn("+ git status\n", log_buffer.getvalue())

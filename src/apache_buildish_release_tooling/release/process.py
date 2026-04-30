@@ -27,9 +27,20 @@ from apache_buildish_release_tooling.release.command_logging import (
     print_command,
 )
 
+_FORCE_CAPTURE_OUTPUT_ENV_NAME = "BUILDISH_COMMAND_CAPTURE_OUTPUT"
+
 
 class CommandExecutionError(RuntimeError):
     """Raised when a logged subprocess exits unsuccessfully."""
+
+
+def _force_capture_output() -> bool:
+    """Return whether command output should always be captured instead of streamed."""
+
+    raw_value = os.environ.get(_FORCE_CAPTURE_OUTPUT_ENV_NAME)
+    if raw_value is None:
+        return False
+    return raw_value.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def run_logged_command(
@@ -49,6 +60,7 @@ def run_logged_command(
     merged_env = dict(os.environ) if inherit_parent_env else {}
     if env is not None:
         merged_env.update(env)
+    effective_capture_output = capture_output or _force_capture_output()
     if log_command:
         print_command(
             command,
@@ -67,10 +79,10 @@ def run_logged_command(
         env=merged_env,
         input=input_text,
         text=True,
-        capture_output=capture_output,
+        capture_output=effective_capture_output,
         check=False,
     )
-    if capture_output:
+    if effective_capture_output:
         log_command_output("stdout", completed.stdout or "", extra_secret_values=extra_secret_values)
         log_command_output("stderr", completed.stderr or "", extra_secret_values=extra_secret_values)
     if check and completed.returncode != 0:

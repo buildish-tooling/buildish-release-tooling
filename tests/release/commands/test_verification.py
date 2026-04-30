@@ -48,8 +48,8 @@ from tests.release.commands.support import (
     init_git_origin_and_clone,
     json,
     os,
+    run_quiet,
     run_cli,
-    subprocess,
 )
 
 
@@ -1801,11 +1801,11 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 encoding="utf-8",
             )
             rebuild_script.chmod(0o755)
-            subprocess.run(
+            run_quiet(
                 ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-bootstrap.sh"],
                 check=True,
             )
-            subprocess.run(
+            run_quiet(
                 ["git", "-C", str(origin_dir), "commit", "-m", "add bootstrap rebuild script"],
                 check=True,
             )
@@ -1829,11 +1829,11 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 encoding="utf-8",
             )
             rebuild_script.chmod(0o755)
-            subprocess.run(
+            run_quiet(
                 ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-wheel.sh"],
                 check=True,
             )
-            subprocess.run(
+            run_quiet(
                 ["git", "-C", str(origin_dir), "commit", "-m", "add wheel rebuild script"],
                 check=True,
             )
@@ -1857,11 +1857,11 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 encoding="utf-8",
             )
             rebuild_script.chmod(0o755)
-            subprocess.run(
+            run_quiet(
                 ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-npm-package.sh"],
                 check=True,
             )
-            subprocess.run(
+            run_quiet(
                 ["git", "-C", str(origin_dir), "commit", "-m", "add npm rebuild script"],
                 check=True,
             )
@@ -1907,11 +1907,11 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 encoding="utf-8",
             )
             rebuild_script.chmod(0o755)
-            subprocess.run(
+            run_quiet(
                 ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-maven-staging.sh"],
                 check=True,
             )
-            subprocess.run(
+            run_quiet(
                 ["git", "-C", str(origin_dir), "commit", "-m", "add maven rebuild script"],
                 check=True,
             )
@@ -1955,11 +1955,11 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 encoding="utf-8",
             )
             rebuild_script.chmod(0o755)
-            subprocess.run(
+            run_quiet(
                 ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-oci-image.sh"],
                 check=True,
             )
-            subprocess.run(
+            run_quiet(
                 ["git", "-C", str(origin_dir), "commit", "-m", "add oci rebuild script"],
                 check=True,
             )
@@ -1968,11 +1968,11 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         git_create_annotated_tag(origin_dir, rc_tag)
         if mismatched_source_commit_sha:
             (origin_dir / "README.txt").write_text("root\nsecond\n", encoding="utf-8")
-            subprocess.run(["git", "-C", str(origin_dir), "add", "README.txt"], check=True)
-            subprocess.run(["git", "-C", str(origin_dir), "commit", "-m", "second commit"], check=True)
+            run_quiet(["git", "-C", str(origin_dir), "add", "README.txt"], check=True)
+            run_quiet(["git", "-C", str(origin_dir), "commit", "-m", "second commit"], check=True)
             source_commit_sha = git_rev_parse(origin_dir, "HEAD")
         source_date_epoch = int(
-            subprocess.run(
+            run_quiet(
                 [
                     "git",
                     "-C",
@@ -1983,12 +1983,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                     source_commit_sha,
                 ],
                 check=True,
-                capture_output=True,
-                text=True,
             ).stdout.strip()
         )
 
-        subprocess.run(
+        run_quiet(
             [
                 "gpg",
                 "--batch",
@@ -2004,11 +2002,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             ],
             env={**os.environ, "GNUPGHOME": str(effective_gpg_home)},
             check=True,
-            capture_output=True,
-            text=True,
         )
         keys_path.write_text(
-            subprocess.run(
+            run_quiet(
                 [
                     "gpg",
                     "--armor",
@@ -2017,8 +2013,6 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 ],
                 env={**os.environ, "GNUPGHOME": str(effective_gpg_home)},
                 check=True,
-                capture_output=True,
-                text=True,
             ).stdout,
             encoding="utf-8",
         )
@@ -2400,7 +2394,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
     @staticmethod
     def _detached_sign(gpg_home: Path, input_path: Path, output_path: Path) -> None:
         fingerprint = secret_key_fingerprint(gpg_home)
-        subprocess.run(
+        run_quiet(
             [
                 "gpg",
                 "--batch",
@@ -2419,8 +2413,6 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             ],
             env={**os.environ, "GNUPGHOME": str(gpg_home)},
             check=True,
-            capture_output=True,
-            text=True,
         )
 
     @staticmethod

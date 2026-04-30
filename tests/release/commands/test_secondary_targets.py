@@ -28,34 +28,34 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         manifest_path = sandbox_dir / "update-moving-tags.json"
         git_create_branch(origin_dir, "release/1.x")
         git_create_branch(origin_dir, "release/1.2.x")
-        subprocess.run(
+        run_quiet(
             ["git", "-C", str(origin_dir), "checkout", "-b", "line-1.3", "main"],
             check=True,
         )
         (origin_dir / "release-1.3.txt").write_text("1.3.4\n", encoding="utf-8")
-        subprocess.run(["git", "-C", str(origin_dir), "add", "release-1.3.txt"], check=True)
-        subprocess.run(["git", "-C", str(origin_dir), "commit", "-m", "release 1.3.4"], check=True)
-        subprocess.run(
+        run_quiet(["git", "-C", str(origin_dir), "add", "release-1.3.txt"], check=True)
+        run_quiet(["git", "-C", str(origin_dir), "commit", "-m", "release 1.3.4"], check=True)
+        run_quiet(
             ["git", "-C", str(origin_dir), "tag", "-a", "v1.3.4", "-m", "v1.3.4"],
             check=True,
         )
-        subprocess.run(
+        run_quiet(
             ["git", "-C", str(origin_dir), "tag", "-a", "v1", "-m", "v1"],
             check=True,
         )
-        subprocess.run(["git", "-C", str(origin_dir), "checkout", "main"], check=True)
-        subprocess.run(
+        run_quiet(["git", "-C", str(origin_dir), "checkout", "main"], check=True)
+        run_quiet(
             ["git", "-C", str(origin_dir), "tag", "-a", "v1.2.2", "-m", "v1.2.2"],
             check=True,
         )
-        subprocess.run(
+        run_quiet(
             ["git", "-C", str(origin_dir), "tag", "-a", "v1.2", "-m", "v1.2"],
             check=True,
         )
         (origin_dir / "release-1.2.3.txt").write_text("1.2.3\n", encoding="utf-8")
-        subprocess.run(["git", "-C", str(origin_dir), "add", "release-1.2.3.txt"], check=True)
-        subprocess.run(["git", "-C", str(origin_dir), "commit", "-m", "release 1.2.3"], check=True)
-        subprocess.run(
+        run_quiet(["git", "-C", str(origin_dir), "add", "release-1.2.3.txt"], check=True)
+        run_quiet(["git", "-C", str(origin_dir), "commit", "-m", "release 1.2.3"], check=True)
+        run_quiet(
             ["git", "-C", str(origin_dir), "tag", "-a", "v1.2.3", "-m", "v1.2.3"],
             check=True,
         )
@@ -223,7 +223,7 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
             ],
         )
 
-        subprocess.run(
+        run_quiet(
             [
                 "gpg",
                 "--batch",
@@ -242,7 +242,7 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
             capture_output=True,
             text=True,
         )
-        secret_key = subprocess.run(
+        secret_key = run_quiet(
             [
                 "gpg",
                 "--armor",

@@ -559,6 +559,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         act_path, state_dir = create_fake_act_launcher(self.sandbox_dir)
         scenario_path = self._scenario_path("releasey-30-release-version.yaml")
         stderr = StringIO()
+        stdout = StringIO()
 
         with (
             mock.patch.dict(
@@ -574,6 +575,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
                 clear=False,
             ),
             mock.patch("sys.stderr", stderr),
+            mock.patch("sys.stdout", stdout),
         ):
             with self.assertRaises(SystemExit) as exc_info:
                 harness_main(["run", str(scenario_path), "--workspace-root", str(self.sandbox_dir)])
@@ -628,6 +630,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
 
         scenario_path = self._scenario_path("releasey-10-create-release-branch.yaml")
         stderr = StringIO()
+        stdout = StringIO()
 
         with (
             mock.patch(
@@ -635,6 +638,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
                 side_effect=HarnessExternalToolError("missing act test message"),
             ),
             mock.patch("sys.stderr", stderr),
+            mock.patch("sys.stdout", stdout),
         ):
             with self.assertRaises(SystemExit) as exc_info:
                 harness_main(["run", str(scenario_path), "--workspace-root", str(self.sandbox_dir)])

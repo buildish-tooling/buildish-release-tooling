@@ -35,8 +35,21 @@ import sys
 import tempfile
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
+
+os.environ.setdefault("BUILDISH_COMMAND_LOG_STDERR", "0")
+os.environ.setdefault("BUILDISH_COMMAND_CAPTURE_OUTPUT", "1")
+
+
+def run_quiet(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+    """Run one subprocess quietly by default, capturing output unless the caller overrides it."""
+
+    if "capture_output" not in kwargs and "stdout" not in kwargs and "stderr" not in kwargs:
+        kwargs["capture_output"] = True
+    kwargs.setdefault("text", True)
+    return cast(subprocess.CompletedProcess[str], subprocess.run(command, **kwargs))
 
 
 def component_root() -> Path:
@@ -104,11 +117,11 @@ def init_git_origin_and_clone(sandbox_dir: Path) -> tuple[Path, Path]:
 
     origin_dir = sandbox_dir / "origin"
     clone_dir = sandbox_dir / "clone"
-    subprocess.run(["git", "init", "--initial-branch=main", str(origin_dir)], check=True)
-    subprocess.run(
+    run_quiet(["git", "init", "--initial-branch=main", str(origin_dir)], check=True)
+    run_quiet(
         ["git", "-C", str(origin_dir), "config", "user.name", "Release Tooling Tests"], check=True
     )
-    subprocess.run(
+    run_quiet(
         [
             "git",
             "-C",
@@ -120,13 +133,13 @@ def init_git_origin_and_clone(sandbox_dir: Path) -> tuple[Path, Path]:
         check=True,
     )
     (origin_dir / "README.txt").write_text("root\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(origin_dir), "add", "README.txt"], check=True)
-    subprocess.run(["git", "-C", str(origin_dir), "commit", "-m", "initial commit"], check=True)
-    subprocess.run(["git", "clone", str(origin_dir), str(clone_dir)], check=True)
-    subprocess.run(
+    run_quiet(["git", "-C", str(origin_dir), "add", "README.txt"], check=True)
+    run_quiet(["git", "-C", str(origin_dir), "commit", "-m", "initial commit"], check=True)
+    run_quiet(["git", "clone", str(origin_dir), str(clone_dir)], check=True)
+    run_quiet(
         ["git", "-C", str(clone_dir), "config", "user.name", "Release Tooling Tests"], check=True
     )
-    subprocess.run(
+    run_quiet(
         [
             "git",
             "-C",
@@ -143,7 +156,7 @@ def init_git_origin_and_clone(sandbox_dir: Path) -> tuple[Path, Path]:
 def fetch_git_origin_refs(clone_dir: Path) -> None:
     """Fetch remote heads and tags into a disposable clone."""
 
-    subprocess.run(
+    run_quiet(
         [
             "git",
             "-C",
@@ -162,7 +175,7 @@ def fetch_git_origin_refs(clone_dir: Path) -> None:
 def set_github_origin_url(repo_dir: Path, repository_slug: str) -> None:
     """Rewrite `origin` to a GitHub URL for GitHub CLI integration tests."""
 
-    subprocess.run(
+    run_quiet(
         [
             "git",
             "-C",
@@ -179,7 +192,7 @@ def set_github_origin_url(repo_dir: Path, repository_slug: str) -> None:
 def git_create_branch(repo_dir: Path, branch_name: str, source_ref: str = "main") -> None:
     """Create a branch inside a disposable Git repository."""
 
-    subprocess.run(
+    run_quiet(
         ["git", "-C", str(repo_dir), "branch", branch_name, source_ref],
         check=True,
     )
@@ -188,7 +201,7 @@ def git_create_branch(repo_dir: Path, branch_name: str, source_ref: str = "main"
 def git_create_annotated_tag(repo_dir: Path, tag_name: str, source_ref: str = "main") -> None:
     """Create an annotated tag inside a disposable Git repository."""
 
-    subprocess.run(
+    run_quiet(
         ["git", "-C", str(repo_dir), "tag", "-a", tag_name, "-m", tag_name, source_ref],
         check=True,
     )
@@ -197,11 +210,9 @@ def git_create_annotated_tag(repo_dir: Path, tag_name: str, source_ref: str = "m
 def git_rev_parse(repo_dir: Path, ref: str) -> str:
     """Resolve a Git ref to its commit SHA inside a disposable repository."""
 
-    return subprocess.run(
+    return run_quiet(
         ["git", "-C", str(repo_dir), "rev-parse", ref],
         check=True,
-        text=True,
-        capture_output=True,
     ).stdout.strip()
 
 
@@ -211,7 +222,7 @@ def init_svn_repo_and_checkout(sandbox_dir: Path) -> tuple[Path, str, Path]:
     repo_dir = sandbox_dir / "svnrepo"
     working_copy_dir = sandbox_dir / "svnwc"
     repo_url = f"file://{repo_dir}"
-    subprocess.run(["svnadmin", "create", str(repo_dir)], check=True)
+    run_quiet(["svnadmin", "create", str(repo_dir)], check=True)
     for path in (
         "dist",
         "dist/dev",
@@ -221,8 +232,8 @@ def init_svn_repo_and_checkout(sandbox_dir: Path) -> tuple[Path, str, Path]:
         "dist/release/incubator",
         "dist/release/incubator/buildish",
     ):
-        subprocess.run(["svn", "mkdir", "-m", f"create {path}", f"{repo_url}/{path}"], check=True)
-    subprocess.run(["svn", "checkout", repo_url, str(working_copy_dir)], check=True)
+        run_quiet(["svn", "mkdir", "-m", f"create {path}", f"{repo_url}/{path}"], check=True)
+    run_quiet(["svn", "checkout", repo_url, str(working_copy_dir)], check=True)
     return repo_dir, repo_url, working_copy_dir
 
 
