@@ -58,6 +58,7 @@ def run_prepare_rc(args: Namespace) -> Path:
         "action": "prepare-rc",
         "version": version,
         "resolved_source_ref": state.resolved_source_ref,
+        "source_date_epoch": str(state.source_date_epoch),
         "resolved_release_branch": state.resolved_release_branch,
         "rc_number": str(state.rc_number),
         "rc_tag": state.rc_tag,
@@ -73,12 +74,15 @@ def run_prepare_rc(args: Namespace) -> Path:
     write_manifest(manifest_path, manifest_entries)
     _append_github_outputs(
         {
+            "version": manifest_entries["version"],
             "rc_tag": manifest_entries["rc_tag"],
             "resolved_source_ref": manifest_entries["resolved_source_ref"],
+            "source_date_epoch": manifest_entries["source_date_epoch"],
         }
     )
     summary.append_heading("Prepare RC")
     summary.append_plaintext_block("Resolved source", state.resolved_source_ref)
+    summary.append_plaintext_block("SOURCE_DATE_EPOCH", str(state.source_date_epoch))
     summary.append_plaintext_block("RC identity", state.rc_tag)
     summary.append_plaintext_block(
         "ASF SVN staging cleanup",
@@ -167,6 +171,7 @@ def run_create_source_artifact(args: Namespace) -> Path:
             "action": "create-source-artifact",
             "version": version,
             "resolved_source_ref": state.resolved_source_ref,
+            "source_date_epoch": str(state.source_date_epoch),
             "source_artifact_name": state.source_artifact_name,
             "source_artifact_path": str(artifact_path),
             "source_artifact_sha512": artifact_sha512,
@@ -175,6 +180,7 @@ def run_create_source_artifact(args: Namespace) -> Path:
     summary.append_heading("Source Artifact")
     summary.append_plaintext_block("Source artifact path", str(artifact_path))
     summary.append_plaintext_block("Source artifact ref", state.resolved_source_ref)
+    summary.append_plaintext_block("SOURCE_DATE_EPOCH", str(state.source_date_epoch))
     summary.append_sha512_block(state.source_artifact_name, artifact_sha512)
     return manifest_path
 
@@ -225,6 +231,7 @@ def run_build_source_rc(args: Namespace) -> Path:
                 "action": "build-source-rc",
                 "version": version,
                 "resolved_source_ref": state.resolved_source_ref,
+                "source_date_epoch": str(state.source_date_epoch),
                 "rc_tag": state.rc_tag,
                 "source_artifact_name": state.source_artifact_name,
                 "source_artifact_path": str(artifact_path),
@@ -237,6 +244,7 @@ def run_build_source_rc(args: Namespace) -> Path:
         summary.append_heading("Build Source RC")
         summary.append_plaintext_block("Source artifact path", str(artifact_path))
         summary.append_plaintext_block("Source artifact ref", state.resolved_source_ref)
+        summary.append_plaintext_block("SOURCE_DATE_EPOCH", str(state.source_date_epoch))
         summary.append_plaintext_block("ASF SVN staged RC URL", f"{staging_url}/")
         summary.append_sha512_block(state.source_artifact_name, artifact_sha512)
         summary.append_signature_block(state.source_artifact_name, asc_path)

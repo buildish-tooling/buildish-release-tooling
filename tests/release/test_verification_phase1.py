@@ -43,6 +43,7 @@ class VerifyRcPhase1ReportTest(unittest.TestCase):
                 version="1.2.3",
                 rc_tag="v1.2.3-rc0",
                 source_commit_sha="0123456789abcdef0123456789abcdef01234567",
+                source_date_epoch=1714032000,
                 source_repository_url="https://github.com/apache/buildish-example.git",
                 manifest_url="https://dist.apache.org/example/rc-vote-manifest.json",
                 keys_url="https://downloads.apache.org/incubator/buildish/KEYS",

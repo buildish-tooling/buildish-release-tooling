@@ -115,6 +115,7 @@ class PrepareRcState(BaseModel):
 
     resolved_release_branch: str
     resolved_source_ref: str
+    source_date_epoch: int = Field(ge=0)
     rc_number: int = Field(ge=0)
     rc_tag: str
     final_tag: str

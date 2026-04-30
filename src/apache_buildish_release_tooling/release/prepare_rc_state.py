@@ -61,6 +61,7 @@ def resolve_prepare_rc_state(
     else:
         resolved_release_branch = repo.resolve_release_branch_for_version(version)
         resolved_source_ref = repo.resolve_commit(resolved_release_branch)
+    source_date_epoch = repo.commit_timestamp_epoch(resolved_source_ref)
     if rc_tag is None:
         rc_number = repo.next_matching_rc_number(version)
         resolved_rc_tag = derive_rc_tag(version, rc_number)
@@ -79,6 +80,7 @@ def resolve_prepare_rc_state(
     return PrepareRcState(
         resolved_release_branch=resolved_release_branch,
         resolved_source_ref=resolved_source_ref,
+        source_date_epoch=source_date_epoch,
         rc_number=rc_number,
         rc_tag=resolved_rc_tag,
         final_tag=derive_final_tag(version),

@@ -201,6 +201,7 @@ def build_rc_vote_manifest(
         "release_branch": state.resolved_release_branch,
         "source_repository_url": source_repository_url,
         "source_commit_sha": state.resolved_source_ref,
+        "source_date_epoch": state.source_date_epoch,
         "rc_tag": state.rc_tag,
         "final_tag": state.final_tag,
         "final_tag_mode": component_config.final_tag_mode,

@@ -65,6 +65,7 @@ class VerificationFixture:
     report_json_path: Path
     report_md_path: Path
     source_commit_sha: str
+    source_date_epoch: int
     work_dir: Path
     extra_env: dict[str, str]
     prepend_dirs: tuple[Path, ...]
@@ -113,6 +114,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Source Artifact\n---------------", completed.stderr)
         self.assertIn("Secondary Artifacts\n-------------------", completed.stderr)
         self.assertIn("Secondary Artifact 1/1: maven-staging-main", completed.stderr)
+        self.assertIn(f"SOURCE_DATE_EPOCH: {fixture.source_date_epoch}", completed.stderr)
         self.assertIn("✓ Verified manifest signature: ", completed.stderr)
         self.assertIn("✓ Verified rc_tag binding: v1.2.3-rc0 -> ", completed.stderr)
         self.assertIn("✓ Verified staged source SHA512: ", completed.stderr)
@@ -204,17 +206,22 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
         report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
         self.assertEqual("verified", report_payload["verdict"])
+        self.assertEqual(fixture.source_date_epoch, report_payload["source_date_epoch"])
         self.assertTrue(report_payload["manifest_verification"]["rc_tag_matches_source_commit_sha"])
         self.assertTrue(report_payload["source_artifact_verification"]["matches_source_commit_sha"])
         self.assertEqual(
             fixture.source_commit_sha,
             report_payload["manifest_verification"]["rc_tag_target_commit"],
         )
-        self.assertIn("Verify RC", fixture.report_md_path.read_text(encoding="utf-8"))
+        self.assertIn(
+            f"| SOURCE_DATE_EPOCH | `{fixture.source_date_epoch}` |",
+            fixture.report_md_path.read_text(encoding="utf-8"),
+        )
 
         github_outputs = _read_simple_github_outputs(outputs_path)
         self.assertEqual("v1.2.3-rc0", github_outputs["rc_tag"])
         self.assertEqual(fixture.source_commit_sha, github_outputs["source_commit_sha"])
+        self.assertEqual(str(fixture.source_date_epoch), github_outputs["source_date_epoch"])
 
     def test_verify_rc_command_verifies_generic_secondary_artifact_with_openpgp(self) -> None:
         if not command_available("gpg"):
@@ -1008,6 +1015,22 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             subprocess.run(["git", "-C", str(origin_dir), "add", "README.txt"], check=True)
             subprocess.run(["git", "-C", str(origin_dir), "commit", "-m", "second commit"], check=True)
             source_commit_sha = git_rev_parse(origin_dir, "HEAD")
+        source_date_epoch = int(
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(origin_dir),
+                    "show",
+                    "-s",
+                    "--format=%ct",
+                    source_commit_sha,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
 
         subprocess.run(
             [
@@ -1306,6 +1329,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             "release_branch": "release/1.2.x",
             "source_repository_url": origin_dir.as_uri(),
             "source_commit_sha": source_commit_sha,
+            "source_date_epoch": source_date_epoch,
             "final_tag": f"v{version}",
             "final_tag_mode": "rc-source-commit",
             "provenance": {"created_at": "2026-04-29T12:00:00Z", "tooling": {}},
@@ -1374,6 +1398,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             report_json_path=report_json_path,
             report_md_path=report_md_path,
             source_commit_sha=source_commit_sha,
+            source_date_epoch=source_date_epoch,
             work_dir=work_dir,
             extra_env=extra_env,
             prepend_dirs=prepend_dirs,

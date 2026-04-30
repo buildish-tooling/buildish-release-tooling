@@ -112,6 +112,15 @@ class GitRepository:
 
         return self.resolve_commit("HEAD")
 
+    def commit_timestamp_epoch(self, ref: str) -> int:
+        """Resolve one ref to its commit timestamp in Unix epoch seconds."""
+
+        resolved_ref = self.resolve_commit(ref)
+        output = self._run("show", "-s", "--format=%ct", resolved_ref)
+        if not output or not output.isdigit():
+            raise ValueError(f"unable to resolve Git commit timestamp for ref: {ref}")
+        return int(output)
+
     def current_symbolic_ref(self) -> str | None:
         """Return the symbolic ref for `HEAD` when one exists."""
 

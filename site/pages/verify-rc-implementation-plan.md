@@ -720,6 +720,8 @@ The `generic-file`, `python-distribution`, and `npm-package` examples assume the
 
 These steps can live in one producer job or be split across several producer jobs. The handoff pattern into finalization stays the same either way.
 
+When RC production wants timestamp normalization, `prepare-rc` should also emit one canonical `source_date_epoch`. Real artifact-producing build steps should pass that value through as `SOURCE_DATE_EPOCH` and, if helpful for project scripts, `BUILDISH_SOURCE_DATE_EPOCH`. The `record-artifact` steps below show the same scalar flowing through the job environment even though the registration command itself does not consume it directly.
+
 TODO: add a `--prepare-rc-manifest <path>` input here so producer steps that already have recorded RC state can default source-linked fields such as `--git-commit-sha` without guessing from local `HEAD`.
 
 ```yaml
@@ -729,6 +731,8 @@ steps:
     env:
       RC_TAG: ${{ needs.prepare-rc.outputs.rc_tag }}
       SOURCE_SHA: ${{ needs.prepare-rc.outputs.resolved_source_ref }}
+      SOURCE_DATE_EPOCH: ${{ needs.prepare-rc.outputs.source_date_epoch }}
+      BUILDISH_SOURCE_DATE_EPOCH: ${{ needs.prepare-rc.outputs.source_date_epoch }}
     run: |
       buildish-release-tooling record-artifact \
         --component-config buildish-release-tooling/release-config.yaml \
@@ -751,6 +755,8 @@ steps:
     name: Record Maven staging repository (maven-repository)
     env:
       NEXUS_REPOSITORY_ID: ${{ steps.publish_nexus.outputs.staging_repository_id }}
+      SOURCE_DATE_EPOCH: ${{ needs.prepare-rc.outputs.source_date_epoch }}
+      BUILDISH_SOURCE_DATE_EPOCH: ${{ needs.prepare-rc.outputs.source_date_epoch }}
     run: |
       buildish-release-tooling record-artifact \
         --component-config buildish-release-tooling/release-config.yaml \
@@ -771,6 +777,8 @@ steps:
     env:
       VERSION: ${{ needs.prepare-rc.outputs.version }}
       SOURCE_SHA: ${{ needs.prepare-rc.outputs.resolved_source_ref }}
+      SOURCE_DATE_EPOCH: ${{ needs.prepare-rc.outputs.source_date_epoch }}
+      BUILDISH_SOURCE_DATE_EPOCH: ${{ needs.prepare-rc.outputs.source_date_epoch }}
     run: |
       buildish-release-tooling record-artifact \
         --component-config buildish-release-tooling/release-config.yaml \
@@ -798,6 +806,8 @@ steps:
     env:
       RC_TAG: ${{ needs.prepare-rc.outputs.rc_tag }}
       SOURCE_SHA: ${{ needs.prepare-rc.outputs.resolved_source_ref }}
+      SOURCE_DATE_EPOCH: ${{ needs.prepare-rc.outputs.source_date_epoch }}
+      BUILDISH_SOURCE_DATE_EPOCH: ${{ needs.prepare-rc.outputs.source_date_epoch }}
     run: |
       buildish-release-tooling record-artifact \
         --component-config buildish-release-tooling/release-config.yaml \
@@ -819,6 +829,8 @@ steps:
     env:
       VERSION: ${{ needs.prepare-rc.outputs.version }}
       SOURCE_SHA: ${{ needs.prepare-rc.outputs.resolved_source_ref }}
+      SOURCE_DATE_EPOCH: ${{ needs.prepare-rc.outputs.source_date_epoch }}
+      BUILDISH_SOURCE_DATE_EPOCH: ${{ needs.prepare-rc.outputs.source_date_epoch }}
     run: |
       buildish-release-tooling record-artifact \
         --component-config buildish-release-tooling/release-config.yaml \

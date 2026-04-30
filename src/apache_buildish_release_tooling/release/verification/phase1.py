@@ -64,6 +64,7 @@ class VerifyRcPhase1Result:
     version: str | None
     rc_tag: str | None
     source_commit_sha: str | None
+    source_date_epoch: int | None
     source_repository_url: str | None
     manifest_url: str
     keys_url: str
@@ -101,6 +102,7 @@ def verify_rc_phase1(
     version: str | None = None
     rc_tag: str | None = None
     source_commit_sha: str | None = None
+    source_date_epoch: int | None = None
     source_repository_url: str | None = None
     manifest_sha512: str | None = None
     manifest_signature: SignatureVerification | None = None
@@ -151,6 +153,7 @@ def verify_rc_phase1(
         component_id = _required_non_empty_string(manifest_payload, "component_id", source=manifest_url)
         version = _required_non_empty_string(manifest_payload, "version", source=manifest_url)
         source_commit_sha = _required_commit_sha(manifest_payload, "source_commit_sha", source=manifest_url)
+        source_date_epoch = _optional_epoch_seconds(manifest_payload, "source_date_epoch", source=manifest_url)
         rc_tag = _required_non_empty_string(manifest_payload, "rc_tag", source=manifest_url)
         source_repository_url = _source_repository_url(manifest_payload, source=manifest_url)
     except Exception as exc:
@@ -170,6 +173,7 @@ def verify_rc_phase1(
             version=version,
             rc_tag=rc_tag,
             source_commit_sha=source_commit_sha,
+            source_date_epoch=source_date_epoch,
             source_repository_url=source_repository_url,
             manifest_sha512=manifest_sha512,
             manifest_signature=manifest_signature,
@@ -201,6 +205,8 @@ def verify_rc_phase1(
     emit_detail(progress_reporter, "Component", component_id)
     emit_detail(progress_reporter, "Version", version)
     emit_detail(progress_reporter, "RC tag", rc_tag)
+    if source_date_epoch is not None:
+        emit_detail(progress_reporter, "SOURCE_DATE_EPOCH", str(source_date_epoch))
 
     try:
         keys_url_matches_component_config = _cross_check_keys_url(
@@ -448,6 +454,7 @@ def verify_rc_phase1(
         version=version,
         rc_tag=rc_tag,
         source_commit_sha=source_commit_sha,
+        source_date_epoch=source_date_epoch,
         source_repository_url=source_repository_url,
         manifest_sha512=manifest_sha512,
         manifest_signature=manifest_signature,
@@ -501,6 +508,7 @@ def _phase1_result(
     version: str | None,
     rc_tag: str | None,
     source_commit_sha: str | None,
+    source_date_epoch: int | None,
     source_repository_url: str | None,
     manifest_sha512: str | None,
     manifest_signature: SignatureVerification | None,
@@ -526,6 +534,7 @@ def _phase1_result(
         "version": version,
         "rc_tag": rc_tag,
         "source_commit_sha": source_commit_sha,
+        "source_date_epoch": source_date_epoch,
         "source_repository_url": source_repository_url,
         "manifest_url": manifest_url,
         "keys_url": keys_url,
@@ -590,6 +599,7 @@ def _phase1_result(
         version=version,
         rc_tag=rc_tag,
         source_commit_sha=source_commit_sha,
+        source_date_epoch=source_date_epoch,
         source_repository_url=source_repository_url,
         manifest_url=manifest_url,
         keys_url=keys_url,
@@ -610,6 +620,7 @@ def _phase1_result(
         version=version,
         rc_tag=rc_tag,
         source_commit_sha=source_commit_sha,
+        source_date_epoch=source_date_epoch,
         source_repository_url=source_repository_url,
         manifest_url=manifest_url,
         keys_url=keys_url,
@@ -654,6 +665,17 @@ def _source_repository_url(manifest_payload: dict[str, Any], *, source: str) -> 
     if not isinstance(repository_slug, str) or not repository_slug.strip():
         raise ValueError(f"manifest is missing source_repository_url: {source}")
     return f"https://github.com/{repository_slug.strip()}.git"
+
+
+def _optional_epoch_seconds(payload: dict[str, Any], field_name: str, *, source: str) -> int | None:
+    value = payload.get(field_name)
+    if value is None:
+        return None
+    if isinstance(value, int) and value >= 0:
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    raise ValueError(f"manifest field {field_name} must be a non-negative integer Unix epoch: {source}")
 
 
 def _cross_check_keys_url(
@@ -787,6 +809,7 @@ def _report_markdown(
     version: str | None,
     rc_tag: str | None,
     source_commit_sha: str | None,
+    source_date_epoch: int | None,
     source_repository_url: str | None,
     manifest_url: str,
     keys_url: str,
@@ -812,6 +835,7 @@ def _report_markdown(
         f"| Version | `{_md_value(version)}` |",
         f"| RC tag | `{_md_value(rc_tag)}` |",
         f"| Source commit | `{_md_value(source_commit_sha)}` |",
+        f"| SOURCE_DATE_EPOCH | `{_md_value(str(source_date_epoch) if source_date_epoch is not None else None)}` |",
         f"| Source repository URL | `{_md_value(source_repository_url)}` |",
         f"| Manifest URL | `{manifest_url}` |",
         f"| KEYS URL | `{keys_url}` |",

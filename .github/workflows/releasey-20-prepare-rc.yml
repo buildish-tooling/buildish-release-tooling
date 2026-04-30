@@ -64,7 +64,10 @@ jobs:
     needs: verify-source-ref-checks
     runs-on: ubuntu-latest
     outputs:
+      version: ${{ steps.prepare-rc.outputs.version }}
       rc_tag: ${{ steps.prepare-rc.outputs.rc_tag }}
+      resolved_source_ref: ${{ steps.prepare-rc.outputs.resolved_source_ref }}
+      source_date_epoch: ${{ steps.prepare-rc.outputs.source_date_epoch }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
@@ -89,19 +92,14 @@ jobs:
           fi
           bash buildish-release-tooling/release-tooling.sh prepare-rc \
             "${args[@]}"
-          python - <<'PY' >> "$GITHUB_OUTPUT"
-          import json
-          import os
-          from pathlib import Path
-
-          manifest = json.loads(Path(os.environ["MANIFEST_PATH"]).read_text(encoding="utf-8"))
-          print(f"rc_tag={manifest['rc_tag']}")
-          PY
 
   cleanup-dev-svn-rcs:
     needs: resolve-state
     runs-on: ubuntu-latest
     environment: draft-release-secrets
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
+      BUILDISH_SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
@@ -124,6 +122,9 @@ jobs:
       - cleanup-dev-svn-rcs
     runs-on: ubuntu-latest
     environment: draft-release-secrets
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
+      BUILDISH_SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
@@ -161,6 +162,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
+      BUILDISH_SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
@@ -194,6 +198,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
+      BUILDISH_SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:
@@ -227,6 +234,9 @@ jobs:
     permissions:
       contents: write
     environment: draft-release-secrets
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
+      BUILDISH_SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
         with:

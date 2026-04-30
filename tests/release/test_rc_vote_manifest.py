@@ -80,6 +80,7 @@ class RcVoteManifestTest(unittest.TestCase):
             {
                 "resolved_release_branch": "release/1.2.x",
                 "resolved_source_ref": "0123456789abcdef0123456789abcdef01234567",
+                "source_date_epoch": 1714032000,
                 "rc_number": 2,
                 "rc_tag": "v1.2.3-rc2",
                 "final_tag": "v1.2.3",
@@ -174,6 +175,7 @@ class RcVoteManifestTest(unittest.TestCase):
             "https://github.com/apache/buildish-example",
             manifest["source_repository_url"],
         )
+        self.assertEqual(1714032000, manifest["source_date_epoch"])
         self.assertEqual("v1.2.3-rc2", manifest["draft_github_release"]["tag"])
         self.assertEqual(
             "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",

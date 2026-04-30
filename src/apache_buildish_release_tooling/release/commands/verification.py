@@ -89,6 +89,8 @@ def run_verify_rc(args: Namespace) -> None:
             github_outputs["rc_tag"] = result.rc_tag
         if result.source_commit_sha is not None:
             github_outputs["source_commit_sha"] = result.source_commit_sha
+        if result.source_date_epoch is not None:
+            github_outputs["source_date_epoch"] = str(result.source_date_epoch)
         _append_github_outputs(github_outputs)
         emit_section(progress_reporter, "Outcome")
         if result.verdict == "verified":

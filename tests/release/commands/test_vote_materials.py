@@ -47,6 +47,22 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         git_create_branch(origin_dir, "release/1.x")
         git_create_branch(origin_dir, "release/1.2.x")
         fetch_git_origin_refs(clone_dir)
+        expected_source_date_epoch = int(
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(clone_dir),
+                    "show",
+                    "-s",
+                    "--format=%ct",
+                    "refs/remotes/origin/release/1.2.x^{commit}",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
         self._write_component_config(
             config_path,
             component_id=component_id,
@@ -254,6 +270,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         self.assertEqual("rc-vote", staged_manifest["manifest_type"])
         self.assertEqual(component_id, staged_manifest["component_id"])
         self.assertEqual("v1.2.3-rc0", staged_manifest["rc_tag"])
+        self.assertEqual(expected_source_date_epoch, staged_manifest["source_date_epoch"])
         self.assertEqual(
             "bootstrap-zip",
             staged_manifest["vote_materials"]["secondary_artifacts"][0]["artifact_id"],
@@ -333,6 +350,22 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         git_create_branch(origin_dir, "release/1.x")
         git_create_branch(origin_dir, "release/1.2.x")
         fetch_git_origin_refs(clone_dir)
+        expected_source_date_epoch = int(
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(clone_dir),
+                    "show",
+                    "-s",
+                    "--format=%ct",
+                    "refs/remotes/origin/release/1.2.x^{commit}",
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+        )
         self._write_component_config(
             config_path,
             component_id=component_id,
@@ -502,6 +535,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             ).stdout
         )
         secondary_artifact = staged_manifest["vote_materials"]["secondary_artifacts"][0]
+        self.assertEqual(expected_source_date_epoch, staged_manifest["source_date_epoch"])
         self.assertEqual("maven-repository", secondary_artifact["kind"])
         self.assertEqual("maven-staging-main", secondary_artifact["artifact_id"])
         self.assertEqual(staging_repository_id, secondary_artifact["staging_repository_id"])

@@ -35,6 +35,20 @@ class RcPreparationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             clone_dir,
             "refs/remotes/origin/release/1.2.x^{commit}",
         )
+        expected_source_date_epoch = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(clone_dir),
+                "show",
+                "-s",
+                "--format=%ct",
+                expected_commit,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
         self._write_component_config(
             config_path,
             component_id="buildish-example",
@@ -54,12 +68,15 @@ class RcPreparationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         self.assertEqual(0, completed.returncode)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual(expected_commit, manifest["resolved_source_ref"])
+        self.assertEqual(expected_source_date_epoch, manifest["source_date_epoch"])
         self.assertEqual("release/1.2.x", manifest["resolved_release_branch"])
         self.assertEqual("3", manifest["rc_number"])
         self.assertEqual("v1.2.3-rc3", manifest["rc_tag"])
         github_outputs = _read_simple_github_outputs(github_output_path)
+        self.assertEqual("1.2.3", github_outputs["version"])
         self.assertEqual("v1.2.3-rc3", github_outputs["rc_tag"])
         self.assertEqual(expected_commit, github_outputs["resolved_source_ref"])
+        self.assertEqual(expected_source_date_epoch, github_outputs["source_date_epoch"])
 
     def test_cleanup_dev_svn_rcs_command_deletes_matching_version_directories(self) -> None:
         if not command_available("svnadmin") or not command_available("svn"):
@@ -161,4 +178,5 @@ class RcPreparationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual(expected_commit, manifest["resolved_source_ref"])
+        self.assertTrue(str(manifest["source_date_epoch"]).isdigit())
         self.assertEqual("file:///tmp/buildish-test/dev/1.2.3-rc0/", manifest["staging_url"])

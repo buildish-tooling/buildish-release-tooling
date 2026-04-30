@@ -323,6 +323,7 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
                 "release_branch": "release/1.2.x",
                 "source_repository_url": "https://github.com/apache/buildish-example",
                 "source_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                "source_date_epoch": 1714132800,
                 "rc_tag": f"v{version}-rc{rc_number}",
                 "final_tag": f"v{version}",
                 "final_tag_mode": "rc-source-commit",
