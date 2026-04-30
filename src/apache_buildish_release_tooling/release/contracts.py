@@ -653,6 +653,7 @@ class NpmPackageVerificationReport(BuildishContractModel):
     integrity: IntegrityVerificationReport
     checksum: ChecksumVerificationReport
     registry_resolution: NpmRegistryResolutionReport
+    reproducibility: ArtifactReproducibilityReport | None = None
 
 
 class InvalidSecondaryArtifactVerificationReport(BuildishContractModel):

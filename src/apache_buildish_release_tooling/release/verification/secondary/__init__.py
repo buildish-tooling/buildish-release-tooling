@@ -139,6 +139,11 @@ def verify_secondary_artifacts(
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
                     allow_non_production_release_targets=allow_non_production_release_targets,
+                    component_config=component_config,
+                    project_root=project_root,
+                    source_date_epoch=source_date_epoch,
+                    build_checks_allowed=build_checks_allowed,
+                    inspection_bundle_root=inspection_bundle_root,
                 )
             elif kind == "oci-image":
                 verification = verify_oci_image(
@@ -325,6 +330,17 @@ def _emit_secondary_artifact_summary(
                 progress_reporter,
                 f"Verified registry metadata: {registry_resolution['metadata_url']}",
             )
+        reproducibility_payload = verification.get("reproducibility")
+        if isinstance(reproducibility_payload, dict):
+            emit_detail(
+                progress_reporter,
+                "Reproducibility profile",
+                str(reproducibility_payload.get("profile_id", "n/a")),
+            )
+            for output_path in reproducibility_payload.get("output_paths", []):
+                emit_detail(progress_reporter, "Rebuild output", str(output_path))
+            if reproducibility_payload.get("matches_remote_bytes") is True:
+                emit_success(progress_reporter, "Verified rebuilt artifact matches staged bytes")
         for issue in issues:
             emit_failure(progress_reporter, issue)
         return

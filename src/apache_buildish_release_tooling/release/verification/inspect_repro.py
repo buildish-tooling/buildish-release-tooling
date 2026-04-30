@@ -26,6 +26,8 @@ from apache_buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityReport,
     GenericFileVerificationReport,
     InspectionEvidenceReference,
+    NpmPackageVerificationReport,
+    PythonDistributionVerificationReport,
     VerifyRcReportV1,
 )
 from apache_buildish_release_tooling.release.progress import ProgressReporter
@@ -105,9 +107,25 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
                 reproducibility.failure_class,
             )
         if verification.kind in {"generic-file", "generic-file-with-openpgp"}:
-            _inspect_generic_file_reproducibility(
+            _inspect_file_like_reproducibility(
                 progress_reporter,
                 verification=cast(GenericFileVerificationReport, verification),
+                reproducibility=reproducibility,
+                bundle_root=bundle_root,
+            )
+            continue
+        if verification.kind == "python-distribution":
+            _inspect_file_like_reproducibility(
+                progress_reporter,
+                verification=verification,
+                reproducibility=reproducibility,
+                bundle_root=bundle_root,
+            )
+            continue
+        if verification.kind == "npm-package":
+            _inspect_file_like_reproducibility(
+                progress_reporter,
+                verification=verification,
                 reproducibility=reproducibility,
                 bundle_root=bundle_root,
             )
@@ -118,10 +136,10 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
         )
 
 
-def _inspect_generic_file_reproducibility(
+def _inspect_file_like_reproducibility(
     progress_reporter: ProgressReporter,
     *,
-    verification: GenericFileVerificationReport,
+    verification: GenericFileVerificationReport | PythonDistributionVerificationReport | NpmPackageVerificationReport,
     reproducibility: ArtifactReproducibilityReport,
     bundle_root: Path,
 ) -> None:

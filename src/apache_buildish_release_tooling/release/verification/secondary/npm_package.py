@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote, urljoin, urlparse
 
+from apache_buildish_release_tooling.release.models import ComponentConfig
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.common import (
@@ -28,6 +29,7 @@ from apache_buildish_release_tooling.release.verification.common import (
     verify_checksum_sidecar,
 )
 
+from .file_reproducibility import verify_host_direct_single_file_reproducibility
 from .shared import (
     SUPPORTED_CHECKSUMS,
     preferred_checksum_payload,
@@ -42,6 +44,11 @@ def verify_npm_package(
     manifest_url: str,
     work_dir: Path,
     allow_non_production_release_targets: bool,
+    component_config: ComponentConfig | None,
+    project_root: Path | None,
+    source_date_epoch: int | None,
+    build_checks_allowed: bool,
+    inspection_bundle_root: Path | None,
 ) -> dict[str, Any]:
     artifact_id = required_non_empty_string(artifact_entry, "artifact_id", source=manifest_url)
     filename = required_non_empty_string(artifact_entry, "filename", source=manifest_url)
@@ -164,6 +171,7 @@ def verify_npm_package(
     tarball_url_matches_manifest: bool | None = None
     registry_integrity_matches_manifest: bool | None = None
     signatures_count = 0
+    reproducibility_verification: dict[str, Any] | None = None
     try:
         metadata_url, metadata_payload, found_via = _npm_registry_package_metadata(
             registry_url,
@@ -216,7 +224,23 @@ def verify_npm_package(
     except Exception as exc:
         issues.append(str(exc))
 
-    return {
+    if build_checks_allowed and artifact_entry.get("reproducibility") is not None:
+        reproducibility_verification = verify_host_direct_single_file_reproducibility(
+            artifact_entry,
+            manifest_url=manifest_url,
+            artifact_id=artifact_id,
+            kind="npm-package",
+            artifact_path=artifact_path,
+            work_dir=work_dir / "reproducibility",
+            component_config=component_config,
+            project_root=project_root,
+            source_date_epoch=source_date_epoch,
+            inspection_bundle_root=inspection_bundle_root,
+            subject_label="npm-package",
+        )
+        issues.extend(reproducibility_verification.get("issues", []))
+
+    verification = {
         "artifact_id": artifact_id,
         "kind": "npm-package",
         "verdict": "failed" if issues else "verified",
@@ -246,6 +270,9 @@ def verify_npm_package(
             "signatures_count": signatures_count,
         },
     }
+    if reproducibility_verification is not None:
+        verification["reproducibility"] = reproducibility_verification
+    return verification
 
 
 def _required_npm_integrity(

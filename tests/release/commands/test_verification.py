@@ -1062,6 +1062,93 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual(1, completed.returncode)
         self.assertIn("npm-package registry integrity does not match the signed manifest", completed.stderr)
 
+    def test_verify_rc_command_verifies_npm_package_reproducibility_in_full_mode(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_npm_package=True,
+            include_npm_package_reproducibility=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("verified", secondary_verification["reproducibility"]["verdict"])
+        self.assertEqual(
+            "npm-package-main",
+            secondary_verification["reproducibility"]["profile_id"],
+        )
+        self.assertEqual(
+            ["dist/buildish-example-1.2.3.tgz"],
+            secondary_verification["reproducibility"]["output_paths"],
+        )
+
+    def test_verify_rc_command_reports_npm_package_reproducibility_drift_in_full_mode(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_npm_package=True,
+            include_npm_package_reproducibility=True,
+            drift_npm_package_reproducibility=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn(
+            "npm-package reproducibility output does not match the staged artifact bytes",
+            completed.stderr,
+        )
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("failed", secondary_verification["reproducibility"]["verdict"])
+        self.assertEqual(
+            "byte-mismatch",
+            secondary_verification["reproducibility"]["failure_class"],
+        )
+
     def test_verify_rc_command_fails_closed_when_maven_repository_drifts_from_inventory(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
@@ -1223,6 +1310,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         drift_npm_registry_integrity: bool = False,
         drift_npm_tarball: bool = False,
         missing_npm_tarball: bool = False,
+        include_npm_package_reproducibility: bool = False,
+        drift_npm_package_reproducibility: bool = False,
         include_oci_image: bool = False,
         drift_oci_image: bool = False,
         include_generic_file_reproducibility: bool = False,
@@ -1284,6 +1373,21 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                     "          - buildish-release-tooling/rebuild-wheel.sh",
                     "        output_globs:",
                     "          - dist/example-1.2.3-py3-none-any.whl",
+                    "      comparison:",
+                    "        mode: exact-bytes",
+                ]
+            )
+        if include_npm_package_reproducibility:
+            verify_rc_line_list.extend(
+                [
+                    "    npm-package-main:",
+                    "      kind: npm-package",
+                    "      build:",
+                    "        command:",
+                    "          - sh",
+                    "          - buildish-release-tooling/rebuild-npm-package.sh",
+                    "        output_globs:",
+                    "          - dist/buildish-example-1.2.3.tgz",
                     "      comparison:",
                     "        mode: exact-bytes",
                 ]
@@ -1356,6 +1460,34 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             )
             subprocess.run(
                 ["git", "-C", str(origin_dir), "commit", "-m", "add wheel rebuild script"],
+                check=True,
+            )
+        if include_npm_package_reproducibility:
+            rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-npm-package.sh"
+            rebuild_script.parent.mkdir(parents=True, exist_ok=True)
+            rebuild_script.write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env sh",
+                        "set -eu",
+                        "mkdir -p dist",
+                        (
+                            "printf 'npm package payload\\n' > dist/buildish-example-1.2.3.tgz"
+                            if not drift_npm_package_reproducibility
+                            else "printf 'npm package payload drift\\n' > dist/buildish-example-1.2.3.tgz"
+                        ),
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            rebuild_script.chmod(0o755)
+            subprocess.run(
+                ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-npm-package.sh"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(origin_dir), "commit", "-m", "add npm rebuild script"],
                 check=True,
             )
 
@@ -1609,23 +1741,26 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 ),
                 encoding="utf-8",
             )
-            secondary_artifacts.append(
-                {
-                    "artifact_id": "npm-package-main",
-                    "kind": "npm-package",
-                    "filename": artifact_file_path.name,
-                    "uri": artifact_file_path.as_uri(),
-                    "registry_url": registry_root.as_uri() + "/",
-                    "package_name": "@apache/buildish-example",
-                    "version": "1.2.3",
-                    "integrity": expected_integrity,
-                    "checksums": {
-                        "sha512": {
-                            "value": expected_sha512,
-                        }
-                    },
+            npm_artifact: dict[str, object] = {
+                "artifact_id": "npm-package-main",
+                "kind": "npm-package",
+                "filename": artifact_file_path.name,
+                "uri": artifact_file_path.as_uri(),
+                "registry_url": registry_root.as_uri() + "/",
+                "package_name": "@apache/buildish-example",
+                "version": "1.2.3",
+                "integrity": expected_integrity,
+                "checksums": {
+                    "sha512": {
+                        "value": expected_sha512,
+                    }
+                },
+            }
+            if include_npm_package_reproducibility:
+                npm_artifact["reproducibility"] = {
+                    "profile_id": "npm-package-main",
                 }
-            )
+            secondary_artifacts.append(npm_artifact)
             if drift_npm_tarball:
                 artifact_file_path.write_bytes(artifact_bytes + b"registry drift\n")
             if missing_npm_tarball:
