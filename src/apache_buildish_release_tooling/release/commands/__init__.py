@@ -50,6 +50,7 @@ from apache_buildish_release_tooling.release.commands.secondary_targets import (
     run_update_moving_tags,
 )
 from apache_buildish_release_tooling.release.commands.verification import (
+    run_inspect_repro,
     run_verify_rc,
 )
 from apache_buildish_release_tooling.release.commands.vote_materials import (
@@ -66,6 +67,7 @@ __all__ = [
     "run_create_source_artifact",
     "run_finalize_draft_github_release",
     "run_finalize_rc_vote_materials",
+    "run_inspect_repro",
     "run_materialize_rc_git_content",
     "run_publish_atr_candidate",
     "run_prepare_rc",

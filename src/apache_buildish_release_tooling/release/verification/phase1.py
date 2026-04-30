@@ -98,6 +98,7 @@ def verify_rc_phase1(
     requested_mode: Literal["auto", "integrity-only", "full"],
     interactive_input_enabled: bool,
     confirm_candidate_code_execution: Callable[[], bool],
+    inspection_bundle_path: Path | None,
 ) -> VerifyRcPhase1Result:
     """Verify the signed RC vote manifest, source artifact, and supported secondary artifacts."""
 
@@ -496,6 +497,7 @@ def verify_rc_phase1(
             project_root=repository_path,
             source_date_epoch=source_date_epoch,
             build_checks_allowed=reproducibility_decision.build_checks_allowed,
+            inspection_bundle_root=inspection_bundle_path,
         )
         build_checks_attempted = any(
             verification.get("reproducibility") is not None
@@ -990,8 +992,19 @@ def _report_markdown(
                             f"- Rebuilt bytes matched staged artifact: `{reproducibility_payload['matches_remote_bytes']}`",
                         ]
                     )
+                    if reproducibility_payload.get("failure_class") is not None:
+                        lines.append(
+                            f"- Reproducibility failure class: `{reproducibility_payload['failure_class']}`"
+                        )
                     for output_path in reproducibility_payload.get("output_paths", []):
                         lines.append(f"- Rebuild output: `{output_path}`")
+                    for evidence_reference in reproducibility_payload.get("evidence", []):
+                        if not isinstance(evidence_reference, dict):
+                            continue
+                        if evidence_reference.get("label") and evidence_reference.get("path"):
+                            lines.append(
+                                f"- Reproducibility evidence `{evidence_reference['label']}`: `{evidence_reference['path']}`"
+                            )
             elif kind == "maven-repository":
                 inventory_payload = verification["inventory"]
                 live_repository = verification["live_repository"]

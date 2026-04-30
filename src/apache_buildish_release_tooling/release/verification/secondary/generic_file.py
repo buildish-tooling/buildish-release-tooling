@@ -29,6 +29,10 @@ from apache_buildish_release_tooling.release.verification.common import (
     validate_fetch_uri,
     verify_checksum_sidecar,
 )
+from apache_buildish_release_tooling.release.verification.inspection_bundle import (
+    retain_evidence_file,
+    write_reproducibility_metadata,
+)
 from apache_buildish_release_tooling.release.verification.rebuild import (
     resolve_rebuild_profile,
     run_host_direct_profile,
@@ -53,6 +57,7 @@ def verify_generic_file(
     project_root: Path | None,
     source_date_epoch: int | None,
     build_checks_allowed: bool,
+    inspection_bundle_root: Path | None,
 ) -> dict[str, Any]:
     artifact_id = required_non_empty_string(artifact_entry, "artifact_id", source=manifest_url)
     kind = required_non_empty_string(artifact_entry, "kind", source=manifest_url)
@@ -158,6 +163,7 @@ def verify_generic_file(
             component_config=component_config,
             project_root=project_root,
             source_date_epoch=source_date_epoch,
+            inspection_bundle_root=inspection_bundle_root,
         )
         issues.extend(reproducibility_verification.get("issues", []))
 
@@ -194,6 +200,7 @@ def _generic_file_reproducibility(
     component_config: ComponentConfig | None,
     project_root: Path | None,
     source_date_epoch: int | None,
+    inspection_bundle_root: Path | None,
 ) -> dict[str, Any]:
     raw_reproducibility = artifact_entry.get("reproducibility")
     if not isinstance(raw_reproducibility, dict):
@@ -212,6 +219,8 @@ def _generic_file_reproducibility(
     output_paths: list[str] = []
     matches_remote_bytes: bool | None = None
     comparison_mode = "exact-bytes"
+    failure_class: str | None = None
+    evidence: list[dict[str, str]] = []
     if component_config is None:
         issues.append(
             f"build-based reproducibility for {artifact_id} requires --component-config to resolve profile {profile_id!r}"
@@ -225,6 +234,7 @@ def _generic_file_reproducibility(
             f"build-based reproducibility for {artifact_id} requires the staged artifact bytes"
         )
     profile = None
+    build_result = None
     if not issues and component_config is not None:
         try:
             profile = resolve_rebuild_profile(
@@ -249,17 +259,78 @@ def _generic_file_reproducibility(
                 for path in build_result.output_paths
             ]
             if len(build_result.output_paths) != 1:
+                failure_class = "unexpected-output-count"
                 raise ValueError(
                     f"generic-file reproducibility profile {profile_id!r} must produce exactly one output file"
                 )
             built_artifact_path = build_result.output_paths[0]
             matches_remote_bytes = built_artifact_path.read_bytes() == artifact_path.read_bytes()
             if not matches_remote_bytes:
+                failure_class = "byte-mismatch"
                 raise ValueError(
                     f"generic-file reproducibility output does not match the staged artifact bytes: {artifact_id}"
                 )
         except Exception as exc:
             issues.append(str(exc))
+    if (
+        inspection_bundle_root is not None
+        and profile is not None
+        and project_root is not None
+        and artifact_path is not None
+        and build_result is not None
+    ):
+        rebuilt_outputs = [
+            {
+                "path": str(path.relative_to(project_root)),
+                "sha512": checksum(path, "sha512"),
+                "size_bytes": path.stat().st_size,
+            }
+            for path in build_result.output_paths
+        ]
+        metadata_path = write_reproducibility_metadata(
+            inspection_bundle_root,
+            artifact_id=artifact_id,
+            payload={
+                "artifact_id": artifact_id,
+                "kind": kind,
+                "profile_id": profile_id,
+                "comparison_mode": comparison_mode,
+                "failure_class": failure_class,
+                "staged_artifact": {
+                    "filename": artifact_path.name,
+                    "sha512": checksum(artifact_path, "sha512"),
+                    "size_bytes": artifact_path.stat().st_size,
+                },
+                "rebuilt_outputs": rebuilt_outputs,
+                "matches_remote_bytes": matches_remote_bytes,
+                "issues": issues,
+            },
+        )
+        evidence.append({"label": "comparison-metadata", "path": metadata_path})
+        if issues:
+            evidence.append(
+                {
+                    "label": "staged-artifact",
+                    "path": retain_evidence_file(
+                        inspection_bundle_root,
+                        artifact_id=artifact_id,
+                        label_directory="staged",
+                        source_path=artifact_path,
+                    ),
+                }
+            )
+            for index, built_path in enumerate(build_result.output_paths, start=1):
+                evidence.append(
+                    {
+                        "label": "rebuilt-artifact" if index == 1 else f"rebuilt-artifact-{index}",
+                        "path": retain_evidence_file(
+                            inspection_bundle_root,
+                            artifact_id=artifact_id,
+                            label_directory=f"rebuilt-{index:02d}",
+                            source_path=built_path,
+                        ),
+                    }
+                )
     return {
         "profile_id": profile_id,
         "verdict": "failed" if issues else "verified",
@@ -268,6 +339,8 @@ def _generic_file_reproducibility(
         "execution_backend": "host-direct",
         "output_paths": output_paths,
         "matches_remote_bytes": matches_remote_bytes,
+        "failure_class": failure_class,
+        "evidence": evidence,
         "issues": issues,
     }
 

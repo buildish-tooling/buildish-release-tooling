@@ -645,6 +645,11 @@ def _register_verification_commands(subparsers: Subparsers) -> None:
         help="Optional Markdown verification report path.",
     )
     verify_rc.add_argument(
+        "--inspection-bundle",
+        dest="inspection_bundle",
+        help="Optional curated reproducibility-inspection bundle directory path.",
+    )
+    verify_rc.add_argument(
         "--log-path",
         dest="log_path",
         help="Optional combined transcript and low-level command log path.",
@@ -656,6 +661,22 @@ def _register_verification_commands(subparsers: Subparsers) -> None:
     )
     verify_rc.add_argument("rc_vote_manifest_url")
     verify_rc.add_argument("keys_url")
+
+    inspect_repro = subparsers.add_parser(
+        "inspect-repro",
+        help="Inspect one saved verify-rc report plus its curated reproducibility bundle.",
+    )
+    inspect_repro.set_defaults(handler=commands.run_inspect_repro)
+    inspect_repro.add_argument(
+        "--color",
+        choices=("auto", "always", "never"),
+        default="auto",
+        help=(
+            "Color mode for the human stderr transcript. Defaults to auto, which only colors interactive terminals "
+            "and respects NO_COLOR, CLICOLOR=0, CLICOLOR_FORCE=1, and TERM=dumb."
+        ),
+    )
+    inspect_repro.add_argument("report_json")
 
 
 def build_parser() -> argparse.ArgumentParser:

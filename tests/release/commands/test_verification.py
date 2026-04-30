@@ -60,6 +60,7 @@ class VerificationFixture:
     keys_url: str
     manifest_url: str
     manifest_output_path: Path
+    inspection_bundle_path: Path
     origin_dir: Path
     log_path: Path
     report_json_path: Path
@@ -288,6 +289,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 str(fixture.work_dir),
                 "--report-json",
                 str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
                 fixture.manifest_url,
                 fixture.keys_url,
             ],
@@ -304,12 +307,23 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual("full", report_payload["reproducibility_execution"]["requested_mode"])
         self.assertEqual("full", report_payload["reproducibility_execution"]["effective_mode"])
         self.assertTrue(report_payload["reproducibility_execution"]["build_checks_attempted"])
+        self.assertEqual(
+            os.path.relpath(fixture.inspection_bundle_path, start=fixture.report_json_path.parent),
+            report_payload["inspection_bundle"]["relative_path_from_report"],
+        )
         secondary_verification = report_payload["secondary_artifact_verifications"][0]
         self.assertEqual("verified", secondary_verification["reproducibility"]["verdict"])
         self.assertEqual("bootstrap-zip", secondary_verification["reproducibility"]["profile_id"])
         self.assertEqual(
             ["dist/buildish-example-bootstrap.zip"],
             secondary_verification["reproducibility"]["output_paths"],
+        )
+        self.assertEqual(
+            ["comparison-metadata"],
+            [
+                evidence["label"]
+                for evidence in secondary_verification["reproducibility"]["evidence"]
+            ],
         )
 
     def test_verify_rc_command_reports_generic_file_reproducibility_drift_in_full_mode(self) -> None:
@@ -336,6 +350,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 str(fixture.work_dir),
                 "--report-json",
                 str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
                 fixture.manifest_url,
                 fixture.keys_url,
             ],
@@ -350,6 +366,68 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         secondary_verification = report_payload["secondary_artifact_verifications"][0]
         self.assertEqual("failed", secondary_verification["reproducibility"]["verdict"])
         self.assertEqual("failed", secondary_verification["verdict"])
+        self.assertEqual(
+            "byte-mismatch",
+            secondary_verification["reproducibility"]["failure_class"],
+        )
+        self.assertTrue(fixture.inspection_bundle_path.is_dir())
+        self.assertEqual(
+            {"comparison-metadata", "staged-artifact", "rebuilt-artifact"},
+            {
+                evidence["label"]
+                for evidence in secondary_verification["reproducibility"]["evidence"]
+            },
+        )
+
+    def test_inspect_repro_command_reports_saved_generic_file_drift(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn("Inspect Repro", inspect_completed.stderr)
+        self.assertIn("Artifact 1/1: bootstrap-zip", inspect_completed.stderr)
+        self.assertIn("Failure class: byte-mismatch", inspect_completed.stderr)
+        self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
+        self.assertIn("Unified text diff", inspect_completed.stderr)
 
     def test_verify_rc_command_fails_closed_when_secondary_artifact_digest_mismatches(self) -> None:
         if not command_available("gpg"):
@@ -1083,6 +1161,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         log_path = sandbox_dir / "verify.log"
         report_json_path = sandbox_dir / "verify-report.json"
         report_md_path = sandbox_dir / "verify-report.md"
+        inspection_bundle_path = sandbox_dir / "verify-inspection-bundle"
         manifest_output_path = sandbox_dir / "verify-rc-command.json"
         gpg_home = sandbox_dir / "gpg-home"
         extra_env: dict[str, str] = {}
@@ -1538,6 +1617,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             keys_url=keys_path.as_uri(),
             manifest_url=manifest_path.as_uri(),
             manifest_output_path=manifest_output_path,
+            inspection_bundle_path=inspection_bundle_path,
             origin_dir=origin_dir,
             log_path=log_path,
             report_json_path=report_json_path,

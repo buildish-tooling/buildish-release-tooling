@@ -58,6 +58,7 @@ def verify_secondary_artifacts(
     project_root: Path | None,
     source_date_epoch: int | None,
     build_checks_allowed: bool,
+    inspection_bundle_root: Path | None,
 ) -> list[dict[str, Any]]:
     """Verify all supported secondary artifacts declared in the signed vote manifest."""
 
@@ -95,6 +96,7 @@ def verify_secondary_artifacts(
                     project_root=project_root,
                     source_date_epoch=source_date_epoch,
                     build_checks_allowed=build_checks_allowed,
+                    inspection_bundle_root=inspection_bundle_root,
                 )
             elif kind == "generic-file-with-openpgp":
                 verification = verify_generic_file(
@@ -108,6 +110,7 @@ def verify_secondary_artifacts(
                     project_root=project_root,
                     source_date_epoch=source_date_epoch,
                     build_checks_allowed=build_checks_allowed,
+                    inspection_bundle_root=inspection_bundle_root,
                 )
             elif kind == "maven-repository":
                 verification = verify_maven_repository(

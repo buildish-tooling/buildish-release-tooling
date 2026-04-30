@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 from argparse import Namespace
@@ -24,6 +25,7 @@ from typing import Literal, cast
 
 from apache_buildish_release_tooling.release.command_logging import command_log_sink
 from apache_buildish_release_tooling.release.config import load_component_config, validate_release_target_base_urls
+from apache_buildish_release_tooling.release.contracts import VerifyRcReportV1
 from apache_buildish_release_tooling.release.manifest import write_manifest
 from apache_buildish_release_tooling.release.models import ComponentConfig
 from apache_buildish_release_tooling.release.progress import ProgressReporter
@@ -36,6 +38,7 @@ from apache_buildish_release_tooling.release.verification.common import (
     emit_success,
     emit_title,
 )
+from apache_buildish_release_tooling.release.verification.inspect_repro import inspect_repro_report
 from apache_buildish_release_tooling.release.verification.rebuild import (
     prompt_for_candidate_code_execution,
 )
@@ -49,6 +52,7 @@ def run_verify_rc(args: Namespace) -> None:
     component_config = _optional_component_config(args)
     work_dir = _work_dir(args)
     log_path = _log_path(args, work_dir)
+    inspection_bundle_path = _requested_inspection_bundle_path(args, work_dir)
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("w", encoding="utf-8") as log_handle, command_log_sink(
         log_handle,
@@ -80,14 +84,25 @@ def run_verify_rc(args: Namespace) -> None:
             ),
             interactive_input_enabled=sys.stdin.isatty() and sys.stdout.isatty(),
             confirm_candidate_code_execution=prompt_for_candidate_code_execution,
+            inspection_bundle_path=inspection_bundle_path,
         )
         report_json_path = _report_json_path(args, result)
         report_md_path = _report_md_path(args, result)
-        write_manifest(report_json_path, result.report_payload)
+        finalized_inspection_bundle_path = _finalize_inspection_bundle_path(
+            args,
+            result,
+            requested_path=inspection_bundle_path,
+        )
+        report_payload, report_markdown = _finalized_report_outputs(
+            result,
+            report_json_path=report_json_path,
+            inspection_bundle_path=finalized_inspection_bundle_path,
+        )
+        write_manifest(report_json_path, report_payload)
         report_md_path.parent.mkdir(parents=True, exist_ok=True)
-        report_md_path.write_text(result.report_markdown, encoding="utf-8")
+        report_md_path.write_text(report_markdown, encoding="utf-8")
         try:
-            SummaryWriter.from_environment().append_markdown(result.report_markdown)
+            SummaryWriter.from_environment().append_markdown(report_markdown)
         except ValueError:
             pass
         github_outputs: dict[str, Path | str] = {
@@ -95,6 +110,8 @@ def run_verify_rc(args: Namespace) -> None:
             "report_md_path": report_md_path,
             "log_path": log_path,
         }
+        if finalized_inspection_bundle_path is not None:
+            github_outputs["inspection_bundle_path"] = finalized_inspection_bundle_path
         if result.rc_tag is not None:
             github_outputs["rc_tag"] = result.rc_tag
         if result.source_commit_sha is not None:
@@ -116,6 +133,8 @@ def run_verify_rc(args: Namespace) -> None:
         emit_detail(progress_reporter, "Report JSON", str(report_json_path))
         emit_detail(progress_reporter, "Report Markdown", str(report_md_path))
         emit_detail(progress_reporter, "Transcript log", str(log_path))
+        if finalized_inspection_bundle_path is not None:
+            emit_detail(progress_reporter, "Inspection bundle", str(finalized_inspection_bundle_path))
     if result.verdict != "verified":
         if not progress_reporter.enabled:
             failure_summary = " | ".join(failure.message for failure in result.failures)
@@ -124,6 +143,19 @@ def run_verify_rc(args: Namespace) -> None:
                 f"see {report_md_path} and {log_path}"
             )
         raise SystemExit(1)
+
+
+def run_inspect_repro(args: Namespace) -> None:
+    """Inspect one saved verify-rc report plus its curated reproducibility bundle."""
+
+    progress_reporter = ProgressReporter.from_mode(
+        "on",
+        stream=sys.stderr,
+        color_mode=getattr(args, "color", "auto"),
+        prefix="",
+        is_tty=sys.stderr.isatty(),
+    )
+    inspect_repro_report(Path(args.report_json), progress_reporter=progress_reporter)
 
 
 def _optional_component_config(args: Namespace) -> ComponentConfig | None:
@@ -178,3 +210,70 @@ def _log_path(args: Namespace, work_dir: Path) -> Path:
     if explicit_path:
         return Path(explicit_path)
     return work_dir / "verify-rc.log"
+
+
+def _requested_inspection_bundle_path(args: Namespace, work_dir: Path) -> Path:
+    explicit_path = getattr(args, "inspection_bundle", None)
+    if explicit_path:
+        return Path(explicit_path)
+    return work_dir / ".verify-rc-inspection"
+
+
+def _inspection_bundle_base_name(
+    component_id: str | None,
+    version: str | None,
+    rc_tag: str | None,
+) -> str:
+    report_base_name = _report_base_name(component_id, version, rc_tag)
+    return report_base_name.replace("verify-rc-report-", "verify-rc-inspection-", 1)
+
+
+def _finalize_inspection_bundle_path(
+    args: Namespace,
+    result: VerifyRcPhase1Result,
+    *,
+    requested_path: Path,
+) -> Path | None:
+    if not requested_path.exists():
+        return None
+    explicit_path = getattr(args, "inspection_bundle", None)
+    if explicit_path:
+        return requested_path
+    final_path = result.work_dir / _inspection_bundle_base_name(
+        result.component_id,
+        result.version,
+        result.rc_tag,
+    )
+    if final_path == requested_path:
+        return final_path
+    if final_path.exists():
+        raise ValueError(f"inspection bundle path already exists: {final_path}")
+    final_path.parent.mkdir(parents=True, exist_ok=True)
+    requested_path.rename(final_path)
+    return final_path
+
+
+def _finalized_report_outputs(
+    result: VerifyRcPhase1Result,
+    *,
+    report_json_path: Path,
+    inspection_bundle_path: Path | None,
+) -> tuple[VerifyRcReportV1, str]:
+    if inspection_bundle_path is None:
+        return result.report_payload, result.report_markdown
+    relative_bundle_path = os.path.relpath(
+        inspection_bundle_path,
+        start=report_json_path.parent,
+    )
+    report_payload = result.report_payload.model_copy(
+        update={
+            "inspection_bundle": {
+                "relative_path_from_report": relative_bundle_path,
+            }
+        }
+    )
+    report_markdown = (
+        f"{result.report_markdown}\n\n### Inspection Bundle\n\n"
+        f"- Relative path from report: `{relative_bundle_path}`\n"
+    )
+    return report_payload, report_markdown

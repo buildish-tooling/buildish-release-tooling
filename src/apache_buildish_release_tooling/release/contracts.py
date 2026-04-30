@@ -557,6 +557,13 @@ class OciInspectionReport(BuildishContractModel):
     platform_digests: list[OciPlatformDigest] = Field(default_factory=list)
 
 
+class InspectionEvidenceReference(BuildishContractModel):
+    """One retained evidence file inside the verify-rc inspection bundle."""
+
+    label: NonEmptyString
+    path: NonEmptyString
+
+
 class ArtifactReproducibilityReport(BuildishContractModel):
     """Observed local rebuild comparison results for one artifact."""
 
@@ -567,6 +574,8 @@ class ArtifactReproducibilityReport(BuildishContractModel):
     execution_backend: Literal["host-direct"] = "host-direct"
     output_paths: list[NonEmptyString] = Field(default_factory=list)
     matches_remote_bytes: bool | None = None
+    failure_class: NonEmptyString | None = None
+    evidence: list[InspectionEvidenceReference] = Field(default_factory=list)
     issues: list[str] = Field(default_factory=list)
 
 
@@ -709,6 +718,12 @@ class ReproducibilityExecutionSection(BuildishContractModel):
     skipped_reason: str | None = None
 
 
+class InspectionBundleSection(BuildishContractModel):
+    """Location of the curated reproducibility-inspection bundle for one verify-rc run."""
+
+    relative_path_from_report: NonEmptyString
+
+
 class VerifyRcReportV1(BuildishContractModel):
     """Machine-readable Phase 1a RC verification report."""
 
@@ -728,6 +743,7 @@ class VerifyRcReportV1(BuildishContractModel):
     manifest_verification: ManifestVerificationSection
     source_artifact_verification: SourceArtifactVerificationSection
     reproducibility_execution: ReproducibilityExecutionSection
+    inspection_bundle: InspectionBundleSection | None = None
     secondary_artifact_verifications: list[AnySecondaryArtifactVerification] = Field(default_factory=list)
 
 
@@ -742,6 +758,8 @@ __all__ = [
     "GenericFileWithOpenPgpSecondaryArtifact",
     "GithubWorkflowProvenance",
     "InvalidSecondaryArtifactVerificationReport",
+    "InspectionBundleSection",
+    "InspectionEvidenceReference",
     "MavenRepositoryInventoryV1",
     "MavenRepositorySecondaryArtifact",
     "MavenRepositoryVerificationReport",
