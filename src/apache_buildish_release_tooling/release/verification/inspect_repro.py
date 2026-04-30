@@ -28,6 +28,7 @@ from apache_buildish_release_tooling.release.contracts import (
     InspectionEvidenceReference,
     MavenRepositoryVerificationReport,
     NpmPackageVerificationReport,
+    OciImageVerificationReport,
     PythonDistributionVerificationReport,
     VerifyRcReportV1,
 )
@@ -133,6 +134,14 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
             continue
         if verification.kind == "maven-repository":
             _inspect_maven_repository_reproducibility(
+                progress_reporter,
+                verification=verification,
+                reproducibility=reproducibility,
+                bundle_root=bundle_root,
+            )
+            continue
+        if verification.kind == "oci-image":
+            _inspect_oci_image_reproducibility(
                 progress_reporter,
                 verification=verification,
                 reproducibility=reproducibility,
@@ -278,6 +287,45 @@ def _inspect_maven_repository_reproducibility(
         emit_info(
             progress_reporter,
             f"... plus {len(failed_results) - 12} additional failed path(s)",
+        )
+
+
+def _inspect_oci_image_reproducibility(
+    progress_reporter: ProgressReporter,
+    *,
+    verification: OciImageVerificationReport,
+    reproducibility: ArtifactReproducibilityReport,
+    bundle_root: Path,
+) -> None:
+    metadata_path = _evidence_path(
+        reproducibility.evidence,
+        label="comparison-metadata",
+        bundle_root=bundle_root,
+    )
+    if metadata_path is None:
+        emit_warning(progress_reporter, "No comparison metadata was retained for this artifact")
+        return
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    emit_detail(progress_reporter, "Metadata", str(metadata_path))
+    image_ref = metadata.get("image_ref")
+    if isinstance(image_ref, str):
+        emit_detail(progress_reporter, "Rebuilt image ref", image_ref)
+    rebuilt_digest = metadata.get("rebuilt_digest")
+    if isinstance(rebuilt_digest, str):
+        emit_detail(progress_reporter, "Rebuilt digest", rebuilt_digest)
+    declared_digest = metadata.get("declared_digest")
+    if isinstance(declared_digest, str):
+        emit_detail(progress_reporter, "Expected digest", declared_digest)
+    rebuilt_platform_digests = metadata.get("rebuilt_platform_digests")
+    if isinstance(rebuilt_platform_digests, list):
+        emit_detail(progress_reporter, "Rebuilt platform digests", json.dumps(rebuilt_platform_digests))
+    expected_platform_digests = metadata.get("expected_platform_digests")
+    if isinstance(expected_platform_digests, list):
+        emit_detail(progress_reporter, "Expected platform digests", json.dumps(expected_platform_digests))
+    if reproducibility.failure_class is not None:
+        emit_failure(
+            progress_reporter,
+            f"OCI reproducibility failed with class {reproducibility.failure_class}",
         )
 
 

@@ -1440,6 +1440,136 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual(1, completed.returncode)
         self.assertIn("oci-image platform digests do not match the signed manifest", completed.stderr)
 
+    def test_verify_rc_command_verifies_oci_image_reproducibility_in_full_mode(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_oci_image=True,
+            include_oci_image_reproducibility=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("verified", secondary_verification["reproducibility"]["verdict"])
+        self.assertEqual("oci-main-image", secondary_verification["reproducibility"]["profile_id"])
+        self.assertEqual(
+            [".buildish-out/oci-image-rebuilt.marker"],
+            secondary_verification["reproducibility"]["output_paths"],
+        )
+
+    def test_verify_rc_command_reports_oci_image_reproducibility_drift_in_full_mode(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_oci_image=True,
+            include_oci_image_reproducibility=True,
+            drift_oci_image_reproducibility=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn(
+            "oci-image reproducibility digest does not match the signed manifest",
+            completed.stderr,
+        )
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("failed", secondary_verification["reproducibility"]["verdict"])
+        self.assertEqual(
+            "digest-mismatch",
+            secondary_verification["reproducibility"]["failure_class"],
+        )
+
+    def test_inspect_repro_command_reports_saved_oci_image_drift(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_oci_image=True,
+            include_oci_image_reproducibility=True,
+            drift_oci_image_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn("Artifact 1/1: ghcr-main-image", inspect_completed.stderr)
+        self.assertIn("OCI reproducibility failed with class digest-mismatch", inspect_completed.stderr)
+        self.assertIn("Rebuilt digest", inspect_completed.stderr)
+
     def _prepare_verification_fixture(
         self,
         sandbox_dir: Path,
@@ -1469,6 +1599,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         drift_npm_package_reproducibility: bool = False,
         include_oci_image: bool = False,
         drift_oci_image: bool = False,
+        include_oci_image_reproducibility: bool = False,
+        drift_oci_image_reproducibility: bool = False,
         include_generic_file_reproducibility: bool = False,
         drift_generic_file_reproducibility: bool = False,
     ) -> VerificationFixture:
@@ -1571,6 +1703,22 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                     "            mode: remote-only",
                     "          - pattern: ^.*/maven-metadata\\.xml(\\..+)?$",
                     "            mode: remote-only",
+                ]
+            )
+        if include_oci_image_reproducibility:
+            verify_rc_line_list.extend(
+                [
+                    "    oci-main-image:",
+                    "      kind: oci-image",
+                    "      build:",
+                    "        command:",
+                    "          - sh",
+                    "          - buildish-release-tooling/rebuild-oci-image.sh",
+                    "        output_globs:",
+                    "          - .buildish-out/oci-image-rebuilt.marker",
+                    "      comparison:",
+                    "        mode: platform-digest",
+                    "        image_ref: ghcr.io/apache/buildish-example:rebuild-local",
                 ]
             )
         verify_rc_lines = (
@@ -1708,6 +1856,54 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             )
             subprocess.run(
                 ["git", "-C", str(origin_dir), "commit", "-m", "add maven rebuild script"],
+                check=True,
+            )
+        if include_oci_image_reproducibility:
+            rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-oci-image.sh"
+            rebuild_script.parent.mkdir(parents=True, exist_ok=True)
+            rebuilt_top_level_digest = "sha256:" + (("e5" if drift_oci_image_reproducibility else "d4") * 32)
+            rebuilt_amd64_digest = "sha256:" + ("a1" * 32)
+            rebuilt_arm64_digest = "sha256:" + ("b2" * 32)
+            rebuild_script.write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env sh",
+                        "set -eu",
+                        "mkdir -p .buildish-out",
+                        "printf 'rebuilt\\n' > .buildish-out/oci-image-rebuilt.marker",
+                        "cat > \"$FAKE_DOCKER_STATE_DIR/imagetools-inspect-response.json\" <<'JSON'",
+                        json.dumps(
+                            {
+                                "schemaVersion": 2,
+                                "mediaType": "application/vnd.oci.image.index.v1+json",
+                                "digest": rebuilt_top_level_digest,
+                                "manifests": [
+                                    {
+                                        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                                        "digest": rebuilt_amd64_digest,
+                                        "platform": {"architecture": "amd64", "os": "linux"},
+                                    },
+                                    {
+                                        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                                        "digest": rebuilt_arm64_digest,
+                                        "platform": {"architecture": "arm64", "os": "linux"},
+                                    },
+                                ],
+                            }
+                        ),
+                        "JSON",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            rebuild_script.chmod(0o755)
+            subprocess.run(
+                ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-oci-image.sh"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(origin_dir), "commit", "-m", "add oci rebuild script"],
                 check=True,
             )
 
@@ -2052,9 +2248,12 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 ),
                 oci_bundle_dir,
             )
-            secondary_artifacts.append(
-                registration.secondary_artifact.model_dump(mode="json", exclude_none=True)
-            )
+            oci_artifact = registration.secondary_artifact.model_dump(mode="json", exclude_none=True)
+            if include_oci_image_reproducibility:
+                oci_artifact["reproducibility"] = {
+                    "profile_id": "oci-main-image",
+                }
+            secondary_artifacts.append(oci_artifact)
 
         manifest_payload: dict[str, object] = {
             "schema_version": "1",

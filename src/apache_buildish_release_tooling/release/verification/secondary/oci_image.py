@@ -16,10 +16,19 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.oci_image import (
     _inspect_image_ref,
+)
+from apache_buildish_release_tooling.release.models import ComponentConfig
+from apache_buildish_release_tooling.release.verification.inspection_bundle import (
+    write_reproducibility_metadata,
+)
+from apache_buildish_release_tooling.release.verification.rebuild import (
+    resolve_rebuild_profile,
+    run_host_direct_profile,
 )
 
 from .shared import required_non_empty_string
@@ -29,6 +38,12 @@ def verify_oci_image(
     artifact_entry: dict[str, Any],
     *,
     manifest_url: str,
+    work_dir: Path,
+    component_config: ComponentConfig | None,
+    project_root: Path | None,
+    source_date_epoch: int | None,
+    build_checks_allowed: bool,
+    inspection_bundle_root: Path | None,
 ) -> dict[str, Any]:
     artifact_id = required_non_empty_string(artifact_entry, "artifact_id", source=manifest_url)
     registry = required_non_empty_string(artifact_entry, "registry", source=manifest_url)
@@ -73,6 +88,21 @@ def verify_oci_image(
                 "oci-image platform digests do not match the signed manifest: "
                 f"{live_by_platform} != {expected_by_platform}"
             )
+    reproducibility_verification: dict[str, Any] | None = None
+    if build_checks_allowed and artifact_entry.get("reproducibility") is not None:
+        reproducibility_verification = _verify_oci_image_reproducibility(
+            artifact_entry,
+            manifest_url=manifest_url,
+            artifact_id=artifact_id,
+            declared_digest=declared_digest,
+            expected_platform_digests=expected_platform_digests,
+            component_config=component_config,
+            project_root=project_root,
+            source_date_epoch=source_date_epoch,
+            inspection_bundle_root=inspection_bundle_root,
+            work_dir=work_dir / "reproducibility",
+        )
+        issues.extend(str(issue) for issue in reproducibility_verification.get("issues", []))
     return {
         "artifact_id": artifact_id,
         "kind": "oci-image",
@@ -88,6 +118,160 @@ def verify_oci_image(
             "platform_digests_match": platform_digests_match,
             "platform_digests": live_platform_digests,
         },
+        "reproducibility": reproducibility_verification,
+    }
+
+
+def _verify_oci_image_reproducibility(
+    artifact_entry: dict[str, Any],
+    *,
+    manifest_url: str,
+    artifact_id: str,
+    declared_digest: str,
+    expected_platform_digests: list[dict[str, str]],
+    component_config: ComponentConfig | None,
+    project_root: Path | None,
+    source_date_epoch: int | None,
+    inspection_bundle_root: Path | None,
+    work_dir: Path,
+) -> dict[str, Any]:
+    raw_reproducibility = artifact_entry.get("reproducibility")
+    if not isinstance(raw_reproducibility, dict):
+        return {
+            "profile_id": "n/a",
+            "verdict": "failed",
+            "comparison_mode": "platform-digest",
+            "recipe_source": "canonical-profile",
+            "execution_backend": "host-direct",
+            "output_paths": [],
+            "matches_remote_bytes": None,
+            "failure_class": "missing-profile",
+            "evidence": [],
+            "issues": [
+                f"manifest secondary artifact does not declare a reproducibility profile: {artifact_id}"
+            ],
+        }
+    profile_id = required_non_empty_string(raw_reproducibility, "profile_id", source=manifest_url)
+    issues: list[str] = []
+    output_paths: list[str] = []
+    matches_remote_bytes: bool | None = None
+    comparison_mode = "platform-digest"
+    failure_class: str | None = None
+    evidence: list[dict[str, str]] = []
+    image_ref: str | None = None
+    rebuilt_digest: str | None = None
+    rebuilt_platform_digests: list[dict[str, str]] = []
+    if component_config is None:
+        failure_class = failure_class or "missing-component-config"
+        issues.append(
+            f"build-based reproducibility for {artifact_id} requires --component-config to resolve profile {profile_id!r}"
+        )
+    if project_root is None:
+        failure_class = failure_class or "missing-project-root"
+        issues.append(
+            f"build-based reproducibility for {artifact_id} requires one verified source checkout"
+        )
+    profile = None
+    if not issues and component_config is not None:
+        try:
+            profile = resolve_rebuild_profile(
+                component_config,
+                profile_id,
+                expected_kinds=("oci-image",),
+            )
+            comparison_mode = required_non_empty_string(
+                profile.comparison,
+                "mode",
+                source=f"verify_rc profile {profile_id!r}",
+            )
+            if comparison_mode not in {"platform-digest", "provenance-only"}:
+                raise ValueError(
+                    f"verify_rc profile {profile_id!r} must use comparison.mode 'platform-digest' or 'provenance-only' for oci-image artifacts"
+                )
+            image_ref = required_non_empty_string(
+                profile.comparison,
+                "image_ref",
+                source=f"verify_rc profile {profile_id!r}",
+            )
+        except Exception as exc:
+            failure_class = failure_class or "invalid-profile"
+            issues.append(str(exc))
+    if not issues and profile is not None and project_root is not None and image_ref is not None:
+        try:
+            build_result = run_host_direct_profile(
+                profile_id=profile_id,
+                profile=profile,
+                project_root=project_root,
+                work_dir=work_dir,
+                source_date_epoch=source_date_epoch,
+            )
+            output_paths = [
+                str(path.relative_to(project_root))
+                for path in build_result.output_paths
+            ]
+            _rebuilt_registry, _rebuilt_repository, rebuilt_digest, rebuilt_platform_digests = _inspect_image_ref(
+                image_ref,
+                log_commands=False,
+            )
+            if comparison_mode == "platform-digest":
+                if rebuilt_digest != declared_digest:
+                    failure_class = failure_class or "digest-mismatch"
+                    issues.append(
+                        "oci-image reproducibility digest does not match the signed manifest: "
+                        f"{rebuilt_digest} != {declared_digest}"
+                    )
+                if expected_platform_digests:
+                    expected_by_platform = {
+                        entry["platform"]: entry["digest"]
+                        for entry in expected_platform_digests
+                    }
+                    rebuilt_by_platform = {
+                        entry["platform"]: entry["digest"]
+                        for entry in rebuilt_platform_digests
+                    }
+                    if rebuilt_by_platform != expected_by_platform:
+                        failure_class = failure_class or "platform-digest-mismatch"
+                        issues.append(
+                            "oci-image reproducibility platform digests do not match the signed manifest: "
+                            f"{rebuilt_by_platform} != {expected_by_platform}"
+                        )
+                matches_remote_bytes = not issues
+        except Exception as exc:
+            if failure_class is None:
+                failure_class = "build-failed"
+            issues.append(str(exc))
+    if inspection_bundle_root is not None:
+        metadata_path = write_reproducibility_metadata(
+            inspection_bundle_root,
+            artifact_id=artifact_id,
+            payload={
+                "artifact_id": artifact_id,
+                "kind": "oci-image",
+                "profile_id": profile_id,
+                "comparison_mode": comparison_mode,
+                "image_ref": image_ref,
+                "output_paths": output_paths,
+                "declared_digest": declared_digest,
+                "expected_platform_digests": expected_platform_digests,
+                "rebuilt_digest": rebuilt_digest,
+                "rebuilt_platform_digests": rebuilt_platform_digests,
+                "matches_remote_bytes": matches_remote_bytes,
+                "failure_class": failure_class,
+                "issues": issues,
+            },
+        )
+        evidence.append({"label": "comparison-metadata", "path": metadata_path})
+    return {
+        "profile_id": profile_id,
+        "verdict": "failed" if issues else "verified",
+        "comparison_mode": comparison_mode,
+        "recipe_source": "canonical-profile",
+        "execution_backend": "host-direct",
+        "output_paths": output_paths,
+        "matches_remote_bytes": matches_remote_bytes,
+        "failure_class": failure_class,
+        "evidence": evidence,
+        "issues": issues,
     }
 
 

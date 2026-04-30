@@ -637,6 +637,7 @@ class OciImageVerificationReport(BuildishContractModel):
     repository: NonEmptyString
     digest: OciContentDigest
     inspection: OciInspectionReport
+    reproducibility: ArtifactReproducibilityReport | None = None
 
 
 class NpmPackageVerificationReport(BuildishContractModel):
