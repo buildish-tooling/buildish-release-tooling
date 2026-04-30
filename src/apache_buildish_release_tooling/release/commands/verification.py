@@ -25,7 +25,10 @@ from typing import Literal, cast
 
 from apache_buildish_release_tooling.release.command_logging import command_log_sink
 from apache_buildish_release_tooling.release.config import load_component_config, validate_release_target_base_urls
-from apache_buildish_release_tooling.release.contracts import VerifyRcReportV1
+from apache_buildish_release_tooling.release.contracts import (
+    InspectionBundleSection,
+    VerifyRcReportV1,
+)
 from apache_buildish_release_tooling.release.manifest import write_manifest
 from apache_buildish_release_tooling.release.models import ComponentConfig
 from apache_buildish_release_tooling.release.progress import ProgressReporter
@@ -267,9 +270,9 @@ def _finalized_report_outputs(
     )
     report_payload = result.report_payload.model_copy(
         update={
-            "inspection_bundle": {
-                "relative_path_from_report": relative_bundle_path,
-            }
+            "inspection_bundle": InspectionBundleSection(
+                relative_path_from_report=relative_bundle_path,
+            )
         }
     )
     report_markdown = (

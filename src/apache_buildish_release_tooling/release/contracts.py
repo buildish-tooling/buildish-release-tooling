@@ -621,6 +621,7 @@ class PythonDistributionVerificationReport(BuildishContractModel):
     version: NonEmptyString
     checksum: ChecksumVerificationReport
     index_resolution: PythonIndexResolutionReport
+    reproducibility: ArtifactReproducibilityReport | None = None
 
 
 class OciImageVerificationReport(BuildishContractModel):

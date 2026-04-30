@@ -346,6 +346,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 "--allow-non-production-release-targets",
                 "--mode",
                 "full",
+                "--progress",
+                "on",
                 "--work-dir",
                 str(fixture.work_dir),
                 "--report-json",
@@ -917,6 +919,90 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual(1, completed.returncode)
         self.assertIn("python-distribution file is not present in the declared simple index", completed.stderr)
 
+    def test_verify_rc_command_verifies_python_distribution_reproducibility_in_full_mode(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_python_distribution=True,
+            include_python_distribution_reproducibility=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("verified", secondary_verification["reproducibility"]["verdict"])
+        self.assertEqual("pypi-wheel", secondary_verification["reproducibility"]["profile_id"])
+        self.assertEqual(
+            ["dist/example-1.2.3-py3-none-any.whl"],
+            secondary_verification["reproducibility"]["output_paths"],
+        )
+
+    def test_verify_rc_command_reports_python_distribution_reproducibility_drift_in_full_mode(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_python_distribution=True,
+            include_python_distribution_reproducibility=True,
+            drift_python_distribution_reproducibility=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn(
+            "python-distribution reproducibility output does not match the staged artifact bytes",
+            completed.stderr,
+        )
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("failed", secondary_verification["reproducibility"]["verdict"])
+        self.assertEqual(
+            "byte-mismatch",
+            secondary_verification["reproducibility"]["failure_class"],
+        )
+
     def test_verify_rc_command_verifies_npm_package_secondary_artifact(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
@@ -1131,6 +1217,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         drift_maven_repository: bool = False,
         include_python_distribution: bool = False,
         missing_python_index_entry: bool = False,
+        include_python_distribution_reproducibility: bool = False,
+        drift_python_distribution_reproducibility: bool = False,
         include_npm_package: bool = False,
         drift_npm_registry_integrity: bool = False,
         drift_npm_tarball: bool = False,
@@ -1169,22 +1257,42 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         gpg_home.mkdir(parents=True, exist_ok=True)
         gpg_home.chmod(0o700)
         effective_gpg_home = _effective_home(gpg_home)
-        verify_rc_lines: tuple[str, ...] = ()
+        verify_rc_line_list: list[str] = []
         if include_generic_file_reproducibility:
-            verify_rc_lines = (
-                "verify_rc:",
-                "  profiles:",
-                "    bootstrap-zip:",
-                f"      kind: {secondary_kind}",
-                "      build:",
-                "        command:",
-                "          - sh",
-                "          - buildish-release-tooling/rebuild-bootstrap.sh",
-                "        output_globs:",
-                "          - dist/buildish-example-bootstrap.zip",
-                "      comparison:",
-                "        mode: exact-bytes",
+            verify_rc_line_list.extend(
+                [
+                    "    bootstrap-zip:",
+                    f"      kind: {secondary_kind}",
+                    "      build:",
+                    "        command:",
+                    "          - sh",
+                    "          - buildish-release-tooling/rebuild-bootstrap.sh",
+                    "        output_globs:",
+                    "          - dist/buildish-example-bootstrap.zip",
+                    "      comparison:",
+                    "        mode: exact-bytes",
+                ]
             )
+        if include_python_distribution_reproducibility:
+            verify_rc_line_list.extend(
+                [
+                    "    pypi-wheel:",
+                    "      kind: python-distribution",
+                    "      build:",
+                    "        command:",
+                    "          - sh",
+                    "          - buildish-release-tooling/rebuild-wheel.sh",
+                    "        output_globs:",
+                    "          - dist/example-1.2.3-py3-none-any.whl",
+                    "      comparison:",
+                    "        mode: exact-bytes",
+                ]
+            )
+        verify_rc_lines = (
+            ("verify_rc:", "  profiles:", *verify_rc_line_list)
+            if verify_rc_line_list
+            else ()
+        )
 
         self._write_component_config(
             config_path,
@@ -1220,6 +1328,34 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             )
             subprocess.run(
                 ["git", "-C", str(origin_dir), "commit", "-m", "add bootstrap rebuild script"],
+                check=True,
+            )
+        if include_python_distribution_reproducibility:
+            rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-wheel.sh"
+            rebuild_script.parent.mkdir(parents=True, exist_ok=True)
+            rebuild_script.write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env sh",
+                        "set -eu",
+                        "mkdir -p dist",
+                        (
+                            "printf 'wheel payload\\n' > dist/example-1.2.3-py3-none-any.whl"
+                            if not drift_python_distribution_reproducibility
+                            else "printf 'wheel payload drift\\n' > dist/example-1.2.3-py3-none-any.whl"
+                        ),
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            rebuild_script.chmod(0o755)
+            subprocess.run(
+                ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-wheel.sh"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(origin_dir), "commit", "-m", "add wheel rebuild script"],
                 check=True,
             )
 
@@ -1434,6 +1570,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 json.dumps(simple_index_payload, indent=2) + "\n",
                 encoding="utf-8",
             )
+            if include_python_distribution_reproducibility:
+                python_artifact["reproducibility"] = {
+                    "profile_id": "pypi-wheel",
+                }
             secondary_artifacts.append(python_artifact)
         if include_npm_package:
             artifact_bytes = b"npm package payload\n"

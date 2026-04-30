@@ -127,6 +127,11 @@ def verify_secondary_artifacts(
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
                     allow_non_production_release_targets=allow_non_production_release_targets,
+                    component_config=component_config,
+                    project_root=project_root,
+                    source_date_epoch=source_date_epoch,
+                    build_checks_allowed=build_checks_allowed,
+                    inspection_bundle_root=inspection_bundle_root,
                 )
             elif kind == "npm-package":
                 verification = verify_npm_package(
@@ -276,6 +281,17 @@ def _emit_secondary_artifact_summary(
             emit_success(progress_reporter, "Verified checksum sidecar")
         if index_resolution.get("resolved_url") is not None:
             emit_success(progress_reporter, "Verified simple index entry")
+        reproducibility_payload = verification.get("reproducibility")
+        if isinstance(reproducibility_payload, dict):
+            emit_detail(
+                progress_reporter,
+                "Reproducibility profile",
+                str(reproducibility_payload.get("profile_id", "n/a")),
+            )
+            for output_path in reproducibility_payload.get("output_paths", []):
+                emit_detail(progress_reporter, "Rebuild output", str(output_path))
+            if reproducibility_payload.get("matches_remote_bytes") is True:
+                emit_success(progress_reporter, "Verified rebuilt artifact matches staged bytes")
         for issue in issues:
             emit_failure(progress_reporter, issue)
         return

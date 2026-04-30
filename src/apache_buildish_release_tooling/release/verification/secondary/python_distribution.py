@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
+from apache_buildish_release_tooling.release.models import ComponentConfig
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.common import (
@@ -30,6 +31,7 @@ from apache_buildish_release_tooling.release.verification.common import (
     verify_checksum_sidecar,
 )
 
+from .file_reproducibility import verify_host_direct_single_file_reproducibility
 from .shared import required_checksum_payload, required_non_empty_string, url_without_fragment
 
 
@@ -55,6 +57,11 @@ def verify_python_distribution(
     manifest_url: str,
     work_dir: Path,
     allow_non_production_release_targets: bool,
+    component_config: ComponentConfig | None,
+    project_root: Path | None,
+    source_date_epoch: int | None,
+    build_checks_allowed: bool,
+    inspection_bundle_root: Path | None,
 ) -> dict[str, Any]:
     artifact_id = required_non_empty_string(artifact_entry, "artifact_id", source=manifest_url)
     filename = required_non_empty_string(artifact_entry, "filename", source=manifest_url)
@@ -142,6 +149,7 @@ def verify_python_distribution(
     resolved_url: str | None = None
     found_via: str | None = None
     sha256_matches_index: bool | None = None
+    reproducibility_verification: dict[str, Any] | None = None
     try:
         validate_fetch_uri(
             project_index_url,
@@ -179,7 +187,23 @@ def verify_python_distribution(
     except Exception as exc:
         issues.append(str(exc))
 
-    return {
+    if build_checks_allowed and artifact_entry.get("reproducibility") is not None:
+        reproducibility_verification = verify_host_direct_single_file_reproducibility(
+            artifact_entry,
+            manifest_url=manifest_url,
+            artifact_id=artifact_id,
+            kind="python-distribution",
+            artifact_path=artifact_path,
+            work_dir=work_dir / "reproducibility",
+            component_config=component_config,
+            project_root=project_root,
+            source_date_epoch=source_date_epoch,
+            inspection_bundle_root=inspection_bundle_root,
+            subject_label="python-distribution",
+        )
+        issues.extend(reproducibility_verification.get("issues", []))
+
+    verification = {
         "artifact_id": artifact_id,
         "kind": "python-distribution",
         "verdict": "failed" if issues else "verified",
@@ -202,6 +226,9 @@ def verify_python_distribution(
             "sha256_matches_index": sha256_matches_index,
         },
     }
+    if reproducibility_verification is not None:
+        verification["reproducibility"] = reproducibility_verification
+    return verification
 
 
 def _simple_index_project_url(index_url: str, project_name: str) -> str:
