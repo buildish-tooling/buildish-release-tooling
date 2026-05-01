@@ -48,6 +48,9 @@ jobs:
           RC_VOTE_MANIFEST_URL: ${{ inputs.rc_vote_manifest_url }}
           KEYS_URL: ${{ inputs.keys_url }}
         run: |
+          # CI uses only canonical reproducibility profiles from release-config.yaml.
+          # Human local runs may opt into --repro-override-file, but that is intentionally
+          # not part of this workflow contract.
           bash buildish-release-tooling/release-tooling.sh verify-rc \
             "$RC_VOTE_MANIFEST_URL" \
             "$KEYS_URL"

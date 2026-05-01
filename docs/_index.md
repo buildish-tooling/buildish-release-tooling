@@ -326,9 +326,66 @@ Summaries are intended for:
 
 ### Human verification support
 
-- `verify-rc <version>`
+- `verify-rc [--component-config <path>] [--repro-override-file <path>] <rc_vote_manifest_url> <keys_url>`
+- `inspect-repro <report_json>`
 
 ## Selected command guarantees
+
+### `verify-rc`
+
+- verifies one explicit signed `rc-vote-manifest.json` plus its staged source artifact and declared secondary artifacts
+- requires two positional inputs:
+  - the exact `rc_vote_manifest_url`
+  - the explicit `keys_url` expected by the signed manifest
+- writes a machine-readable JSON report and a Markdown report
+- writes a combined transcript and low-level command log
+- in `--mode full`, runs configured local reproducibility checks and writes a curated inspection bundle suitable for `inspect-repro`
+- supports `--repro-override-file <path>` for explicit human local rebuild overrides
+- treats any run with `--repro-override-file` as non-canonical and records:
+  - `recipe_source=local-override`
+  - the applied `override_fields`
+- CI and release workflow runs should not use `--repro-override-file`; that flag exists for human local investigation when the canonical repo-maintained recipe is too narrow for one machine
+
+Example canonical verification run:
+
+```text
+buildish-release-tooling verify-rc \
+  --component-config release-config.yaml \
+  https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json \
+  https://downloads.apache.org/incubator/buildish/KEYS
+```
+
+Example non-canonical local override run:
+
+```text
+buildish-release-tooling verify-rc \
+  --component-config release-config.yaml \
+  --repro-override-file ~/tmp/repro-overrides.yaml \
+  https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json \
+  https://downloads.apache.org/incubator/buildish/KEYS
+```
+
+Example override file:
+
+```yaml
+verify_rc:
+  profile_overrides:
+    bootstrap-zip:
+      build:
+        command: ["./buildish-release-tooling/rebuild-bootstrap-local.sh"]
+
+    pypi-wheel:
+      build:
+        working_dir: "python-package"
+        env:
+          PIP_NO_BUILD_ISOLATION: "1"
+```
+
+### `inspect-repro`
+
+- reads one saved `verify-rc` JSON report plus its inspection bundle
+- explains failed reproducibility checks without rerunning remote verification
+- surfaces the selected `profile_id`, `recipe_source`, `override_fields`, retained evidence files, and kind-specific drift details
 
 ### `prepare-rc`
 
