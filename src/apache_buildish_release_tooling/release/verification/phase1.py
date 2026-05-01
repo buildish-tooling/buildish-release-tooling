@@ -1147,6 +1147,19 @@ def _append_reproducibility_markdown(
             f"- {match_summary_label}: `{reproducibility_payload['matches_remote_bytes']}`",
         ]
     )
+    build_command = reproducibility_payload.get("build_command", [])
+    if build_command:
+        lines.append("- Build command: `" + " ".join(str(part) for part in build_command) + "`")
+    build_working_directory = reproducibility_payload.get("build_working_directory")
+    if build_working_directory:
+        lines.append(f"- Build working directory: `{build_working_directory}`")
+    injected_environment_keys = reproducibility_payload.get("injected_environment_keys", [])
+    if injected_environment_keys:
+        lines.append(
+            "- Injected environment keys: `"
+            + ", ".join(str(key) for key in injected_environment_keys)
+            + "`"
+        )
     if reproducibility_payload.get("override_fields"):
         lines.append(
             "- Override fields: `"

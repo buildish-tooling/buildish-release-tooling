@@ -103,6 +103,24 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
         emit_detail(progress_reporter, "Profile", reproducibility.profile_id)
         emit_detail(progress_reporter, "Comparison mode", reproducibility.comparison_mode)
         emit_detail(progress_reporter, "Recipe source", reproducibility.recipe_source)
+        if reproducibility.build_command:
+            emit_detail(
+                progress_reporter,
+                "Build command",
+                " ".join(reproducibility.build_command),
+            )
+        if reproducibility.build_working_directory is not None:
+            emit_detail(
+                progress_reporter,
+                "Build working directory",
+                reproducibility.build_working_directory,
+            )
+        if reproducibility.injected_environment_keys:
+            emit_detail(
+                progress_reporter,
+                "Injected environment keys",
+                ", ".join(reproducibility.injected_environment_keys),
+            )
         if reproducibility.override_fields:
             emit_detail(
                 progress_reporter,

@@ -573,6 +573,9 @@ class ArtifactReproducibilityReport(BuildishContractModel):
     recipe_source: Literal["canonical-profile", "local-override"] = "canonical-profile"
     override_fields: list[NonEmptyString] = Field(default_factory=list)
     execution_backend: Literal["host-direct"] = "host-direct"
+    build_command: list[NonEmptyString] = Field(default_factory=list)
+    build_working_directory: NonEmptyString | None = None
+    injected_environment_keys: list[NonEmptyString] = Field(default_factory=list)
     output_paths: list[NonEmptyString] = Field(default_factory=list)
     matches_remote_bytes: bool | None = None
     failure_class: NonEmptyString | None = None

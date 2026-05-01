@@ -147,6 +147,9 @@ def _verify_oci_image_reproducibility(
             "comparison_mode": "platform-digest",
             "recipe_source": "canonical-profile",
             "execution_backend": "host-direct",
+            "build_command": [],
+            "build_working_directory": None,
+            "injected_environment_keys": [],
             "output_paths": [],
             "matches_remote_bytes": None,
             "failure_class": "missing-profile",
@@ -158,6 +161,9 @@ def _verify_oci_image_reproducibility(
     profile_id = required_non_empty_string(raw_reproducibility, "profile_id", source=manifest_url)
     issues: list[str] = []
     output_paths: list[str] = []
+    build_command: list[str] = []
+    build_working_directory: str | None = None
+    injected_environment_keys: list[str] = []
     matches_remote_bytes: bool | None = None
     comparison_mode = "platform-digest"
     failure_class: str | None = None
@@ -212,6 +218,11 @@ def _verify_oci_image_reproducibility(
                 work_dir=work_dir,
                 source_date_epoch=source_date_epoch,
             )
+            build_command = list(build_result.command)
+            build_working_directory = str(build_result.cwd.relative_to(project_root))
+            if build_working_directory == "":
+                build_working_directory = "."
+            injected_environment_keys = list(build_result.injected_environment_keys)
             output_paths = [
                 str(path.relative_to(project_root))
                 for path in build_result.output_paths
@@ -260,6 +271,9 @@ def _verify_oci_image_reproducibility(
                     resolved_profile.recipe_source if resolved_profile is not None else "canonical-profile"
                 ),
                 "override_fields": list(resolved_profile.override_fields) if resolved_profile is not None else [],
+                "build_command": build_command,
+                "build_working_directory": build_working_directory,
+                "injected_environment_keys": injected_environment_keys,
                 "image_ref": image_ref,
                 "output_paths": output_paths,
                 "declared_digest": declared_digest,
@@ -279,6 +293,9 @@ def _verify_oci_image_reproducibility(
         "recipe_source": resolved_profile.recipe_source if resolved_profile is not None else "canonical-profile",
         "override_fields": list(resolved_profile.override_fields) if resolved_profile is not None else [],
         "execution_backend": "host-direct",
+        "build_command": build_command,
+        "build_working_directory": build_working_directory,
+        "injected_environment_keys": injected_environment_keys,
         "output_paths": output_paths,
         "matches_remote_bytes": matches_remote_bytes,
         "failure_class": failure_class,

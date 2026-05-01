@@ -344,7 +344,7 @@ class VerificationRebuildTest(unittest.TestCase):
                 },
                 clear=True,
             ):
-                environment = build_host_direct_environment(
+                environment, injected_environment_keys = build_host_direct_environment(
                     project_root=project_root,
                     work_dir=work_dir,
                     source_date_epoch=1714032000,
@@ -361,6 +361,17 @@ class VerificationRebuildTest(unittest.TestCase):
             self.assertEqual(str(work_dir / "tmp"), environment["TMPDIR"])
             self.assertNotIn("GITHUB_TOKEN", environment)
             self.assertNotIn("AWS_SECRET_ACCESS_KEY", environment)
+            self.assertEqual(
+                (
+                    "BUILDISH_PROJECT_ROOT",
+                    "BUILDISH_SOURCE_DATE_EPOCH",
+                    "BUILDISH_WORK_DIR",
+                    "CUSTOM_BUILD_FLAG",
+                    "SOURCE_DATE_EPOCH",
+                    "TMPDIR",
+                ),
+                injected_environment_keys,
+            )
 
     def test_decide_reproducibility_mode_prompts_only_for_auto_interactive_candidates(self) -> None:
         declined = decide_reproducibility_mode(

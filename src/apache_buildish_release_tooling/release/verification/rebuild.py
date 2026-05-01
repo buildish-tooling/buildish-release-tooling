@@ -78,6 +78,7 @@ class HostDirectBuildResult:
     profile_kind: str
     command: tuple[str, ...]
     cwd: Path
+    injected_environment_keys: tuple[str, ...]
     output_paths: tuple[Path, ...]
     environment: dict[str, str]
 
@@ -298,7 +299,7 @@ def build_host_direct_environment(
     work_dir: Path,
     source_date_epoch: int | None,
     extra_env: Mapping[str, str] | None = None,
-) -> dict[str, str]:
+) -> tuple[dict[str, str], tuple[str, ...]]:
     """Build a compatible but scrubbed subprocess environment for host-direct rebuilds."""
 
     environment = {
@@ -307,6 +308,11 @@ def build_host_direct_environment(
         if key not in _SCRUBBED_ENV_NAMES
         and not any(key.startswith(prefix) for prefix in _SCRUBBED_ENV_PREFIXES)
     }
+    injected_keys = [
+        "TMPDIR",
+        "BUILDISH_PROJECT_ROOT",
+        "BUILDISH_WORK_DIR",
+    ]
     tmp_dir = work_dir / "tmp"
     tmp_dir.mkdir(parents=True, exist_ok=True)
     environment["TMPDIR"] = str(tmp_dir)
@@ -316,9 +322,11 @@ def build_host_direct_environment(
         epoch_text = str(source_date_epoch)
         environment["SOURCE_DATE_EPOCH"] = epoch_text
         environment["BUILDISH_SOURCE_DATE_EPOCH"] = epoch_text
+        injected_keys.extend(["SOURCE_DATE_EPOCH", "BUILDISH_SOURCE_DATE_EPOCH"])
     if extra_env is not None:
         environment.update(extra_env)
-    return environment
+        injected_keys.extend(extra_env)
+    return environment, tuple(sorted(set(injected_keys)))
 
 
 def ensure_detached_source_checkout(project_root: Path, commit_sha: str) -> None:
@@ -352,7 +360,7 @@ def run_host_direct_profile(
     """Execute one configured reproducibility profile directly on the host."""
 
     cwd = project_root if profile.build.working_dir is None else project_root / profile.build.working_dir
-    environment = build_host_direct_environment(
+    environment, injected_environment_keys = build_host_direct_environment(
         project_root=project_root,
         work_dir=work_dir,
         source_date_epoch=source_date_epoch,
@@ -369,6 +377,7 @@ def run_host_direct_profile(
         profile_kind=profile.kind,
         command=tuple(profile.build.command),
         cwd=cwd,
+        injected_environment_keys=injected_environment_keys,
         output_paths=collect_profile_output_paths(project_root, profile.build.output_globs),
         environment=environment,
     )

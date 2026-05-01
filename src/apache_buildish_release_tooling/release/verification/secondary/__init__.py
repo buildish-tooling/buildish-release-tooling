@@ -377,6 +377,19 @@ def _emit_reproducibility_details(
         "Recipe source",
         str(reproducibility_payload.get("recipe_source", "canonical-profile")),
     )
+    build_command = reproducibility_payload.get("build_command", [])
+    if build_command:
+        emit_detail(progress_reporter, "Build command", " ".join(str(part) for part in build_command))
+    build_working_directory = reproducibility_payload.get("build_working_directory")
+    if build_working_directory:
+        emit_detail(progress_reporter, "Build working directory", str(build_working_directory))
+    injected_environment_keys = reproducibility_payload.get("injected_environment_keys", [])
+    if injected_environment_keys:
+        emit_detail(
+            progress_reporter,
+            "Injected environment keys",
+            ", ".join(str(key) for key in injected_environment_keys),
+        )
     override_fields = reproducibility_payload.get("override_fields", [])
     if override_fields:
         emit_detail(progress_reporter, "Override fields", ", ".join(str(field) for field in override_fields))

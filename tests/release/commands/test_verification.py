@@ -321,6 +321,12 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Effective mode: full", completed.stderr)
         self.assertIn("Verified rebuilt artifact matches staged bytes", completed.stderr)
         self.assertIn("Recipe source: canonical-profile", completed.stderr)
+        self.assertIn("Build command: sh buildish-release-tooling/rebuild-bootstrap.sh", completed.stderr)
+        self.assertIn("Build working directory: .", completed.stderr)
+        self.assertIn(
+            "Injected environment keys: BUILDISH_PROJECT_ROOT, BUILDISH_SOURCE_DATE_EPOCH, BUILDISH_WORK_DIR, SOURCE_DATE_EPOCH, TMPDIR",
+            completed.stderr,
+        )
         self.assertNotIn("Override fields:", completed.stderr)
         report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
         self.assertEqual("full", report_payload["reproducibility_execution"]["requested_mode"])
@@ -342,6 +348,24 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             ["dist/buildish-example-bootstrap.zip"],
             secondary_verification["reproducibility"]["output_paths"],
         )
+        self.assertEqual(
+            ["sh", "buildish-release-tooling/rebuild-bootstrap.sh"],
+            secondary_verification["reproducibility"]["build_command"],
+        )
+        self.assertEqual(
+            ".",
+            secondary_verification["reproducibility"]["build_working_directory"],
+        )
+        self.assertEqual(
+            [
+                "BUILDISH_PROJECT_ROOT",
+                "BUILDISH_SOURCE_DATE_EPOCH",
+                "BUILDISH_WORK_DIR",
+                "SOURCE_DATE_EPOCH",
+                "TMPDIR",
+            ],
+            secondary_verification["reproducibility"]["injected_environment_keys"],
+        )
         self.assertIn(
             f"  Inspect reproducibility: buildish-release-tooling inspect-repro {fixture.report_json_path}",
             completed.stderr,
@@ -356,6 +380,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         report_markdown = fixture.report_md_path.read_text(encoding="utf-8")
         self.assertIn("Reproducibility verdict: `verified`", report_markdown)
         self.assertIn("Execution backend: `host-direct`", report_markdown)
+        self.assertIn("Build command: `sh buildish-release-tooling/rebuild-bootstrap.sh`", report_markdown)
+        self.assertIn("Build working directory: `.`", report_markdown)
 
     def test_verify_rc_command_uses_local_repro_override_file_for_generic_file(self) -> None:
         if not command_available("gpg"):
@@ -796,6 +822,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         self.assertIn("Inspect Repro", inspect_completed.stderr)
         self.assertIn("Artifact 1/1: bootstrap-zip", inspect_completed.stderr)
+        self.assertIn("Build command: sh buildish-release-tooling/rebuild-bootstrap.sh", inspect_completed.stderr)
+        self.assertIn("Build working directory: .", inspect_completed.stderr)
         self.assertIn("Failure class: byte-mismatch", inspect_completed.stderr)
         self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
         self.assertIn("Unified text diff", inspect_completed.stderr)
@@ -864,6 +892,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         self.assertIn("Recipe source: local-override", inspect_completed.stderr)
+        self.assertIn(
+            "Build command: sh buildish-release-tooling/rebuild-bootstrap-local.sh",
+            inspect_completed.stderr,
+        )
         self.assertIn("Override fields: build.command", inspect_completed.stderr)
         self.assertIn("Failure class: byte-mismatch", inspect_completed.stderr)
 
