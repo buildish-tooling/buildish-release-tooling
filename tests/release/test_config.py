@@ -18,7 +18,10 @@ from __future__ import annotations
 
 import unittest
 
-from apache_buildish_release_tooling.release.config import load_component_config
+from apache_buildish_release_tooling.release.config import (
+    load_component_config,
+    load_verify_rc_override_config,
+)
 
 from tests.support import cleanup_sandbox, create_build_test_sandbox, fixture_component_config_path
 
@@ -188,3 +191,89 @@ class LoadComponentConfigTest(unittest.TestCase):
                 self.assertEqual(secondary_targets, loaded.secondary_targets)
                 self.assertEqual(expected_final_tag_modes[component_id], loaded.final_tag_mode)
                 self.assertTrue(loaded.release_branch_ci_required)
+
+
+class LoadVerifyRcOverrideConfigTest(unittest.TestCase):
+    """Verify that local reproducibility override YAML loading behaves as expected."""
+
+    def test_load_verify_rc_override_config_from_yaml(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        config_path = sandbox_dir / "repro-overrides.yaml"
+        config_path.write_text(
+            "\n".join(
+                [
+                    "verify_rc:",
+                    "  profile_overrides:",
+                    "    bootstrap-zip:",
+                    "      build:",
+                    "        command: [\"./buildish-release-tooling/rebuild-bootstrap-local.sh\"]",
+                    "    pypi-wheel:",
+                    "      build:",
+                    "        working_dir: python-package",
+                    "        env:",
+                    "          PIP_NO_BUILD_ISOLATION: \"1\"",
+                    "        output_globs:",
+                    "          - python-package/dist/*.whl",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        loaded = load_verify_rc_override_config(str(config_path))
+
+        self.assertEqual(
+            ["./buildish-release-tooling/rebuild-bootstrap-local.sh"],
+            loaded.profile_overrides["bootstrap-zip"].build.command,
+        )
+        self.assertEqual(
+            "python-package",
+            loaded.profile_overrides["pypi-wheel"].build.working_dir,
+        )
+        self.assertEqual(
+            "1",
+            loaded.profile_overrides["pypi-wheel"].build.env["PIP_NO_BUILD_ISOLATION"],
+        )
+        self.assertEqual(
+            ["python-package/dist/*.whl"],
+            loaded.profile_overrides["pypi-wheel"].build.output_globs,
+        )
+
+    def test_load_verify_rc_override_config_rejects_malformed_yaml(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        config_path = sandbox_dir / "repro-overrides.yaml"
+        config_path.write_text(
+            "\n".join(
+                [
+                    "verify_rc:",
+                    "  profile_overrides:",
+                    "    bootstrap-zip:",
+                    "      build:",
+                    "        command: [\"./broken.sh\"",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(Exception, "while parsing"):
+            load_verify_rc_override_config(str(config_path))
+
+    def test_load_verify_rc_override_config_rejects_empty_build_override(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        config_path = sandbox_dir / "repro-overrides.yaml"
+        config_path.write_text(
+            "\n".join(
+                [
+                    "verify_rc:",
+                    "  profile_overrides:",
+                    "    bootstrap-zip:",
+                    "      build: {}",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "must change at least one build field"):
+            load_verify_rc_override_config(str(config_path))
