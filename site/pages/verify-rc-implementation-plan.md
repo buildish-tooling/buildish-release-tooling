@@ -1441,6 +1441,22 @@ Interactive local behavior:
 - if `verify-rc` finds reproducibility issues on an interactive TTY, it may offer to launch `inspect-repro` immediately against the just-written report and evidence bundle
 - if the user declines, the saved report and bundle should still be sufficient to run `inspect-repro` later without rerunning verification
 
+Recommended operator workflow:
+
+1. Run `verify-rc` first and write an explicit JSON report path.
+2. When local rebuild checks are desired, use `--mode full` so the report also carries the
+   reproducibility execution details and the inspection bundle can retain curated evidence.
+3. If `verify-rc` reports reproducibility failures, keep the JSON report and inspection bundle
+   together and run `buildish-release-tooling inspect-repro <report-json>`.
+4. Let `inspect-repro` summarize the failure classes and retained evidence first, then drill into
+   the kind-specific diagnostics:
+   - source artifact: staged vs rebuilt source archive drift
+   - generic file / Python / npm: retained artifact drift plus shallow top-level tar/zip drift
+     where applicable
+   - Maven repository / OCI image: path-, digest-, and metadata-oriented drift summaries
+5. Use optional external tools only as an escalation path when the built-in diagnosis is not
+   specific enough.
+
 ## GitHub Workflow Shape
 
 Recommended workflow contract:

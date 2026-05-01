@@ -409,6 +409,20 @@ verify_rc:
   - effective build working directory
   - injected environment keys
 
+Typical operator flow:
+
+1. Run `verify-rc` first, usually with `--report-json <path>` and `--mode full` when local
+   rebuild checks are desired.
+2. If `verify-rc` reports one or more reproducibility failures, keep the generated JSON report and
+   inspection bundle together.
+3. Run `inspect-repro <report_json>` against that saved report.
+4. Start with the failure summary and retained evidence paths, then use the kind-specific output:
+   - source artifact: staged vs rebuilt source archive drift
+   - Python / npm / generic file: retained artifact drift, shallow top-level archive drift when
+     the artifact format is tar/zip-based
+   - Maven / OCI: kind-specific path, digest, and metadata drift summaries
+5. Use optional external tools only as escalation when the built-in diagnosis is insufficient.
+
 ### `prepare-rc`
 
 - resolves the release branch, next RC number, and authoritative source commit for one version
