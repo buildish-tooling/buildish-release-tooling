@@ -914,6 +914,188 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
         self.assertIn("Unified text diff", inspect_completed.stderr)
 
+    def test_inspect_repro_command_tolerates_missing_canonical_recipe(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--progress",
+                "on",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        del report_payload["secondary_artifact_verifications"][0]["reproducibility"]["canonical_recipe"]
+        fixture.report_json_path.write_text(json.dumps(report_payload, indent=2) + "\n", encoding="utf-8")
+
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertNotIn("Canonical build command:", inspect_completed.stderr)
+        self.assertIn("Build command: sh buildish-release-tooling/rebuild-bootstrap.sh", inspect_completed.stderr)
+        self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
+
+    def test_inspect_repro_command_tolerates_missing_effective_execution(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--progress",
+                "on",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        del report_payload["secondary_artifact_verifications"][0]["reproducibility"]["effective_execution"]
+        fixture.report_json_path.write_text(json.dumps(report_payload, indent=2) + "\n", encoding="utf-8")
+
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertNotIn("Build command:", inspect_completed.stderr)
+        self.assertNotIn("Build working directory:", inspect_completed.stderr)
+        self.assertIn("Failure class: byte-mismatch", inspect_completed.stderr)
+        self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
+
+    def test_inspect_repro_command_tolerates_override_without_build_payload(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+        )
+        override_path = sandbox_dir / "repro-overrides.yaml"
+        override_path.write_text(
+            "\n".join(
+                [
+                    "verify_rc:",
+                    "  profile_overrides:",
+                    "    bootstrap-zip:",
+                    "      build:",
+                    "        command:",
+                    "          - sh",
+                    "          - buildish-release-tooling/rebuild-bootstrap-local.sh",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--progress",
+                "on",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                "--repro-override-file",
+                str(override_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        report_payload["secondary_artifact_verifications"][0]["reproducibility"]["override"] = {
+            "applied": True
+        }
+        fixture.report_json_path.write_text(json.dumps(report_payload, indent=2) + "\n", encoding="utf-8")
+
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn("Recipe source: local-override", inspect_completed.stderr)
+        self.assertNotIn("Override fields:", inspect_completed.stderr)
+        self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
+
     def test_inspect_repro_command_reports_override_metadata_for_failed_generic_file_drift(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
