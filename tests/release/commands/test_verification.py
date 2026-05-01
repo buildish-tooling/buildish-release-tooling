@@ -318,6 +318,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Requested mode: full", completed.stderr)
         self.assertIn("Effective mode: full", completed.stderr)
         self.assertIn("Verified rebuilt artifact matches staged bytes", completed.stderr)
+        self.assertIn("Recipe source: canonical-profile", completed.stderr)
+        self.assertNotIn("Override fields:", completed.stderr)
         report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
         self.assertEqual("full", report_payload["reproducibility_execution"]["requested_mode"])
         self.assertEqual("full", report_payload["reproducibility_execution"]["effective_mode"])
@@ -329,6 +331,11 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         secondary_verification = report_payload["secondary_artifact_verifications"][0]
         self.assertEqual("verified", secondary_verification["reproducibility"]["verdict"])
         self.assertEqual("bootstrap-zip", secondary_verification["reproducibility"]["profile_id"])
+        self.assertEqual(
+            "canonical-profile",
+            secondary_verification["reproducibility"]["recipe_source"],
+        )
+        self.assertEqual([], secondary_verification["reproducibility"]["override_fields"])
         self.assertEqual(
             ["dist/buildish-example-bootstrap.zip"],
             secondary_verification["reproducibility"]["output_paths"],
@@ -409,6 +416,143 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             ["build.command"],
             secondary_verification["reproducibility"]["override_fields"],
         )
+
+    def test_verify_rc_command_rejects_repro_override_file_without_component_config(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        override_path = sandbox_dir / "repro-overrides.yaml"
+        override_path.write_text(
+            "\n".join(
+                [
+                    "verify_rc:",
+                    "  profile_overrides:",
+                    "    bootstrap-zip:",
+                    "      build:",
+                    "        command: [\"./buildish-release-tooling/rebuild-bootstrap-local.sh\"]",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--repro-override-file",
+                str(override_path),
+                "https://example.invalid/rc-vote-manifest.json",
+                "https://example.invalid/KEYS",
+            ],
+            cwd=sandbox_dir,
+            env=cli_env(sandbox_dir / "cli-manifest.json"),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn("--repro-override-file requires --component-config", completed.stderr)
+
+    def test_verify_rc_command_rejects_repro_override_file_with_unknown_profile_id(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        self._write_component_config(
+            config_path,
+            component_id="buildish-example",
+            dev_base_url="https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+            release_base_url="https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+            verify_rc_lines=(
+                "verify_rc:",
+                "  profiles:",
+                "    bootstrap-zip:",
+                "      kind: generic-file",
+                "      build:",
+                "        command: [\"./buildish-release-tooling/rebuild-bootstrap.sh\"]",
+                "        output_globs:",
+                "          - dist/buildish-example-bootstrap.zip",
+                "      comparison:",
+                "        mode: exact-bytes",
+            ),
+        )
+        override_path = sandbox_dir / "repro-overrides.yaml"
+        override_path.write_text(
+            "\n".join(
+                [
+                    "verify_rc:",
+                    "  profile_overrides:",
+                    "    missing-profile:",
+                    "      build:",
+                    "        command: [\"./buildish-release-tooling/rebuild-bootstrap-local.sh\"]",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(config_path),
+                "--repro-override-file",
+                str(override_path),
+                "https://example.invalid/rc-vote-manifest.json",
+                "https://example.invalid/KEYS",
+            ],
+            cwd=sandbox_dir,
+            env=cli_env(sandbox_dir / "cli-manifest.json"),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn("unknown verify_rc profile_id", completed.stderr)
+
+    def test_verify_rc_command_rejects_empty_repro_override_build_block(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        self._write_component_config(
+            config_path,
+            component_id="buildish-example",
+            dev_base_url="https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+            release_base_url="https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+            verify_rc_lines=(
+                "verify_rc:",
+                "  profiles:",
+                "    bootstrap-zip:",
+                "      kind: generic-file",
+                "      build:",
+                "        command: [\"./buildish-release-tooling/rebuild-bootstrap.sh\"]",
+                "        output_globs:",
+                "          - dist/buildish-example-bootstrap.zip",
+                "      comparison:",
+                "        mode: exact-bytes",
+            ),
+        )
+        override_path = sandbox_dir / "repro-overrides.yaml"
+        override_path.write_text(
+            "\n".join(
+                [
+                    "verify_rc:",
+                    "  profile_overrides:",
+                    "    bootstrap-zip:",
+                    "      build: {}",
+                ]
+            ),
+            encoding="utf-8",
+        )
+
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(config_path),
+                "--repro-override-file",
+                str(override_path),
+                "https://example.invalid/rc-vote-manifest.json",
+                "https://example.invalid/KEYS",
+            ],
+            cwd=sandbox_dir,
+            env=cli_env(sandbox_dir / "cli-manifest.json"),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn("must change at least one build field", completed.stderr)
 
     def test_verify_rc_command_reports_generic_file_reproducibility_drift_in_full_mode(self) -> None:
         if not command_available("gpg"):
@@ -516,6 +660,73 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Failure class: byte-mismatch", inspect_completed.stderr)
         self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
         self.assertIn("Unified text diff", inspect_completed.stderr)
+
+    def test_inspect_repro_command_reports_override_metadata_for_failed_generic_file_drift(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+        )
+        override_path = sandbox_dir / "repro-overrides.yaml"
+        override_path.write_text(
+            "\n".join(
+                [
+                    "verify_rc:",
+                    "  profile_overrides:",
+                    "    bootstrap-zip:",
+                    "      build:",
+                    "        command:",
+                    "          - sh",
+                    "          - buildish-release-tooling/rebuild-bootstrap-local.sh",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--progress",
+                "on",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                "--repro-override-file",
+                str(override_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn("Recipe source: local-override", inspect_completed.stderr)
+        self.assertIn("Override fields: build.command", inspect_completed.stderr)
+        self.assertIn("Failure class: byte-mismatch", inspect_completed.stderr)
 
     def test_verify_rc_command_fails_closed_when_secondary_artifact_digest_mismatches(self) -> None:
         if not command_available("gpg"):
