@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 
-from apache_buildish_release_tooling.release.models import ComponentConfig
+from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.common import (
@@ -62,6 +62,7 @@ def verify_python_distribution(
     source_date_epoch: int | None,
     build_checks_allowed: bool,
     inspection_bundle_root: Path | None,
+    profile_overrides: VerifyRcOverrideConfig | None,
 ) -> dict[str, Any]:
     artifact_id = required_non_empty_string(artifact_entry, "artifact_id", source=manifest_url)
     filename = required_non_empty_string(artifact_entry, "filename", source=manifest_url)
@@ -200,6 +201,7 @@ def verify_python_distribution(
             source_date_epoch=source_date_epoch,
             inspection_bundle_root=inspection_bundle_root,
             subject_label="python-distribution",
+            profile_overrides=profile_overrides,
         )
         issues.extend(reproducibility_verification.get("issues", []))
 

@@ -23,7 +23,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcProfileConfig
+from apache_buildish_release_tooling.release.models import (
+    ComponentConfig,
+    VerifyRcBuildConfig,
+    VerifyRcBuildOverrideConfig,
+    VerifyRcOverrideConfig,
+    VerifyRcProfileConfig,
+)
 from apache_buildish_release_tooling.release.process import run_logged_command
 
 _SCRUBBED_ENV_NAMES = {
@@ -88,6 +94,16 @@ class ReproducibilityModeDecision:
     build_checks_skipped_reason: str | None
 
 
+@dataclass(frozen=True)
+class ResolvedRebuildProfile:
+    """One canonical or locally overridden rebuild profile ready for execution."""
+
+    profile_id: str
+    profile: VerifyRcProfileConfig
+    recipe_source: Literal["canonical-profile", "local-override"]
+    override_fields: tuple[str, ...]
+
+
 def resolve_rebuild_profile(
     component_config: ComponentConfig,
     profile_id: str,
@@ -112,6 +128,99 @@ def resolve_rebuild_profile(
             f"expected one of: {expected}"
         )
     return profile
+
+
+def resolve_effective_rebuild_profile(
+    component_config: ComponentConfig,
+    profile_id: str,
+    *,
+    expected_kinds: Collection[str],
+    profile_overrides: VerifyRcOverrideConfig | None = None,
+) -> ResolvedRebuildProfile:
+    """Resolve one canonical profile and merge any explicit local override for this run."""
+
+    profile = resolve_rebuild_profile(
+        component_config,
+        profile_id,
+        expected_kinds=expected_kinds,
+    )
+    if profile_overrides is None:
+        return ResolvedRebuildProfile(
+            profile_id=profile_id,
+            profile=profile,
+            recipe_source="canonical-profile",
+            override_fields=(),
+        )
+    override = profile_overrides.profile_overrides.get(profile_id)
+    if override is None:
+        return ResolvedRebuildProfile(
+            profile_id=profile_id,
+            profile=profile,
+            recipe_source="canonical-profile",
+            override_fields=(),
+        )
+    merged_profile, override_fields = _merged_profile_override(profile, override.build)
+    return ResolvedRebuildProfile(
+        profile_id=profile_id,
+        profile=merged_profile,
+        recipe_source="local-override",
+        override_fields=override_fields,
+    )
+
+
+def validate_rebuild_profile_overrides(
+    component_config: ComponentConfig,
+    profile_overrides: VerifyRcOverrideConfig,
+) -> None:
+    """Validate that all local override profile_ids exist in the canonical component config."""
+
+    verify_rc = component_config.verify_rc
+    if verify_rc is None:
+        raise ValueError("component config does not define any verify_rc reproducibility profiles")
+    known_profile_ids = set(verify_rc.profiles)
+    unknown_profile_ids = sorted(set(profile_overrides.profile_overrides) - known_profile_ids)
+    if unknown_profile_ids:
+        joined_profile_ids = ", ".join(unknown_profile_ids)
+        raise ValueError(
+            f"reproducibility override file references unknown verify_rc profile_id values: {joined_profile_ids}"
+        )
+
+
+def _merged_profile_override(
+    profile: VerifyRcProfileConfig,
+    build_override: VerifyRcBuildOverrideConfig,
+) -> tuple[VerifyRcProfileConfig, tuple[str, ...]]:
+    command = profile.build.command
+    working_dir = profile.build.working_dir
+    env = dict(profile.build.env)
+    output_globs = profile.build.output_globs
+    override_fields: list[str] = []
+    override_command = build_override.command
+    if override_command is not None:
+        command = list(override_command)
+        override_fields.append("build.command")
+    override_working_dir = build_override.working_dir
+    if override_working_dir is not None:
+        working_dir = override_working_dir
+        override_fields.append("build.working_dir")
+    override_env = build_override.env
+    if override_env:
+        env.update(override_env)
+        override_fields.extend(f"build.env.{key}" for key in sorted(override_env))
+    override_output_globs = build_override.output_globs
+    if override_output_globs is not None:
+        output_globs = list(override_output_globs)
+        override_fields.append("build.output_globs")
+    merged_build = VerifyRcBuildConfig(
+        command=command,
+        working_dir=working_dir,
+        env=env,
+        output_globs=output_globs,
+    )
+    return (
+        profile.model_copy(update={"build": merged_build}, deep=True),
+        tuple(override_fields),
+    )
 
 
 def decide_reproducibility_mode(

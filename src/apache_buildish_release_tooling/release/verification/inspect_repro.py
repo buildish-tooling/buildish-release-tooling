@@ -102,6 +102,13 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
             "Comparison mode",
             reproducibility.comparison_mode,
         )
+        emit_detail(progress_reporter, "Recipe source", reproducibility.recipe_source)
+        if reproducibility.override_fields:
+            emit_detail(
+                progress_reporter,
+                "Override fields",
+                ", ".join(reproducibility.override_fields),
+            )
         if reproducibility.failure_class is not None:
             emit_detail(
                 progress_reporter,

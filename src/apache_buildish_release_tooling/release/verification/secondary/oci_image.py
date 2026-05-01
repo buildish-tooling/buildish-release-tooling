@@ -22,12 +22,13 @@ from typing import Any
 from apache_buildish_release_tooling.release.artifact_registration.kinds.oci_image import (
     _inspect_image_ref,
 )
-from apache_buildish_release_tooling.release.models import ComponentConfig
+from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.verification.inspection_bundle import (
     write_reproducibility_metadata,
 )
 from apache_buildish_release_tooling.release.verification.rebuild import (
-    resolve_rebuild_profile,
+    ResolvedRebuildProfile,
+    resolve_effective_rebuild_profile,
     run_host_direct_profile,
 )
 
@@ -44,6 +45,7 @@ def verify_oci_image(
     source_date_epoch: int | None,
     build_checks_allowed: bool,
     inspection_bundle_root: Path | None,
+    profile_overrides: VerifyRcOverrideConfig | None,
 ) -> dict[str, Any]:
     artifact_id = required_non_empty_string(artifact_entry, "artifact_id", source=manifest_url)
     registry = required_non_empty_string(artifact_entry, "registry", source=manifest_url)
@@ -101,6 +103,7 @@ def verify_oci_image(
             source_date_epoch=source_date_epoch,
             inspection_bundle_root=inspection_bundle_root,
             work_dir=work_dir / "reproducibility",
+            profile_overrides=profile_overrides,
         )
         issues.extend(str(issue) for issue in reproducibility_verification.get("issues", []))
     return {
@@ -134,6 +137,7 @@ def _verify_oci_image_reproducibility(
     source_date_epoch: int | None,
     inspection_bundle_root: Path | None,
     work_dir: Path,
+    profile_overrides: VerifyRcOverrideConfig | None,
 ) -> dict[str, Any]:
     raw_reproducibility = artifact_entry.get("reproducibility")
     if not isinstance(raw_reproducibility, dict):
@@ -161,6 +165,7 @@ def _verify_oci_image_reproducibility(
     image_ref: str | None = None
     rebuilt_digest: str | None = None
     rebuilt_platform_digests: list[dict[str, str]] = []
+    resolved_profile: ResolvedRebuildProfile | None = None
     if component_config is None:
         failure_class = failure_class or "missing-component-config"
         issues.append(
@@ -174,11 +179,13 @@ def _verify_oci_image_reproducibility(
     profile = None
     if not issues and component_config is not None:
         try:
-            profile = resolve_rebuild_profile(
+            resolved_profile = resolve_effective_rebuild_profile(
                 component_config,
                 profile_id,
                 expected_kinds=("oci-image",),
+                profile_overrides=profile_overrides,
             )
+            profile = resolved_profile.profile
             comparison_mode = required_non_empty_string(
                 profile.comparison,
                 "mode",
@@ -249,6 +256,10 @@ def _verify_oci_image_reproducibility(
                 "kind": "oci-image",
                 "profile_id": profile_id,
                 "comparison_mode": comparison_mode,
+                "recipe_source": (
+                    resolved_profile.recipe_source if resolved_profile is not None else "canonical-profile"
+                ),
+                "override_fields": list(resolved_profile.override_fields) if resolved_profile is not None else [],
                 "image_ref": image_ref,
                 "output_paths": output_paths,
                 "declared_digest": declared_digest,
@@ -265,7 +276,8 @@ def _verify_oci_image_reproducibility(
         "profile_id": profile_id,
         "verdict": "failed" if issues else "verified",
         "comparison_mode": comparison_mode,
-        "recipe_source": "canonical-profile",
+        "recipe_source": resolved_profile.recipe_source if resolved_profile is not None else "canonical-profile",
+        "override_fields": list(resolved_profile.override_fields) if resolved_profile is not None else [],
         "execution_backend": "host-direct",
         "output_paths": output_paths,
         "matches_remote_bytes": matches_remote_bytes,

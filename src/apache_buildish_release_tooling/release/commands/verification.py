@@ -24,13 +24,17 @@ from pathlib import Path
 from typing import Literal, cast
 
 from apache_buildish_release_tooling.release.command_logging import command_log_sink
-from apache_buildish_release_tooling.release.config import load_component_config, validate_release_target_base_urls
+from apache_buildish_release_tooling.release.config import (
+    load_component_config,
+    load_verify_rc_override_config,
+    validate_release_target_base_urls,
+)
 from apache_buildish_release_tooling.release.contracts import (
     InspectionBundleSection,
     VerifyRcReportV1,
 )
 from apache_buildish_release_tooling.release.manifest import write_manifest
-from apache_buildish_release_tooling.release.models import ComponentConfig
+from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.summary import SummaryWriter
 from apache_buildish_release_tooling.release.verification import VerifyRcPhase1Result, verify_rc_phase1
@@ -44,6 +48,7 @@ from apache_buildish_release_tooling.release.verification.common import (
 from apache_buildish_release_tooling.release.verification.inspect_repro import inspect_repro_report
 from apache_buildish_release_tooling.release.verification.rebuild import (
     prompt_for_candidate_code_execution,
+    validate_rebuild_profile_overrides,
 )
 
 from apache_buildish_release_tooling.release.commands._shared import _append_github_outputs
@@ -53,6 +58,7 @@ def run_verify_rc(args: Namespace) -> None:
     """Run the Phase 1a read-only verifier against one signed RC vote manifest."""
 
     component_config = _optional_component_config(args)
+    profile_overrides = _optional_profile_overrides(args, component_config=component_config)
     work_dir = _work_dir(args)
     log_path = _log_path(args, work_dir)
     inspection_bundle_path = _requested_inspection_bundle_path(args, work_dir)
@@ -88,6 +94,7 @@ def run_verify_rc(args: Namespace) -> None:
             interactive_input_enabled=sys.stdin.isatty() and sys.stdout.isatty(),
             confirm_candidate_code_execution=prompt_for_candidate_code_execution,
             inspection_bundle_path=inspection_bundle_path,
+            profile_overrides=profile_overrides,
         )
         report_json_path = _report_json_path(args, result)
         report_md_path = _report_md_path(args, result)
@@ -178,6 +185,21 @@ def _optional_component_config(args: Namespace) -> ComponentConfig | None:
         ),
     )
     return component_config
+
+
+def _optional_profile_overrides(
+    args: Namespace,
+    *,
+    component_config: ComponentConfig | None,
+) -> VerifyRcOverrideConfig | None:
+    override_file = getattr(args, "repro_override_file", None)
+    if not override_file:
+        return None
+    if component_config is None:
+        raise ValueError("--repro-override-file requires --component-config")
+    profile_overrides = load_verify_rc_override_config(override_file)
+    validate_rebuild_profile_overrides(component_config, profile_overrides)
+    return profile_overrides
 
 
 def _work_dir(args: Namespace) -> Path:

@@ -22,7 +22,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from apache_buildish_release_tooling.release.contracts import RcVoteManifestReadV1
-from apache_buildish_release_tooling.release.models import ComponentConfig
+from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.verification.common import (
     GpgVerifier,
@@ -59,6 +59,7 @@ def verify_secondary_artifacts(
     source_date_epoch: int | None,
     build_checks_allowed: bool,
     inspection_bundle_root: Path | None,
+    profile_overrides: VerifyRcOverrideConfig | None,
 ) -> list[dict[str, Any]]:
     """Verify all supported secondary artifacts declared in the signed vote manifest."""
 
@@ -97,6 +98,7 @@ def verify_secondary_artifacts(
                     source_date_epoch=source_date_epoch,
                     build_checks_allowed=build_checks_allowed,
                     inspection_bundle_root=inspection_bundle_root,
+                    profile_overrides=profile_overrides,
                 )
             elif kind == "generic-file-with-openpgp":
                 verification = verify_generic_file(
@@ -111,6 +113,7 @@ def verify_secondary_artifacts(
                     source_date_epoch=source_date_epoch,
                     build_checks_allowed=build_checks_allowed,
                     inspection_bundle_root=inspection_bundle_root,
+                    profile_overrides=profile_overrides,
                 )
             elif kind == "maven-repository":
                 verification = verify_maven_repository(
@@ -125,6 +128,7 @@ def verify_secondary_artifacts(
                     source_date_epoch=source_date_epoch,
                     build_checks_allowed=build_checks_allowed,
                     inspection_bundle_root=inspection_bundle_root,
+                    profile_overrides=profile_overrides,
                 )
             elif kind == "python-distribution":
                 verification = verify_python_distribution(
@@ -137,6 +141,7 @@ def verify_secondary_artifacts(
                     source_date_epoch=source_date_epoch,
                     build_checks_allowed=build_checks_allowed,
                     inspection_bundle_root=inspection_bundle_root,
+                    profile_overrides=profile_overrides,
                 )
             elif kind == "npm-package":
                 verification = verify_npm_package(
@@ -149,6 +154,7 @@ def verify_secondary_artifacts(
                     source_date_epoch=source_date_epoch,
                     build_checks_allowed=build_checks_allowed,
                     inspection_bundle_root=inspection_bundle_root,
+                    profile_overrides=profile_overrides,
                 )
             elif kind == "oci-image":
                 verification = verify_oci_image(
@@ -160,6 +166,7 @@ def verify_secondary_artifacts(
                     source_date_epoch=source_date_epoch,
                     build_checks_allowed=build_checks_allowed,
                     inspection_bundle_root=inspection_bundle_root,
+                    profile_overrides=profile_overrides,
                 )
             else:
                 raise ValueError(f"unsupported secondary artifact kind in manifest: {kind}")
@@ -249,13 +256,7 @@ def _emit_secondary_artifact_summary(
             )
         reproducibility_payload = verification.get("reproducibility")
         if isinstance(reproducibility_payload, dict):
-            emit_detail(
-                progress_reporter,
-                "Reproducibility profile",
-                str(reproducibility_payload.get("profile_id", "n/a")),
-            )
-            for output_path in reproducibility_payload.get("output_paths", []):
-                emit_detail(progress_reporter, "Rebuild output", str(output_path))
+            _emit_reproducibility_details(progress_reporter, reproducibility_payload)
             if reproducibility_payload.get("matches_remote_bytes") is True:
                 emit_success(progress_reporter, "Verified rebuilt artifact matches staged bytes")
         for issue in issues:
@@ -280,13 +281,7 @@ def _emit_secondary_artifact_summary(
             )
         reproducibility_payload = verification.get("reproducibility")
         if isinstance(reproducibility_payload, dict):
-            emit_detail(
-                progress_reporter,
-                "Reproducibility profile",
-                str(reproducibility_payload.get("profile_id", "n/a")),
-            )
-            for output_path in reproducibility_payload.get("output_paths", []):
-                emit_detail(progress_reporter, "Rebuild output", str(output_path))
+            _emit_reproducibility_details(progress_reporter, reproducibility_payload)
             if reproducibility_payload.get("matches_remote_bytes") is True:
                 emit_success(
                     progress_reporter,
@@ -313,13 +308,7 @@ def _emit_secondary_artifact_summary(
             emit_success(progress_reporter, "Verified simple index entry")
         reproducibility_payload = verification.get("reproducibility")
         if isinstance(reproducibility_payload, dict):
-            emit_detail(
-                progress_reporter,
-                "Reproducibility profile",
-                str(reproducibility_payload.get("profile_id", "n/a")),
-            )
-            for output_path in reproducibility_payload.get("output_paths", []):
-                emit_detail(progress_reporter, "Rebuild output", str(output_path))
+            _emit_reproducibility_details(progress_reporter, reproducibility_payload)
             if reproducibility_payload.get("matches_remote_bytes") is True:
                 emit_success(progress_reporter, "Verified rebuilt artifact matches staged bytes")
         for issue in issues:
@@ -334,13 +323,7 @@ def _emit_secondary_artifact_summary(
             emit_success(progress_reporter, "Verified platform digests")
         reproducibility_payload = verification.get("reproducibility")
         if isinstance(reproducibility_payload, dict):
-            emit_detail(
-                progress_reporter,
-                "Reproducibility profile",
-                str(reproducibility_payload.get("profile_id", "n/a")),
-            )
-            for output_path in reproducibility_payload.get("output_paths", []):
-                emit_detail(progress_reporter, "Rebuild output", str(output_path))
+            _emit_reproducibility_details(progress_reporter, reproducibility_payload)
             if reproducibility_payload.get("matches_remote_bytes") is True:
                 emit_success(progress_reporter, "Verified rebuilt image digests match the staged image")
         for issue in issues:
@@ -368,13 +351,7 @@ def _emit_secondary_artifact_summary(
             )
         reproducibility_payload = verification.get("reproducibility")
         if isinstance(reproducibility_payload, dict):
-            emit_detail(
-                progress_reporter,
-                "Reproducibility profile",
-                str(reproducibility_payload.get("profile_id", "n/a")),
-            )
-            for output_path in reproducibility_payload.get("output_paths", []):
-                emit_detail(progress_reporter, "Rebuild output", str(output_path))
+            _emit_reproducibility_details(progress_reporter, reproducibility_payload)
             if reproducibility_payload.get("matches_remote_bytes") is True:
                 emit_success(progress_reporter, "Verified rebuilt artifact matches staged bytes")
         for issue in issues:
@@ -384,3 +361,24 @@ def _emit_secondary_artifact_summary(
         "unsupported secondary artifact kind for console reporting: "
         f"{verification['artifact_id']} ({kind})"
     )
+
+
+def _emit_reproducibility_details(
+    progress_reporter: ProgressReporter,
+    reproducibility_payload: dict[str, Any],
+) -> None:
+    emit_detail(
+        progress_reporter,
+        "Reproducibility profile",
+        str(reproducibility_payload.get("profile_id", "n/a")),
+    )
+    emit_detail(
+        progress_reporter,
+        "Recipe source",
+        str(reproducibility_payload.get("recipe_source", "canonical-profile")),
+    )
+    override_fields = reproducibility_payload.get("override_fields", [])
+    if override_fields:
+        emit_detail(progress_reporter, "Override fields", ", ".join(str(field) for field in override_fields))
+    for output_path in reproducibility_payload.get("output_paths", []):
+        emit_detail(progress_reporter, "Rebuild output", str(output_path))

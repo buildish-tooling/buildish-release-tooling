@@ -650,6 +650,14 @@ def _register_verification_commands(subparsers: Subparsers) -> None:
         help="Optional curated reproducibility-inspection bundle directory path.",
     )
     verify_rc.add_argument(
+        "--repro-override-file",
+        dest="repro_override_file",
+        help=(
+            "Optional local YAML override file keyed by reproducibility profile_id. "
+            "Applies only to local build-based reproducibility checks and is reported as non-canonical."
+        ),
+    )
+    verify_rc.add_argument(
         "--log-path",
         dest="log_path",
         help="Optional combined transcript and low-level command log path.",

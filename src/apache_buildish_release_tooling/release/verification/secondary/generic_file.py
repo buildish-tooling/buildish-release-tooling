@@ -19,7 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from apache_buildish_release_tooling.release.models import ComponentConfig
+from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.common import (
@@ -51,6 +51,7 @@ def verify_generic_file(
     source_date_epoch: int | None,
     build_checks_allowed: bool,
     inspection_bundle_root: Path | None,
+    profile_overrides: VerifyRcOverrideConfig | None,
 ) -> dict[str, Any]:
     artifact_id = required_non_empty_string(artifact_entry, "artifact_id", source=manifest_url)
     kind = required_non_empty_string(artifact_entry, "kind", source=manifest_url)
@@ -157,6 +158,7 @@ def verify_generic_file(
             project_root=project_root,
             source_date_epoch=source_date_epoch,
             inspection_bundle_root=inspection_bundle_root,
+            profile_overrides=profile_overrides,
         )
         issues.extend(reproducibility_verification.get("issues", []))
 
@@ -194,6 +196,7 @@ def _generic_file_reproducibility(
     project_root: Path | None,
     source_date_epoch: int | None,
     inspection_bundle_root: Path | None,
+    profile_overrides: VerifyRcOverrideConfig | None,
 ) -> dict[str, Any]:
     return verify_host_direct_single_file_reproducibility(
         artifact_entry,
@@ -207,6 +210,7 @@ def _generic_file_reproducibility(
         source_date_epoch=source_date_epoch,
         inspection_bundle_root=inspection_bundle_root,
         subject_label="generic-file",
+        profile_overrides=profile_overrides,
     )
 
 

@@ -19,14 +19,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from apache_buildish_release_tooling.release.models import ComponentConfig
+from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.inspection_bundle import (
     retain_evidence_file,
     write_reproducibility_metadata,
 )
 from apache_buildish_release_tooling.release.verification.rebuild import (
-    resolve_rebuild_profile,
+    ResolvedRebuildProfile,
+    resolve_effective_rebuild_profile,
     run_host_direct_profile,
 )
 
@@ -46,6 +47,7 @@ def verify_host_direct_single_file_reproducibility(
     source_date_epoch: int | None,
     inspection_bundle_root: Path | None,
     subject_label: str,
+    profile_overrides: VerifyRcOverrideConfig | None,
 ) -> dict[str, Any]:
     """Run one host-direct rebuild recipe and compare its single output file against staged bytes."""
 
@@ -72,6 +74,7 @@ def verify_host_direct_single_file_reproducibility(
     comparison_mode = "exact-bytes"
     failure_class: str | None = None
     evidence: list[dict[str, str]] = []
+    resolved_profile: ResolvedRebuildProfile | None = None
     if component_config is None:
         issues.append(
             f"build-based reproducibility for {artifact_id} requires --component-config to resolve profile {profile_id!r}"
@@ -88,11 +91,13 @@ def verify_host_direct_single_file_reproducibility(
     build_result = None
     if not issues and component_config is not None:
         try:
-            profile = resolve_rebuild_profile(
+            resolved_profile = resolve_effective_rebuild_profile(
                 component_config,
                 profile_id,
                 expected_kinds=(kind,),
+                profile_overrides=profile_overrides,
             )
+            profile = resolved_profile.profile
             comparison_mode = str(profile.comparison.get("mode", comparison_mode))
         except Exception as exc:
             issues.append(str(exc))
@@ -146,6 +151,10 @@ def verify_host_direct_single_file_reproducibility(
                 "kind": kind,
                 "profile_id": profile_id,
                 "comparison_mode": comparison_mode,
+                "recipe_source": (
+                    resolved_profile.recipe_source if resolved_profile is not None else "canonical-profile"
+                ),
+                "override_fields": list(resolved_profile.override_fields) if resolved_profile is not None else [],
                 "failure_class": failure_class,
                 "staged_artifact": {
                     "filename": artifact_path.name,
@@ -186,7 +195,8 @@ def verify_host_direct_single_file_reproducibility(
         "profile_id": profile_id,
         "verdict": "failed" if issues else "verified",
         "comparison_mode": comparison_mode,
-        "recipe_source": "canonical-profile",
+        "recipe_source": resolved_profile.recipe_source if resolved_profile is not None else "canonical-profile",
+        "override_fields": list(resolved_profile.override_fields) if resolved_profile is not None else [],
         "execution_backend": "host-direct",
         "output_paths": output_paths,
         "matches_remote_bytes": matches_remote_bytes,

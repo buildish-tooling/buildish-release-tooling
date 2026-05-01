@@ -571,6 +571,7 @@ class ArtifactReproducibilityReport(BuildishContractModel):
     verdict: VerificationVerdict
     comparison_mode: NonEmptyString
     recipe_source: Literal["canonical-profile", "local-override"] = "canonical-profile"
+    override_fields: list[NonEmptyString] = Field(default_factory=list)
     execution_backend: Literal["host-direct"] = "host-direct"
     output_paths: list[NonEmptyString] = Field(default_factory=list)
     matches_remote_bytes: bool | None = None

@@ -25,13 +25,15 @@ from typing import Any, cast
 from unittest.mock import patch
 
 from apache_buildish_release_tooling.release.command_logging import command_log_sink
-from apache_buildish_release_tooling.release.models import ComponentConfig
+from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.verification.rebuild import (
     build_host_direct_environment,
     collect_profile_output_paths,
     decide_reproducibility_mode,
+    resolve_effective_rebuild_profile,
     resolve_rebuild_profile,
     run_host_direct_profile,
+    validate_rebuild_profile_overrides,
 )
 
 
@@ -84,6 +86,128 @@ class VerificationRebuildTest(unittest.TestCase):
                 "bootstrap-zip",
                 expected_kinds=("python-distribution",),
             )
+
+    def test_resolve_effective_rebuild_profile_merges_local_override(self) -> None:
+        component_config = ComponentConfig.model_validate(
+            {
+                "component_id": "buildish-example",
+                "source_artifact_prefix": "apache-buildish-example",
+                "asf_dist_dev_base": "https://dist.apache.org/repos/dist/dev/incubator/buildish",
+                "asf_dist_release_base": "https://downloads.apache.org/incubator/buildish",
+                "asf_keys_url": "https://downloads.apache.org/incubator/buildish/KEYS",
+                "moving_tags_enabled": True,
+                "latest_tag_enabled": False,
+                "secondary_targets": ["github-action"],
+                "final_tag_mode": "rc-source-commit",
+                "vote_release_name": "Apache Buildish Example",
+                "release_verification_guide_url": "https://example.invalid/release-verification",
+                "verify_rc_instructions": "verify",
+                "prepare_rc_runs_tests": False,
+                "release_branch_ci_required": True,
+                "verify_rc": {
+                    "profiles": {
+                        "bootstrap-zip": {
+                            "kind": "generic-file",
+                            "build": {
+                                "command": ["./buildish-release-tooling/rebuild-bootstrap.sh"],
+                                "working_dir": "subdir",
+                                "env": {"CANONICAL_FLAG": "1"},
+                                "output_globs": ["dist/*.zip"],
+                            },
+                            "comparison": {
+                                "mode": "exact-bytes",
+                            },
+                        }
+                    }
+                },
+            }
+        )
+        profile_overrides = VerifyRcOverrideConfig.model_validate(
+            {
+                "profile_overrides": {
+                    "bootstrap-zip": {
+                        "build": {
+                            "command": ["./buildish-release-tooling/rebuild-bootstrap-local.sh"],
+                            "working_dir": ".",
+                            "env": {"LOCAL_FLAG": "1"},
+                            "output_globs": ["override-dist/*.zip"],
+                        }
+                    }
+                }
+            }
+        )
+
+        resolved = resolve_effective_rebuild_profile(
+            component_config,
+            "bootstrap-zip",
+            expected_kinds=("generic-file",),
+            profile_overrides=profile_overrides,
+        )
+
+        self.assertEqual("local-override", resolved.recipe_source)
+        self.assertEqual(
+            (
+                "build.command",
+                "build.working_dir",
+                "build.env.LOCAL_FLAG",
+                "build.output_globs",
+            ),
+            resolved.override_fields,
+        )
+        self.assertEqual(
+            ["./buildish-release-tooling/rebuild-bootstrap-local.sh"],
+            resolved.profile.build.command,
+        )
+        self.assertEqual(".", resolved.profile.build.working_dir)
+        self.assertEqual("1", resolved.profile.build.env["CANONICAL_FLAG"])
+        self.assertEqual("1", resolved.profile.build.env["LOCAL_FLAG"])
+        self.assertEqual(["override-dist/*.zip"], resolved.profile.build.output_globs)
+
+    def test_validate_rebuild_profile_overrides_rejects_unknown_profile_id(self) -> None:
+        component_config = ComponentConfig.model_validate(
+            {
+                "component_id": "buildish-example",
+                "source_artifact_prefix": "apache-buildish-example",
+                "asf_dist_dev_base": "https://dist.apache.org/repos/dist/dev/incubator/buildish",
+                "asf_dist_release_base": "https://downloads.apache.org/incubator/buildish",
+                "asf_keys_url": "https://downloads.apache.org/incubator/buildish/KEYS",
+                "moving_tags_enabled": True,
+                "latest_tag_enabled": False,
+                "secondary_targets": ["github-action"],
+                "final_tag_mode": "rc-source-commit",
+                "vote_release_name": "Apache Buildish Example",
+                "release_verification_guide_url": "https://example.invalid/release-verification",
+                "verify_rc_instructions": "verify",
+                "prepare_rc_runs_tests": False,
+                "release_branch_ci_required": True,
+                "verify_rc": {
+                    "profiles": {
+                        "bootstrap-zip": {
+                            "kind": "generic-file",
+                            "build": {
+                                "command": ["sh", "-c", "true"],
+                                "output_globs": ["dist/*.zip"],
+                            },
+                            "comparison": {"mode": "exact-bytes"},
+                        }
+                    }
+                },
+            }
+        )
+        profile_overrides = VerifyRcOverrideConfig.model_validate(
+            {
+                "profile_overrides": {
+                    "missing-profile": {
+                        "build": {
+                            "command": ["sh", "-c", "true"],
+                        }
+                    }
+                }
+            }
+        )
+
+        with self.assertRaisesRegex(ValueError, "unknown verify_rc profile_id"):
+            validate_rebuild_profile_overrides(component_config, profile_overrides)
 
     def test_build_host_direct_environment_keeps_home_and_scrubs_sensitive_process_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

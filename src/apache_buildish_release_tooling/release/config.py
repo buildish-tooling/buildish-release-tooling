@@ -21,7 +21,11 @@ from urllib.parse import urlparse
 
 import yaml
 
-from apache_buildish_release_tooling.release.models import ComponentConfig
+from apache_buildish_release_tooling.release.models import (
+    ComponentConfig,
+    VerifyRcOverrideConfig,
+    VerifyRcOverrideFileConfig,
+)
 
 _DIST_DEV_PREFIX = "https://dist.apache.org/repos/dist/dev/"
 _DIST_RELEASE_PREFIX = "https://dist.apache.org/repos/dist/release/"
@@ -34,6 +38,15 @@ def load_component_config(component_config_path: str) -> ComponentConfig:
     with path.open("r", encoding="utf-8") as handle:
         payload = yaml.safe_load(handle) or {}
     return ComponentConfig.model_validate(payload)
+
+
+def load_verify_rc_override_config(override_config_path: str) -> VerifyRcOverrideConfig:
+    """Load one local non-canonical reproducibility override file from YAML."""
+
+    path = Path(override_config_path)
+    with path.open("r", encoding="utf-8") as handle:
+        payload = yaml.safe_load(handle) or {}
+    return VerifyRcOverrideFileConfig.model_validate(payload).verify_rc
 
 
 def validate_release_target_base_urls(

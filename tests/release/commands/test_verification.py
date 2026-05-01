@@ -345,6 +345,71 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             ],
         )
 
+    def test_verify_rc_command_uses_local_repro_override_file_for_generic_file(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+        )
+        override_path = sandbox_dir / "repro-overrides.yaml"
+        override_path.write_text(
+            "\n".join(
+                [
+                    "verify_rc:",
+                    "  profile_overrides:",
+                    "    bootstrap-zip:",
+                    "      build:",
+                    "        command:",
+                    "          - sh",
+                    "          - buildish-release-tooling/rebuild-bootstrap-local.sh",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--progress",
+                "on",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--report-md",
+                str(fixture.report_md_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                "--repro-override-file",
+                str(override_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        self.assertIn("Recipe source: local-override", completed.stderr)
+        self.assertIn("Override fields: build.command", completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("local-override", secondary_verification["reproducibility"]["recipe_source"])
+        self.assertEqual(
+            ["build.command"],
+            secondary_verification["reproducibility"]["override_fields"],
+        )
+
     def test_verify_rc_command_reports_generic_file_reproducibility_drift_in_full_mode(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
@@ -1805,8 +1870,33 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 encoding="utf-8",
             )
             rebuild_script.chmod(0o755)
+            local_override_script = origin_dir / "buildish-release-tooling" / "rebuild-bootstrap-local.sh"
+            local_override_script.write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env sh",
+                        "set -eu",
+                        "mkdir -p dist",
+                        (
+                            "printf 'bootstrap zip bytes\\n' > dist/buildish-example-bootstrap.zip"
+                            if not drift_generic_file_reproducibility
+                            else "printf 'bootstrap zip drift\\n' > dist/buildish-example-bootstrap.zip"
+                        ),
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            local_override_script.chmod(0o755)
             run_quiet(
-                ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-bootstrap.sh"],
+                [
+                    "git",
+                    "-C",
+                    str(origin_dir),
+                    "add",
+                    "buildish-release-tooling/rebuild-bootstrap.sh",
+                    "buildish-release-tooling/rebuild-bootstrap-local.sh",
+                ],
                 check=True,
             )
             run_quiet(

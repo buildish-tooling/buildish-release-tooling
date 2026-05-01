@@ -31,7 +31,7 @@ from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_r
     _repository_files,
     _validated_repository_root,
 )
-from apache_buildish_release_tooling.release.models import ComponentConfig
+from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.verification.common import emit_info, emit_success, update_info
 from apache_buildish_release_tooling.release.verification.common import (
@@ -44,7 +44,8 @@ from apache_buildish_release_tooling.release.verification.inspection_bundle impo
     write_reproducibility_metadata,
 )
 from apache_buildish_release_tooling.release.verification.rebuild import (
-    resolve_rebuild_profile,
+    ResolvedRebuildProfile,
+    resolve_effective_rebuild_profile,
     run_host_direct_profile,
 )
 
@@ -75,6 +76,7 @@ def verify_maven_repository(
     source_date_epoch: int | None,
     build_checks_allowed: bool,
     inspection_bundle_root: Path | None,
+    profile_overrides: VerifyRcOverrideConfig | None,
 ) -> dict[str, Any]:
     artifact_id = required_non_empty_string(artifact_entry, "artifact_id", source=manifest_url)
     staging_repository_id = required_non_empty_string(
@@ -253,6 +255,7 @@ def verify_maven_repository(
             },
             staged_cache=dict(staged_repository_cache),
             progress_reporter=progress_reporter,
+            profile_overrides=profile_overrides,
         )
         issues.extend(str(issue) for issue in reproducibility_verification.get("issues", []))
 
@@ -295,6 +298,7 @@ def _verify_maven_repository_reproducibility(
     staged_by_path: dict[str, _RepositoryFile],
     staged_cache: dict[str, bytes],
     progress_reporter: ProgressReporter,
+    profile_overrides: VerifyRcOverrideConfig | None,
 ) -> dict[str, Any]:
     raw_reproducibility = artifact_entry.get("reproducibility")
     if not isinstance(raw_reproducibility, dict):
@@ -324,6 +328,7 @@ def _verify_maven_repository_reproducibility(
     path_rules: tuple[dict[str, str], ...] = ()
     path_results: list[dict[str, Any]] = []
     rebuilt_repository_path: Path | None = None
+    resolved_profile: ResolvedRebuildProfile | None = None
     profile = None
     if component_config is None:
         failure_class = failure_class or "missing-component-config"
@@ -342,11 +347,13 @@ def _verify_maven_repository_reproducibility(
         )
     if not issues and component_config is not None:
         try:
-            profile = resolve_rebuild_profile(
+            resolved_profile = resolve_effective_rebuild_profile(
                 component_config,
                 profile_id,
                 expected_kinds=("maven-repository",),
+                profile_overrides=profile_overrides,
             )
+            profile = resolved_profile.profile
             comparison_mode = required_non_empty_string(
                 profile.comparison,
                 "mode",
@@ -416,6 +423,10 @@ def _verify_maven_repository_reproducibility(
                 "kind": "maven-repository",
                 "profile_id": profile_id,
                 "comparison_mode": comparison_mode,
+                "recipe_source": (
+                    resolved_profile.recipe_source if resolved_profile is not None else "canonical-profile"
+                ),
+                "override_fields": list(resolved_profile.override_fields) if resolved_profile is not None else [],
                 "repository_dir": repository_dir,
                 "require_signatures": require_signatures,
                 "path_rules": list(path_rules),
@@ -431,7 +442,8 @@ def _verify_maven_repository_reproducibility(
         "profile_id": profile_id,
         "verdict": "failed" if issues else "verified",
         "comparison_mode": comparison_mode,
-        "recipe_source": "canonical-profile",
+        "recipe_source": resolved_profile.recipe_source if resolved_profile is not None else "canonical-profile",
+        "override_fields": list(resolved_profile.override_fields) if resolved_profile is not None else [],
         "execution_backend": "host-direct",
         "output_paths": output_paths,
         "matches_remote_bytes": matches_remote_bytes,

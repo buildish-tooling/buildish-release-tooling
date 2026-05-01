@@ -29,7 +29,7 @@ from apache_buildish_release_tooling.release.contracts import (
     SourceArtifactContract,
     VerifyRcReportV1,
 )
-from apache_buildish_release_tooling.release.models import ComponentConfig
+from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.process import run_logged_command
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
@@ -99,6 +99,7 @@ def verify_rc_phase1(
     interactive_input_enabled: bool,
     confirm_candidate_code_execution: Callable[[], bool],
     inspection_bundle_path: Path | None,
+    profile_overrides: VerifyRcOverrideConfig | None,
 ) -> VerifyRcPhase1Result:
     """Verify the signed RC vote manifest, source artifact, and supported secondary artifacts."""
 
@@ -498,6 +499,7 @@ def verify_rc_phase1(
             source_date_epoch=source_date_epoch,
             build_checks_allowed=reproducibility_decision.build_checks_allowed,
             inspection_bundle_root=inspection_bundle_path,
+            profile_overrides=profile_overrides,
         )
         build_checks_attempted = any(
             verification.get("reproducibility") is not None
@@ -989,9 +991,16 @@ def _report_markdown(
                         [
                             f"- Reproducibility profile: `{reproducibility_payload['profile_id']}`",
                             f"- Reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
+                            f"- Recipe source: `{reproducibility_payload.get('recipe_source', 'canonical-profile')}`",
                             f"- Rebuilt bytes matched staged artifact: `{reproducibility_payload['matches_remote_bytes']}`",
                         ]
                     )
+                    if reproducibility_payload.get("override_fields"):
+                        lines.append(
+                            "- Override fields: `"
+                            + ", ".join(str(field) for field in reproducibility_payload["override_fields"])
+                            + "`"
+                        )
                     if reproducibility_payload.get("failure_class") is not None:
                         lines.append(
                             f"- Reproducibility failure class: `{reproducibility_payload['failure_class']}`"
@@ -1027,9 +1036,16 @@ def _report_markdown(
                         [
                             f"- Reproducibility profile: `{reproducibility_payload['profile_id']}`",
                             f"- Reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
+                            f"- Recipe source: `{reproducibility_payload.get('recipe_source', 'canonical-profile')}`",
                             f"- Rebuilt repository matched staged policy: `{reproducibility_payload['matches_remote_bytes']}`",
                         ]
                     )
+                    if reproducibility_payload.get("override_fields"):
+                        lines.append(
+                            "- Override fields: `"
+                            + ", ".join(str(field) for field in reproducibility_payload["override_fields"])
+                            + "`"
+                        )
                     if reproducibility_payload.get("failure_class") is not None:
                         lines.append(
                             f"- Reproducibility failure class: `{reproducibility_payload['failure_class']}`"
@@ -1071,9 +1087,16 @@ def _report_markdown(
                         [
                             f"- Reproducibility profile: `{reproducibility_payload['profile_id']}`",
                             f"- Reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
+                            f"- Recipe source: `{reproducibility_payload.get('recipe_source', 'canonical-profile')}`",
                             f"- Rebuilt bytes matched staged artifact: `{reproducibility_payload['matches_remote_bytes']}`",
                         ]
                     )
+                    if reproducibility_payload.get("override_fields"):
+                        lines.append(
+                            "- Override fields: `"
+                            + ", ".join(str(field) for field in reproducibility_payload["override_fields"])
+                            + "`"
+                        )
                     if reproducibility_payload.get("failure_class") is not None:
                         lines.append(
                             f"- Reproducibility failure class: `{reproducibility_payload['failure_class']}`"
@@ -1102,9 +1125,16 @@ def _report_markdown(
                         [
                             f"- Reproducibility profile: `{reproducibility_payload['profile_id']}`",
                             f"- Reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
+                            f"- Recipe source: `{reproducibility_payload.get('recipe_source', 'canonical-profile')}`",
                             f"- Rebuilt image matched staged digests: `{reproducibility_payload['matches_remote_bytes']}`",
                         ]
                     )
+                    if reproducibility_payload.get("override_fields"):
+                        lines.append(
+                            "- Override fields: `"
+                            + ", ".join(str(field) for field in reproducibility_payload["override_fields"])
+                            + "`"
+                        )
                     if reproducibility_payload.get("failure_class") is not None:
                         lines.append(
                             f"- Reproducibility failure class: `{reproducibility_payload['failure_class']}`"
@@ -1148,9 +1178,16 @@ def _report_markdown(
                         [
                             f"- Reproducibility profile: `{reproducibility_payload['profile_id']}`",
                             f"- Reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
+                            f"- Recipe source: `{reproducibility_payload.get('recipe_source', 'canonical-profile')}`",
                             f"- Rebuilt bytes matched staged artifact: `{reproducibility_payload['matches_remote_bytes']}`",
                         ]
                     )
+                    if reproducibility_payload.get("override_fields"):
+                        lines.append(
+                            "- Override fields: `"
+                            + ", ".join(str(field) for field in reproducibility_payload["override_fields"])
+                            + "`"
+                        )
                     if reproducibility_payload.get("failure_class") is not None:
                         lines.append(
                             f"- Reproducibility failure class: `{reproducibility_payload['failure_class']}`"
