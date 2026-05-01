@@ -138,6 +138,11 @@ def run_verify_rc(args: Namespace) -> None:
         emit_detail(progress_reporter, "Transcript log", str(log_path))
         if finalized_inspection_bundle_path is not None:
             emit_detail(progress_reporter, "Inspection bundle", str(finalized_inspection_bundle_path))
+            emit_detail(
+                progress_reporter,
+                "Inspect reproducibility",
+                f"buildish-release-tooling inspect-repro {report_json_path}",
+            )
     if result.verdict != "verified":
         if not progress_reporter.enabled:
             failure_summary = " | ".join(failure.message for failure in result.failures)

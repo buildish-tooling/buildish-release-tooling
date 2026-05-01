@@ -333,6 +333,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             ["dist/buildish-example-bootstrap.zip"],
             secondary_verification["reproducibility"]["output_paths"],
         )
+        self.assertIn(
+            f"  Inspect reproducibility: buildish-release-tooling inspect-repro {fixture.report_json_path}",
+            completed.stderr,
+        )
         self.assertEqual(
             ["comparison-metadata"],
             [
