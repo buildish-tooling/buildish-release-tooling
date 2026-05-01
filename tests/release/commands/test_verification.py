@@ -986,6 +986,58 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Failure class: byte-mismatch", inspect_completed.stderr)
         self.assertIn("Retained staged and rebuilt source-artifact copies differ", inspect_completed.stderr)
 
+    def test_inspect_repro_command_tolerates_missing_source_effective_execution(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            drift_source_artifact=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--progress",
+                "on",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        del report_payload["source_artifact_verification"]["reproducibility"]["effective_execution"]
+        fixture.report_json_path.write_text(
+            json.dumps(report_payload, indent=2),
+            encoding="utf-8",
+        )
+
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn("Source Artifact 1/1", inspect_completed.stderr)
+        self.assertIn("Retained staged and rebuilt source-artifact copies differ", inspect_completed.stderr)
+
     def test_inspect_repro_command_tolerates_missing_canonical_recipe(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
@@ -1418,6 +1470,37 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual("failed", secondary_by_id["bootstrap-zip"]["verdict"])
         self.assertEqual("failed", secondary_by_id["npm-package-main"]["verdict"])
         self.assertEqual("verified", secondary_by_id["pypi-wheel"]["verdict"])
+
+    def test_verify_rc_command_omits_source_reproducibility_without_rebuilt_source_artifact(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            missing_source_artifact=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--progress",
+                "on",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        self.assertIsNone(report_payload["source_artifact_verification"]["reproducibility"])
 
     def test_verify_rc_command_progress_off_still_summarizes_missing_file_failures(self) -> None:
         sandbox_dir = create_build_test_sandbox()

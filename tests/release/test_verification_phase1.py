@@ -66,6 +66,36 @@ class VerifyRcPhase1ReportTest(unittest.TestCase):
         self.assertEqual("source-artifact-from-git", payload["profile_id"])
         self.assertIsNone(payload["canonical_recipe"])
 
+    def test_source_artifact_reproducibility_payload_is_none_without_rebuild_or_failures(self) -> None:
+        source_artifact = SourceArtifactContract.model_validate(
+            {
+                "role": "asf-source-release",
+                "filename": "apache-buildish-example-1.2.3-incubating-src.tar.gz",
+                "uri": "https://dist.apache.org/example/apache-buildish-example-1.2.3-incubating-src.tar.gz",
+                "artifact_origin": "source-commit",
+                "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                "checksums": {"sha512": {"value": "a" * 128}},
+                "signatures": [
+                    {
+                        "type": "openpgp-detached-ascii-armored",
+                        "uri": "https://dist.apache.org/example/apache-buildish-example-1.2.3-incubating-src.tar.gz.asc",
+                    }
+                ],
+            }
+        )
+
+        payload = _source_artifact_reproducibility_payload(
+            source_artifact=source_artifact,
+            source_artifact_path=None,
+            rebuilt_source_artifact_path=None,
+            rebuilt_source_sha512=None,
+            source_artifact_matches_source_commit=False,
+            failures=[],
+            inspection_bundle_root=None,
+        )
+
+        self.assertIsNone(payload)
+
     def test_report_markdown_rejects_unknown_secondary_artifact_kind(self) -> None:
         signature = SignatureVerification(
             signer_fingerprint="ABCDEF0123456789",
