@@ -344,6 +344,10 @@ Summaries are intended for:
 - treats any run with `--repro-override-file` as non-canonical and records:
   - `recipe_source=local-override`
   - the applied `override_fields`
+- for host-direct reproducibility runs, records the effective local rebuild execution context:
+  - `build_command`
+  - `build_working_directory`
+  - `injected_environment_keys`
 - CI and release workflow runs should not use `--repro-override-file`; that flag exists for human local investigation when the canonical repo-maintained recipe is too narrow for one machine
 
 Example canonical verification run:
@@ -386,6 +390,10 @@ verify_rc:
 - reads one saved `verify-rc` JSON report plus its inspection bundle
 - explains failed reproducibility checks without rerunning remote verification
 - surfaces the selected `profile_id`, `recipe_source`, `override_fields`, retained evidence files, and kind-specific drift details
+- also shows the recorded rebuild execution context when present:
+  - effective build command
+  - effective build working directory
+  - injected environment keys
 
 ### `prepare-rc`
 
