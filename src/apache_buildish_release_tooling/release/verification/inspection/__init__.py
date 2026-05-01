@@ -40,8 +40,14 @@ from apache_buildish_release_tooling.release.verification.inspection.file_like i
 from apache_buildish_release_tooling.release.verification.inspection.maven_repository import (
     inspect_maven_repository_reproducibility,
 )
+from apache_buildish_release_tooling.release.verification.inspection.npm_package import (
+    inspect_npm_package_reproducibility,
+)
 from apache_buildish_release_tooling.release.verification.inspection.oci_image import (
     inspect_oci_image_reproducibility,
+)
+from apache_buildish_release_tooling.release.verification.inspection.python_distribution import (
+    inspect_python_distribution_reproducibility,
 )
 
 
@@ -142,7 +148,7 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
             )
             continue
         if verification.kind == "python-distribution":
-            inspect_file_like_reproducibility(
+            inspect_python_distribution_reproducibility(
                 progress_reporter,
                 verification=verification,
                 reproducibility=reproducibility,
@@ -150,7 +156,7 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
             )
             continue
         if verification.kind == "npm-package":
-            inspect_file_like_reproducibility(
+            inspect_npm_package_reproducibility(
                 progress_reporter,
                 verification=verification,
                 reproducibility=reproducibility,

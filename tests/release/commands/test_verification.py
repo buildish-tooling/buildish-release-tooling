@@ -1471,6 +1471,55 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             secondary_verification["reproducibility"]["failure_class"],
         )
 
+    def test_inspect_repro_command_reports_saved_python_distribution_drift(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_python_distribution=True,
+            include_python_distribution_reproducibility=True,
+            drift_python_distribution_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn("Artifact 1/1: pypi-wheel", inspect_completed.stderr)
+        self.assertIn("Project: example", inspect_completed.stderr)
+        self.assertIn("Version: 1.2.3", inspect_completed.stderr)
+        self.assertIn("Distribution type: wheel", inspect_completed.stderr)
+        self.assertIn("Simple index:", inspect_completed.stderr)
+        self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
+
     def test_verify_rc_command_verifies_npm_package_secondary_artifact(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
@@ -1616,6 +1665,55 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             "byte-mismatch",
             secondary_verification["reproducibility"]["failure_class"],
         )
+
+    def test_inspect_repro_command_reports_saved_npm_package_drift(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_npm_package=True,
+            include_npm_package_reproducibility=True,
+            drift_npm_package_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn("Artifact 1/1: npm-package-main", inspect_completed.stderr)
+        self.assertIn("Package: @apache/buildish-example", inspect_completed.stderr)
+        self.assertIn("Version: 1.2.3", inspect_completed.stderr)
+        self.assertIn("Declared integrity: sha512-", inspect_completed.stderr)
+        self.assertIn("Registry URL:", inspect_completed.stderr)
+        self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
 
     def test_verify_rc_command_fails_closed_when_maven_repository_drifts_from_inventory(self) -> None:
         if not command_available("gpg"):
