@@ -189,11 +189,17 @@ def _emit_reproducibility_header(
     emit_section(progress_reporter, section_label)
     if isinstance(verification, SourceArtifactVerificationSection):
         emit_detail(progress_reporter, "Kind", "source-artifact")
+        source_artifact_verification = True
     else:
         emit_detail(progress_reporter, "Kind", verification.kind)
+        source_artifact_verification = False
     emit_detail(progress_reporter, "Profile", reproducibility.profile_id)
     emit_detail(progress_reporter, "Comparison mode", reproducibility.comparison_mode)
-    recipe_source = "local-override" if reproducibility.override.applied else "canonical-profile"
+    recipe_source = (
+        "verifier-internal"
+        if source_artifact_verification
+        else ("local-override" if reproducibility.override.applied else "canonical-profile")
+    )
     emit_detail(progress_reporter, "Recipe source", recipe_source)
     if recipe_source == "local-override" and reproducibility.canonical_recipe is not None:
         canonical_build = reproducibility.canonical_recipe.build

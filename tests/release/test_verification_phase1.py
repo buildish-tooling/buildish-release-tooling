@@ -16,15 +16,55 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import cast
 import unittest
 
+from apache_buildish_release_tooling.release.contracts import SourceArtifactContract
 from apache_buildish_release_tooling.release.verification.common import SignatureVerification
-from apache_buildish_release_tooling.release.verification.phase1 import _report_markdown
+from apache_buildish_release_tooling.release.verification.phase1 import (
+    _report_markdown,
+    _source_artifact_reproducibility_payload,
+)
 from apache_buildish_release_tooling.release.verification.rebuild import ReproducibilityModeDecision
 
 
 class VerifyRcPhase1ReportTest(unittest.TestCase):
     """Keep report rendering strict when verification kinds evolve."""
+
+    def test_source_artifact_reproducibility_payload_uses_internal_profile_id(self) -> None:
+        source_artifact = SourceArtifactContract.model_validate(
+            {
+                "role": "asf-source-release",
+                "filename": "apache-buildish-example-1.2.3-incubating-src.tar.gz",
+                "uri": "https://dist.apache.org/example/apache-buildish-example-1.2.3-incubating-src.tar.gz",
+                "artifact_origin": "source-commit",
+                "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                "checksums": {"sha512": {"value": "a" * 128}},
+                "signatures": [
+                    {
+                        "type": "openpgp-detached-ascii-armored",
+                        "uri": "https://dist.apache.org/example/apache-buildish-example-1.2.3-incubating-src.tar.gz.asc",
+                    }
+                ],
+                "reproducibility": {"profile_id": "source-release"},
+            }
+        )
+
+        payload = _source_artifact_reproducibility_payload(
+            source_artifact=source_artifact,
+            source_artifact_path=Path("staged-source.tar.gz"),
+            rebuilt_source_artifact_path=Path("rebuilt-source.tar.gz"),
+            rebuilt_source_sha512="b" * 128,
+            source_artifact_matches_source_commit=True,
+            failures=[],
+            inspection_bundle_root=None,
+        )
+
+        self.assertIsNotNone(payload)
+        payload = cast(dict[str, object], payload)
+        self.assertEqual("source-artifact-from-git", payload["profile_id"])
+        self.assertIsNone(payload["canonical_recipe"])
 
     def test_report_markdown_rejects_unknown_secondary_artifact_kind(self) -> None:
         signature = SignatureVerification(
@@ -55,7 +95,26 @@ class VerifyRcPhase1ReportTest(unittest.TestCase):
                 source_artifact_url="https://dist.apache.org/example/apache-buildish-example-1.2.3-incubating-src.tar.gz",
                 source_artifact_signature=signature,
                 actual_source_sha512="f" * 128,
-                source_artifact_reproducibility=None,
+                source_artifact_reproducibility={
+                    "profile_id": "source-artifact-from-git",
+                    "verdict": "verified",
+                    "comparison_mode": "exact-bytes",
+                    "canonical_recipe": None,
+                    "effective_execution": {
+                        "backend": "host-direct",
+                        "build": {
+                            "command": ["internal:create-from-git"],
+                            "working_directory": "source-repository",
+                            "output_paths": ["rebuilt-source.tar.gz"],
+                            "injected_environment_keys": [],
+                        },
+                    },
+                    "override": {"applied": False},
+                    "matches_remote_bytes": True,
+                    "failure_class": None,
+                    "evidence": [],
+                    "issues": [],
+                },
                 manifest_issues=[],
                 source_artifact_issues=[],
                 reproducibility_decision=ReproducibilityModeDecision(

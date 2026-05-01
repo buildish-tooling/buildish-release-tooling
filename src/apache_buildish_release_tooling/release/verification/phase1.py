@@ -1240,6 +1240,7 @@ def _append_source_artifact_reproducibility_markdown(
             f"- Source reproducibility profile: `{reproducibility_payload['profile_id']}`",
             f"- Source reproducibility verdict: `{reproducibility_payload['verdict']}`",
             f"- Source reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
+            "- Source recipe source: `verifier-internal`",
             f"- Rebuilt bytes matched declared source commit: `{reproducibility_payload['matches_remote_bytes']}`",
         ]
     )
@@ -1297,11 +1298,7 @@ def _source_artifact_reproducibility_payload(
         return None
     if rebuilt_source_artifact_path is None and rebuilt_source_sha512 is None and not reproducibility_issues:
         return None
-    profile_id = (
-        source_artifact.reproducibility.profile_id
-        if source_artifact.reproducibility is not None
-        else "source-artifact-from-git"
-    )
+    profile_id = "source-artifact-from-git"
     failure_class: str | None = None
     if reproducibility_issues:
         failure_class = (
