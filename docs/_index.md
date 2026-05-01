@@ -401,6 +401,9 @@ verify_rc:
 - reads one saved `verify-rc` JSON report plus its inspection bundle
 - explains failed reproducibility checks without rerunning remote verification
 - surfaces the selected `profile_id`, recipe-source classification, structured override details, retained evidence files, and kind-specific drift details
+- keeps archive-aware inspection limited to the top-level downloadable artifact under verification, such as the source tarball, wheel, sdist, or npm package tarball
+- keeps built-in archive-aware inspection shallow and artifact-oriented, focusing on entry path, size, mtime, mode bits, ownership fields, file type, symlink target, and direct entry-content equality for those top-level members
+- does not recursively unpack nested archives or embedded payloads by default; it is intended as a focused verifier aid, not a general-purpose `diffoscope` clone
 - also shows the recorded rebuild execution context when present:
   - effective build command
   - effective build working directory

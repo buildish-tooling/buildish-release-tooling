@@ -1405,6 +1405,9 @@ Responsibilities of `inspect-repro`:
 - read `report.json` and the associated inspection bundle
 - summarize failure classes first
 - run archive-aware or file-aware analyzers against the saved evidence
+- keep archive-aware analysis limited to the top-level downloadable artifact under verification, for example the staged source tarball, wheel, sdist, or npm package tarball
+- keep the built-in archive-aware analysis shallow and artifact-oriented, focusing on top-level archive-entry facts such as member path, size, mtime, mode bits, ownership fields, file type, symlink target, and direct member-content equality for those top-level entries
+- do not recursively unpack nested archives or embedded payloads by default; `inspect-repro` should stay artifact-oriented and should not drift into a general-purpose `diffoscope` clone
 - optionally invoke deeper external tools such as `diffoscope` when installed and requested
 - write a second-layer inspection report without changing the original verification verdict
 
@@ -1419,16 +1422,17 @@ Suggested bundle contents for a reproducibility failure:
 
 - failing artifact-pair metadata
 - relative paths to retained RC and local artifacts when they are preserved
-- normalized file manifests or archive entry listings
-- archive metadata dumps
+- normalized file manifests or shallow archive entry listings
+- shallow archive metadata dumps
 - built-in mismatch summaries
 - optional extracted subsets or per-path evidence for problematic members
 
 Suggested first analyzers for `inspect-repro`:
 
 - `diff`
-- `tar` with reproducibility-oriented listing options
-- `zipinfo`
+- built-in shallow top-level tar/zip entry analyzers
+- `tar` with reproducibility-oriented listing options for top-level tar-based downloadable artifacts
+- `zipinfo` for top-level ZIP-based downloadable artifacts
 - `zipcmp`
 - optional `diffoscope` when available
 
