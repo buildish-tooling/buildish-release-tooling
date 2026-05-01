@@ -23,6 +23,7 @@ from apache_buildish_release_tooling.release.contracts import (
     AnySecondaryArtifactVerification,
     ArtifactReproducibilityReport,
     GenericFileVerificationReport,
+    SourceArtifactVerificationSection,
     VerifyRcReportV1,
 )
 from apache_buildish_release_tooling.release.progress import ProgressReporter
@@ -48,6 +49,9 @@ from apache_buildish_release_tooling.release.verification.inspection.oci_image i
 )
 from apache_buildish_release_tooling.release.verification.inspection.python_distribution import (
     inspect_python_distribution_reproducibility,
+)
+from apache_buildish_release_tooling.release.verification.inspection.source_artifact import (
+    inspect_source_artifact_reproducibility,
 )
 
 
@@ -77,6 +81,12 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
         "Build checks attempted",
         str(report.reproducibility_execution.build_checks_attempted),
     )
+    failing_source_artifact_reproducibility = (
+        report.source_artifact_verification.reproducibility
+        if isinstance(report.source_artifact_verification.reproducibility, ArtifactReproducibilityReport)
+        and report.source_artifact_verification.reproducibility.verdict == "failed"
+        else None
+    )
     failing_reproducibility_checks: list[
         tuple[AnySecondaryArtifactVerification, ArtifactReproducibilityReport]
     ] = []
@@ -87,7 +97,10 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
         if reproducibility.verdict != "failed":
             continue
         failing_reproducibility_checks.append((verification, reproducibility))
-    if not failing_reproducibility_checks:
+    total_failure_count = len(failing_reproducibility_checks) + (
+        1 if failing_source_artifact_reproducibility is not None else 0
+    )
+    if total_failure_count == 0:
         emit_success(
             progress_reporter,
             "No reproducibility failures recorded in the verify-rc report",
@@ -95,64 +108,31 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
         return
     emit_info(
         progress_reporter,
-        f"Inspecting {len(failing_reproducibility_checks)} reproducibility failure(s) from the saved bundle",
+        f"Inspecting {total_failure_count} reproducibility failure(s) from the saved bundle",
     )
-    for index, (verification, reproducibility) in enumerate(
-        failing_reproducibility_checks,
-        start=1,
-    ):
-        emit_section(
+    failure_index = 0
+    if failing_source_artifact_reproducibility is not None:
+        failure_index += 1
+        _emit_reproducibility_header(
             progress_reporter,
-            f"Artifact {index}/{len(failing_reproducibility_checks)}: {verification.artifact_id}",
+            section_label=f"Source Artifact {failure_index}/{total_failure_count}",
+            reproducibility=failing_source_artifact_reproducibility,
+            verification=report.source_artifact_verification,
         )
-        emit_detail(progress_reporter, "Kind", verification.kind)
-        emit_detail(progress_reporter, "Profile", reproducibility.profile_id)
-        emit_detail(progress_reporter, "Comparison mode", reproducibility.comparison_mode)
-        recipe_source = "local-override" if reproducibility.override.applied else "canonical-profile"
-        emit_detail(progress_reporter, "Recipe source", recipe_source)
-        if recipe_source == "local-override" and reproducibility.canonical_recipe is not None:
-            canonical_build = reproducibility.canonical_recipe.build
-            if canonical_build.command:
-                emit_detail(
-                    progress_reporter,
-                    "Canonical build command",
-                    " ".join(canonical_build.command),
-                )
-        effective_execution = reproducibility.effective_execution
-        if effective_execution is not None:
-            emit_detail(progress_reporter, "Execution backend", effective_execution.backend)
-        effective_build = effective_execution.build if effective_execution is not None else None
-        if effective_build is not None and effective_build.command:
-            emit_detail(
-                progress_reporter,
-                "Build command",
-                " ".join(effective_build.command),
-            )
-        if effective_build is not None and effective_build.working_directory is not None:
-            emit_detail(
-                progress_reporter,
-                "Build working directory",
-                effective_build.working_directory,
-            )
-        if effective_build is not None and effective_build.injected_environment_keys:
-            emit_detail(
-                progress_reporter,
-                "Injected environment keys",
-                ", ".join(effective_build.injected_environment_keys),
-            )
-        override_fields = _override_field_summary(reproducibility)
-        if override_fields:
-            emit_detail(
-                progress_reporter,
-                "Override fields",
-                ", ".join(override_fields),
-            )
-        if reproducibility.failure_class is not None:
-            emit_detail(
-                progress_reporter,
-                "Failure class",
-                reproducibility.failure_class,
-            )
+        inspect_source_artifact_reproducibility(
+            progress_reporter,
+            verification=report.source_artifact_verification,
+            reproducibility=failing_source_artifact_reproducibility,
+            bundle_root=bundle_root,
+        )
+    for verification, reproducibility in failing_reproducibility_checks:
+        failure_index += 1
+        _emit_reproducibility_header(
+            progress_reporter,
+            section_label=f"Artifact {failure_index}/{total_failure_count}: {verification.artifact_id}",
+            reproducibility=reproducibility,
+            verification=verification,
+        )
         if verification.kind in {"generic-file", "generic-file-with-openpgp"}:
             inspect_file_like_reproducibility(
                 progress_reporter,
@@ -196,6 +176,67 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
         emit_warning(
             progress_reporter,
             f"No inspect-repro analyzer is implemented yet for {verification.kind}",
+        )
+
+
+def _emit_reproducibility_header(
+    progress_reporter: ProgressReporter,
+    *,
+    section_label: str,
+    reproducibility: ArtifactReproducibilityReport,
+    verification: AnySecondaryArtifactVerification | SourceArtifactVerificationSection,
+) -> None:
+    emit_section(progress_reporter, section_label)
+    if isinstance(verification, SourceArtifactVerificationSection):
+        emit_detail(progress_reporter, "Kind", "source-artifact")
+    else:
+        emit_detail(progress_reporter, "Kind", verification.kind)
+    emit_detail(progress_reporter, "Profile", reproducibility.profile_id)
+    emit_detail(progress_reporter, "Comparison mode", reproducibility.comparison_mode)
+    recipe_source = "local-override" if reproducibility.override.applied else "canonical-profile"
+    emit_detail(progress_reporter, "Recipe source", recipe_source)
+    if recipe_source == "local-override" and reproducibility.canonical_recipe is not None:
+        canonical_build = reproducibility.canonical_recipe.build
+        if canonical_build.command:
+            emit_detail(
+                progress_reporter,
+                "Canonical build command",
+                " ".join(canonical_build.command),
+            )
+    effective_execution = reproducibility.effective_execution
+    if effective_execution is not None:
+        emit_detail(progress_reporter, "Execution backend", effective_execution.backend)
+    effective_build = effective_execution.build if effective_execution is not None else None
+    if effective_build is not None and effective_build.command:
+        emit_detail(
+            progress_reporter,
+            "Build command",
+            " ".join(effective_build.command),
+        )
+    if effective_build is not None and effective_build.working_directory is not None:
+        emit_detail(
+            progress_reporter,
+            "Build working directory",
+            effective_build.working_directory,
+        )
+    if effective_build is not None and effective_build.injected_environment_keys:
+        emit_detail(
+            progress_reporter,
+            "Injected environment keys",
+            ", ".join(effective_build.injected_environment_keys),
+        )
+    override_fields = _override_field_summary(reproducibility)
+    if override_fields:
+        emit_detail(
+            progress_reporter,
+            "Override fields",
+            ", ".join(override_fields),
+        )
+    if reproducibility.failure_class is not None:
+        emit_detail(
+            progress_reporter,
+            "Failure class",
+            reproducibility.failure_class,
         )
 
 

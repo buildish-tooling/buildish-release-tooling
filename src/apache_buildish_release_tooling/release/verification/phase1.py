@@ -48,6 +48,10 @@ from apache_buildish_release_tooling.release.verification.common import (
     validate_fetch_uri,
     verify_checksum_sidecar,
 )
+from apache_buildish_release_tooling.release.verification.inspection_bundle import (
+    retain_source_artifact_evidence_file,
+    write_source_artifact_reproducibility_metadata,
+)
 from apache_buildish_release_tooling.release.verification.secondary import (
     INVALID_SECONDARY_ARTIFACT_KIND,
     verify_secondary_artifacts,
@@ -452,10 +456,12 @@ def verify_rc_phase1(
 
     source_artifact_reproducibility = _source_artifact_reproducibility_payload(
         source_artifact=source_artifact,
+        source_artifact_path=source_artifact_path,
         rebuilt_source_artifact_path=rebuilt_source_artifact_path,
         rebuilt_source_sha512=rebuilt_source_sha512,
         source_artifact_matches_source_commit=source_artifact_matches_source_commit,
         failures=failures,
+        inspection_bundle_root=inspection_bundle_path,
     )
 
     has_build_candidates = manifest_payload is not None and _has_build_reproducibility_candidates(
@@ -1275,10 +1281,12 @@ def _nested_mapping(payload: dict[str, Any], *path: str) -> dict[str, Any] | Non
 def _source_artifact_reproducibility_payload(
     *,
     source_artifact: SourceArtifactContract | None,
+    source_artifact_path: Path | None,
     rebuilt_source_artifact_path: Path | None,
     rebuilt_source_sha512: str | None,
     source_artifact_matches_source_commit: bool,
     failures: list[VerificationFailure],
+    inspection_bundle_root: Path | None,
 ) -> dict[str, Any] | None:
     reproducibility_issues = [
         failure.message
@@ -1312,6 +1320,55 @@ def _source_artifact_reproducibility_payload(
                 "injected_environment_keys": [],
             },
         }
+    evidence: list[dict[str, str]] = []
+    if inspection_bundle_root is not None and source_artifact_path is not None:
+        metadata_payload: dict[str, Any] = {
+            "profile_id": profile_id,
+            "comparison_mode": "exact-bytes",
+            "failure_class": failure_class,
+            "staged_artifact": {
+                "filename": source_artifact.filename,
+                "sha512": sha512(source_artifact_path),
+                "size_bytes": source_artifact_path.stat().st_size,
+            },
+            "matches_remote_bytes": (
+                source_artifact_matches_source_commit if rebuilt_source_sha512 is not None else None
+            ),
+            "issues": reproducibility_issues,
+        }
+        if rebuilt_source_artifact_path is not None:
+            metadata_payload["rebuilt_artifact"] = {
+                "filename": rebuilt_source_artifact_path.name,
+                "sha512": rebuilt_source_sha512,
+                "size_bytes": rebuilt_source_artifact_path.stat().st_size,
+            }
+        metadata_path = write_source_artifact_reproducibility_metadata(
+            inspection_bundle_root,
+            payload=metadata_payload,
+        )
+        evidence.append({"label": "comparison-metadata", "path": metadata_path})
+        if reproducibility_issues:
+            evidence.append(
+                {
+                    "label": "staged-artifact",
+                    "path": retain_source_artifact_evidence_file(
+                        inspection_bundle_root,
+                        label_directory="staged",
+                        source_path=source_artifact_path,
+                    ),
+                }
+            )
+            if rebuilt_source_artifact_path is not None:
+                evidence.append(
+                    {
+                        "label": "rebuilt-artifact",
+                        "path": retain_source_artifact_evidence_file(
+                            inspection_bundle_root,
+                            label_directory="rebuilt",
+                            source_path=rebuilt_source_artifact_path,
+                        ),
+                    }
+                )
     return {
         "profile_id": profile_id,
         "verdict": "failed" if reproducibility_issues else "verified",
@@ -1323,7 +1380,7 @@ def _source_artifact_reproducibility_payload(
             source_artifact_matches_source_commit if rebuilt_source_sha512 is not None else None
         ),
         "failure_class": failure_class,
-        "evidence": [],
+        "evidence": evidence,
         "issues": reproducibility_issues,
     }
 

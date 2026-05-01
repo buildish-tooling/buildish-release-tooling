@@ -929,6 +929,61 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
         self.assertIn("Unified text diff", inspect_completed.stderr)
 
+    def test_inspect_repro_command_reports_saved_source_artifact_drift(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            drift_source_artifact=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--progress",
+                "on",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        source_reproducibility = report_payload["source_artifact_verification"]["reproducibility"]
+        self.assertEqual(
+            {"comparison-metadata", "staged-artifact", "rebuilt-artifact"},
+            {evidence["label"] for evidence in source_reproducibility["evidence"]},
+        )
+
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn("Source Artifact 1/1", inspect_completed.stderr)
+        self.assertIn("Kind: source-artifact", inspect_completed.stderr)
+        self.assertIn("Build command: internal:create-from-git", inspect_completed.stderr)
+        self.assertIn("Failure class: byte-mismatch", inspect_completed.stderr)
+        self.assertIn("Retained staged and rebuilt source-artifact copies differ", inspect_completed.stderr)
+
     def test_inspect_repro_command_tolerates_missing_canonical_recipe(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
