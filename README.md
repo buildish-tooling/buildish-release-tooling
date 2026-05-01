@@ -60,6 +60,7 @@ exact pinned ref over pulling from an index.
 - `materialize-rc-git-content`
 - `release-version`
 - `verify-rc`
+- `inspect-repro`
 
 ## Development
 

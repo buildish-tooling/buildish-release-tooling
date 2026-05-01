@@ -219,7 +219,7 @@ buildish-release-tooling inspect-repro <report-json>
 Recommended optional flags:
 
 - `--work-dir <path>`: keep downloads, local builds, and reports in a caller-chosen directory
-- `--report-json <path>`: write machine-readable verification report; when omitted, auto-name it as `verify-rc-report-<component_id>-<version>-<rc_id>-<timestamp>.json`
+- `--report-json <path>`: write machine-readable verification report; when omitted, auto-name it as `verify-rc-report-<component_id>-<rc_tag>.json`
 - `--report-md <path>`: write human-readable verification report; when omitted, auto-name it from the same base identifier as the JSON report
 - `--mode <integrity-only|full|auto>`: remote verification only, always run local reproducibility checks, or prompt locally after remote checks pass
 - `--keep-work-dir`: keep the verifier work directory after completion
@@ -1411,7 +1411,7 @@ Inspection-bundle contract:
 - the durable contract should be `report.json` plus a curated inspection bundle, not an implicit dependency on the entire work directory
 - paths recorded in the report should be relative to the inspection-bundle root so the bundle remains relocatable after download
 - the bundle should contain only the evidence needed for later diagnosis, not every transient build artifact by default
-- when `--inspection-bundle` is omitted, auto-name the bundle from the same base identifier as the report, for example `verify-rc-inspection-<component_id>-<version>-<rc_id>-<timestamp>/`
+- when `--inspection-bundle` is omitted, auto-name the bundle from the same base identifier as the report, for example `verify-rc-inspection-<component_id>-<rc_tag>/`
 
 Suggested bundle contents for a reproducibility failure:
 
@@ -1535,7 +1535,7 @@ When reproducibility checks are attempted, `verify-rc` should also emit a curate
 
 Default naming:
 
-- if `--report-json` is omitted, write a default filename such as `verify-rc-report-<component_id>-<version>-<rc_id>-<timestamp>.json`
+- if `--report-json` is omitted, write a default filename such as `verify-rc-report-<component_id>-<rc_tag>.json`
 - if `--report-md` is omitted, derive its filename from the same identifier
 - if `--inspection-bundle` is omitted, derive its directory name from the same identifier
 - if the user explicitly supplies a path for any of these outputs, honor that path exactly

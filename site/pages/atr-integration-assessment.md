@@ -141,10 +141,13 @@ Its current boundaries are also clear:
 
 - it is strongly Git-oriented,
 - it still has a GitHub-shaped release surface in several places,
-- its `verify-rc` command is currently a placeholder that emits instructions
-  rather than performing the full verification flow,
-- it has only early support for secondary artifacts via generic manifest
-  entries,
+- its `verify-rc` and `inspect-repro` commands now cover signed-manifest
+  verification, source-artifact checks, typed secondary-artifact verification,
+  and host-direct reproducibility checks, but isolated rebuild execution and
+  ATR evidence ingestion remain follow-up work,
+- it now has typed secondary-artifact support for Maven repositories, OCI
+  images, PyPI distributions, and npm packages, but policy depth still trails a
+  dedicated release-state platform,
 - it does not yet have a first-class ATR integration layer.
 
 ## The Architectural Relationship
@@ -328,41 +331,49 @@ ATR will require additional explicit identifiers and policy knobs, such as:
 
 Without that, any ATR integration would be ad hoc.
 
-### 3. The current `verify-rc` command is not yet a full verifier
+### 3. The current `verify-rc` command is still not the whole ATR story
 
 This is important because ATR does not remove the need for local human
 verification under ASF release policy.
 
-Today `verify-rc` only emits authoritative instructions. It does not yet:
+Today `verify-rc` already does the core local verification work:
 
 - download and verify the signed RC vote manifest,
 - verify source artifact authenticity and integrity end to end,
-- rebuild and compare artifacts,
-- verify staged secondary artifacts,
-- consume external verification evidence.
+- verify staged secondary artifacts for the currently supported kinds,
+- run configured host-direct reproducibility checks,
+- retain curated evidence for later `inspect-repro` analysis.
 
-That means `buildish-release-tooling` does not yet have the mature local
-verification half that would pair naturally with ATR’s server-side checks.
+What it still does not yet do is:
 
-### 4. Secondary artifacts are still mostly generic on the buildish side
+- enforce isolated rebuild execution or network policy for local rebuilds,
+- consume external ATR verification evidence as a first-class input,
+- act as a native ATR lifecycle client.
+
+That means `buildish-release-tooling` now has the local verification half, but
+it still needs an ATR-facing integration layer rather than trying to fold ATR
+into the current verifier ad hoc.
+
+### 4. Secondary artifacts are typed, but ATR can still grow beyond them
 
 ATR’s long-term direction includes package managers and richer distribution
-channels. By contrast, `buildish-release-tooling` currently treats most
-secondary artifacts as generic manifest entries.
+channels. `buildish-release-tooling` now has typed manifest and verifier
+support for several important ecosystems, but ATR can still evolve broader
+policy and hosted-state concepts around them.
 
-That is workable for:
-
-- SBOMs,
-- detached signatures,
-- generic release metadata,
-- a small number of additional files.
-
-It is not yet enough for:
+The current typed support covers:
 
 - Maven staging repositories,
 - OCI images and manifest lists,
 - PyPI distributions,
-- npm packages.
+- npm packages,
+- generic additional files.
+
+Follow-up gaps still remain around:
+
+- richer ecosystem-specific policy,
+- centralized hosted evidence,
+- ATR-native release-state modeling.
 
 ### 5. GitHub-shaped assumptions remain in the release-tooling model
 
@@ -411,7 +422,9 @@ This is not an ATR flaw. It is a policy boundary.
 The implication is:
 
 - ATR checks are complementary evidence,
-- `verify-rc` still needs to become a serious local verifier.
+- `verify-rc` should remain the serious local verifier,
+- ATR integration should add evidence and lifecycle state around it rather than
+  replacing it.
 
 ### 3. ATR’s product-line and release model is richer than the current buildish model
 
@@ -606,14 +619,12 @@ That policy would also help `verify-rc`.
 
 ### 6. Finish `verify-rc`
 
-This matters regardless of ATR, but ATR makes the gap more obvious.
+This still matters regardless of ATR, but the remaining work has narrowed.
 
-The full `verify-rc` implementation should:
+The remaining `verify-rc` and `inspect-repro` work should:
 
-- verify the signed RC vote manifest,
-- verify the source artifact’s signature and checksum,
-- perform local build/reproducibility verification where configured,
-- verify secondary artifacts listed in the manifest,
+- tighten rebuild isolation and execution policy where needed,
+- improve deeper post-failure diagnostics,
 - optionally fetch and report ATR-side checks as additional evidence,
 - clearly distinguish local-required results from external-advisory results.
 
