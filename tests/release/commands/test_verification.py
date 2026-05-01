@@ -304,6 +304,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 str(fixture.work_dir),
                 "--report-json",
                 str(fixture.report_json_path),
+                "--report-md",
+                str(fixture.report_md_path),
                 "--inspection-bundle",
                 str(fixture.inspection_bundle_path),
                 fixture.manifest_url,
@@ -351,6 +353,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 for evidence in secondary_verification["reproducibility"]["evidence"]
             ],
         )
+        report_markdown = fixture.report_md_path.read_text(encoding="utf-8")
+        self.assertIn("Reproducibility verdict: `verified`", report_markdown)
+        self.assertIn("Execution backend: `host-direct`", report_markdown)
 
     def test_verify_rc_command_uses_local_repro_override_file_for_generic_file(self) -> None:
         if not command_available("gpg"):

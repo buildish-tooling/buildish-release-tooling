@@ -987,33 +987,11 @@ def _report_markdown(
                     )
                 reproducibility_payload = verification.get("reproducibility")
                 if isinstance(reproducibility_payload, dict):
-                    lines.extend(
-                        [
-                            f"- Reproducibility profile: `{reproducibility_payload['profile_id']}`",
-                            f"- Reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
-                            f"- Recipe source: `{reproducibility_payload.get('recipe_source', 'canonical-profile')}`",
-                            f"- Rebuilt bytes matched staged artifact: `{reproducibility_payload['matches_remote_bytes']}`",
-                        ]
+                    _append_reproducibility_markdown(
+                        lines,
+                        reproducibility_payload=reproducibility_payload,
+                        match_summary_label="Rebuilt bytes matched staged artifact",
                     )
-                    if reproducibility_payload.get("override_fields"):
-                        lines.append(
-                            "- Override fields: `"
-                            + ", ".join(str(field) for field in reproducibility_payload["override_fields"])
-                            + "`"
-                        )
-                    if reproducibility_payload.get("failure_class") is not None:
-                        lines.append(
-                            f"- Reproducibility failure class: `{reproducibility_payload['failure_class']}`"
-                        )
-                    for output_path in reproducibility_payload.get("output_paths", []):
-                        lines.append(f"- Rebuild output: `{output_path}`")
-                    for evidence_reference in reproducibility_payload.get("evidence", []):
-                        if not isinstance(evidence_reference, dict):
-                            continue
-                        if evidence_reference.get("label") and evidence_reference.get("path"):
-                            lines.append(
-                                f"- Reproducibility evidence `{evidence_reference['label']}`: `{evidence_reference['path']}`"
-                            )
             elif kind == "maven-repository":
                 inventory_payload = verification["inventory"]
                 live_repository = verification["live_repository"]
@@ -1032,33 +1010,11 @@ def _report_markdown(
                     )
                 reproducibility_payload = verification.get("reproducibility")
                 if isinstance(reproducibility_payload, dict):
-                    lines.extend(
-                        [
-                            f"- Reproducibility profile: `{reproducibility_payload['profile_id']}`",
-                            f"- Reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
-                            f"- Recipe source: `{reproducibility_payload.get('recipe_source', 'canonical-profile')}`",
-                            f"- Rebuilt repository matched staged policy: `{reproducibility_payload['matches_remote_bytes']}`",
-                        ]
+                    _append_reproducibility_markdown(
+                        lines,
+                        reproducibility_payload=reproducibility_payload,
+                        match_summary_label="Rebuilt repository matched staged policy",
                     )
-                    if reproducibility_payload.get("override_fields"):
-                        lines.append(
-                            "- Override fields: `"
-                            + ", ".join(str(field) for field in reproducibility_payload["override_fields"])
-                            + "`"
-                        )
-                    if reproducibility_payload.get("failure_class") is not None:
-                        lines.append(
-                            f"- Reproducibility failure class: `{reproducibility_payload['failure_class']}`"
-                        )
-                    for output_path in reproducibility_payload.get("output_paths", []):
-                        lines.append(f"- Rebuild output: `{output_path}`")
-                    for evidence_reference in reproducibility_payload.get("evidence", []):
-                        if not isinstance(evidence_reference, dict):
-                            continue
-                        if evidence_reference.get("label") and evidence_reference.get("path"):
-                            lines.append(
-                                f"- Reproducibility evidence `{evidence_reference['label']}`: `{evidence_reference['path']}`"
-                            )
             elif kind == "python-distribution":
                 checksum_payload = verification["checksum"]
                 index_resolution = verification["index_resolution"]
@@ -1083,33 +1039,11 @@ def _report_markdown(
                 )
                 reproducibility_payload = verification.get("reproducibility")
                 if isinstance(reproducibility_payload, dict):
-                    lines.extend(
-                        [
-                            f"- Reproducibility profile: `{reproducibility_payload['profile_id']}`",
-                            f"- Reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
-                            f"- Recipe source: `{reproducibility_payload.get('recipe_source', 'canonical-profile')}`",
-                            f"- Rebuilt bytes matched staged artifact: `{reproducibility_payload['matches_remote_bytes']}`",
-                        ]
+                    _append_reproducibility_markdown(
+                        lines,
+                        reproducibility_payload=reproducibility_payload,
+                        match_summary_label="Rebuilt bytes matched staged artifact",
                     )
-                    if reproducibility_payload.get("override_fields"):
-                        lines.append(
-                            "- Override fields: `"
-                            + ", ".join(str(field) for field in reproducibility_payload["override_fields"])
-                            + "`"
-                        )
-                    if reproducibility_payload.get("failure_class") is not None:
-                        lines.append(
-                            f"- Reproducibility failure class: `{reproducibility_payload['failure_class']}`"
-                        )
-                    for output_path in reproducibility_payload.get("output_paths", []):
-                        lines.append(f"- Rebuild output: `{output_path}`")
-                    for evidence_reference in reproducibility_payload.get("evidence", []):
-                        if not isinstance(evidence_reference, dict):
-                            continue
-                        if evidence_reference.get("label") and evidence_reference.get("path"):
-                            lines.append(
-                                f"- Reproducibility evidence `{evidence_reference['label']}`: `{evidence_reference['path']}`"
-                            )
             elif kind == "oci-image":
                 inspection = verification["inspection"]
                 lines.extend(
@@ -1121,33 +1055,11 @@ def _report_markdown(
                 )
                 reproducibility_payload = verification.get("reproducibility")
                 if isinstance(reproducibility_payload, dict):
-                    lines.extend(
-                        [
-                            f"- Reproducibility profile: `{reproducibility_payload['profile_id']}`",
-                            f"- Reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
-                            f"- Recipe source: `{reproducibility_payload.get('recipe_source', 'canonical-profile')}`",
-                            f"- Rebuilt image matched staged digests: `{reproducibility_payload['matches_remote_bytes']}`",
-                        ]
+                    _append_reproducibility_markdown(
+                        lines,
+                        reproducibility_payload=reproducibility_payload,
+                        match_summary_label="Rebuilt image matched staged digests",
                     )
-                    if reproducibility_payload.get("override_fields"):
-                        lines.append(
-                            "- Override fields: `"
-                            + ", ".join(str(field) for field in reproducibility_payload["override_fields"])
-                            + "`"
-                        )
-                    if reproducibility_payload.get("failure_class") is not None:
-                        lines.append(
-                            f"- Reproducibility failure class: `{reproducibility_payload['failure_class']}`"
-                        )
-                    for output_path in reproducibility_payload.get("output_paths", []):
-                        lines.append(f"- Rebuild output: `{output_path}`")
-                    for evidence_reference in reproducibility_payload.get("evidence", []):
-                        if not isinstance(evidence_reference, dict):
-                            continue
-                        if evidence_reference.get("label") and evidence_reference.get("path"):
-                            lines.append(
-                                f"- Reproducibility evidence `{evidence_reference['label']}`: `{evidence_reference['path']}`"
-                            )
             elif kind == "npm-package":
                 checksum_payload = verification["checksum"]
                 registry_resolution = verification["registry_resolution"]
@@ -1174,33 +1086,11 @@ def _report_markdown(
                 )
                 reproducibility_payload = verification.get("reproducibility")
                 if isinstance(reproducibility_payload, dict):
-                    lines.extend(
-                        [
-                            f"- Reproducibility profile: `{reproducibility_payload['profile_id']}`",
-                            f"- Reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
-                            f"- Recipe source: `{reproducibility_payload.get('recipe_source', 'canonical-profile')}`",
-                            f"- Rebuilt bytes matched staged artifact: `{reproducibility_payload['matches_remote_bytes']}`",
-                        ]
+                    _append_reproducibility_markdown(
+                        lines,
+                        reproducibility_payload=reproducibility_payload,
+                        match_summary_label="Rebuilt bytes matched staged artifact",
                     )
-                    if reproducibility_payload.get("override_fields"):
-                        lines.append(
-                            "- Override fields: `"
-                            + ", ".join(str(field) for field in reproducibility_payload["override_fields"])
-                            + "`"
-                        )
-                    if reproducibility_payload.get("failure_class") is not None:
-                        lines.append(
-                            f"- Reproducibility failure class: `{reproducibility_payload['failure_class']}`"
-                        )
-                    for output_path in reproducibility_payload.get("output_paths", []):
-                        lines.append(f"- Rebuild output: `{output_path}`")
-                    for evidence_reference in reproducibility_payload.get("evidence", []):
-                        if not isinstance(evidence_reference, dict):
-                            continue
-                        if evidence_reference.get("label") and evidence_reference.get("path"):
-                            lines.append(
-                                f"- Reproducibility evidence `{evidence_reference['label']}`: `{evidence_reference['path']}`"
-                            )
             elif kind == INVALID_SECONDARY_ARTIFACT_KIND:
                 declared_kind = verification.get("declared_kind")
                 lines.append(f"- Declared kind: `{_md_value(declared_kind if isinstance(declared_kind, str) else None)}`")
@@ -1239,6 +1129,43 @@ def _report_markdown(
             )
         lines.append("")
     return "\n".join(lines)
+
+
+def _append_reproducibility_markdown(
+    lines: list[str],
+    *,
+    reproducibility_payload: dict[str, Any],
+    match_summary_label: str,
+) -> None:
+    lines.extend(
+        [
+            f"- Reproducibility profile: `{reproducibility_payload['profile_id']}`",
+            f"- Reproducibility verdict: `{reproducibility_payload['verdict']}`",
+            f"- Reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
+            f"- Recipe source: `{reproducibility_payload.get('recipe_source', 'canonical-profile')}`",
+            f"- Execution backend: `{reproducibility_payload.get('execution_backend', 'host-direct')}`",
+            f"- {match_summary_label}: `{reproducibility_payload['matches_remote_bytes']}`",
+        ]
+    )
+    if reproducibility_payload.get("override_fields"):
+        lines.append(
+            "- Override fields: `"
+            + ", ".join(str(field) for field in reproducibility_payload["override_fields"])
+            + "`"
+        )
+    if reproducibility_payload.get("failure_class") is not None:
+        lines.append(
+            f"- Reproducibility failure class: `{reproducibility_payload['failure_class']}`"
+        )
+    for output_path in reproducibility_payload.get("output_paths", []):
+        lines.append(f"- Rebuild output: `{output_path}`")
+    for evidence_reference in reproducibility_payload.get("evidence", []):
+        if not isinstance(evidence_reference, dict):
+            continue
+        if evidence_reference.get("label") and evidence_reference.get("path"):
+            lines.append(
+                f"- Reproducibility evidence `{evidence_reference['label']}`: `{evidence_reference['path']}`"
+            )
 
 
 def _md_value(value: str | None) -> str:
