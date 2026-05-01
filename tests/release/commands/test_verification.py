@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from argparse import Namespace
 from dataclasses import dataclass
+import io
+import tarfile
 import zipfile
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
@@ -86,6 +88,23 @@ def _write_zip_archive(
         zip_info.compress_type = zipfile.ZIP_DEFLATED
         zip_info.external_attr = 0o100644 << 16
         archive.writestr(zip_info, payload)
+
+
+def _write_tgz_archive(
+    archive_path: Path,
+    *,
+    member_name: str,
+    payload: bytes,
+    mtime: int,
+    mode: int = 0o644,
+) -> None:
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(archive_path, mode="w:gz") as archive:
+        info = tarfile.TarInfo(member_name)
+        info.size = len(payload)
+        info.mtime = mtime
+        info.mode = mode
+        archive.addfile(info, io.BytesIO(payload))
 
 
 class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
@@ -1039,6 +1058,12 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Build command: internal:create-from-git", inspect_completed.stderr)
         self.assertIn("Failure class: byte-mismatch", inspect_completed.stderr)
         self.assertIn("Retained staged and rebuilt source-artifact copies differ", inspect_completed.stderr)
+        self.assertIn("Shallow archive comparison", inspect_completed.stderr)
+        self.assertIn("Archive format: tar", inspect_completed.stderr)
+        self.assertIn(
+            "Top-level archive entries and member payloads match after shallow inspection",
+            inspect_completed.stderr,
+        )
 
     def test_inspect_repro_command_tolerates_missing_source_effective_execution(self) -> None:
         if not command_available("gpg"):
@@ -1918,6 +1943,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             include_python_distribution=True,
             include_python_distribution_reproducibility=True,
             drift_python_distribution_reproducibility=True,
+            archive_python_distribution_reproducibility=True,
         )
         completed = run_cli(
             [
@@ -1962,6 +1988,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             include_python_distribution=True,
             include_python_distribution_reproducibility=True,
             drift_python_distribution_reproducibility=True,
+            archive_python_distribution_reproducibility=True,
         )
         verify_completed = run_cli(
             [
@@ -2001,7 +2028,12 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Distribution type: wheel", inspect_completed.stderr)
         self.assertIn("Simple index:", inspect_completed.stderr)
         self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
-        self.assertIn("Drift classification: size-and-text-drift", inspect_completed.stderr)
+        self.assertIn("Drift classification: size-and-binary-drift", inspect_completed.stderr)
+        self.assertIn("Shallow archive comparison", inspect_completed.stderr)
+        self.assertIn("Archive format: zip", inspect_completed.stderr)
+        self.assertIn("Archive drift classification: mixed-entry-drift", inspect_completed.stderr)
+        self.assertIn("Archive metadata mismatches", inspect_completed.stderr)
+        self.assertIn("example/__init__.py", inspect_completed.stderr)
 
     def test_verify_rc_command_verifies_npm_package_secondary_artifact(self) -> None:
         sandbox_dir = create_build_test_sandbox()
@@ -2114,6 +2146,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             include_npm_package=True,
             include_npm_package_reproducibility=True,
             drift_npm_package_reproducibility=True,
+            archive_npm_package_reproducibility=True,
         )
         completed = run_cli(
             [
@@ -2158,6 +2191,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             include_npm_package=True,
             include_npm_package_reproducibility=True,
             drift_npm_package_reproducibility=True,
+            archive_npm_package_reproducibility=True,
         )
         verify_completed = run_cli(
             [
@@ -2197,7 +2231,12 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Declared integrity: sha512-", inspect_completed.stderr)
         self.assertIn("Registry URL:", inspect_completed.stderr)
         self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
-        self.assertIn("Drift classification: size-and-text-drift", inspect_completed.stderr)
+        self.assertIn("Drift classification: size-and-binary-drift", inspect_completed.stderr)
+        self.assertIn("Shallow archive comparison", inspect_completed.stderr)
+        self.assertIn("Archive format: tar", inspect_completed.stderr)
+        self.assertIn("Archive drift classification: mixed-entry-drift", inspect_completed.stderr)
+        self.assertIn("Archive metadata mismatches", inspect_completed.stderr)
+        self.assertIn("package/package.json", inspect_completed.stderr)
 
     def test_verify_rc_command_fails_closed_when_maven_repository_drifts_from_inventory(self) -> None:
         if not command_available("gpg"):
@@ -2724,12 +2763,14 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         missing_python_index_entry: bool = False,
         include_python_distribution_reproducibility: bool = False,
         drift_python_distribution_reproducibility: bool = False,
+        archive_python_distribution_reproducibility: bool = False,
         include_npm_package: bool = False,
         drift_npm_registry_integrity: bool = False,
         drift_npm_tarball: bool = False,
         missing_npm_tarball: bool = False,
         include_npm_package_reproducibility: bool = False,
         drift_npm_package_reproducibility: bool = False,
+        archive_npm_package_reproducibility: bool = False,
         include_oci_image: bool = False,
         drift_oci_image: bool = False,
         include_oci_image_reproducibility: bool = False,
@@ -2949,22 +2990,51 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         if include_python_distribution_reproducibility:
             rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-wheel.sh"
             rebuild_script.parent.mkdir(parents=True, exist_ok=True)
-            rebuild_script.write_text(
-                "\n".join(
-                    [
-                        "#!/usr/bin/env sh",
-                        "set -eu",
-                        "mkdir -p dist",
-                        (
-                            "printf 'wheel payload\\n' > dist/example-1.2.3-py3-none-any.whl"
-                            if not drift_python_distribution_reproducibility
-                            else "printf 'wheel payload drift\\n' > dist/example-1.2.3-py3-none-any.whl"
-                        ),
-                        "",
-                    ]
-                ),
-                encoding="utf-8",
-            )
+            if archive_python_distribution_reproducibility:
+                rebuild_script.write_text(
+                    "\n".join(
+                        [
+                            "#!/usr/bin/env sh",
+                            "set -eu",
+                            "mkdir -p dist",
+                            "python - <<'PY'",
+                            "from pathlib import Path",
+                            "import zipfile",
+                            "archive_path = Path('dist/example-1.2.3-py3-none-any.whl')",
+                            "payload = b'wheel payload\\n'",
+                            (
+                                "payload = b'wheel payload drift\\n'"
+                                if drift_python_distribution_reproducibility
+                                else "payload = payload"
+                            ),
+                            "with zipfile.ZipFile(archive_path, mode='w', compression=zipfile.ZIP_DEFLATED) as archive:",
+                            "    info = zipfile.ZipInfo('example/__init__.py', date_time=(2026, 4, 30, 12, 0, 1))",
+                            "    info.compress_type = zipfile.ZIP_DEFLATED",
+                            "    info.external_attr = 0o100644 << 16",
+                            "    archive.writestr(info, payload)",
+                            "PY",
+                            "",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+            else:
+                rebuild_script.write_text(
+                    "\n".join(
+                        [
+                            "#!/usr/bin/env sh",
+                            "set -eu",
+                            "mkdir -p dist",
+                            (
+                                "printf 'wheel payload\\n' > dist/example-1.2.3-py3-none-any.whl"
+                                if not drift_python_distribution_reproducibility
+                                else "printf 'wheel payload drift\\n' > dist/example-1.2.3-py3-none-any.whl"
+                            ),
+                            "",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
             rebuild_script.chmod(0o755)
             run_quiet(
                 ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-wheel.sh"],
@@ -2977,22 +3047,53 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         if include_npm_package_reproducibility:
             rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-npm-package.sh"
             rebuild_script.parent.mkdir(parents=True, exist_ok=True)
-            rebuild_script.write_text(
-                "\n".join(
-                    [
-                        "#!/usr/bin/env sh",
-                        "set -eu",
-                        "mkdir -p dist",
-                        (
-                            "printf 'npm package payload\\n' > dist/buildish-example-1.2.3.tgz"
-                            if not drift_npm_package_reproducibility
-                            else "printf 'npm package payload drift\\n' > dist/buildish-example-1.2.3.tgz"
-                        ),
-                        "",
-                    ]
-                ),
-                encoding="utf-8",
-            )
+            if archive_npm_package_reproducibility:
+                rebuild_script.write_text(
+                    "\n".join(
+                        [
+                            "#!/usr/bin/env sh",
+                            "set -eu",
+                            "mkdir -p dist",
+                            "python - <<'PY'",
+                            "from io import BytesIO",
+                            "from pathlib import Path",
+                            "import tarfile",
+                            "archive_path = Path('dist/buildish-example-1.2.3.tgz')",
+                            "payload = b'npm package payload\\n'",
+                            (
+                                "payload = b'npm package payload drift\\n'"
+                                if drift_npm_package_reproducibility
+                                else "payload = payload"
+                            ),
+                            "with tarfile.open(archive_path, mode='w:gz') as archive:",
+                            "    info = tarfile.TarInfo('package/package.json')",
+                            "    info.size = len(payload)",
+                            "    info.mtime = 1714435201",
+                            "    info.mode = 0o644",
+                            "    archive.addfile(info, BytesIO(payload))",
+                            "PY",
+                            "",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+            else:
+                rebuild_script.write_text(
+                    "\n".join(
+                        [
+                            "#!/usr/bin/env sh",
+                            "set -eu",
+                            "mkdir -p dist",
+                            (
+                                "printf 'npm package payload\\n' > dist/buildish-example-1.2.3.tgz"
+                                if not drift_npm_package_reproducibility
+                                else "printf 'npm package payload drift\\n' > dist/buildish-example-1.2.3.tgz"
+                            ),
+                            "",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
             rebuild_script.chmod(0o755)
             run_quiet(
                 ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-npm-package.sh"],
@@ -3332,7 +3433,15 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             distribution_dir = sandbox_dir / "pypi-files"
             distribution_dir.mkdir(parents=True, exist_ok=True)
             distribution_path = distribution_dir / "example-1.2.3-py3-none-any.whl"
-            distribution_path.write_bytes(b"wheel payload\n")
+            if archive_python_distribution_reproducibility:
+                _write_zip_archive(
+                    distribution_path,
+                    member_name="example/__init__.py",
+                    payload=b"wheel payload\n",
+                    timestamp=(2026, 4, 30, 12, 0, 1),
+                )
+            else:
+                distribution_path.write_bytes(b"wheel payload\n")
             distribution_bundle_dir = sandbox_dir / "python-bundle"
             distribution_bundle_dir.mkdir(parents=True, exist_ok=True)
             registration = build_python_distribution_registration(
@@ -3381,10 +3490,18 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 }
             secondary_artifacts.append(python_artifact)
         if include_npm_package:
-            artifact_bytes = b"npm package payload\n"
             artifact_file_path = sandbox_dir / "npm-dist" / "buildish-example-1.2.3.tgz"
             artifact_file_path.parent.mkdir(parents=True, exist_ok=True)
-            artifact_file_path.write_bytes(artifact_bytes)
+            if archive_npm_package_reproducibility:
+                _write_tgz_archive(
+                    artifact_file_path,
+                    member_name="package/package.json",
+                    payload=b"npm package payload\n",
+                    mtime=1714435201,
+                )
+            else:
+                artifact_file_path.write_bytes(b"npm package payload\n")
+            artifact_bytes = artifact_file_path.read_bytes()
             expected_sha512 = hashlib.sha512(artifact_bytes).hexdigest()
             expected_integrity = "sha512-" + base64.b64encode(hashlib.sha512(artifact_bytes).digest()).decode("ascii")
             live_integrity = (
