@@ -1209,7 +1209,8 @@ Implementation note:
 - per-path or regex-based rules should be able to strengthen, weaken, or disable local comparison for selected repository entries
 - a Maven repository profile may therefore be mostly Level 2, move selected paths to Level 3, and leave selected paths at effective Level 1
 - when a project builds Maven-repository artifacts with Gradle, the same repository-level verification model still applies; only the canonical local rebuild recipe changes
-- follow-up: add an explicit per-path or regex-based optional-local policy for staged repository entries that may legitimately be absent from one local rebuild, for example platform-specific native payloads or aggregate staged repositories
+- current implementation should stay strict for missing comparable local paths
+- follow-up: add an explicit per-path or regex-based optional-local policy only when one concrete staged-repository use case requires it, for example platform-specific native payloads or aggregate staged repositories
 
 ### PyPI or TestPyPI distributions
 
