@@ -596,7 +596,66 @@ Recommended override model:
 - `verify-rc` should use the canonical profile from `release-config.yaml` by default
 - CI and release workflow runs should use canonical profiles only
 - human local runs may pass an explicit override flag or override file to adjust command lines or tool paths
-- when an override changes the effective build command, working directory, or selected outputs, the report should record `recipe_source=local-override` and `canonical_recipe_used=false`
+- when an override changes the effective build command, working directory, or selected outputs, the report should record `recipe_source=local-override` and the applied `override_fields`
+
+Concrete local override shape:
+
+- `verify-rc` should accept one explicit local file such as `--repro-override-file ~/tmp/repro-overrides.yaml`
+- the file should not be auto-discovered
+- the file should be keyed by reproducibility `profile_id`
+- absent override fields should inherit from the canonical profile
+- only execution-side `build.*` fields should be overrideable in the first implementation:
+  - `build.command`
+  - `build.working_dir`
+  - `build.env`
+  - `build.output_globs`
+- comparison and policy fields should remain canonical, so a local override cannot silently change verification semantics such as comparison mode or Maven `path_rules`
+
+Example local override file:
+
+```yaml
+verify_rc:
+  profile_overrides:
+    source-release:
+      build:
+        command: ["./buildish-release-tooling/rebuild-source-local.sh"]
+
+    pypi-wheel:
+      build:
+        command: ["python", "-m", "build", "--wheel"]
+        working_dir: "python-package"
+        env:
+          PIP_NO_BUILD_ISOLATION: "1"
+        output_globs:
+          - "python-package/dist/*.whl"
+```
+
+Recommended merge semantics:
+
+- `build.command`: replace the canonical argv
+- `build.working_dir`: replace the canonical working directory
+- `build.output_globs`: replace the canonical output selection
+- `build.env`: merge by key, with local values winning
+
+Recommended CLI usage:
+
+```text
+buildish-release-tooling verify-rc \
+  --component-config release-config.yaml \
+  --repro-override-file ~/tmp/repro-overrides.yaml \
+  <rc-vote-manifest-url> \
+  <keys-url>
+```
+
+Reporting requirements for override runs:
+
+- the run must remain valid as a local diagnostic verification run
+- the run must be marked as non-canonical
+- the transcript, JSON report, Markdown report, and `inspect-repro` output should record:
+  - `recipe_source=local-override`
+  - which `override_fields` were applied
+  - the selected `profile_id`
+- CI and release workflow runs should not use this flag
 
 ## Future Follow-up: `build.network`
 
@@ -1006,7 +1065,7 @@ Recommended execution model:
 - the signed manifest selects the reproducibility profile
 - the verified source tree at `source_commit_sha` provides the canonical recipe for that profile
 - CI and bootstrap verification should use only the canonical recipe
-- human local verification may use explicit local overrides for build command lines, but only behind an opt-in flag
+- human local verification may use explicit local overrides for build command lines, but only behind an opt-in flag such as `--repro-override-file`
 - if a local override changes the effective command or output selection, the run should remain valid as a local diagnostic run but be reported as non-canonical
 
 Comparison modes should be explicit:
@@ -1490,6 +1549,7 @@ Each artifact should get a verdict record with:
 - integrity result
 - reproducibility result
 - recipe source, such as `canonical-profile` or `local-override`, when reproducibility checks were attempted
+- override fields, when a local reproducibility override changed the effective recipe
 - evidence, such as digest values, full signer fingerprints, signer algorithm or key-size metadata, or attestation identities
 - effective safety policy data, such as whether origin allowlists, execution isolation, resource-budget overrides, or cryptographic warnings affected the run
 
