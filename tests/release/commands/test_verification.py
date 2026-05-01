@@ -928,6 +928,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Build working directory: .", inspect_completed.stderr)
         self.assertIn("Failure class: byte-mismatch", inspect_completed.stderr)
         self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
+        self.assertIn("Drift classification: text-content-drift", inspect_completed.stderr)
+        self.assertIn("Size delta bytes: 0", inspect_completed.stderr)
         self.assertIn("Unified text diff", inspect_completed.stderr)
 
     def test_inspect_repro_command_reports_saved_source_artifact_drift(self) -> None:
@@ -1947,6 +1949,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Distribution type: wheel", inspect_completed.stderr)
         self.assertIn("Simple index:", inspect_completed.stderr)
         self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
+        self.assertIn("Drift classification: size-and-text-drift", inspect_completed.stderr)
 
     def test_verify_rc_command_verifies_npm_package_secondary_artifact(self) -> None:
         sandbox_dir = create_build_test_sandbox()
@@ -2142,6 +2145,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Declared integrity: sha512-", inspect_completed.stderr)
         self.assertIn("Registry URL:", inspect_completed.stderr)
         self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
+        self.assertIn("Drift classification: size-and-text-drift", inspect_completed.stderr)
 
     def test_verify_rc_command_fails_closed_when_maven_repository_drifts_from_inventory(self) -> None:
         if not command_available("gpg"):

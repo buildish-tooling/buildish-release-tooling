@@ -107,14 +107,35 @@ def inspect_file_like_reproducibility(
     if staged_bytes == rebuilt_bytes:
         emit_success(progress_reporter, "Retained staged and rebuilt artifact copies are identical")
         return
+    inline_diff = text_diff(staged_bytes, rebuilt_bytes)
+    drift_classification = _classify_file_like_drift(
+        staged_bytes,
+        rebuilt_bytes,
+        inline_diff=inline_diff,
+    )
     emit_failure(progress_reporter, "Retained staged and rebuilt artifact copies differ")
+    emit_detail(progress_reporter, "Drift classification", drift_classification)
+    emit_detail(progress_reporter, "Staged byte count", str(len(staged_bytes)))
+    emit_detail(progress_reporter, "Rebuilt byte count", str(len(rebuilt_bytes)))
+    emit_detail(progress_reporter, "Size delta bytes", str(len(rebuilt_bytes) - len(staged_bytes)))
     emit_detail(
         progress_reporter,
         "First differing byte",
         str(first_differing_byte(staged_bytes, rebuilt_bytes)),
     )
-    inline_diff = text_diff(staged_bytes, rebuilt_bytes)
     if inline_diff:
         emit_info(progress_reporter, "Unified text diff")
         for line in inline_diff:
             progress_reporter.emit(f"    {line}")
+
+
+def _classify_file_like_drift(
+    staged_bytes: bytes,
+    rebuilt_bytes: bytes,
+    *,
+    inline_diff: list[str],
+) -> str:
+    same_size = len(staged_bytes) == len(rebuilt_bytes)
+    if inline_diff:
+        return "text-content-drift" if same_size else "size-and-text-drift"
+    return "binary-content-drift" if same_size else "size-and-binary-drift"
