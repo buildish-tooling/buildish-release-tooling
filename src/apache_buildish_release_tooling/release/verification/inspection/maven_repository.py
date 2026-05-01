@@ -56,7 +56,14 @@ def inspect_maven_repository_reproducibility(
     repository_dir = metadata.get("repository_dir")
     if isinstance(repository_dir, str):
         emit_detail(progress_reporter, "Repository dir", repository_dir)
-    output_paths = metadata.get("output_paths")
+    effective_execution = metadata.get("effective_execution")
+    output_paths = None
+    if isinstance(effective_execution, dict):
+        build_payload = effective_execution.get("build")
+        if isinstance(build_payload, dict):
+            output_paths = build_payload.get("output_paths")
+    if output_paths is None:
+        output_paths = metadata.get("output_paths")
     if isinstance(output_paths, list):
         for output_path in output_paths:
             if isinstance(output_path, str):

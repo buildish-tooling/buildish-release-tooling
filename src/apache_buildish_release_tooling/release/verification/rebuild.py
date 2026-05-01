@@ -21,6 +21,7 @@ import sys
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from typing import Literal
 
 from apache_buildish_release_tooling.release.models import (
@@ -100,9 +101,11 @@ class ResolvedRebuildProfile:
     """One canonical or locally overridden rebuild profile ready for execution."""
 
     profile_id: str
+    canonical_profile: VerifyRcProfileConfig
     profile: VerifyRcProfileConfig
     recipe_source: Literal["canonical-profile", "local-override"]
     override_fields: tuple[str, ...]
+    build_override: VerifyRcBuildOverrideConfig | None = None
 
 
 def resolve_rebuild_profile(
@@ -148,6 +151,7 @@ def resolve_effective_rebuild_profile(
     if profile_overrides is None:
         return ResolvedRebuildProfile(
             profile_id=profile_id,
+            canonical_profile=profile,
             profile=profile,
             recipe_source="canonical-profile",
             override_fields=(),
@@ -156,6 +160,7 @@ def resolve_effective_rebuild_profile(
     if override is None:
         return ResolvedRebuildProfile(
             profile_id=profile_id,
+            canonical_profile=profile,
             profile=profile,
             recipe_source="canonical-profile",
             override_fields=(),
@@ -163,9 +168,11 @@ def resolve_effective_rebuild_profile(
     merged_profile, override_fields = _merged_profile_override(profile, override.build)
     return ResolvedRebuildProfile(
         profile_id=profile_id,
+        canonical_profile=profile,
         profile=merged_profile,
         recipe_source="local-override",
         override_fields=override_fields,
+        build_override=override.build,
     )
 
 
@@ -381,6 +388,85 @@ def run_host_direct_profile(
         output_paths=collect_profile_output_paths(project_root, profile.build.output_globs),
         environment=environment,
     )
+
+
+def canonical_recipe_payload(
+    resolved_profile: ResolvedRebuildProfile | None,
+) -> dict[str, Any] | None:
+    """Return one structured canonical recipe payload for reporting."""
+
+    if resolved_profile is None:
+        return None
+    canonical_build = resolved_profile.canonical_profile.build
+    return {
+        "build": {
+            "command": list(canonical_build.command),
+            "working_directory": canonical_build.working_dir or ".",
+            "output_globs": list(canonical_build.output_globs),
+            # Environment variable names only. Values are intentionally omitted
+            # from reports so reproducibility output cannot leak secrets or
+            # machine-local credentials.
+            "env_keys": sorted(canonical_build.env),
+        }
+    }
+
+
+def effective_execution_payload(
+    *,
+    build_result: HostDirectBuildResult | None,
+    project_root: Path | None,
+    output_paths: list[str] | None = None,
+) -> dict[str, Any] | None:
+    """Return one structured effective-execution payload for reporting."""
+
+    if build_result is None or project_root is None:
+        return None
+    working_directory = str(build_result.cwd.relative_to(project_root))
+    if working_directory == "":
+        working_directory = "."
+    effective_output_paths = output_paths
+    if effective_output_paths is None:
+        effective_output_paths = [
+            str(path.relative_to(project_root)) for path in build_result.output_paths
+        ]
+    return {
+        "backend": "host-direct",
+        "build": {
+            "command": list(build_result.command),
+            "working_directory": working_directory,
+            "output_paths": effective_output_paths,
+            # Environment variable names only. Values are intentionally omitted
+            # from reports so reproducibility output cannot leak secrets or
+            # machine-local credentials.
+            "injected_environment_keys": list(build_result.injected_environment_keys),
+        },
+    }
+
+
+def override_payload(
+    resolved_profile: ResolvedRebuildProfile | None,
+) -> dict[str, Any]:
+    """Return one sparse structured override payload for reporting."""
+
+    if resolved_profile is None or resolved_profile.build_override is None:
+        return {"applied": False}
+    build_override = resolved_profile.build_override
+    build_payload: dict[str, Any] = {}
+    if build_override.command is not None:
+        build_payload["command"] = list(build_override.command)
+    if build_override.working_dir is not None:
+        build_payload["working_directory"] = build_override.working_dir
+    if build_override.output_globs is not None:
+        build_payload["output_globs"] = list(build_override.output_globs)
+    if build_override.env:
+        # Environment variable names only. Values are intentionally omitted from
+        # reports so reproducibility output cannot leak secrets or machine-local
+        # credentials.
+        build_payload["env_keys"] = sorted(build_override.env)
+    return {
+        "applied": True,
+        "build": build_payload or None,
+    }
 
 
 def prompt_for_candidate_code_execution() -> bool:

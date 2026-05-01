@@ -367,6 +367,12 @@ def _emit_reproducibility_details(
     progress_reporter: ProgressReporter,
     reproducibility_payload: dict[str, Any],
 ) -> None:
+    override_payload = reproducibility_payload.get("override", {})
+    recipe_source = (
+        "local-override"
+        if isinstance(override_payload, dict) and override_payload.get("applied")
+        else "canonical-profile"
+    )
     emit_detail(
         progress_reporter,
         "Reproducibility profile",
@@ -375,23 +381,61 @@ def _emit_reproducibility_details(
     emit_detail(
         progress_reporter,
         "Recipe source",
-        str(reproducibility_payload.get("recipe_source", "canonical-profile")),
+        recipe_source,
     )
-    build_command = reproducibility_payload.get("build_command", [])
+    canonical_build = _nested_mapping(reproducibility_payload, "canonical_recipe", "build")
+    effective_build = _nested_mapping(reproducibility_payload, "effective_execution", "build")
+    override_build = _nested_mapping(reproducibility_payload, "override", "build")
+    if recipe_source == "local-override" and canonical_build:
+        canonical_command = canonical_build.get("command", [])
+        if canonical_command:
+            emit_detail(
+                progress_reporter,
+                "Canonical build command",
+                " ".join(str(part) for part in canonical_command),
+            )
+    build_command = effective_build.get("command", []) if effective_build else []
     if build_command:
         emit_detail(progress_reporter, "Build command", " ".join(str(part) for part in build_command))
-    build_working_directory = reproducibility_payload.get("build_working_directory")
+    build_working_directory = effective_build.get("working_directory") if effective_build else None
     if build_working_directory:
         emit_detail(progress_reporter, "Build working directory", str(build_working_directory))
-    injected_environment_keys = reproducibility_payload.get("injected_environment_keys", [])
+    injected_environment_keys = (
+        effective_build.get("injected_environment_keys", []) if effective_build else []
+    )
     if injected_environment_keys:
         emit_detail(
             progress_reporter,
             "Injected environment keys",
             ", ".join(str(key) for key in injected_environment_keys),
         )
-    override_fields = reproducibility_payload.get("override_fields", [])
+    override_fields = _override_field_summary(override_build)
     if override_fields:
         emit_detail(progress_reporter, "Override fields", ", ".join(str(field) for field in override_fields))
-    for output_path in reproducibility_payload.get("output_paths", []):
+    for output_path in (effective_build.get("output_paths", []) if effective_build else []):
         emit_detail(progress_reporter, "Rebuild output", str(output_path))
+
+
+def _nested_mapping(payload: dict[str, Any], *path: str) -> dict[str, Any] | None:
+    current: Any = payload
+    for key in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current if isinstance(current, dict) else None
+
+
+def _override_field_summary(override_build: dict[str, Any] | None) -> list[str]:
+    if override_build is None:
+        return []
+    fields: list[str] = []
+    if override_build.get("command") is not None:
+        fields.append("build.command")
+    if override_build.get("working_directory") is not None:
+        fields.append("build.working_directory")
+    if override_build.get("output_globs") is not None:
+        fields.append("build.output_globs")
+    env_keys = override_build.get("env_keys")
+    if isinstance(env_keys, list):
+        fields.extend(f"build.env.{key}" for key in env_keys if isinstance(key, str))
+    return fields

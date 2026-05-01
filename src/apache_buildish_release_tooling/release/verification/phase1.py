@@ -1137,40 +1137,62 @@ def _append_reproducibility_markdown(
     reproducibility_payload: dict[str, Any],
     match_summary_label: str,
 ) -> None:
+    override_payload = reproducibility_payload.get("override", {})
+    recipe_source = (
+        "local-override"
+        if isinstance(override_payload, dict) and override_payload.get("applied")
+        else "canonical-profile"
+    )
     lines.extend(
         [
             f"- Reproducibility profile: `{reproducibility_payload['profile_id']}`",
             f"- Reproducibility verdict: `{reproducibility_payload['verdict']}`",
             f"- Reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
-            f"- Recipe source: `{reproducibility_payload.get('recipe_source', 'canonical-profile')}`",
-            f"- Execution backend: `{reproducibility_payload.get('execution_backend', 'host-direct')}`",
+            f"- Recipe source: `{recipe_source}`",
             f"- {match_summary_label}: `{reproducibility_payload['matches_remote_bytes']}`",
         ]
     )
-    build_command = reproducibility_payload.get("build_command", [])
+    canonical_build = _nested_mapping(reproducibility_payload, "canonical_recipe", "build")
+    effective_execution = _nested_mapping(reproducibility_payload, "effective_execution")
+    effective_build = _nested_mapping(reproducibility_payload, "effective_execution", "build")
+    override_build = _nested_mapping(reproducibility_payload, "override", "build")
+    if effective_execution is not None and effective_execution.get("backend") is not None:
+        lines.append(f"- Execution backend: `{effective_execution['backend']}`")
+    if recipe_source == "local-override" and canonical_build is not None:
+        canonical_command = canonical_build.get("command", [])
+        if canonical_command:
+            lines.append(
+                "- Canonical build command: `"
+                + " ".join(str(part) for part in canonical_command)
+                + "`"
+            )
+    build_command = effective_build.get("command", []) if effective_build else []
     if build_command:
         lines.append("- Build command: `" + " ".join(str(part) for part in build_command) + "`")
-    build_working_directory = reproducibility_payload.get("build_working_directory")
+    build_working_directory = effective_build.get("working_directory") if effective_build else None
     if build_working_directory:
         lines.append(f"- Build working directory: `{build_working_directory}`")
-    injected_environment_keys = reproducibility_payload.get("injected_environment_keys", [])
+    injected_environment_keys = (
+        effective_build.get("injected_environment_keys", []) if effective_build else []
+    )
     if injected_environment_keys:
         lines.append(
             "- Injected environment keys: `"
             + ", ".join(str(key) for key in injected_environment_keys)
             + "`"
         )
-    if reproducibility_payload.get("override_fields"):
+    override_fields = _override_field_summary(override_build)
+    if override_fields:
         lines.append(
             "- Override fields: `"
-            + ", ".join(str(field) for field in reproducibility_payload["override_fields"])
+            + ", ".join(str(field) for field in override_fields)
             + "`"
         )
     if reproducibility_payload.get("failure_class") is not None:
         lines.append(
             f"- Reproducibility failure class: `{reproducibility_payload['failure_class']}`"
         )
-    for output_path in reproducibility_payload.get("output_paths", []):
+    for output_path in (effective_build.get("output_paths", []) if effective_build else []):
         lines.append(f"- Rebuild output: `{output_path}`")
     for evidence_reference in reproducibility_payload.get("evidence", []):
         if not isinstance(evidence_reference, dict):
@@ -1183,3 +1205,28 @@ def _append_reproducibility_markdown(
 
 def _md_value(value: str | None) -> str:
     return value if value is not None else "n/a"
+
+
+def _nested_mapping(payload: dict[str, Any], *path: str) -> dict[str, Any] | None:
+    current: Any = payload
+    for key in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current if isinstance(current, dict) else None
+
+
+def _override_field_summary(override_build: dict[str, Any] | None) -> list[str]:
+    if override_build is None:
+        return []
+    fields: list[str] = []
+    if override_build.get("command") is not None:
+        fields.append("build.command")
+    if override_build.get("working_directory") is not None:
+        fields.append("build.working_directory")
+    if override_build.get("output_globs") is not None:
+        fields.append("build.output_globs")
+    env_keys = override_build.get("env_keys")
+    if isinstance(env_keys, list):
+        fields.extend(f"build.env.{key}" for key in env_keys if isinstance(key, str))
+    return fields

@@ -564,19 +564,73 @@ class InspectionEvidenceReference(BuildishContractModel):
     path: NonEmptyString
 
 
+class ArtifactReproducibilityCanonicalBuildRecipeReport(BuildishContractModel):
+    """Canonical build recipe declared by the verified source tree for one profile."""
+
+    command: list[NonEmptyString] = Field(default_factory=list)
+    working_directory: NonEmptyString | None = None
+    output_globs: list[NonEmptyString] = Field(default_factory=list)
+    # Environment variable names only. Values are intentionally never recorded in
+    # verification reports or inspection bundles so reproducibility output cannot
+    # leak secrets or machine-local credentials.
+    env_keys: list[NonEmptyString] = Field(default_factory=list)
+
+
+class ArtifactReproducibilityCanonicalRecipeReport(BuildishContractModel):
+    """Canonical repo-defined recipe for one reproducibility profile."""
+
+    build: ArtifactReproducibilityCanonicalBuildRecipeReport
+
+
+class ArtifactReproducibilityEffectiveBuildExecutionReport(BuildishContractModel):
+    """Observed build invocation details for one executed reproducibility profile."""
+
+    command: list[NonEmptyString] = Field(default_factory=list)
+    working_directory: NonEmptyString | None = None
+    output_paths: list[NonEmptyString] = Field(default_factory=list)
+    # Environment variable names only. Values are intentionally never recorded in
+    # verification reports or inspection bundles so reproducibility output cannot
+    # leak secrets or machine-local credentials.
+    injected_environment_keys: list[NonEmptyString] = Field(default_factory=list)
+
+
+class ArtifactReproducibilityEffectiveExecutionReport(BuildishContractModel):
+    """Effective execution details for one reproducibility run."""
+
+    backend: Literal["host-direct"] = "host-direct"
+    build: ArtifactReproducibilityEffectiveBuildExecutionReport
+
+
+class ArtifactReproducibilityBuildOverrideReport(BuildishContractModel):
+    """Sparse local override delta applied to one canonical build recipe."""
+
+    command: list[NonEmptyString] | None = None
+    working_directory: NonEmptyString | None = None
+    output_globs: list[NonEmptyString] | None = None
+    # Environment variable names only. Values are intentionally never recorded in
+    # verification reports or inspection bundles so reproducibility output cannot
+    # leak secrets or machine-local credentials.
+    env_keys: list[NonEmptyString] = Field(default_factory=list)
+
+
+class ArtifactReproducibilityOverrideReport(BuildishContractModel):
+    """Structured local override metadata for one reproducibility run."""
+
+    applied: bool = False
+    build: ArtifactReproducibilityBuildOverrideReport | None = None
+
+
 class ArtifactReproducibilityReport(BuildishContractModel):
     """Observed local rebuild comparison results for one artifact."""
 
     profile_id: NonEmptyString
     verdict: VerificationVerdict
     comparison_mode: NonEmptyString
-    recipe_source: Literal["canonical-profile", "local-override"] = "canonical-profile"
-    override_fields: list[NonEmptyString] = Field(default_factory=list)
-    execution_backend: Literal["host-direct"] = "host-direct"
-    build_command: list[NonEmptyString] = Field(default_factory=list)
-    build_working_directory: NonEmptyString | None = None
-    injected_environment_keys: list[NonEmptyString] = Field(default_factory=list)
-    output_paths: list[NonEmptyString] = Field(default_factory=list)
+    canonical_recipe: ArtifactReproducibilityCanonicalRecipeReport | None = None
+    effective_execution: ArtifactReproducibilityEffectiveExecutionReport | None = None
+    override: ArtifactReproducibilityOverrideReport = Field(
+        default_factory=ArtifactReproducibilityOverrideReport
+    )
     matches_remote_bytes: bool | None = None
     failure_class: NonEmptyString | None = None
     evidence: list[InspectionEvidenceReference] = Field(default_factory=list)

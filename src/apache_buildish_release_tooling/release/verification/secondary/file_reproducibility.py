@@ -27,6 +27,9 @@ from apache_buildish_release_tooling.release.verification.inspection_bundle impo
 )
 from apache_buildish_release_tooling.release.verification.rebuild import (
     ResolvedRebuildProfile,
+    canonical_recipe_payload,
+    effective_execution_payload,
+    override_payload,
     resolve_effective_rebuild_profile,
     run_host_direct_profile,
 )
@@ -57,12 +60,9 @@ def verify_host_direct_single_file_reproducibility(
             "profile_id": "n/a",
             "verdict": "failed",
             "comparison_mode": "exact-bytes",
-            "recipe_source": "canonical-profile",
-            "execution_backend": "host-direct",
-            "build_command": [],
-            "build_working_directory": None,
-            "injected_environment_keys": [],
-            "output_paths": [],
+            "canonical_recipe": None,
+            "effective_execution": None,
+            "override": {"applied": False},
             "matches_remote_bytes": None,
             "failure_class": "missing-profile",
             "evidence": [],
@@ -72,10 +72,6 @@ def verify_host_direct_single_file_reproducibility(
         }
     profile_id = required_non_empty_string(raw_reproducibility, "profile_id", source=manifest_url)
     issues: list[str] = []
-    output_paths: list[str] = []
-    build_command: list[str] = []
-    build_working_directory: str | None = None
-    injected_environment_keys: list[str] = []
     matches_remote_bytes: bool | None = None
     comparison_mode = "exact-bytes"
     failure_class: str | None = None
@@ -116,15 +112,6 @@ def verify_host_direct_single_file_reproducibility(
                 work_dir=work_dir,
                 source_date_epoch=source_date_epoch,
             )
-            build_command = list(build_result.command)
-            build_working_directory = str(build_result.cwd.relative_to(project_root))
-            if build_working_directory == "":
-                build_working_directory = "."
-            injected_environment_keys = list(build_result.injected_environment_keys)
-            output_paths = [
-                str(path.relative_to(project_root))
-                for path in build_result.output_paths
-            ]
             if len(build_result.output_paths) != 1:
                 failure_class = "unexpected-output-count"
                 raise ValueError(
@@ -162,13 +149,12 @@ def verify_host_direct_single_file_reproducibility(
                 "kind": kind,
                 "profile_id": profile_id,
                 "comparison_mode": comparison_mode,
-                "recipe_source": (
-                    resolved_profile.recipe_source if resolved_profile is not None else "canonical-profile"
+                "canonical_recipe": canonical_recipe_payload(resolved_profile),
+                "effective_execution": effective_execution_payload(
+                    build_result=build_result,
+                    project_root=project_root,
                 ),
-                "override_fields": list(resolved_profile.override_fields) if resolved_profile is not None else [],
-                "build_command": build_command,
-                "build_working_directory": build_working_directory,
-                "injected_environment_keys": injected_environment_keys,
+                "override": override_payload(resolved_profile),
                 "failure_class": failure_class,
                 "staged_artifact": {
                     "filename": artifact_path.name,
@@ -209,13 +195,12 @@ def verify_host_direct_single_file_reproducibility(
         "profile_id": profile_id,
         "verdict": "failed" if issues else "verified",
         "comparison_mode": comparison_mode,
-        "recipe_source": resolved_profile.recipe_source if resolved_profile is not None else "canonical-profile",
-        "override_fields": list(resolved_profile.override_fields) if resolved_profile is not None else [],
-        "execution_backend": "host-direct",
-        "build_command": build_command,
-        "build_working_directory": build_working_directory,
-        "injected_environment_keys": injected_environment_keys,
-        "output_paths": output_paths,
+        "canonical_recipe": canonical_recipe_payload(resolved_profile),
+        "effective_execution": effective_execution_payload(
+            build_result=build_result,
+            project_root=project_root,
+        ),
+        "override": override_payload(resolved_profile),
         "matches_remote_bytes": matches_remote_bytes,
         "failure_class": failure_class,
         "evidence": evidence,

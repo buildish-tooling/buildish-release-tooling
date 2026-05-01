@@ -108,30 +108,44 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
         emit_detail(progress_reporter, "Kind", verification.kind)
         emit_detail(progress_reporter, "Profile", reproducibility.profile_id)
         emit_detail(progress_reporter, "Comparison mode", reproducibility.comparison_mode)
-        emit_detail(progress_reporter, "Recipe source", reproducibility.recipe_source)
-        if reproducibility.build_command:
+        recipe_source = "local-override" if reproducibility.override.applied else "canonical-profile"
+        emit_detail(progress_reporter, "Recipe source", recipe_source)
+        if recipe_source == "local-override" and reproducibility.canonical_recipe is not None:
+            canonical_build = reproducibility.canonical_recipe.build
+            if canonical_build.command:
+                emit_detail(
+                    progress_reporter,
+                    "Canonical build command",
+                    " ".join(canonical_build.command),
+                )
+        effective_execution = reproducibility.effective_execution
+        if effective_execution is not None:
+            emit_detail(progress_reporter, "Execution backend", effective_execution.backend)
+        effective_build = effective_execution.build if effective_execution is not None else None
+        if effective_build is not None and effective_build.command:
             emit_detail(
                 progress_reporter,
                 "Build command",
-                " ".join(reproducibility.build_command),
+                " ".join(effective_build.command),
             )
-        if reproducibility.build_working_directory is not None:
+        if effective_build is not None and effective_build.working_directory is not None:
             emit_detail(
                 progress_reporter,
                 "Build working directory",
-                reproducibility.build_working_directory,
+                effective_build.working_directory,
             )
-        if reproducibility.injected_environment_keys:
+        if effective_build is not None and effective_build.injected_environment_keys:
             emit_detail(
                 progress_reporter,
                 "Injected environment keys",
-                ", ".join(reproducibility.injected_environment_keys),
+                ", ".join(effective_build.injected_environment_keys),
             )
-        if reproducibility.override_fields:
+        override_fields = _override_field_summary(reproducibility)
+        if override_fields:
             emit_detail(
                 progress_reporter,
                 "Override fields",
-                ", ".join(reproducibility.override_fields),
+                ", ".join(override_fields),
             )
         if reproducibility.failure_class is not None:
             emit_detail(
@@ -183,6 +197,23 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
             progress_reporter,
             f"No inspect-repro analyzer is implemented yet for {verification.kind}",
         )
+
+
+def _override_field_summary(
+    reproducibility: ArtifactReproducibilityReport,
+) -> list[str]:
+    build_override = reproducibility.override.build
+    if build_override is None:
+        return []
+    fields: list[str] = []
+    if build_override.command is not None:
+        fields.append("build.command")
+    if build_override.working_directory is not None:
+        fields.append("build.working_directory")
+    if build_override.output_globs is not None:
+        fields.append("build.output_globs")
+    fields.extend(f"build.env.{key}" for key in build_override.env_keys)
+    return fields
 
 
 __all__ = ["inspect_repro_report"]

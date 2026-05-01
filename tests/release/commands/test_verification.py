@@ -337,24 +337,21 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             report_payload["inspection_bundle"]["relative_path_from_report"],
         )
         secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        reproducibility = secondary_verification["reproducibility"]
         self.assertEqual("verified", secondary_verification["reproducibility"]["verdict"])
-        self.assertEqual("bootstrap-zip", secondary_verification["reproducibility"]["profile_id"])
-        self.assertEqual(
-            "canonical-profile",
-            secondary_verification["reproducibility"]["recipe_source"],
-        )
-        self.assertEqual([], secondary_verification["reproducibility"]["override_fields"])
+        self.assertEqual("bootstrap-zip", reproducibility["profile_id"])
+        self.assertEqual(False, reproducibility["override"]["applied"])
         self.assertEqual(
             ["dist/buildish-example-bootstrap.zip"],
-            secondary_verification["reproducibility"]["output_paths"],
+            reproducibility["effective_execution"]["build"]["output_paths"],
         )
         self.assertEqual(
             ["sh", "buildish-release-tooling/rebuild-bootstrap.sh"],
-            secondary_verification["reproducibility"]["build_command"],
+            reproducibility["effective_execution"]["build"]["command"],
         )
         self.assertEqual(
             ".",
-            secondary_verification["reproducibility"]["build_working_directory"],
+            reproducibility["effective_execution"]["build"]["working_directory"],
         )
         self.assertEqual(
             [
@@ -364,7 +361,11 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 "SOURCE_DATE_EPOCH",
                 "TMPDIR",
             ],
-            secondary_verification["reproducibility"]["injected_environment_keys"],
+            reproducibility["effective_execution"]["build"]["injected_environment_keys"],
+        )
+        self.assertEqual(
+            ["sh", "buildish-release-tooling/rebuild-bootstrap.sh"],
+            reproducibility["canonical_recipe"]["build"]["command"],
         )
         self.assertIn(
             f"  Inspect reproducibility: buildish-release-tooling inspect-repro {fixture.report_json_path}",
@@ -441,11 +442,96 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Recipe source: local-override", completed.stderr)
         self.assertIn("Override fields: build.command", completed.stderr)
         report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
-        secondary_verification = report_payload["secondary_artifact_verifications"][0]
-        self.assertEqual("local-override", secondary_verification["reproducibility"]["recipe_source"])
+        reproducibility = report_payload["secondary_artifact_verifications"][0]["reproducibility"]
+        self.assertEqual(True, reproducibility["override"]["applied"])
         self.assertEqual(
-            ["build.command"],
-            secondary_verification["reproducibility"]["override_fields"],
+            ["sh", "buildish-release-tooling/rebuild-bootstrap-local.sh"],
+            reproducibility["override"]["build"]["command"],
+        )
+
+    def test_verify_rc_command_does_not_report_override_env_values(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+        )
+        override_path = sandbox_dir / "repro-overrides.yaml"
+        redaction_probe_value = "probe-value-123"
+        redaction_probe_url = "https://user:pass@example.invalid/simple"
+        override_path.write_text(
+            "\n".join(
+                [
+                    "verify_rc:",
+                    "  profile_overrides:",
+                    "    bootstrap-zip:",
+                    "      build:",
+                    "        env:",
+                    f"          MY_TOKEN: {redaction_probe_value}",
+                    f"          PIP_INDEX_URL: {redaction_probe_url}",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--progress",
+                "on",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--report-md",
+                str(fixture.report_md_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                "--repro-override-file",
+                str(override_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        report_json = fixture.report_json_path.read_text(encoding="utf-8")
+        report_markdown = fixture.report_md_path.read_text(encoding="utf-8")
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        for rendered_text in (
+            completed.stderr,
+            report_json,
+            report_markdown,
+            inspect_completed.stderr,
+        ):
+            self.assertNotIn(redaction_probe_value, rendered_text)
+            self.assertNotIn(redaction_probe_url, rendered_text)
+        self.assertIn("build.env.MY_TOKEN", completed.stderr)
+        self.assertIn("build.env.PIP_INDEX_URL", completed.stderr)
+        reproducibility = json.loads(report_json)["secondary_artifact_verifications"][0]["reproducibility"]
+        self.assertEqual(
+            ["MY_TOKEN", "PIP_INDEX_URL"],
+            reproducibility["override"]["build"]["env_keys"],
         )
 
     def test_verify_rc_command_ignores_valid_override_for_unused_profile(self) -> None:
@@ -513,9 +599,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Recipe source: canonical-profile", completed.stderr)
         self.assertNotIn("Override fields:", completed.stderr)
         report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
-        secondary_verification = report_payload["secondary_artifact_verifications"][0]
-        self.assertEqual("canonical-profile", secondary_verification["reproducibility"]["recipe_source"])
-        self.assertEqual([], secondary_verification["reproducibility"]["override_fields"])
+        reproducibility = report_payload["secondary_artifact_verifications"][0]["reproducibility"]
+        self.assertEqual(False, reproducibility["override"]["applied"])
 
     def test_verify_rc_command_applies_one_override_to_two_artifacts_sharing_profile(self) -> None:
         if not command_available("gpg"):
@@ -572,14 +657,15 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
         self.assertEqual(2, len(report_payload["secondary_artifact_verifications"]))
         for secondary_verification in report_payload["secondary_artifact_verifications"]:
-            self.assertEqual("local-override", secondary_verification["reproducibility"]["recipe_source"])
+            reproducibility = secondary_verification["reproducibility"]
+            self.assertEqual(True, reproducibility["override"]["applied"])
             self.assertEqual(
-                ["build.command"],
-                secondary_verification["reproducibility"]["override_fields"],
+                ["sh", "buildish-release-tooling/rebuild-bootstrap-local.sh"],
+                reproducibility["override"]["build"]["command"],
             )
             self.assertEqual(
                 "bootstrap-zip",
-                secondary_verification["reproducibility"]["profile_id"],
+                reproducibility["profile_id"],
             )
 
     def test_verify_rc_command_rejects_repro_override_file_without_component_config(self) -> None:
@@ -1424,7 +1510,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual("pypi-wheel", secondary_verification["reproducibility"]["profile_id"])
         self.assertEqual(
             ["dist/example-1.2.3-py3-none-any.whl"],
-            secondary_verification["reproducibility"]["output_paths"],
+            secondary_verification["reproducibility"]["effective_execution"]["build"]["output_paths"],
         )
 
     def test_verify_rc_command_reports_python_distribution_reproducibility_drift_in_full_mode(self) -> None:
@@ -1619,7 +1705,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         )
         self.assertEqual(
             ["dist/buildish-example-1.2.3.tgz"],
-            secondary_verification["reproducibility"]["output_paths"],
+            secondary_verification["reproducibility"]["effective_execution"]["build"]["output_paths"],
         )
 
     def test_verify_rc_command_reports_npm_package_reproducibility_drift_in_full_mode(self) -> None:
@@ -1783,7 +1869,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual("maven-staging", secondary_verification["reproducibility"]["profile_id"])
         self.assertEqual(
             [".buildish-out/m2repo"],
-            secondary_verification["reproducibility"]["output_paths"],
+            secondary_verification["reproducibility"]["effective_execution"]["build"]["output_paths"],
         )
 
     def test_verify_rc_command_verifies_maven_repository_reproducibility_with_unrelated_local_repo_files(
@@ -2073,7 +2159,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual("oci-main-image", secondary_verification["reproducibility"]["profile_id"])
         self.assertEqual(
             [".buildish-out/oci-image-rebuilt.marker"],
-            secondary_verification["reproducibility"]["output_paths"],
+            secondary_verification["reproducibility"]["effective_execution"]["build"]["output_paths"],
         )
 
     def test_verify_rc_command_reports_oci_image_reproducibility_drift_in_full_mode(self) -> None:

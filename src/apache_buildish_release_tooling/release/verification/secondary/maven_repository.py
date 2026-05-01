@@ -45,6 +45,9 @@ from apache_buildish_release_tooling.release.verification.inspection_bundle impo
 )
 from apache_buildish_release_tooling.release.verification.rebuild import (
     ResolvedRebuildProfile,
+    canonical_recipe_payload,
+    effective_execution_payload,
+    override_payload,
     resolve_effective_rebuild_profile,
     run_host_direct_profile,
 )
@@ -306,12 +309,9 @@ def _verify_maven_repository_reproducibility(
             "profile_id": "n/a",
             "verdict": "failed",
             "comparison_mode": "repository-tree",
-            "recipe_source": "canonical-profile",
-            "execution_backend": "host-direct",
-            "build_command": [],
-            "build_working_directory": None,
-            "injected_environment_keys": [],
-            "output_paths": [],
+            "canonical_recipe": None,
+            "effective_execution": None,
+            "override": {"applied": False},
             "matches_remote_bytes": None,
             "failure_class": "missing-profile",
             "evidence": [],
@@ -321,10 +321,6 @@ def _verify_maven_repository_reproducibility(
         }
     profile_id = required_non_empty_string(raw_reproducibility, "profile_id", source=manifest_url)
     issues: list[str] = []
-    output_paths: list[str] = []
-    build_command: list[str] = []
-    build_working_directory: str | None = None
-    injected_environment_keys: list[str] = []
     matches_remote_bytes: bool | None = None
     comparison_mode = "repository-tree"
     failure_class: str | None = None
@@ -336,6 +332,7 @@ def _verify_maven_repository_reproducibility(
     rebuilt_repository_path: Path | None = None
     resolved_profile: ResolvedRebuildProfile | None = None
     profile = None
+    build_result = None
     if component_config is None:
         failure_class = failure_class or "missing-component-config"
         issues.append(
@@ -397,13 +394,7 @@ def _verify_maven_repository_reproducibility(
                 work_dir=work_dir,
                 source_date_epoch=source_date_epoch,
             )
-            build_command = list(build_result.command)
-            build_working_directory = str(build_result.cwd.relative_to(project_root))
-            if build_working_directory == "":
-                build_working_directory = "."
-            injected_environment_keys = list(build_result.injected_environment_keys)
             rebuilt_repository_path = project_root / repository_dir
-            output_paths = [repository_dir]
             if not rebuilt_repository_path.is_dir():
                 failure_class = failure_class or "missing-repository-dir"
                 raise ValueError(
@@ -434,17 +425,16 @@ def _verify_maven_repository_reproducibility(
                 "kind": "maven-repository",
                 "profile_id": profile_id,
                 "comparison_mode": comparison_mode,
-                "recipe_source": (
-                    resolved_profile.recipe_source if resolved_profile is not None else "canonical-profile"
+                "canonical_recipe": canonical_recipe_payload(resolved_profile),
+                "effective_execution": effective_execution_payload(
+                    build_result=build_result,
+                    project_root=project_root,
+                    output_paths=[repository_dir] if repository_dir is not None else None,
                 ),
-                "override_fields": list(resolved_profile.override_fields) if resolved_profile is not None else [],
-                "build_command": build_command,
-                "build_working_directory": build_working_directory,
-                "injected_environment_keys": injected_environment_keys,
+                "override": override_payload(resolved_profile),
                 "repository_dir": repository_dir,
                 "require_signatures": require_signatures,
                 "path_rules": list(path_rules),
-                "output_paths": output_paths,
                 "matches_remote_bytes": matches_remote_bytes,
                 "failure_class": failure_class,
                 "path_results": path_results,
@@ -456,13 +446,13 @@ def _verify_maven_repository_reproducibility(
         "profile_id": profile_id,
         "verdict": "failed" if issues else "verified",
         "comparison_mode": comparison_mode,
-        "recipe_source": resolved_profile.recipe_source if resolved_profile is not None else "canonical-profile",
-        "override_fields": list(resolved_profile.override_fields) if resolved_profile is not None else [],
-        "execution_backend": "host-direct",
-        "build_command": build_command,
-        "build_working_directory": build_working_directory,
-        "injected_environment_keys": injected_environment_keys,
-        "output_paths": output_paths,
+        "canonical_recipe": canonical_recipe_payload(resolved_profile),
+        "effective_execution": effective_execution_payload(
+            build_result=build_result,
+            project_root=project_root,
+            output_paths=[repository_dir] if repository_dir is not None else None,
+        ),
+        "override": override_payload(resolved_profile),
         "matches_remote_bytes": matches_remote_bytes,
         "failure_class": failure_class,
         "evidence": evidence,
