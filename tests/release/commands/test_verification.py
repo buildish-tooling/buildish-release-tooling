@@ -1781,7 +1781,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         self.assertIn("Artifact 1/1: maven-staging-main", inspect_completed.stderr)
+        self.assertIn("Verified comparable paths: 1", inspect_completed.stderr)
         self.assertIn("Failed comparable paths: 1", inspect_completed.stderr)
+        self.assertIn("Failed by mode: exact-bytes=1", inspect_completed.stderr)
+        self.assertIn("Likely descriptor/text drift", inspect_completed.stderr)
         self.assertIn("app-1.0.0.pom [exact-bytes] raw bytes differ", inspect_completed.stderr)
 
     def test_verify_rc_command_fails_closed_when_manifest_omits_rc_tag(self) -> None:
@@ -2020,7 +2023,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         self.assertIn("Artifact 1/1: ghcr-main-image", inspect_completed.stderr)
-        self.assertIn("OCI reproducibility failed with class digest-mismatch", inspect_completed.stderr)
+        self.assertIn("Top-level image digest differs from the signed manifest", inspect_completed.stderr)
+        self.assertIn("Platform digests matched the signed manifest", inspect_completed.stderr)
+        self.assertIn("Likely OCI index/config metadata drift", inspect_completed.stderr)
         self.assertIn("Rebuilt digest", inspect_completed.stderr)
 
     def _prepare_verification_fixture(
