@@ -33,6 +33,9 @@ from apache_buildish_release_tooling.release.verification.common import (
     emit_success,
     emit_warning,
 )
+from apache_buildish_release_tooling.release.verification.inspection.archive_shallow import (
+    inspect_shallow_archive_pair,
+)
 from apache_buildish_release_tooling.release.verification.inspection.shared import (
     evidence_path,
     first_differing_byte,
@@ -122,6 +125,11 @@ def inspect_file_like_reproducibility(
         progress_reporter,
         "First differing byte",
         str(first_differing_byte(staged_bytes, rebuilt_bytes)),
+    )
+    inspect_shallow_archive_pair(
+        progress_reporter,
+        staged_path=staged_path,
+        rebuilt_path=rebuilt_path,
     )
     if inline_diff:
         emit_info(progress_reporter, "Unified text diff")

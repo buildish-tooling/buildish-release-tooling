@@ -84,6 +84,7 @@ def _write_zip_archive(
     with zipfile.ZipFile(archive_path, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
         zip_info = zipfile.ZipInfo(member_name, date_time=timestamp)
         zip_info.compress_type = zipfile.ZIP_DEFLATED
+        zip_info.external_attr = 0o100644 << 16
         archive.writestr(zip_info, payload)
 
 
@@ -931,6 +932,57 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Drift classification: text-content-drift", inspect_completed.stderr)
         self.assertIn("Size delta bytes: 0", inspect_completed.stderr)
         self.assertIn("Unified text diff", inspect_completed.stderr)
+
+    def test_inspect_repro_command_reports_shallow_archive_drift_for_generic_file(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+            archive_generic_file_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn("Shallow archive comparison", inspect_completed.stderr)
+        self.assertIn("Archive format: zip", inspect_completed.stderr)
+        self.assertIn("Archive drift classification: entry-content-drift", inspect_completed.stderr)
+        self.assertIn("Archive member-content mismatches", inspect_completed.stderr)
+        self.assertIn("bootstrap.txt", inspect_completed.stderr)
 
     def test_inspect_repro_command_reports_saved_source_artifact_drift(self) -> None:
         if not command_available("gpg"):
@@ -2685,6 +2737,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         drift_oci_image_reproducibility_platform: bool = False,
         include_generic_file_reproducibility: bool = False,
         drift_generic_file_reproducibility: bool = False,
+        archive_generic_file_reproducibility: bool = False,
         include_second_generic_file_shared_profile: bool = False,
         extra_verify_rc_profile_lines: tuple[str, ...] = (),
     ) -> VerificationFixture:
@@ -2829,40 +2882,54 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         if include_generic_file_reproducibility:
             rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-bootstrap.sh"
             rebuild_script.parent.mkdir(parents=True, exist_ok=True)
-            rebuild_script.write_text(
-                "\n".join(
-                    [
-                        "#!/usr/bin/env sh",
-                        "set -eu",
-                        "mkdir -p dist",
-                        (
-                            "printf 'bootstrap zip bytes\\n' > dist/buildish-example-bootstrap.zip"
-                            if not drift_generic_file_reproducibility
-                            else "printf 'bootstrap zip drift\\n' > dist/buildish-example-bootstrap.zip"
-                        ),
-                        "",
-                    ]
-                ),
-                encoding="utf-8",
-            )
+            if archive_generic_file_reproducibility:
+                rebuild_script.write_text(
+                    "\n".join(
+                        [
+                            "#!/usr/bin/env sh",
+                            "set -eu",
+                            "mkdir -p dist",
+                            "python - <<'PY'",
+                            "from pathlib import Path",
+                            "import zipfile",
+                            "archive_path = Path('dist/buildish-example-bootstrap.zip')",
+                            "payload = b'bootstrap zip bytes\\n'",
+                            (
+                                "payload = b'bootstrap zip drift\\n'"
+                                if drift_generic_file_reproducibility
+                                else "payload = payload"
+                            ),
+                            "with zipfile.ZipFile(archive_path, mode='w', compression=zipfile.ZIP_DEFLATED) as archive:",
+                            "    info = zipfile.ZipInfo('bootstrap.txt', date_time=(2026, 4, 30, 12, 0, 1))",
+                            "    info.compress_type = zipfile.ZIP_DEFLATED",
+                            "    info.external_attr = 0o100644 << 16",
+                            "    archive.writestr(info, payload)",
+                            "PY",
+                            "",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+            else:
+                rebuild_script.write_text(
+                    "\n".join(
+                        [
+                            "#!/usr/bin/env sh",
+                            "set -eu",
+                            "mkdir -p dist",
+                            (
+                                "printf 'bootstrap zip bytes\\n' > dist/buildish-example-bootstrap.zip"
+                                if not drift_generic_file_reproducibility
+                                else "printf 'bootstrap zip drift\\n' > dist/buildish-example-bootstrap.zip"
+                            ),
+                            "",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
             rebuild_script.chmod(0o755)
             local_override_script = origin_dir / "buildish-release-tooling" / "rebuild-bootstrap-local.sh"
-            local_override_script.write_text(
-                "\n".join(
-                    [
-                        "#!/usr/bin/env sh",
-                        "set -eu",
-                        "mkdir -p dist",
-                        (
-                            "printf 'bootstrap zip bytes\\n' > dist/buildish-example-bootstrap.zip"
-                            if not drift_generic_file_reproducibility
-                            else "printf 'bootstrap zip drift\\n' > dist/buildish-example-bootstrap.zip"
-                        ),
-                        "",
-                    ]
-                ),
-                encoding="utf-8",
-            )
+            local_override_script.write_text(rebuild_script.read_text(encoding="utf-8"), encoding="utf-8")
             local_override_script.chmod(0o755)
             run_quiet(
                 [
@@ -3117,7 +3184,15 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         if secondary_kind is not None:
             secondary_name = "buildish-example-bootstrap.zip"
             secondary_path = stage_dir / secondary_name
-            secondary_path.write_bytes(b"bootstrap zip bytes\n")
+            if archive_generic_file_reproducibility:
+                _write_zip_archive(
+                    secondary_path,
+                    member_name="bootstrap.txt",
+                    payload=b"bootstrap zip bytes\n",
+                    timestamp=(2026, 4, 30, 12, 0, 1),
+                )
+            else:
+                secondary_path.write_bytes(b"bootstrap zip bytes\n")
             secondary_sha512 = hashlib.sha512(secondary_path.read_bytes()).hexdigest()
             secondary_sha512_path = stage_dir / f"{secondary_name}.sha512"
             secondary_sha512_path.write_text(
