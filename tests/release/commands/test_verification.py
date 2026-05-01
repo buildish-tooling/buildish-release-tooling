@@ -417,6 +417,140 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             secondary_verification["reproducibility"]["override_fields"],
         )
 
+    def test_verify_rc_command_ignores_valid_override_for_unused_profile(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            extra_verify_rc_profile_lines=(
+                "    unused-local-profile:",
+                "      kind: generic-file",
+                "      build:",
+                "        command:",
+                "          - sh",
+                "          - buildish-release-tooling/rebuild-bootstrap-local.sh",
+                "        output_globs:",
+                "          - dist/buildish-example-bootstrap.zip",
+                "      comparison:",
+                "        mode: exact-bytes",
+            ),
+        )
+        override_path = sandbox_dir / "repro-overrides.yaml"
+        override_path.write_text(
+            "\n".join(
+                [
+                    "verify_rc:",
+                    "  profile_overrides:",
+                    "    unused-local-profile:",
+                    "      build:",
+                    "        command:",
+                    "          - sh",
+                    "          - buildish-release-tooling/rebuild-bootstrap-local.sh",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--progress",
+                "on",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--repro-override-file",
+                str(override_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        self.assertIn("Recipe source: canonical-profile", completed.stderr)
+        self.assertNotIn("Override fields:", completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        secondary_verification = report_payload["secondary_artifact_verifications"][0]
+        self.assertEqual("canonical-profile", secondary_verification["reproducibility"]["recipe_source"])
+        self.assertEqual([], secondary_verification["reproducibility"]["override_fields"])
+
+    def test_verify_rc_command_applies_one_override_to_two_artifacts_sharing_profile(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            include_second_generic_file_shared_profile=True,
+        )
+        override_path = sandbox_dir / "repro-overrides.yaml"
+        override_path.write_text(
+            "\n".join(
+                [
+                    "verify_rc:",
+                    "  profile_overrides:",
+                    "    bootstrap-zip:",
+                    "      build:",
+                    "        command:",
+                    "          - sh",
+                    "          - buildish-release-tooling/rebuild-bootstrap-local.sh",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--progress",
+                "on",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--repro-override-file",
+                str(override_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        self.assertEqual(2, completed.stderr.count("Recipe source: local-override"))
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        self.assertEqual(2, len(report_payload["secondary_artifact_verifications"]))
+        for secondary_verification in report_payload["secondary_artifact_verifications"]:
+            self.assertEqual("local-override", secondary_verification["reproducibility"]["recipe_source"])
+            self.assertEqual(
+                ["build.command"],
+                secondary_verification["reproducibility"]["override_fields"],
+            )
+            self.assertEqual(
+                "bootstrap-zip",
+                secondary_verification["reproducibility"]["profile_id"],
+            )
+
     def test_verify_rc_command_rejects_repro_override_file_without_component_config(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
@@ -1924,6 +2058,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         drift_oci_image_reproducibility: bool = False,
         include_generic_file_reproducibility: bool = False,
         drift_generic_file_reproducibility: bool = False,
+        include_second_generic_file_shared_profile: bool = False,
+        extra_verify_rc_profile_lines: tuple[str, ...] = (),
     ) -> VerificationFixture:
         origin_dir, _clone_dir = init_git_origin_and_clone(sandbox_dir)
         component_id = "buildish-example"
@@ -2047,6 +2183,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                     "        image_ref: ghcr.io/apache/buildish-example:rebuild-local",
                 ]
             )
+        if extra_verify_rc_profile_lines:
+            verify_rc_line_list.extend(extra_verify_rc_profile_lines)
         verify_rc_lines = (
             ("verify_rc:", "  profiles:", *verify_rc_line_list)
             if verify_rc_line_list
@@ -2386,6 +2524,45 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             if malformed_secondary_missing_kind:
                 secondary_artifact.pop("kind")
             secondary_artifacts.append(secondary_artifact)
+            if include_second_generic_file_shared_profile:
+                second_secondary_name = "buildish-example-bootstrap-alt.zip"
+                second_secondary_path = stage_dir / second_secondary_name
+                second_secondary_path.write_bytes(b"bootstrap zip bytes\n")
+                second_secondary_sha512 = hashlib.sha512(second_secondary_path.read_bytes()).hexdigest()
+                second_secondary_sha512_path = stage_dir / f"{second_secondary_name}.sha512"
+                second_secondary_sha512_path.write_text(
+                    f"{second_secondary_sha512}  {second_secondary_name}\n",
+                    encoding="utf-8",
+                )
+                second_secondary_signature_path = stage_dir / f"{second_secondary_name}.asc"
+                self._detached_sign(
+                    effective_gpg_home,
+                    second_secondary_path,
+                    second_secondary_signature_path,
+                )
+                secondary_artifacts.append(
+                    {
+                        "artifact_id": "bootstrap-zip-alt",
+                        "kind": secondary_kind,
+                        "filename": second_secondary_name,
+                        "uri": second_secondary_path.as_uri(),
+                        "checksums": {
+                            "sha512": {
+                                "value": second_secondary_sha512,
+                                "uri": second_secondary_sha512_path.as_uri(),
+                            }
+                        },
+                        "signatures": [
+                            {
+                                "type": "openpgp-detached-ascii-armored",
+                                "uri": second_secondary_signature_path.as_uri(),
+                            }
+                        ],
+                        "reproducibility": {
+                            "profile_id": "bootstrap-zip",
+                        },
+                    }
+                )
             if missing_secondary_artifact:
                 secondary_path.unlink()
         if include_maven_repository:
