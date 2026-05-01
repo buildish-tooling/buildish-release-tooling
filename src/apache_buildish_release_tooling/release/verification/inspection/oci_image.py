@@ -76,6 +76,9 @@ def inspect_oci_image_reproducibility(
             emit_failure(progress_reporter, "Top-level image digest differs from the signed manifest")
     expected_by_platform = _platform_digest_map(expected_platform_digests)
     rebuilt_by_platform = _platform_digest_map(rebuilt_platform_digests)
+    changed_platforms: list[str] = []
+    missing_platforms: list[str] = []
+    unexpected_platforms: list[str] = []
     if expected_by_platform is not None and rebuilt_by_platform is not None:
         emit_detail(progress_reporter, "Expected platforms", str(len(expected_by_platform)))
         emit_detail(progress_reporter, "Rebuilt platforms", str(len(rebuilt_by_platform)))
@@ -97,33 +100,69 @@ def inspect_oci_image_reproducibility(
                 f"missing={len(missing_platforms)} "
                 f"unexpected={len(unexpected_platforms)}"
             )
+            emit_detail(progress_reporter, "Changed platform count", str(len(changed_platforms)))
+            emit_detail(progress_reporter, "Missing platform count", str(len(missing_platforms)))
+            emit_detail(progress_reporter, "Unexpected platform count", str(len(unexpected_platforms)))
             for platform in changed_platforms[:8]:
                 emit_detail(
                     progress_reporter,
-                    "Platform drift",
+                    "Changed platform",
                     f"{platform}: {expected_by_platform[platform]} -> {rebuilt_by_platform[platform]}",
                 )
             if missing_platforms:
                 emit_detail(progress_reporter, "Missing platforms", ", ".join(missing_platforms))
             if unexpected_platforms:
                 emit_detail(progress_reporter, "Unexpected platforms", ", ".join(unexpected_platforms))
-        if (
-            not top_level_digest_matches
-            and not changed_platforms
-            and not missing_platforms
-            and not unexpected_platforms
-        ):
+    classification = _drift_classification(
+        top_level_digest_matches=top_level_digest_matches,
+        changed_platforms=changed_platforms,
+        missing_platforms=missing_platforms,
+        unexpected_platforms=unexpected_platforms,
+        platform_details_available=(
+            expected_by_platform is not None and rebuilt_by_platform is not None
+        ),
+    )
+    if classification is not None:
+        emit_detail(progress_reporter, "Drift classification", classification)
+        if classification == "metadata-only":
             emit_info(
                 progress_reporter,
                 "Likely OCI index/config metadata drift: platform digests match but the top-level digest changed",
             )
-        elif changed_platforms or missing_platforms or unexpected_platforms:
+        elif classification in {"platform-payload", "top-level-and-platform-payload"}:
             emit_info(
                 progress_reporter,
                 "Platform payload drift is present; inspect the changed platform digests above first",
             )
+        elif classification == "top-level-digest-only":
+            emit_info(
+                progress_reporter,
+                "Only the top-level OCI digest evidence was retained; inspect the rebuilt digest first",
+            )
     if reproducibility.failure_class is not None:
         emit_detail(progress_reporter, "Failure class summary", reproducibility.failure_class)
+
+
+def _drift_classification(
+    *,
+    top_level_digest_matches: bool,
+    changed_platforms: list[str],
+    missing_platforms: list[str],
+    unexpected_platforms: list[str],
+    platform_details_available: bool,
+) -> str | None:
+    if not platform_details_available:
+        if top_level_digest_matches:
+            return None
+        return "top-level-digest-only"
+    has_platform_drift = bool(changed_platforms or missing_platforms or unexpected_platforms)
+    if top_level_digest_matches and not has_platform_drift:
+        return None
+    if not top_level_digest_matches and not has_platform_drift:
+        return "metadata-only"
+    if top_level_digest_matches and has_platform_drift:
+        return "platform-payload"
+    return "top-level-and-platform-payload"
 
 
 def _platform_digest_map(raw_entries: object) -> dict[str, str] | None:

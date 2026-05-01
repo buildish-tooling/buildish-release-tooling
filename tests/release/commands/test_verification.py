@@ -1919,8 +1919,13 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Verified comparable paths: 1", inspect_completed.stderr)
         self.assertIn("Failed comparable paths: 1", inspect_completed.stderr)
         self.assertIn("Failed by mode: exact-bytes=1", inspect_completed.stderr)
+        self.assertIn("Failed by category: metadata-text=1", inspect_completed.stderr)
         self.assertIn("Likely descriptor/text drift", inspect_completed.stderr)
-        self.assertIn("app-1.0.0.pom [exact-bytes] raw bytes differ", inspect_completed.stderr)
+        self.assertIn("Failed metadata/text paths: 1", inspect_completed.stderr)
+        self.assertIn(
+            "Metadata/text path: org/example/app/1.0.0/app-1.0.0.pom [exact-bytes] raw bytes differ",
+            inspect_completed.stderr,
+        )
 
     def test_verify_rc_command_fails_closed_when_manifest_omits_rc_tag(self) -> None:
         if not command_available("gpg"):
@@ -2160,8 +2165,57 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Artifact 1/1: ghcr-main-image", inspect_completed.stderr)
         self.assertIn("Top-level image digest differs from the signed manifest", inspect_completed.stderr)
         self.assertIn("Platform digests matched the signed manifest", inspect_completed.stderr)
+        self.assertIn("Drift classification: metadata-only", inspect_completed.stderr)
         self.assertIn("Likely OCI index/config metadata drift", inspect_completed.stderr)
         self.assertIn("Rebuilt digest", inspect_completed.stderr)
+
+    def test_inspect_repro_command_reports_saved_oci_image_platform_drift(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            include_oci_image=True,
+            include_oci_image_reproducibility=True,
+            drift_oci_image_reproducibility_platform=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn("Platform digests differ from the signed manifest", inspect_completed.stderr)
+        self.assertIn("Changed platform count: 1", inspect_completed.stderr)
+        self.assertIn("Drift classification: top-level-and-platform-payload", inspect_completed.stderr)
+        self.assertIn("Changed platform: linux/arm64", inspect_completed.stderr)
+        self.assertIn("Platform payload drift is present", inspect_completed.stderr)
 
     def _prepare_verification_fixture(
         self,
@@ -2196,6 +2250,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         drift_oci_image: bool = False,
         include_oci_image_reproducibility: bool = False,
         drift_oci_image_reproducibility: bool = False,
+        drift_oci_image_reproducibility_platform: bool = False,
         include_generic_file_reproducibility: bool = False,
         drift_generic_file_reproducibility: bool = False,
         include_second_generic_file_shared_profile: bool = False,
@@ -2501,9 +2556,14 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         if include_oci_image_reproducibility:
             rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-oci-image.sh"
             rebuild_script.parent.mkdir(parents=True, exist_ok=True)
-            rebuilt_top_level_digest = "sha256:" + (("e5" if drift_oci_image_reproducibility else "d4") * 32)
+            rebuilt_top_level_digest = "sha256:" + (
+                ("e5" if drift_oci_image_reproducibility or drift_oci_image_reproducibility_platform else "d4")
+                * 32
+            )
             rebuilt_amd64_digest = "sha256:" + ("a1" * 32)
-            rebuilt_arm64_digest = "sha256:" + ("b2" * 32)
+            rebuilt_arm64_digest = "sha256:" + (
+                ("c3" if drift_oci_image_reproducibility_platform else "b2") * 32
+            )
             rebuild_script.write_text(
                 "\n".join(
                     [

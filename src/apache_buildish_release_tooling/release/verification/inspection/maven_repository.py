@@ -88,6 +88,7 @@ def inspect_maven_repository_reproducibility(
         emit_success(progress_reporter, "No failed comparable repository paths were retained")
         return
     emit_detail(progress_reporter, "Failed by mode", _failed_mode_summary(failed_results))
+    emit_detail(progress_reporter, "Failed by category", _failed_category_summary(failed_results))
     diagnosis = _failure_diagnosis(failed_results)
     if diagnosis is not None:
         emit_info(progress_reporter, diagnosis)
@@ -95,26 +96,27 @@ def inspect_maven_repository_reproducibility(
         progress_reporter,
         f"{len(failed_results)} comparable repository path(s) failed local comparison",
     )
-    for path_result in failed_results[:12]:
-        staged_sha512 = path_result.get("staged_sha512")
-        rebuilt_sha512 = path_result.get("rebuilt_sha512")
-        digest_suffix = ""
-        if isinstance(staged_sha512, str) and isinstance(rebuilt_sha512, str):
-            digest_suffix = f" [{staged_sha512[:12]} -> {rebuilt_sha512[:12]}]"
+    failed_by_category = _group_failed_results_by_category(failed_results)
+    for category in ("metadata-text", "archive-payload", "missing-local", "other"):
+        category_results = failed_by_category.get(category, [])
+        if not category_results:
+            continue
         emit_detail(
             progress_reporter,
-            "Path failure",
-            (
-                f"{path_result.get('path', 'n/a')} "
-                f"[{path_result.get('mode', 'n/a')}] "
-                f"{path_result.get('detail', 'n/a')}{digest_suffix}"
-            ),
+            _category_summary_label(category),
+            str(len(category_results)),
         )
-    if len(failed_results) > 12:
-        emit_info(
-            progress_reporter,
-            f"... plus {len(failed_results) - 12} additional failed path(s)",
-        )
+        for path_result in category_results[:4]:
+            emit_detail(
+                progress_reporter,
+                _category_path_label(category),
+                _path_failure_summary(path_result),
+            )
+        if len(category_results) > 4:
+            emit_info(
+                progress_reporter,
+                f"... plus {len(category_results) - 4} additional {_category_summary_label(category).lower()}",
+            )
 
 
 def _failed_mode_summary(failed_results: list[dict[str, object]]) -> str:
@@ -125,6 +127,73 @@ def _failed_mode_summary(failed_results: list[dict[str, object]]) -> str:
             mode = "unknown"
         counts[mode] = counts.get(mode, 0) + 1
     return ", ".join(f"{mode}={counts[mode]}" for mode in sorted(counts))
+
+
+def _failed_category_summary(failed_results: list[dict[str, object]]) -> str:
+    counts: dict[str, int] = {}
+    for path_result in failed_results:
+        category = _failure_category(path_result)
+        counts[category] = counts.get(category, 0) + 1
+    return ", ".join(f"{category}={counts[category]}" for category in sorted(counts))
+
+
+def _group_failed_results_by_category(
+    failed_results: list[dict[str, object]],
+) -> dict[str, list[dict[str, object]]]:
+    grouped: dict[str, list[dict[str, object]]] = {}
+    for path_result in failed_results:
+        category = _failure_category(path_result)
+        grouped.setdefault(category, []).append(path_result)
+    return grouped
+
+
+def _failure_category(path_result: dict[str, object]) -> str:
+    path = path_result.get("path")
+    detail = path_result.get("detail")
+    if detail == "missing rebuilt path":
+        return "missing-local"
+    if isinstance(detail, str) and "archive member" in detail:
+        return "archive-payload"
+    if isinstance(path, str):
+        lowered = path.lower()
+        if lowered.endswith((".jar", ".war", ".zip", ".ear", ".nar")):
+            return "archive-payload"
+        if lowered.endswith((".pom", ".module", ".xml", ".properties", ".txt")):
+            return "metadata-text"
+    return "other"
+
+
+def _category_summary_label(category: str) -> str:
+    if category == "metadata-text":
+        return "Failed metadata/text paths"
+    if category == "archive-payload":
+        return "Failed archive paths"
+    if category == "missing-local":
+        return "Missing local paths"
+    return "Failed other paths"
+
+
+def _category_path_label(category: str) -> str:
+    if category == "metadata-text":
+        return "Metadata/text path"
+    if category == "archive-payload":
+        return "Archive path"
+    if category == "missing-local":
+        return "Missing local path"
+    return "Other path"
+
+
+def _path_failure_summary(path_result: dict[str, object]) -> str:
+    staged_sha512 = path_result.get("staged_sha512")
+    rebuilt_sha512 = path_result.get("rebuilt_sha512")
+    digest_suffix = ""
+    if isinstance(staged_sha512, str) and isinstance(rebuilt_sha512, str):
+        digest_suffix = f" [{staged_sha512[:12]} -> {rebuilt_sha512[:12]}]"
+    return (
+        f"{path_result.get('path', 'n/a')} "
+        f"[{path_result.get('mode', 'n/a')}] "
+        f"{path_result.get('detail', 'n/a')}{digest_suffix}"
+    )
 
 
 def _failure_diagnosis(failed_results: list[dict[str, object]]) -> str | None:
