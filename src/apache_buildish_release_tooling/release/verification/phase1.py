@@ -137,6 +137,8 @@ def verify_rc_phase1(
     source_artifact_signature: SignatureVerification | None = None
     rebuilt_source_sha512: str | None = None
     source_artifact_matches_source_commit = False
+    rebuilt_source_artifact_path: Path | None = None
+    source_artifact_reproducibility: dict[str, Any] | None = None
     secondary_artifact_verifications: list[dict[str, Any]] = []
     reproducibility_decision = ReproducibilityModeDecision(
         requested_mode=requested_mode,
@@ -216,6 +218,7 @@ def verify_rc_phase1(
             source_artifact_signature=source_artifact_signature,
             rebuilt_source_sha512=rebuilt_source_sha512,
             source_artifact_matches_source_commit=source_artifact_matches_source_commit,
+            source_artifact_reproducibility=source_artifact_reproducibility,
             secondary_artifact_verifications=secondary_artifact_verifications,
             reproducibility_decision=reproducibility_decision,
             build_checks_attempted=build_checks_attempted,
@@ -447,6 +450,14 @@ def verify_rc_phase1(
                 message=str(exc),
             )
 
+    source_artifact_reproducibility = _source_artifact_reproducibility_payload(
+        source_artifact=source_artifact,
+        rebuilt_source_artifact_path=rebuilt_source_artifact_path,
+        rebuilt_source_sha512=rebuilt_source_sha512,
+        source_artifact_matches_source_commit=source_artifact_matches_source_commit,
+        failures=failures,
+    )
+
     has_build_candidates = manifest_payload is not None and _has_build_reproducibility_candidates(
         manifest_payload
     )
@@ -547,6 +558,7 @@ def verify_rc_phase1(
         source_artifact_signature=source_artifact_signature,
         rebuilt_source_sha512=rebuilt_source_sha512,
         source_artifact_matches_source_commit=source_artifact_matches_source_commit,
+        source_artifact_reproducibility=source_artifact_reproducibility,
         secondary_artifact_verifications=secondary_artifact_verifications,
         reproducibility_decision=reproducibility_decision,
         build_checks_attempted=build_checks_attempted,
@@ -603,6 +615,7 @@ def _phase1_result(
     source_artifact_signature: SignatureVerification | None,
     rebuilt_source_sha512: str | None,
     source_artifact_matches_source_commit: bool,
+    source_artifact_reproducibility: dict[str, Any] | None,
     secondary_artifact_verifications: list[dict[str, Any]],
     reproducibility_decision: ReproducibilityModeDecision,
     build_checks_attempted: bool,
@@ -681,6 +694,7 @@ def _phase1_result(
                 ),
                 "rebuilt_sha512": rebuilt_source_sha512,
                 "matches_source_commit_sha": source_artifact_matches_source_commit,
+                "reproducibility": source_artifact_reproducibility,
                 "issues": source_artifact_issues,
             },
             "reproducibility_execution": {
@@ -713,6 +727,7 @@ def _phase1_result(
         source_artifact_url=source_artifact_url,
         source_artifact_signature=source_artifact_signature,
         actual_source_sha512=actual_source_sha512,
+        source_artifact_reproducibility=source_artifact_reproducibility,
         manifest_issues=manifest_issues,
         source_artifact_issues=source_artifact_issues,
         reproducibility_decision=reproducibility_decision,
@@ -855,6 +870,7 @@ def _report_markdown(
     source_artifact_url: str | None,
     source_artifact_signature: SignatureVerification | None,
     actual_source_sha512: str | None,
+    source_artifact_reproducibility: dict[str, Any] | None,
     manifest_issues: list[str],
     source_artifact_issues: list[str],
     reproducibility_decision: ReproducibilityModeDecision,
@@ -914,6 +930,11 @@ def _report_markdown(
             ),
         ]
     )
+    if isinstance(source_artifact_reproducibility, dict):
+        _append_source_artifact_reproducibility_markdown(
+            lines,
+            reproducibility_payload=source_artifact_reproducibility,
+        )
     for issue in source_artifact_issues:
         lines.append(f"- ✗ {issue}")
     lines.extend(
@@ -1203,6 +1224,41 @@ def _append_reproducibility_markdown(
             )
 
 
+def _append_source_artifact_reproducibility_markdown(
+    lines: list[str],
+    *,
+    reproducibility_payload: dict[str, Any],
+) -> None:
+    lines.extend(
+        [
+            f"- Source reproducibility profile: `{reproducibility_payload['profile_id']}`",
+            f"- Source reproducibility verdict: `{reproducibility_payload['verdict']}`",
+            f"- Source reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
+            f"- Rebuilt bytes matched declared source commit: `{reproducibility_payload['matches_remote_bytes']}`",
+        ]
+    )
+    effective_execution = _nested_mapping(reproducibility_payload, "effective_execution")
+    effective_build = _nested_mapping(reproducibility_payload, "effective_execution", "build")
+    if effective_execution is not None and effective_execution.get("backend") is not None:
+        lines.append(f"- Source rebuild backend: `{effective_execution['backend']}`")
+    build_command = effective_build.get("command", []) if effective_build else []
+    if build_command:
+        lines.append(
+            "- Source rebuild command: `"
+            + " ".join(str(part) for part in build_command)
+            + "`"
+        )
+    build_working_directory = effective_build.get("working_directory") if effective_build else None
+    if build_working_directory:
+        lines.append(f"- Source rebuild working directory: `{build_working_directory}`")
+    for output_path in (effective_build.get("output_paths", []) if effective_build else []):
+        lines.append(f"- Source rebuild output: `{output_path}`")
+    if reproducibility_payload.get("failure_class") is not None:
+        lines.append(
+            f"- Source reproducibility failure class: `{reproducibility_payload['failure_class']}`"
+        )
+
+
 def _md_value(value: str | None) -> str:
     return value if value is not None else "n/a"
 
@@ -1214,6 +1270,62 @@ def _nested_mapping(payload: dict[str, Any], *path: str) -> dict[str, Any] | Non
             return None
         current = current.get(key)
     return current if isinstance(current, dict) else None
+
+
+def _source_artifact_reproducibility_payload(
+    *,
+    source_artifact: SourceArtifactContract | None,
+    rebuilt_source_artifact_path: Path | None,
+    rebuilt_source_sha512: str | None,
+    source_artifact_matches_source_commit: bool,
+    failures: list[VerificationFailure],
+) -> dict[str, Any] | None:
+    reproducibility_issues = [
+        failure.message
+        for failure in failures
+        if failure.scope == "source-artifact" and failure.subject == "source artifact reproducibility"
+    ]
+    if source_artifact is None:
+        return None
+    if rebuilt_source_artifact_path is None and rebuilt_source_sha512 is None and not reproducibility_issues:
+        return None
+    profile_id = (
+        source_artifact.reproducibility.profile_id
+        if source_artifact.reproducibility is not None
+        else "source-artifact-from-git"
+    )
+    failure_class: str | None = None
+    if reproducibility_issues:
+        failure_class = (
+            "byte-mismatch"
+            if rebuilt_source_sha512 is not None and not source_artifact_matches_source_commit
+            else "build-failed"
+        )
+    effective_execution = None
+    if rebuilt_source_artifact_path is not None:
+        effective_execution = {
+            "backend": "host-direct",
+            "build": {
+                "command": ["internal:create-from-git"],
+                "working_directory": "source-repository",
+                "output_paths": [rebuilt_source_artifact_path.name],
+                "injected_environment_keys": [],
+            },
+        }
+    return {
+        "profile_id": profile_id,
+        "verdict": "failed" if reproducibility_issues else "verified",
+        "comparison_mode": "exact-bytes",
+        "canonical_recipe": None,
+        "effective_execution": effective_execution,
+        "override": {"applied": False},
+        "matches_remote_bytes": (
+            source_artifact_matches_source_commit if rebuilt_source_sha512 is not None else None
+        ),
+        "failure_class": failure_class,
+        "evidence": [],
+        "issues": reproducibility_issues,
+    }
 
 
 def _override_field_summary(override_build: dict[str, Any] | None) -> list[str]:

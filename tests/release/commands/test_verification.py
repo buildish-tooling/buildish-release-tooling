@@ -336,6 +336,19 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             os.path.relpath(fixture.inspection_bundle_path, start=fixture.report_json_path.parent),
             report_payload["inspection_bundle"]["relative_path_from_report"],
         )
+        source_reproducibility = report_payload["source_artifact_verification"]["reproducibility"]
+        self.assertEqual("verified", source_reproducibility["verdict"])
+        self.assertEqual("source-artifact-from-git", source_reproducibility["profile_id"])
+        self.assertEqual("exact-bytes", source_reproducibility["comparison_mode"])
+        self.assertEqual(False, source_reproducibility["override"]["applied"])
+        self.assertEqual(
+            ["internal:create-from-git"],
+            source_reproducibility["effective_execution"]["build"]["command"],
+        )
+        self.assertEqual(
+            ["rebuilt-apache-buildish-example-1.2.3-incubating-src.tar.gz"],
+            source_reproducibility["effective_execution"]["build"]["output_paths"],
+        )
         secondary_verification = report_payload["secondary_artifact_verifications"][0]
         reproducibility = secondary_verification["reproducibility"]
         self.assertEqual("verified", secondary_verification["reproducibility"]["verdict"])
@@ -380,6 +393,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         )
         report_markdown = fixture.report_md_path.read_text(encoding="utf-8")
         self.assertIn("Reproducibility verdict: `verified`", report_markdown)
+        self.assertIn("Source reproducibility verdict: `verified`", report_markdown)
+        self.assertIn("Source rebuild command: `internal:create-from-git`", report_markdown)
         self.assertIn("Execution backend: `host-direct`", report_markdown)
         self.assertIn("Build command: `sh buildish-release-tooling/rebuild-bootstrap.sh`", report_markdown)
         self.assertIn("Build working directory: `.`", report_markdown)
@@ -1532,6 +1547,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
         self.assertEqual("failed", report_payload["verdict"])
         self.assertGreaterEqual(len(report_payload["failures"]), 8)
+        source_reproducibility = report_payload["source_artifact_verification"]["reproducibility"]
+        self.assertEqual("failed", source_reproducibility["verdict"])
+        self.assertEqual("byte-mismatch", source_reproducibility["failure_class"])
+        self.assertEqual(False, source_reproducibility["matches_remote_bytes"])
         self.assertEqual(
             [
                 "staged source checksum",
@@ -1559,6 +1578,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         )
         report_markdown = fixture.report_md_path.read_text(encoding="utf-8")
         self.assertIn("staged source artifact checksum does not match the signed manifest", report_markdown)
+        self.assertIn("Source reproducibility failure class: `byte-mismatch`", report_markdown)
         self.assertIn("npm-package integrity does not match the downloaded tarball bytes", report_markdown)
         self.assertIn("live maven repository checksum does not match the signed inventory", report_markdown)
 

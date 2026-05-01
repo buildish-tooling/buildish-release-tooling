@@ -55,6 +55,7 @@ class VerifyRcPhase1ReportTest(unittest.TestCase):
                 source_artifact_url="https://dist.apache.org/example/apache-buildish-example-1.2.3-incubating-src.tar.gz",
                 source_artifact_signature=signature,
                 actual_source_sha512="f" * 128,
+                source_artifact_reproducibility=None,
                 manifest_issues=[],
                 source_artifact_issues=[],
                 reproducibility_decision=ReproducibilityModeDecision(

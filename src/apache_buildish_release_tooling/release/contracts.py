@@ -764,6 +764,7 @@ class SourceArtifactVerificationSection(BuildishContractModel):
     signature: SignatureVerificationPayload | None = None
     rebuilt_sha512: str | None = None
     matches_source_commit_sha: bool
+    reproducibility: ArtifactReproducibilityReport | None = None
     issues: list[str] = Field(default_factory=list)
 
 
