@@ -51,6 +51,13 @@ component through the CLI only, pinned to an exact immutable Git ref.
   ways
 - patch releases should keep the documented contract stable and only fix behavior
 
+Current exception during early verifier development:
+
+- the machine-readable `verify-rc` report JSON schema is still treated as internal implementation
+  detail and may change without backward-compatibility between early-development revisions
+- the current stable contract is that `verify-rc` can write a JSON report when asked, not that every
+  JSON field layout is already frozen
+
 Release-critical workflows should pin:
 
 - an exact immutable Git tag or commit of `buildish-release-tooling`
@@ -341,13 +348,17 @@ Summaries are intended for:
 - writes a combined transcript and low-level command log
 - in `--mode full`, runs configured local reproducibility checks and writes a curated inspection bundle suitable for `inspect-repro`
 - supports `--repro-override-file <path>` for explicit human local rebuild overrides
-- treats any run with `--repro-override-file` as non-canonical and records:
-  - `recipe_source=local-override`
-  - the applied `override_fields`
-- for host-direct reproducibility runs, records the effective local rebuild execution context:
-  - `build_command`
-  - `build_working_directory`
-  - `injected_environment_keys`
+- treats any run with `--repro-override-file` as non-canonical and records that in the
+  reproducibility report structure under:
+  - `override.applied`
+  - sparse override details under `override.build`
+- for host-direct reproducibility runs, records the canonical and effective execution context under:
+  - `canonical_recipe`
+  - `effective_execution`
+- environment reporting intentionally records variable names only, never values, so reports and
+  inspection bundles do not expose secrets or machine-local credentials
+- the detailed JSON field layout for the `verify-rc` report is still internal early-development
+  schema and is not yet covered by a backward-compatibility promise
 - CI and release workflow runs should not use `--repro-override-file`; that flag exists for human local investigation when the canonical repo-maintained recipe is too narrow for one machine
 
 Example canonical verification run:
@@ -389,7 +400,7 @@ verify_rc:
 
 - reads one saved `verify-rc` JSON report plus its inspection bundle
 - explains failed reproducibility checks without rerunning remote verification
-- surfaces the selected `profile_id`, `recipe_source`, `override_fields`, retained evidence files, and kind-specific drift details
+- surfaces the selected `profile_id`, recipe-source classification, structured override details, retained evidence files, and kind-specific drift details
 - also shows the recorded rebuild execution context when present:
   - effective build command
   - effective build working directory

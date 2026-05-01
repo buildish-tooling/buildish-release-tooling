@@ -596,7 +596,7 @@ Recommended override model:
 - `verify-rc` should use the canonical profile from `release-config.yaml` by default
 - CI and release workflow runs should use canonical profiles only
 - human local runs may pass an explicit override flag or override file to adjust command lines or tool paths
-- when an override changes the effective build command, working directory, or selected outputs, the report should record `recipe_source=local-override` and the applied `override_fields`
+- when an override changes the effective build command, working directory, or selected outputs, the report should keep the canonical recipe and effective execution separate and record the sparse structured override delta
 
 Concrete local override shape:
 
@@ -652,8 +652,9 @@ Reporting requirements for override runs:
 - the run must remain valid as a local diagnostic verification run
 - the run must be marked as non-canonical
 - the transcript, JSON report, Markdown report, and `inspect-repro` output should record:
-  - `recipe_source=local-override`
-  - which `override_fields` were applied
+  - that a local override was applied
+  - the canonical recipe separately from the effective execution
+  - the sparse structured override delta, including overridden env key names but never env values
   - the selected `profile_id`
 - CI and release workflow runs should not use this flag
 
@@ -1136,6 +1137,7 @@ Local override policy:
 - human verifiers should be able to override build-tool command lines explicitly when the canonical recipe is too narrow for their machine
 - those overrides should be treated as a local escape hatch, not as the default or CI path
 - override use should be captured in both the JSON and Markdown reports so readers can distinguish canonical reproducibility from locally adapted runs
+- reports should retain canonical recipe metadata, effective execution metadata, and sparse override metadata as separate structures rather than flattening them into one mixed field set
 
 This gives the tool reusable primitives while still allowing project-specific local build steps.
 
@@ -1531,6 +1533,10 @@ The verifier should emit:
 - a human-readable markdown report
 - a non-zero exit code on required-check failure
 
+For now, the JSON report schema should still be treated as internal early-development structure.
+The tooling should write it consistently for the matched `verify-rc` / `inspect-repro` revision, but
+it does not need a backward-compatibility promise yet across active development revisions.
+
 When reproducibility checks are attempted, `verify-rc` should also emit a curated inspection bundle suitable for later use by `inspect-repro`.
 
 Default naming:
@@ -1548,8 +1554,9 @@ Each artifact should get a verdict record with:
 - authenticity result
 - integrity result
 - reproducibility result
-- recipe source, such as `canonical-profile` or `local-override`, when reproducibility checks were attempted
-- override fields, when a local reproducibility override changed the effective recipe
+- canonical recipe metadata, when reproducibility checks were attempted
+- effective execution metadata, when reproducibility checks were attempted
+- structured override metadata when a local reproducibility override changed the effective recipe
 - evidence, such as digest values, full signer fingerprints, signer algorithm or key-size metadata, or attestation identities
 - effective safety policy data, such as whether origin allowlists, execution isolation, resource-budget overrides, or cryptographic warnings affected the run
 
