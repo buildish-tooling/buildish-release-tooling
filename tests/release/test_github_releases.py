@@ -66,6 +66,22 @@ class GitHubReleasesTest(unittest.TestCase):
             actual,
         )
 
+    def test_list_releases_returns_empty_list_for_non_list_payload_variants(self) -> None:
+        malformed_payloads: tuple[object, ...] = (
+            {},
+            {"items": []},
+            "not-a-list",
+            17,
+        )
+        for payload in malformed_payloads:
+            with self.subTest(payload=payload):
+                with mock.patch(
+                    "apache_buildish_release_tooling.release.github_releases.run_logged_command",
+                    return_value=subprocess.CompletedProcess([], 0, json.dumps(payload), ""),
+                ):
+                    actual = github_releases.list_releases("apache/buildish-example")
+                self.assertEqual([], actual)
+
     def test_matching_draft_release_ids_matches_by_tag_or_name(self) -> None:
         actual = github_releases.matching_draft_release_ids(
             [
@@ -114,6 +130,20 @@ class GitHubReleasesTest(unittest.TestCase):
             asset_names=["rc-vote-manifest.json", "broken-entry"],
         )
         self.assertEqual({}, actual)
+
+    def test_release_asset_ids_by_names_returns_empty_for_malformed_assets_variants(self) -> None:
+        malformed_payloads: tuple[dict[str, object], ...] = (
+            {"assets": {}},
+            {"assets": "broken"},
+            {"assets": [{"id": "not-an-int", "name": "rc-vote-manifest.json"}]},
+        )
+        for release_payload in malformed_payloads:
+            with self.subTest(release_payload=release_payload):
+                actual = github_releases.release_asset_ids_by_names(
+                    release_payload,
+                    asset_names=["rc-vote-manifest.json"],
+                )
+                self.assertEqual({}, actual)
 
     def test_delete_release_uses_delete_api_call(self) -> None:
         with mock.patch(

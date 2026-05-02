@@ -17,8 +17,15 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import unittest
+from unittest import mock
 
+from pydantic import ValidationError
+
+from apache_buildish_release_tooling.release.artifact_registration.kinds.oci_image import (
+    _inspect_image_ref,
+)
 from apache_buildish_release_tooling.release.verification.secondary.npm_package import (
     _NpmRegistryMetadataRead,
     _typed_npm_registry_metadata,
@@ -30,6 +37,23 @@ from apache_buildish_release_tooling.release.verification.secondary.python_distr
 
 class VerificationRegistryReadersTest(unittest.TestCase):
     """Keep tolerant external registry/index readers explicit and well covered."""
+
+    def test_simple_index_json_entries_rejects_malformed_payload_variants(self) -> None:
+        malformed_payloads = (
+            b'{"files": 17}',
+            b'{"files": [17]}',
+            b'{"files": [{"filename": [], "url": "packages/example.whl"}]}',
+        )
+        for payload_bytes in malformed_payloads:
+            with self.subTest(payload_bytes=payload_bytes):
+                with self.assertRaisesRegex(
+                    ValueError,
+                    "python-distribution simple index JSON must be an object with a files list",
+                ):
+                    _simple_index_json_entries(
+                        "https://example.invalid/simple/buildish-example/",
+                        payload_bytes,
+                    )
 
     def test_simple_index_json_entries_rejects_non_object_payload(self) -> None:
         with self.assertRaisesRegex(
@@ -152,6 +176,74 @@ class VerificationRegistryReadersTest(unittest.TestCase):
         )
         self.assertEqual("sha512-abc", version_entry.dist.integrity)
         self.assertEqual(2, version_entry.dist.signatures_count)
+
+    def test_npm_registry_metadata_reader_rejects_malformed_payload_variants(self) -> None:
+        malformed_payloads: tuple[dict[str, object], ...] = (
+            {"versions": []},
+            {
+                "versions": {
+                    "1.2.3": {
+                        "name": "buildish-example",
+                        "version": "1.2.3",
+                        "dist": {
+                            "tarball": "https://registry.example.invalid/buildish-example/-/buildish-example-1.2.3.tgz",
+                            "integrity": 17,
+                        },
+                    }
+                }
+            },
+            {
+                "versions": {
+                    "1.2.3": {
+                        "name": "buildish-example",
+                        "version": "1.2.3",
+                        "dist": {
+                            "tarball": "https://registry.example.invalid/buildish-example/-/buildish-example-1.2.3.tgz",
+                            "integrity": "sha512-abc",
+                            "signatures": {},
+                        },
+                    }
+                }
+            },
+        )
+        for payload in malformed_payloads:
+            with self.subTest(payload=payload):
+                with self.assertRaises(ValidationError):
+                    _NpmRegistryMetadataRead.model_validate(payload)
+
+    def test_inspect_image_ref_rejects_invalid_external_payload_variants(self) -> None:
+        malformed_payloads: tuple[tuple[str, str], ...] = (
+            (
+                "[]",
+                "oci-image docker buildx imagetools inspect returned invalid JSON",
+            ),
+            (
+                json.dumps(
+                    {
+                        "digest": "sha256:" + ("a1" * 32),
+                        "manifests": [
+                            {
+                                "digest": "sha256:" + ("b2" * 32),
+                                "platform": {"os": "linux", "architecture": "amd64"},
+                            },
+                            {
+                                "digest": "sha256:" + ("c3" * 32),
+                                "platform": {"os": "linux", "architecture": "amd64"},
+                            },
+                        ],
+                    }
+                ),
+                "oci-image registry manifest declared platform more than once: linux/amd64",
+            ),
+        )
+        for payload_text, error_fragment in malformed_payloads:
+            with self.subTest(error_fragment=error_fragment):
+                with mock.patch(
+                    "apache_buildish_release_tooling.release.artifact_registration.kinds.oci_image.run_logged_command",
+                    return_value=subprocess.CompletedProcess([], 0, payload_text, ""),
+                ):
+                    with self.assertRaisesRegex(ValueError, error_fragment):
+                        _inspect_image_ref("ghcr.io/apache/buildish-example:latest")
 
 
 if __name__ == "__main__":

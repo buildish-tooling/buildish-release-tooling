@@ -1165,6 +1165,70 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertNotIn("Unified text diff", inspect_completed.stderr)
         self.assertNotIn("Artifact 1/2:", inspect_completed.stderr)
 
+    def test_inspect_repro_command_summary_only_lists_all_targets_for_mixed_failures(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            drift_source_artifact=True,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+            include_maven_repository=True,
+            include_maven_repository_reproducibility=True,
+            drift_maven_repository_reproducibility=True,
+            include_oci_image=True,
+            include_oci_image_reproducibility=True,
+            drift_oci_image_reproducibility_platform=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                "--summary-only",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn("Reproducibility failures: 4", inspect_completed.stderr)
+        self.assertIn("Failure target: source-artifact [source-artifact] byte-mismatch", inspect_completed.stderr)
+        self.assertIn("Failure target: bootstrap-zip [generic-file] byte-mismatch", inspect_completed.stderr)
+        self.assertIn(
+            "Failure target: maven-staging-main [maven-repository] path-comparison-failed",
+            inspect_completed.stderr,
+        )
+        self.assertIn(
+            "Failure target: ghcr-main-image [oci-image] digest-mismatch",
+            inspect_completed.stderr,
+        )
+
     def test_inspect_repro_command_rejects_unknown_selected_artifact_ids(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
@@ -2797,6 +2861,33 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         secondary_verification = report_payload["secondary_artifact_verifications"][0]
         self.assertEqual("verified", secondary_verification["reproducibility"]["verdict"])
         self.assertEqual("maven-staging", secondary_verification["reproducibility"]["profile_id"])
+        metadata_reference = next(
+            reference
+            for reference in secondary_verification["reproducibility"]["evidence"]
+            if reference["label"] == "comparison-metadata"
+        )
+        metadata_payload = json.loads(
+            (fixture.inspection_bundle_path / metadata_reference["path"]).read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            [
+                "artifact_id",
+                "kind",
+                "profile_id",
+                "comparison_mode",
+                "canonical_recipe",
+                "effective_execution",
+                "override",
+                "repository_dir",
+                "require_signatures",
+                "path_rules",
+                "matches_remote_bytes",
+                "failure_class",
+                "path_results",
+                "issues",
+            ],
+            list(metadata_payload),
+        )
         self.assertEqual(
             [".buildish-out/m2repo"],
             secondary_verification["reproducibility"]["effective_execution"]["build"]["output_paths"],
@@ -3091,6 +3182,34 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual(
             [".buildish-out/oci-image-rebuilt.marker"],
             secondary_verification["reproducibility"]["effective_execution"]["build"]["output_paths"],
+        )
+        metadata_reference = next(
+            reference
+            for reference in secondary_verification["reproducibility"]["evidence"]
+            if reference["label"] == "comparison-metadata"
+        )
+        metadata_payload = json.loads(
+            (fixture.inspection_bundle_path / metadata_reference["path"]).read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            [
+                "artifact_id",
+                "kind",
+                "profile_id",
+                "comparison_mode",
+                "canonical_recipe",
+                "effective_execution",
+                "override",
+                "image_ref",
+                "declared_digest",
+                "expected_platform_digests",
+                "rebuilt_digest",
+                "rebuilt_platform_digests",
+                "matches_remote_bytes",
+                "failure_class",
+                "issues",
+            ],
+            list(metadata_payload),
         )
 
     def test_verify_rc_command_reports_oci_image_reproducibility_drift_in_full_mode(self) -> None:
