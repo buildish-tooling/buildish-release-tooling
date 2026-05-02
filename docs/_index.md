@@ -524,6 +524,29 @@ Outcome
 ✓ Inspected 2 saved reproducibility failure(s)
 ```
 
+Representative malformed-input failures:
+
+```text
+# Unsupported verify-rc report schema
+unsupported verify-rc report schema version: '2'; supported: 1
+
+# Incomplete inspection-bundle contract fields in the report
+inspection bundle contract fields are incomplete; expected both
+inspection_bundle.bundle_schema_version and inspection_bundle.manifest_relative_path
+
+# Unsupported inspection-bundle schema
+unsupported inspection bundle schema version: '2'; supported: 1
+
+# Malformed secondary artifact entry in the signed manifest
+manifest secondary artifact entry is malformed: https://.../rc-vote-manifest.json
+
+# Malformed external GitHub verification payload
+invalid GitHub check-runs payload
+```
+
+These failures are expected to be direct and fail closed. The verifier should not silently ignore
+malformed contract or external payload data and continue with guessed semantics.
+
 ### `prepare-rc`
 
 - resolves the release branch, next RC number, and authoritative source commit for one version
