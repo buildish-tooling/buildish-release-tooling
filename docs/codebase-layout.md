@@ -119,3 +119,22 @@ copied into both backends.
 
 When in doubt, prefer a new helper module over growing one command module or one harness backend
 with another protocol-specific block.
+
+## Adding artifact kinds
+
+New secondary-artifact or reproducibility kinds should follow the existing contract pattern:
+
+- add strict emitted contract models in `release/contracts.py`
+- add tolerant read-side models only where malformed or forward-compatible input handling is needed
+- add verifier logic under `release/verification/secondary/`
+- add `inspect-repro` logic under `release/verification/inspection/` only when the built-in diagnosis
+  needs kind-specific behavior
+
+Keep the supported report and bundle contract stable while doing that:
+
+- additive per-kind fields under schema version `1` are fine when they do not change existing field
+  meanings
+- incompatible machine-readable changes require a new schema version
+- update `docs/verification-contracts.md` in the same change
+- add or update golden-shape tests for emitted report and bundle outputs
+- add malformed-input coverage for the new tolerant readers
