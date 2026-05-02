@@ -47,15 +47,27 @@ Implemented already:
 - the release-side typed `record-artifact` contract
 - merge of typed secondary-artifact fragments into `finalize-rc-vote-materials`
 - built-in release-side registration kinds for `generic-file`, `maven-repository`, `python-distribution`, `oci-image`, and `npm-package`
+- the verifier-side `verify-rc` command
+- typed secondary-artifact verification for `generic-file`, `maven-repository`, `python-distribution`, `oci-image`, and `npm-package`
+- build-based reproducibility checks with structured report and inspection-bundle output
+- the read-only `inspect-repro` command with typed machine-readable JSON output
+- report schema version `1` plus inspection-bundle schema version `1`
 
 Still remaining:
 
-- the verifier-side `verify-rc` engine itself
-- generic secondary-artifact verification
-- ecosystem-specific verifier support for Maven, Python, OCI, and npm
-- bootstrap UX and a stronger long-term verifier bootstrap story
+- isolated rebuild execution and honest `build.network` enforcement
+- optional-local Maven staged-path policy for aggregate or multi-platform repositories
+- any deeper archive or image forensics beyond the current shallow built-in analyzers
+- long-term verifier bootstrap hardening beyond the current supported command flow
 
-This document now tracks that remaining verifier-side work.
+Reading guide:
+
+- statements phrased as current command behavior, supported contract, or implemented workflow shape
+  describe what the tool does today
+- sections explicitly labeled `Future Follow-up`, `TODO`, `Recommendation`, or `longer term` are
+  design notes and not current supported behavior
+- for the supported machine-readable contract, prefer the dedicated schema reference in
+  `docs/verification-contracts.md`; this page keeps the broader design rationale and deferred work
 
 ## Goals
 
