@@ -318,6 +318,17 @@ def _emit_failure_summary(
             [target.reproducibility.failure_class or "unspecified" for target in targets]
         ),
     )
+    emit_detail(
+        progress_reporter,
+        "Failure groups",
+        _summarize_grouped_failure_counts(targets),
+    )
+    for group_label, artifact_ids in _grouped_failure_targets(targets).items():
+        emit_detail(
+            progress_reporter,
+            "Failure group",
+            f"{group_label}: {', '.join(sorted(artifact_ids))}",
+        )
 
 
 def _emit_failure_target_list(
@@ -467,6 +478,34 @@ def _summarize_counts(values: list[str]) -> str:
     for value in values:
         counts[value] = counts.get(value, 0) + 1
     return ", ".join(f"{value}={count}" for value, count in sorted(counts.items()))
+
+
+def _summarize_grouped_failure_counts(
+    targets: list[ReproducibilityFailureInspectionTarget],
+) -> str:
+    grouped_counts: dict[str, int] = {}
+    for target in targets:
+        grouped_label = _failure_group_label(target)
+        grouped_counts[grouped_label] = grouped_counts.get(grouped_label, 0) + 1
+    return ", ".join(
+        f"{group_label}={count}"
+        for group_label, count in sorted(grouped_counts.items())
+    )
+
+
+def _grouped_failure_targets(
+    targets: list[ReproducibilityFailureInspectionTarget],
+) -> dict[str, list[str]]:
+    grouped: dict[str, list[str]] = {}
+    for target in targets:
+        grouped.setdefault(_failure_group_label(target), []).append(target.artifact_id)
+    return grouped
+
+
+def _failure_group_label(target: ReproducibilityFailureInspectionTarget) -> str:
+    scope = "source" if target.kind == "source-artifact" else "secondary"
+    failure_class = target.reproducibility.failure_class or "unspecified"
+    return f"{scope}/{target.kind}/{failure_class}"
 
 
 __all__ = ["inspect_repro_report"]

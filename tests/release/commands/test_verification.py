@@ -1043,6 +1043,14 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Secondary artifact failures: 1", inspect_completed.stderr)
         self.assertIn("Failure kinds: generic-file=1", inspect_completed.stderr)
         self.assertIn("Failure classes: byte-mismatch=1", inspect_completed.stderr)
+        self.assertIn(
+            "Failure groups: secondary/generic-file/byte-mismatch=1",
+            inspect_completed.stderr,
+        )
+        self.assertIn(
+            "Failure group: secondary/generic-file/byte-mismatch: bootstrap-zip",
+            inspect_completed.stderr,
+        )
         self.assertIn("Artifact 1/1: bootstrap-zip", inspect_completed.stderr)
         self.assertIn("Build command: sh buildish-release-tooling/rebuild-bootstrap.sh", inspect_completed.stderr)
         self.assertIn("Build working directory: .", inspect_completed.stderr)
@@ -1218,6 +1226,28 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         self.assertIn("Reproducibility failures: 4", inspect_completed.stderr)
+        self.assertIn(
+            "Failure groups: secondary/generic-file/byte-mismatch=1, "
+            "secondary/maven-repository/path-comparison-failed=1, "
+            "secondary/oci-image/digest-mismatch=1, source/source-artifact/byte-mismatch=1",
+            inspect_completed.stderr,
+        )
+        self.assertIn(
+            "Failure group: source/source-artifact/byte-mismatch: source-artifact",
+            inspect_completed.stderr,
+        )
+        self.assertIn(
+            "Failure group: secondary/generic-file/byte-mismatch: bootstrap-zip",
+            inspect_completed.stderr,
+        )
+        self.assertIn(
+            "Failure group: secondary/maven-repository/path-comparison-failed: maven-staging-main",
+            inspect_completed.stderr,
+        )
+        self.assertIn(
+            "Failure group: secondary/oci-image/digest-mismatch: ghcr-main-image",
+            inspect_completed.stderr,
+        )
         self.assertIn("Failure target: source-artifact [source-artifact] byte-mismatch", inspect_completed.stderr)
         self.assertIn("Failure target: bootstrap-zip [generic-file] byte-mismatch", inspect_completed.stderr)
         self.assertIn(
