@@ -24,6 +24,11 @@ import yaml
 from pydantic import ConfigDict, Field
 
 from apache_buildish_release_tooling.contracts import BuildishContractModel
+from apache_buildish_release_tooling.harness.yaml_types import (
+    YamlMapping,
+    deep_merge_yaml_mappings,
+    require_yaml_mapping,
+)
 
 SelfRepositoryCheckoutMode = Literal["when_repository_omitted", "disabled"]
 RepositoryOverrideCheckoutMode = Literal["always", "disabled"]
@@ -151,26 +156,19 @@ def load_release_harness_config(config_path: Path) -> ResolvedReleaseHarnessConf
     )
 
 
-def _load_yaml_mapping(path: Path) -> dict[str, Any]:
+def _load_yaml_mapping(path: Path) -> YamlMapping:
     """Load one YAML document and require a mapping payload."""
 
-    payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    if not isinstance(payload, dict):
-        raise ValueError(f"expected a YAML mapping in {path}")
-    return payload
+    return require_yaml_mapping(
+        yaml.safe_load(path.read_text(encoding="utf-8")),
+        source=str(path),
+    )
 
 
-def _deep_merge_dicts(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+def _deep_merge_dicts(base: YamlMapping, overlay: YamlMapping) -> YamlMapping:
     """Return a recursive dict merge where overlay values win."""
 
-    merged = dict(base)
-    for key, overlay_value in overlay.items():
-        base_value = merged.get(key)
-        if isinstance(base_value, dict) and isinstance(overlay_value, dict):
-            merged[key] = _deep_merge_dicts(base_value, overlay_value)
-        else:
-            merged[key] = overlay_value
-    return merged
+    return deep_merge_yaml_mappings(base, overlay)
 
 
 def _resolve_binding(

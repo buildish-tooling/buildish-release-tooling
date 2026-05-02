@@ -20,9 +20,10 @@ import copy
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import yaml
+
+from apache_buildish_release_tooling.harness.yaml_types import YamlMapping, require_yaml_mapping
 
 
 @dataclass(frozen=True)
@@ -69,18 +70,16 @@ def _represent_workflow_string(
 _GithubActionsYamlDumper.add_representer(str, _represent_workflow_string)
 
 
-def _load_github_actions_yaml(path: Path) -> dict[str, Any]:
+def _load_github_actions_yaml(path: Path) -> YamlMapping:
     """Load GitHub Actions YAML without converting keys like `on` into booleans."""
 
-    payload = yaml.load(  # noqa: S506
-        path.read_text(encoding="utf-8"),
-        Loader=_GithubActionsYamlLoader,  # noqa: S506
+    return require_yaml_mapping(
+        yaml.load(  # noqa: S506
+            path.read_text(encoding="utf-8"),
+            Loader=_GithubActionsYamlLoader,  # noqa: S506
+        ),
+        source=f"workflow {path}",
     )
-    if payload is None:
-        return {}
-    if not isinstance(payload, dict):
-        raise ValueError(f"workflow {path} must be a top-level mapping")
-    return payload
 
 
 def _load_job_definitions(workflow_path: Path) -> list[WorkflowJobDefinition]:
@@ -103,7 +102,7 @@ def _load_job_definitions(workflow_path: Path) -> list[WorkflowJobDefinition]:
     return definitions
 
 
-def _normalize_needs(raw_needs: Any) -> list[str]:
+def _normalize_needs(raw_needs: object) -> list[str]:
     """Normalize one workflow `needs` field into a flat string list."""
 
     if raw_needs is None:
@@ -137,7 +136,7 @@ def _topological_job_ids(job_definitions: list[WorkflowJobDefinition]) -> list[s
     return ordered
 
 
-def _dump_workflow_yaml(payload: dict[str, Any]) -> str:
+def _dump_workflow_yaml(payload: YamlMapping) -> str:
     """Dump rewritten workflow YAML while keeping the GitHub Actions `on` key literal."""
 
     rendered = yaml.dump(
@@ -150,7 +149,7 @@ def _dump_workflow_yaml(payload: dict[str, Any]) -> str:
 
 
 def _render_rewritten_workflow_yaml(
-    payload: dict[str, Any],
+    payload: YamlMapping,
     *,
     original_workflow_path: Path,
     original_copy_name: str,
@@ -181,7 +180,11 @@ def _act_step_order_by_job(active_workflow_path: Path) -> dict[str, list[str]]:
         if not isinstance(job_payload, dict):
             continue
         step_ids: list[str] = []
-        for step_payload in list(job_payload.get("steps") or []):
+        raw_steps = job_payload.get("steps")
+        if not isinstance(raw_steps, list):
+            step_order_by_job[str(job_id)] = step_ids
+            continue
+        for step_payload in raw_steps:
             if not isinstance(step_payload, dict):
                 continue
             env = step_payload.get("env")

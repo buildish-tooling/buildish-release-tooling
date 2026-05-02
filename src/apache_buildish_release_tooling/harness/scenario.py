@@ -17,24 +17,25 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import yaml
 
 from apache_buildish_release_tooling.harness.models import HarnessScenario
+from apache_buildish_release_tooling.harness.yaml_types import YamlMapping, require_yaml_mapping
 
 
 def load_scenario(path: Path) -> HarnessScenario:
     """Load a YAML scenario file into a validated harness model."""
 
-    payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    if not isinstance(payload, dict):
-        raise ValueError(f"expected a YAML mapping in {path}")
+    payload = require_yaml_mapping(
+        yaml.safe_load(path.read_text(encoding="utf-8")),
+        source=str(path),
+    )
     _resolve_workflow_paths(payload, path.parent.resolve(strict=False))
     return HarnessScenario.model_validate(payload)
 
 
-def _resolve_workflow_paths(payload: dict[str, Any], scenario_dir: Path) -> None:
+def _resolve_workflow_paths(payload: YamlMapping, scenario_dir: Path) -> None:
     """Resolve workflow-related file paths relative to the scenario file."""
 
     workflow = payload.get("workflow")
