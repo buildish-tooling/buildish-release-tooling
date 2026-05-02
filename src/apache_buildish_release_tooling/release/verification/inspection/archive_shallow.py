@@ -31,6 +31,7 @@ from apache_buildish_release_tooling.release.verification.common import (
     emit_failure,
     emit_info,
     emit_success,
+    emit_warning,
 )
 
 _MAX_REPORTED_ENTRY_MISMATCHES = 12
@@ -74,13 +75,16 @@ def build_shallow_archive_analysis(
 ) -> dict[str, Any] | None:
     """Return one durable shallow archive-analysis payload for a retained artifact pair."""
 
-    staged_description = _describe_archive(staged_path)
-    rebuilt_description = _describe_archive(rebuilt_path)
+    staged_bytes = staged_path.read_bytes()
+    rebuilt_bytes = rebuilt_path.read_bytes()
+    staged_description = _describe_archive_payload(staged_bytes)
+    rebuilt_description = _describe_archive_payload(rebuilt_bytes)
     if staged_description is None and rebuilt_description is None:
         return None
     staged_format = staged_description.archive_format if staged_description is not None else "non-archive"
     rebuilt_format = rebuilt_description.archive_format if rebuilt_description is not None else "non-archive"
     payload: dict[str, Any] = {
+        "raw_bytes_equal": staged_bytes == rebuilt_bytes,
         "staged_archive_format": staged_format,
         "rebuilt_archive_format": rebuilt_format,
         "staged_entry_count": (len(staged_description.entries) if staged_description is not None else None),
@@ -99,7 +103,11 @@ def build_shallow_archive_analysis(
     comparison = _compare_archives(staged_description, rebuilt_description)
     payload["archive_format"] = staged_description.archive_format
     if comparison is None:
-        payload["classification"] = "entries-match"
+        payload["classification"] = (
+            "entries-match"
+            if staged_bytes == rebuilt_bytes
+            else "outer-container-drift"
+        )
         return payload
     payload["classification"] = comparison.classification
     payload["missing_paths"] = comparison.missing_paths
@@ -154,6 +162,17 @@ def inspect_shallow_archive_pair(
             progress_reporter,
             "Top-level archive entries and member payloads match after shallow inspection",
         )
+        return True
+    if analysis["classification"] == "outer-container-drift":
+        emit_success(
+            progress_reporter,
+            "Top-level archive entries and member payloads match after shallow inspection",
+        )
+        emit_warning(
+            progress_reporter,
+            "Archive drift appears limited to the outer container or compression bytes",
+        )
+        emit_detail(progress_reporter, "Archive drift classification", "outer-container-drift")
         return True
     emit_failure(progress_reporter, "Top-level archive entries differ after shallow inspection")
     emit_detail(progress_reporter, "Archive drift classification", str(analysis["classification"]))
@@ -289,7 +308,10 @@ def _classify_archive_drift(
 
 
 def _describe_archive(path: Path) -> ShallowArchiveDescription | None:
-    payload = path.read_bytes()
+    return _describe_archive_payload(path.read_bytes())
+
+
+def _describe_archive_payload(payload: bytes) -> ShallowArchiveDescription | None:
     tar_description = _describe_tar_archive(payload)
     if tar_description is not None:
         return tar_description

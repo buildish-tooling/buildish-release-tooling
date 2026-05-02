@@ -1042,6 +1042,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual(
             {
                 "classification": "entries-match",
+                "raw_bytes_equal": True,
                 "archive_format": "zip",
                 "staged_archive_format": "zip",
                 "rebuilt_archive_format": "zip",
@@ -1121,6 +1122,11 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Retained staged and rebuilt source-artifact copies differ", inspect_completed.stderr)
         self.assertIn("Shallow archive comparison", inspect_completed.stderr)
         self.assertIn("Archive format: tar", inspect_completed.stderr)
+        self.assertIn(
+            "Archive drift appears limited to the outer container or compression bytes",
+            inspect_completed.stderr,
+        )
+        self.assertIn("Archive drift classification: outer-container-drift", inspect_completed.stderr)
         self.assertIn(
             "Top-level archive entries and member payloads match after shallow inspection",
             inspect_completed.stderr,

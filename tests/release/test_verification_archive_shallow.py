@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import io
 from pathlib import Path
+import gzip
 import tarfile
 from tempfile import TemporaryDirectory
 import unittest
@@ -55,6 +56,30 @@ def _write_tgz_archive(
             info.mtime = mtime
             info.mode = mode
             archive.addfile(info, io.BytesIO(payload))
+
+
+def _write_gzip_wrapped_tar(
+    archive_path: Path,
+    *,
+    members: list[tuple[str, bytes, int, int]],
+    gzip_mtime: int,
+) -> None:
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    tar_buffer = io.BytesIO()
+    with tarfile.open(fileobj=tar_buffer, mode="w") as archive:
+        for member_name, payload, mtime, mode in members:
+            info = tarfile.TarInfo(member_name)
+            info.size = len(payload)
+            info.mtime = mtime
+            info.mode = mode
+            archive.addfile(info, io.BytesIO(payload))
+    archive_path.write_bytes(
+        gzip.compress(
+            tar_buffer.getvalue(),
+            compresslevel=9,
+            mtime=gzip_mtime,
+        )
+    )
 
 
 class ShallowArchiveAnalysisTest(unittest.TestCase):
@@ -119,6 +144,39 @@ class ShallowArchiveAnalysisTest(unittest.TestCase):
                 self.fail("expected archive analysis for tar entry-set drift")
             self.assertEqual("entry-set-drift", analysis["classification"])
             self.assertEqual(["package/README.md"], analysis["missing_paths"])
+            self.assertEqual([], analysis["unexpected_paths"])
+            self.assertEqual([], analysis["metadata_mismatches"])
+            self.assertEqual([], analysis["content_mismatches"])
+
+    def test_gzip_outer_container_drift_is_classified_separately(self) -> None:
+        with TemporaryDirectory() as temporary_directory:
+            temp_dir = Path(temporary_directory)
+            staged_path = temp_dir / "staged.tar.gz"
+            rebuilt_path = temp_dir / "rebuilt.tar.gz"
+            members = [("apache-buildish-example-1.2.3/README.txt", b"hello\n", 1714633201, 0o644)]
+            _write_gzip_wrapped_tar(
+                staged_path,
+                members=members,
+                gzip_mtime=1714633201,
+            )
+            _write_gzip_wrapped_tar(
+                rebuilt_path,
+                members=members,
+                gzip_mtime=1714633299,
+            )
+
+            analysis = build_shallow_archive_analysis(
+                staged_path=staged_path,
+                rebuilt_path=rebuilt_path,
+            )
+
+            self.assertIsNotNone(analysis)
+            if analysis is None:
+                self.fail("expected archive analysis for gzip outer drift")
+            self.assertEqual("outer-container-drift", analysis["classification"])
+            self.assertFalse(analysis["raw_bytes_equal"])
+            self.assertEqual("tar", analysis["archive_format"])
+            self.assertEqual([], analysis["missing_paths"])
             self.assertEqual([], analysis["unexpected_paths"])
             self.assertEqual([], analysis["metadata_mismatches"])
             self.assertEqual([], analysis["content_mismatches"])

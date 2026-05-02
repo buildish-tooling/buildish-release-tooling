@@ -571,6 +571,7 @@ class ShallowArchiveAnalysisReport(BuildishContractModel):
     """Durable shallow archive-comparison findings for one retained artifact pair."""
 
     classification: NonEmptyString
+    raw_bytes_equal: bool
     archive_format: Literal["tar", "zip"] | None = None
     staged_archive_format: ArchiveAnalysisFormat
     rebuilt_archive_format: ArchiveAnalysisFormat
