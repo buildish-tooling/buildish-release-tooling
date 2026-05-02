@@ -393,6 +393,140 @@ class HarnessIntegrationTest(unittest.TestCase):
         self.assertEqual("gh", trace[0].tool)
         self.assertEqual(["api", "repos/demo"], trace[0].argv)
 
+    def test_builtin_gh_tag_mutations_update_workspace_and_origin_repositories(self) -> None:
+        """Builtin `gh api` tag mutations should create annotated tags in both tracked repos."""
+
+        trace_path = self.sandbox_dir / "trace.jsonl"
+        state_path = self.sandbox_dir / "shim-state.json"
+        origin_root = self.sandbox_dir / ".buildish-release-harness" / "git-origins" / "self"
+        origin_root.parent.mkdir(parents=True, exist_ok=True)
+        for repository in (self.sandbox_dir, origin_root):
+            subprocess.run(
+                ["git", "init", "--initial-branch=main", str(repository)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(repository), "config", "user.name", "Buildish Harness"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(repository), "config", "user.email", "buildish-harness@example.invalid"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            (repository / "README.md").write_text("root\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(repository), "add", "README.md"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(repository), "commit", "-m", "initial"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        target_commit = subprocess.run(
+            ["git", "-C", str(self.sandbox_dir), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        state_path.write_text(
+            json.dumps(
+                {
+                    "workspace_root": str(self.sandbox_dir),
+                    "trace_file": str(trace_path),
+                    "tool_behaviors": {},
+                    "counts": {},
+                    "env_capture": [],
+                    "gh_tag_objects": {},
+                },
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+
+        create_tag_object = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "apache_buildish_release_tooling.harness.shim_entrypoint",
+                "gh",
+                "api",
+                "-X",
+                "POST",
+                "repos/apache/buildish-example/git/tags",
+            ],
+            cwd=str(self.sandbox_dir),
+            env=tool_env({"BUILDISH_HARNESS_STATE_FILE": str(state_path)}),
+            input=json.dumps(
+                {
+                    "tag": "v1.2.3",
+                    "message": "Release 1.2.3",
+                    "object": target_commit,
+                }
+            ),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(0, create_tag_object.returncode, msg=create_tag_object.stderr)
+        tag_object_sha = json.loads(create_tag_object.stdout)["sha"]
+
+        create_tag_ref = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "apache_buildish_release_tooling.harness.shim_entrypoint",
+                "gh",
+                "api",
+                "-X",
+                "POST",
+                "repos/apache/buildish-example/git/refs",
+            ],
+            cwd=str(self.sandbox_dir),
+            env=tool_env({"BUILDISH_HARNESS_STATE_FILE": str(state_path)}),
+            input=json.dumps(
+                {
+                    "ref": "refs/tags/v1.2.3",
+                    "sha": tag_object_sha,
+                }
+            ),
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(0, create_tag_ref.returncode, msg=create_tag_ref.stderr)
+        self.assertEqual("refs/tags/v1.2.3", json.loads(create_tag_ref.stdout)["ref"])
+
+        for repository in (self.sandbox_dir, origin_root):
+            self.assertEqual(
+                "v1.2.3",
+                subprocess.run(
+                    ["git", "-C", str(repository), "tag", "--list", "v1.2.3"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip(),
+            )
+            self.assertEqual(
+                "Release 1.2.3",
+                subprocess.run(
+                    ["git", "-C", str(repository), "tag", "-l", "v1.2.3", "--format=%(contents)"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip(),
+            )
+
     def test_uv_shim_preserves_summary_capture_through_bash_shim(self) -> None:
         """The `bash` shim must not truncate summaries when the `uv` shim runs beneath it."""
 
