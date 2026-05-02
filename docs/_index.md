@@ -420,6 +420,9 @@ verify_rc:
   - effective build command
   - effective build working directory
   - injected environment keys
+- supports `--artifact-id <id>` to narrow inspection to one or more selected failures
+- supports `--summary-only` to print only the saved grouped summary and selected targets
+- supports `--json` to emit machine-readable inspection output to stdout instead of the human transcript
 
 Typical operator flow:
 
@@ -434,6 +437,56 @@ Typical operator flow:
      the artifact format is tar/zip-based
    - Maven / OCI: kind-specific path, digest, and metadata drift summaries
 5. Use optional external tools only as escalation when the built-in diagnosis is insufficient.
+
+Common invocation patterns:
+
+```text
+# Human local canonical verification run
+buildish-release-tooling verify-rc \
+  --component-config release-config.yaml \
+  --mode full \
+  --report-json build/verify-rc-report.json \
+  https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json \
+  https://downloads.apache.org/incubator/buildish/KEYS
+
+# Human local non-canonical override run
+buildish-release-tooling verify-rc \
+  --component-config release-config.yaml \
+  --mode full \
+  --repro-override-file ~/tmp/repro-overrides.yaml \
+  --report-json build/verify-rc-report.json \
+  https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json \
+  https://downloads.apache.org/incubator/buildish/KEYS
+
+# Inspect every saved reproducibility failure
+buildish-release-tooling inspect-repro build/verify-rc-report.json
+
+# Inspect only two saved failures
+buildish-release-tooling inspect-repro \
+  --artifact-id source-artifact \
+  --artifact-id maven-staging-main \
+  build/verify-rc-report.json
+
+# Print only the grouped summary and selected targets
+buildish-release-tooling inspect-repro --summary-only build/verify-rc-report.json
+
+# Emit machine-readable inspect-repro JSON
+buildish-release-tooling inspect-repro --json build/verify-rc-report.json
+```
+
+Bundle-reading guide:
+
+1. Start from the report's `inspection_bundle` section.
+2. Open the bundle manifest `inspection-bundle.json`.
+3. Use the artifact `metadata_path` entries to find the per-artifact retained evidence.
+4. Use the per-artifact evidence labels in the report or `inspect-repro` output to decide whether
+   you need:
+   - `comparison-metadata`
+   - `staged-artifact`
+   - `rebuilt-artifact` or rebuilt outputs
+   - kind-specific retained evidence
+5. Use the schema reference in [Verification Report and Bundle Contract](verification-contracts.md)
+   when you need the machine-readable field-level contract rather than the human transcript.
 
 Typical transcript shape:
 
