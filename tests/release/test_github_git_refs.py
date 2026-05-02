@@ -27,6 +27,37 @@ from apache_buildish_release_tooling.release import github_git_refs
 class GitHubGitRefsTest(unittest.TestCase):
     """Verify GitHub Git-ref helper behavior without invoking the real GitHub CLI."""
 
+    def test_create_annotated_tag_object_rejects_non_object_payload(self) -> None:
+        with mock.patch(
+            "apache_buildish_release_tooling.release.github_git_refs.run_logged_command",
+            return_value=subprocess.CompletedProcess([], 0, "[]", ""),
+        ):
+            with self.assertRaisesRegex(
+                ValueError,
+                "GitHub tag-object creation did not return an object payload",
+            ):
+                github_git_refs.create_annotated_tag_object(
+                    "apache/buildish-example",
+                    tag_name="v1.2.3",
+                    target_commit="deadbeef",
+                    message="Release Apache Buildish Example 1.2.3",
+                )
+
+    def test_create_ref_rejects_invalid_object_payload(self) -> None:
+        with mock.patch(
+            "apache_buildish_release_tooling.release.github_git_refs.run_logged_command",
+            return_value=subprocess.CompletedProcess([], 0, json.dumps({"ref": []}), ""),
+        ):
+            with self.assertRaisesRegex(
+                ValueError,
+                "GitHub ref creation returned an invalid payload",
+            ):
+                github_git_refs.create_ref(
+                    "apache/buildish-example",
+                    ref_name="refs/tags/v1.2.3",
+                    target_sha="tag-object-sha",
+                )
+
     def test_create_annotated_tag_object_posts_expected_payload(self) -> None:
         with mock.patch(
             "apache_buildish_release_tooling.release.github_git_refs.run_logged_command",

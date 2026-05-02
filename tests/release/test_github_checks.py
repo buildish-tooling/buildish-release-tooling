@@ -81,6 +81,32 @@ class GitHubChecksTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no GitHub checks were found"):
             assert_ref_ready({"check_runs": []}, {"statuses": []}, require_at_least_one_check=True)
 
+    def test_total_count_rejects_malformed_payloads(self) -> None:
+        with self.assertRaisesRegex(ValueError, "invalid GitHub check-runs payload"):
+            total_count(
+                {"check_runs": "not-a-list"},
+                {"statuses": []},
+            )
+        with self.assertRaisesRegex(ValueError, "invalid GitHub statuses payload"):
+            total_count(
+                {"check_runs": []},
+                {"statuses": "not-a-list"},
+            )
+
+    def test_assert_ref_ready_rejects_malformed_payloads(self) -> None:
+        with self.assertRaisesRegex(ValueError, "invalid GitHub check-runs payload"):
+            assert_ref_ready(
+                {"check_runs": [{"name": []}]},
+                {"statuses": []},
+                require_at_least_one_check=False,
+            )
+        with self.assertRaisesRegex(ValueError, "invalid GitHub statuses payload"):
+            assert_ref_ready(
+                {"check_runs": []},
+                {"statuses": [{"context": []}]},
+                require_at_least_one_check=False,
+            )
+
     def test_resolve_repository_slug_reads_origin_url(self) -> None:
         with mock.patch(
             "apache_buildish_release_tooling.release.github_checks.run_logged_command",

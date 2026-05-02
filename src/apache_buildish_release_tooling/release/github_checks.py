@@ -50,20 +50,32 @@ class _StatusesPayloadRead(_ExternalGithubReadModel):
     statuses: list[_StatusRead] | None = None
 
 
-def _check_runs(payload: Mapping[str, object]) -> list[_CheckRunRead]:
+def _parsed_check_runs_payload(
+    payload: Mapping[str, object],
+) -> _CheckRunsPayloadRead | None:
     try:
-        parsed = _CheckRunsPayloadRead.model_validate(payload)
+        return _CheckRunsPayloadRead.model_validate(payload)
     except ValidationError:
-        return []
-    return list(parsed.check_runs or [])
+        return None
+
+
+def _parsed_statuses_payload(
+    payload: Mapping[str, object],
+) -> _StatusesPayloadRead | None:
+    try:
+        return _StatusesPayloadRead.model_validate(payload)
+    except ValidationError:
+        return None
+
+
+def _check_runs(payload: Mapping[str, object]) -> list[_CheckRunRead]:
+    parsed = _parsed_check_runs_payload(payload)
+    return list(parsed.check_runs or []) if parsed is not None else []
 
 
 def _statuses(payload: Mapping[str, object]) -> list[_StatusRead]:
-    try:
-        parsed = _StatusesPayloadRead.model_validate(payload)
-    except ValidationError:
-        return []
-    return list(parsed.statuses or [])
+    parsed = _parsed_statuses_payload(payload)
+    return list(parsed.statuses or []) if parsed is not None else []
 
 
 def _json_object_output(stdout: str, *, source: str) -> dict[str, object]:
@@ -143,6 +155,10 @@ def _invalid_statuses_report(status_payload: Mapping[str, object]) -> list[str]:
 def total_count(check_runs_payload: Mapping[str, object], statuses_payload: Mapping[str, object]) -> int:
     """Count check runs and legacy status contexts in two API payloads."""
 
+    if _parsed_check_runs_payload(check_runs_payload) is None:
+        raise ValueError("invalid GitHub check-runs payload")
+    if _parsed_statuses_payload(statuses_payload) is None:
+        raise ValueError("invalid GitHub statuses payload")
     check_run_count = len(_check_runs(check_runs_payload))
     status_count = len(_statuses(statuses_payload))
     return check_run_count + status_count
@@ -155,6 +171,10 @@ def assert_ref_ready(
 ) -> int:
     """Enforce the Buildish source-ref readiness policy for GitHub checks."""
 
+    if _parsed_check_runs_payload(check_runs_payload) is None:
+        raise ValueError("invalid GitHub check-runs payload")
+    if _parsed_statuses_payload(statuses_payload) is None:
+        raise ValueError("invalid GitHub statuses payload")
     invalid_check_runs = _invalid_check_runs_report(check_runs_payload)
     invalid_statuses = _invalid_statuses_report(statuses_payload)
     checks_total = total_count(check_runs_payload, statuses_payload)
