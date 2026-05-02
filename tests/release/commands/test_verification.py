@@ -21,6 +21,7 @@ from argparse import Namespace
 from dataclasses import dataclass
 import io
 import tarfile
+from typing import cast
 import zipfile
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
@@ -2969,6 +2970,109 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual("failed", secondary_by_id["npm-package-main"]["verdict"])
         self.assertEqual("verified", secondary_by_id["pypi-wheel"]["verdict"])
 
+    def test_verify_rc_command_reports_missing_sidecars_without_crashing(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            missing_source_checksum_sidecar=True,
+            secondary_kind="generic-file",
+            missing_secondary_checksum_sidecar=True,
+            include_maven_repository=True,
+            missing_maven_inventory=True,
+            include_python_distribution=True,
+            missing_python_checksum_sidecar=True,
+            include_npm_package=True,
+            missing_npm_checksum_sidecar=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn("file URI could not be read:", completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        self.assertEqual("failed", report_payload["verdict"])
+        self.assertTrue(
+            any(
+                failure["scope"] == "source-artifact"
+                and failure["subject"] == "source artifact checksum sidecar"
+                for failure in report_payload["failures"]
+            )
+        )
+        secondary_by_id = {
+            verification["artifact_id"]: verification
+            for verification in report_payload["secondary_artifact_verifications"]
+        }
+        self.assertEqual("failed", secondary_by_id["bootstrap-zip"]["verdict"])
+        self.assertEqual("failed", secondary_by_id["maven-staging-main"]["verdict"])
+        self.assertEqual("failed", secondary_by_id["pypi-wheel"]["verdict"])
+        self.assertEqual("failed", secondary_by_id["npm-package-main"]["verdict"])
+
+    def test_verify_rc_command_handles_zero_length_artifacts_without_crashing(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            zero_length_source_artifact=True,
+            secondary_kind="generic-file",
+            zero_length_secondary_artifact=True,
+            include_maven_repository=True,
+            zero_length_maven_repository_file=True,
+            include_python_distribution=True,
+            zero_length_python_distribution=True,
+            include_npm_package=True,
+            zero_length_npm_tarball=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, completed.returncode)
+        self.assertIn(
+            "staged source artifact does not match the declared source_commit_sha",
+            completed.stderr,
+        )
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        self.assertEqual("failed", report_payload["verdict"])
+        self.assertEqual("failed", report_payload["source_artifact_verification"]["verdict"])
+        secondary_by_id = {
+            verification["artifact_id"]: verification
+            for verification in report_payload["secondary_artifact_verifications"]
+        }
+        self.assertEqual("verified", secondary_by_id["bootstrap-zip"]["verdict"])
+        self.assertEqual("verified", secondary_by_id["maven-staging-main"]["verdict"])
+        self.assertEqual("verified", secondary_by_id["pypi-wheel"]["verdict"])
+        self.assertEqual("verified", secondary_by_id["npm-package-main"]["verdict"])
+
     def test_verify_rc_command_omits_source_reproducibility_without_rebuilt_source_artifact(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
@@ -4267,18 +4371,28 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         mismatched_source_commit_sha: bool = False,
         drift_source_artifact: bool = False,
         missing_source_artifact: bool = False,
+        missing_source_checksum_sidecar: bool = False,
+        missing_source_signature: bool = False,
+        zero_length_source_artifact: bool = False,
         secondary_kind: str | None = None,
         mismatched_secondary_digest: bool = False,
         missing_secondary_artifact: bool = False,
+        missing_secondary_checksum_sidecar: bool = False,
+        missing_secondary_signature: bool = False,
+        zero_length_secondary_artifact: bool = False,
         malformed_secondary_missing_artifact_id: bool = False,
         malformed_secondary_missing_kind: bool = False,
         include_maven_repository: bool = False,
         drift_maven_repository: bool = False,
+        missing_maven_inventory: bool = False,
+        zero_length_maven_repository_file: bool = False,
         include_maven_repository_reproducibility: bool = False,
         drift_maven_repository_reproducibility: bool = False,
         include_unrelated_local_maven_repository_files: bool = False,
         omit_maven_repository_sidecar_path_rules: bool = False,
         include_python_distribution: bool = False,
+        missing_python_checksum_sidecar: bool = False,
+        zero_length_python_distribution: bool = False,
         missing_python_index_entry: bool = False,
         include_python_distribution_reproducibility: bool = False,
         drift_python_distribution_reproducibility: bool = False,
@@ -4287,6 +4401,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         drift_npm_registry_integrity: bool = False,
         drift_npm_tarball: bool = False,
         missing_npm_tarball: bool = False,
+        missing_npm_checksum_sidecar: bool = False,
+        zero_length_npm_tarball: bool = False,
         include_npm_package_reproducibility: bool = False,
         drift_npm_package_reproducibility: bool = False,
         archive_npm_package_reproducibility: bool = False,
@@ -4796,10 +4912,22 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         )
         source_artifact_signature_path = stage_dir / f"{source_artifact_name}.asc"
         self._detached_sign(effective_gpg_home, source_artifact_path, source_artifact_signature_path)
+        if zero_length_source_artifact:
+            source_artifact_path.write_bytes(b"")
+            source_artifact_sha512 = hashlib.sha512(b"").hexdigest()
+            source_artifact_sha512_path.write_text(
+                f"{source_artifact_sha512}  {source_artifact_name}\n",
+                encoding="utf-8",
+            )
+            self._detached_sign(effective_gpg_home, source_artifact_path, source_artifact_signature_path)
         if drift_source_artifact:
             source_artifact_path.write_bytes(source_artifact_path.read_bytes() + b"drift\n")
         if missing_source_artifact:
             source_artifact_path.unlink()
+        if missing_source_checksum_sidecar:
+            source_artifact_sha512_path.unlink()
+        if missing_source_signature:
+            source_artifact_signature_path.unlink()
         secondary_artifacts: list[dict[str, object]] = []
         if secondary_kind is not None:
             secondary_name = "buildish-example-bootstrap.zip"
@@ -4812,7 +4940,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                     timestamp=(2026, 4, 30, 12, 0, 1),
                 )
             else:
-                secondary_path.write_bytes(b"bootstrap zip bytes\n")
+                secondary_path.write_bytes(
+                    b"" if zero_length_secondary_artifact else b"bootstrap zip bytes\n"
+                )
             secondary_sha512 = hashlib.sha512(secondary_path.read_bytes()).hexdigest()
             secondary_sha512_path = stage_dir / f"{secondary_name}.sha512"
             secondary_sha512_path.write_text(
@@ -4841,7 +4971,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                         "uri": secondary_signature_path.as_uri(),
                     }
                 ],
-            }
+                }
             if include_generic_file_reproducibility:
                 secondary_artifact["reproducibility"] = {
                     "profile_id": "bootstrap-zip",
@@ -4892,6 +5022,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 )
             if missing_secondary_artifact:
                 secondary_path.unlink()
+            if missing_secondary_checksum_sidecar:
+                secondary_sha512_path.unlink()
+            if missing_secondary_signature:
+                secondary_signature_path.unlink()
         if include_maven_repository:
             staging_repository_id = "orgapacheexample-1234"
             repository_root = sandbox_dir / staging_repository_id
@@ -4900,19 +5034,24 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             artifact_path = repository_root / artifact_relative_path
             artifact_path.parent.mkdir(parents=True, exist_ok=True)
             if include_maven_repository_reproducibility:
-                _write_zip_archive(
-                    artifact_path,
-                    member_name="app.txt",
-                    payload=b"jar payload\n",
-                    timestamp=(2026, 4, 30, 12, 0, 1),
-                )
+                if zero_length_maven_repository_file:
+                    artifact_path.write_bytes(b"")
+                else:
+                    _write_zip_archive(
+                        artifact_path,
+                        member_name="app.txt",
+                        payload=b"jar payload\n",
+                        timestamp=(2026, 4, 30, 12, 0, 1),
+                    )
                 pom_path = artifact_path.with_name("app-1.0.0.pom")
                 pom_path.write_text("<project>stable</project>\n", encoding="utf-8")
                 metadata_path = repository_root / "org/example/app/maven-metadata.xml"
                 metadata_path.parent.mkdir(parents=True, exist_ok=True)
                 metadata_path.write_text("<metadata/>\n", encoding="utf-8")
             else:
-                artifact_path.write_bytes(b"jar-bytes\n")
+                artifact_path.write_bytes(
+                    b"" if zero_length_maven_repository_file else b"jar-bytes\n"
+                )
             artifact_sha512 = hashlib.sha512(artifact_path.read_bytes()).hexdigest()
             artifact_sha512_path = artifact_path.with_name(f"{artifact_path.name}.sha512")
             artifact_sha512_path.write_text(
@@ -4946,6 +5085,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                     "profile_id": "maven-staging",
                 }
             secondary_artifacts.append(maven_artifact)
+            if missing_maven_inventory:
+                (repository_bundle_dir / inventory_filename).unlink()
             if drift_maven_repository:
                 artifact_path.write_bytes(b"jar-drift\n")
         if include_python_distribution:
@@ -4960,7 +5101,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                     timestamp=(2026, 4, 30, 12, 0, 1),
                 )
             else:
-                distribution_path.write_bytes(b"wheel payload\n")
+                distribution_path.write_bytes(
+                    b"" if zero_length_python_distribution else b"wheel payload\n"
+                )
             distribution_bundle_dir = sandbox_dir / "python-bundle"
             distribution_bundle_dir.mkdir(parents=True, exist_ok=True)
             registration = build_python_distribution_registration(
@@ -4985,6 +5128,14 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 mode="json",
                 exclude_none=True,
             )
+            if missing_python_checksum_sidecar:
+                python_sidecar_path = distribution_dir / f"{distribution_path.name}.sha256"
+                python_sidecar_path.write_text(
+                    f"{python_artifact['checksums']['sha256']['value']}  {distribution_path.name}\n",
+                    encoding="utf-8",
+                )
+                python_artifact["checksums"]["sha256"]["uri"] = python_sidecar_path.as_uri()
+                python_sidecar_path.unlink()
             simple_project_dir = sandbox_dir / "simple" / "example"
             simple_project_dir.mkdir(parents=True, exist_ok=True)
             simple_index_path = simple_project_dir / "index.json"
@@ -5019,7 +5170,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                     mtime=1714435201,
                 )
             else:
-                artifact_file_path.write_bytes(b"npm package payload\n")
+                artifact_file_path.write_bytes(
+                    b"" if zero_length_npm_tarball else b"npm package payload\n"
+                )
             artifact_bytes = artifact_file_path.read_bytes()
             expected_sha512 = hashlib.sha512(artifact_bytes).hexdigest()
             expected_integrity = "sha512-" + base64.b64encode(hashlib.sha512(artifact_bytes).digest()).decode("ascii")
@@ -5065,6 +5218,16 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                     }
                 },
             }
+            if missing_npm_checksum_sidecar:
+                npm_sidecar_path = artifact_file_path.parent / f"{artifact_file_path.name}.sha512"
+                npm_sidecar_path.write_text(
+                    f"{expected_sha512}  {artifact_file_path.name}\n",
+                    encoding="utf-8",
+                )
+                npm_checksums = cast(dict[str, object], npm_artifact["checksums"])
+                npm_sha512_payload = cast(dict[str, str], npm_checksums["sha512"])
+                npm_sha512_payload["uri"] = npm_sidecar_path.as_uri()
+                npm_sidecar_path.unlink()
             if include_npm_package_reproducibility:
                 npm_artifact["reproducibility"] = {
                     "profile_id": "npm-package-main",
