@@ -16,22 +16,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-import json
 from pathlib import Path
-from typing import Literal, cast
+from typing import cast
 
 from apache_buildish_release_tooling.release.contracts import (
-    AnySecondaryArtifactVerification,
-    ArtifactReproducibilityReport,
     GenericFileVerificationReport,
-    InspectReproCountSummary,
     InspectReproReportV1,
-    InspectReproSummaryV1,
-    InspectReproTargetV1,
-    InspectionBundleManifestV1,
     SourceArtifactVerificationSection,
-    VerifyRcReportV1,
 )
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.verification.common import (
@@ -60,17 +51,22 @@ from apache_buildish_release_tooling.release.verification.inspection.python_dist
 from apache_buildish_release_tooling.release.verification.inspection.source_artifact import (
     inspect_source_artifact_reproducibility,
 )
-
-
-@dataclass(frozen=True)
-class ReproducibilityFailureInspectionTarget:
-    """One retained reproducibility failure selected for inspect-repro analysis."""
-
-    section_label: str
-    kind: str
-    artifact_id: str
-    reproducibility: ArtifactReproducibilityReport
-    verification: AnySecondaryArtifactVerification | SourceArtifactVerificationSection
+from apache_buildish_release_tooling.release.verification.inspection.report_loading import (
+    load_supported_bundle_manifest,
+    load_supported_verify_rc_report,
+)
+from apache_buildish_release_tooling.release.verification.inspection.targets import (
+    failing_reproducibility_targets,
+    filtered_reproducibility_targets,
+    inspect_repro_summary,
+    inspect_repro_target_payload,
+    renumber_reproducibility_targets,
+)
+from apache_buildish_release_tooling.release.verification.inspection.transcript import (
+    emit_failure_summary,
+    emit_failure_target_list,
+    emit_reproducibility_header,
+)
 
 
 def inspect_repro_report(
@@ -82,7 +78,7 @@ def inspect_repro_report(
 ) -> None:
     """Read one saved verify-rc report and inspect any retained reproducibility evidence."""
 
-    report = _load_supported_verify_rc_report(report_path)
+    report = load_supported_verify_rc_report(report_path)
     inspection_bundle = report.inspection_bundle
     if inspection_bundle is None:
         raise ValueError(
@@ -93,7 +89,7 @@ def inspect_repro_report(
         raise ValueError(
             f"inspection bundle referenced by verify-rc report does not exist: {bundle_root}"
         )
-    bundle_manifest = _load_supported_bundle_manifest(
+    bundle_manifest = load_supported_bundle_manifest(
         bundle_root=bundle_root,
         report=report,
     )
@@ -111,7 +107,7 @@ def inspect_repro_report(
         "Build checks attempted",
         str(report.reproducibility_execution.build_checks_attempted),
     )
-    targets = _failing_reproducibility_targets(report)
+    targets = failing_reproducibility_targets(report)
     if not targets:
         emit_success(
             progress_reporter,
@@ -120,13 +116,13 @@ def inspect_repro_report(
         return
     if artifact_ids:
         requested_ids = tuple(dict.fromkeys(artifact_ids))
-        targets = _renumber_reproducibility_targets(
-            _filtered_reproducibility_targets(targets, artifact_ids=requested_ids)
+        targets = renumber_reproducibility_targets(
+            filtered_reproducibility_targets(targets, artifact_ids=requested_ids)
         )
         emit_detail(progress_reporter, "Selected artifact ids", ", ".join(requested_ids))
     total_failure_count = len(targets)
-    _emit_failure_summary(progress_reporter, targets=targets)
-    _emit_failure_target_list(progress_reporter, targets=targets)
+    emit_failure_summary(progress_reporter, targets=targets)
+    emit_failure_target_list(progress_reporter, targets=targets)
     if summary_only:
         emit_info(
             progress_reporter,
@@ -143,7 +139,7 @@ def inspect_repro_report(
         f"Inspecting {total_failure_count} reproducibility failure(s) from the saved bundle",
     )
     for target in targets:
-        _emit_reproducibility_header(
+        emit_reproducibility_header(
             progress_reporter,
             section_label=target.section_label,
             reproducibility=target.reproducibility,
@@ -218,7 +214,7 @@ def inspect_repro_report_json(
 ) -> InspectReproReportV1:
     """Build machine-readable inspect-repro output for one saved verify-rc report."""
 
-    report = _load_supported_verify_rc_report(report_path)
+    report = load_supported_verify_rc_report(report_path)
     inspection_bundle = report.inspection_bundle
     if inspection_bundle is None:
         raise ValueError(
@@ -229,19 +225,19 @@ def inspect_repro_report_json(
         raise ValueError(
             f"inspection bundle referenced by verify-rc report does not exist: {bundle_root}"
         )
-    bundle_manifest = _load_supported_bundle_manifest(
+    bundle_manifest = load_supported_bundle_manifest(
         bundle_root=bundle_root,
         report=report,
     )
-    targets = _failing_reproducibility_targets(report)
+    targets = failing_reproducibility_targets(report)
     selected_artifact_ids = tuple(dict.fromkeys(artifact_ids))
     if selected_artifact_ids:
-        targets = _renumber_reproducibility_targets(
-            _filtered_reproducibility_targets(targets, artifact_ids=selected_artifact_ids)
+        targets = renumber_reproducibility_targets(
+            filtered_reproducibility_targets(targets, artifact_ids=selected_artifact_ids)
         )
-    summary = _inspect_repro_summary(targets)
+    summary = inspect_repro_summary(targets)
     target_payloads = [
-        _inspect_repro_target_payload(target)
+        inspect_repro_target_payload(target)
         for target in targets
     ]
     return InspectReproReportV1(
@@ -258,355 +254,4 @@ def inspect_repro_report_json(
         summary=summary,
         targets=target_payloads,
     )
-
-
-def _load_supported_verify_rc_report(report_path: Path) -> VerifyRcReportV1:
-    raw_payload = json.loads(report_path.read_text(encoding="utf-8"))
-    schema_version = raw_payload.get("schema_version")
-    if schema_version != "1":
-        raise ValueError(
-            f"unsupported verify-rc report schema version: {schema_version!r}; supported: 1"
-        )
-    return VerifyRcReportV1.model_validate(raw_payload)
-
-
-def _load_supported_bundle_manifest(
-    *,
-    bundle_root: Path,
-    report: VerifyRcReportV1,
-) -> InspectionBundleManifestV1 | None:
-    inspection_bundle = report.inspection_bundle
-    if inspection_bundle is None:
-        raise ValueError("verify-rc report does not reference an inspection bundle")
-    manifest_relative_path = inspection_bundle.manifest_relative_path
-    bundle_schema_version = inspection_bundle.bundle_schema_version
-    if manifest_relative_path is None and bundle_schema_version is None:
-        return None
-    if manifest_relative_path is None or bundle_schema_version is None:
-        raise ValueError(
-            "inspection bundle contract fields are incomplete; expected both "
-            "inspection_bundle.bundle_schema_version and inspection_bundle.manifest_relative_path"
-        )
-    if bundle_schema_version != "1":
-        raise ValueError(
-            f"unsupported inspection bundle schema version: {bundle_schema_version!r}; supported: 1"
-        )
-    manifest_path = bundle_root / manifest_relative_path
-    if not manifest_path.exists():
-        raise ValueError(f"inspection bundle manifest does not exist: {manifest_path}")
-    raw_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if raw_payload.get("schema_version") != "1":
-        raise ValueError(
-            "unsupported inspection bundle manifest schema version: "
-            f"{raw_payload.get('schema_version')!r}; supported: 1"
-        )
-    manifest = InspectionBundleManifestV1.model_validate(raw_payload)
-    if manifest.report_schema_version != report.schema_version:
-        raise ValueError(
-            "inspection bundle manifest report schema version does not match the verify-rc report: "
-            f"{manifest.report_schema_version!r} != {report.schema_version!r}"
-        )
-    if manifest.report_type != report.report_type:
-        raise ValueError(
-            "inspection bundle manifest report_type does not match the verify-rc report: "
-            f"{manifest.report_type!r} != {report.report_type!r}"
-        )
-    return manifest
-
-
-def _failing_reproducibility_targets(
-    report: VerifyRcReportV1,
-) -> list[ReproducibilityFailureInspectionTarget]:
-    targets: list[ReproducibilityFailureInspectionTarget] = []
-    source_reproducibility = report.source_artifact_verification.reproducibility
-    if (
-        isinstance(source_reproducibility, ArtifactReproducibilityReport)
-        and source_reproducibility.verdict == "failed"
-    ):
-        targets.append(
-            ReproducibilityFailureInspectionTarget(
-                section_label="Source Artifact",
-                kind="source-artifact",
-                artifact_id="source-artifact",
-                reproducibility=source_reproducibility,
-                verification=report.source_artifact_verification,
-            )
-        )
-    for verification in report.secondary_artifact_verifications:
-        reproducibility = getattr(verification, "reproducibility", None)
-        if not isinstance(reproducibility, ArtifactReproducibilityReport):
-            continue
-        if reproducibility.verdict != "failed":
-            continue
-        targets.append(
-            ReproducibilityFailureInspectionTarget(
-                section_label=f"Artifact: {verification.artifact_id}",
-                kind=verification.kind,
-                artifact_id=verification.artifact_id,
-                reproducibility=reproducibility,
-                verification=verification,
-            )
-        )
-    return _renumber_reproducibility_targets(targets)
-
-
-def _emit_failure_summary(
-    progress_reporter: ProgressReporter,
-    *,
-    targets: list[ReproducibilityFailureInspectionTarget],
-) -> None:
-    summary = _inspect_repro_summary(targets)
-    emit_detail(progress_reporter, "Reproducibility failures", str(summary.failure_count))
-    emit_detail(progress_reporter, "Source artifact failures", str(summary.source_failure_count))
-    emit_detail(progress_reporter, "Secondary artifact failures", str(summary.secondary_failure_count))
-    emit_detail(
-        progress_reporter,
-        "Failure kinds",
-        _render_count_summaries(summary.failure_kinds),
-    )
-    emit_detail(
-        progress_reporter,
-        "Failure classes",
-        _render_count_summaries(summary.failure_classes),
-    )
-    emit_detail(
-        progress_reporter,
-        "Failure groups",
-        _render_count_summaries(summary.failure_groups),
-    )
-    for group_label, artifact_ids in _grouped_failure_targets(targets).items():
-        emit_detail(
-            progress_reporter,
-            "Failure group",
-            f"{group_label}: {', '.join(sorted(artifact_ids))}",
-        )
-
-
-def _emit_failure_target_list(
-    progress_reporter: ProgressReporter,
-    *,
-    targets: list[ReproducibilityFailureInspectionTarget],
-) -> None:
-    for target in targets:
-        failure_class = target.reproducibility.failure_class or "unspecified"
-        emit_detail(
-            progress_reporter,
-            "Failure target",
-            f"{target.artifact_id} [{target.kind}] {failure_class}",
-        )
-
-
-def _filtered_reproducibility_targets(
-    targets: list[ReproducibilityFailureInspectionTarget],
-    *,
-    artifact_ids: tuple[str, ...],
-) -> list[ReproducibilityFailureInspectionTarget]:
-    allowed_ids = set(artifact_ids)
-    filtered_targets = [target for target in targets if target.artifact_id in allowed_ids]
-    if filtered_targets:
-        return filtered_targets
-    available_ids = ", ".join(sorted(target.artifact_id for target in targets))
-    raise ValueError(
-        "requested inspect-repro artifact ids did not match any retained reproducibility failures: "
-        f"{', '.join(artifact_ids)}; available: {available_ids or 'none'}"
-    )
-
-
-def _renumber_reproducibility_targets(
-    targets: list[ReproducibilityFailureInspectionTarget],
-) -> list[ReproducibilityFailureInspectionTarget]:
-    total_failure_count = len(targets)
-    normalized_targets: list[ReproducibilityFailureInspectionTarget] = []
-    for index, target in enumerate(targets, start=1):
-        normalized_targets.append(
-            ReproducibilityFailureInspectionTarget(
-                section_label=(
-                    f"Source Artifact {index}/{total_failure_count}"
-                    if target.kind == "source-artifact"
-                    else f"Artifact {index}/{total_failure_count}: {target.artifact_id}"
-                ),
-                kind=target.kind,
-                artifact_id=target.artifact_id,
-                reproducibility=target.reproducibility,
-                verification=target.verification,
-            )
-        )
-    return normalized_targets
-
-
-def _emit_reproducibility_header(
-    progress_reporter: ProgressReporter,
-    *,
-    section_label: str,
-    reproducibility: ArtifactReproducibilityReport,
-    verification: AnySecondaryArtifactVerification | SourceArtifactVerificationSection,
-) -> None:
-    emit_section(progress_reporter, section_label)
-    if isinstance(verification, SourceArtifactVerificationSection):
-        emit_detail(progress_reporter, "Kind", "source-artifact")
-        source_artifact_verification = True
-    else:
-        emit_detail(progress_reporter, "Kind", verification.kind)
-        source_artifact_verification = False
-    emit_detail(progress_reporter, "Profile", reproducibility.profile_id)
-    emit_detail(progress_reporter, "Comparison mode", reproducibility.comparison_mode)
-    recipe_source = (
-        "verifier-internal"
-        if source_artifact_verification
-        else _secondary_recipe_source(reproducibility)
-    )
-    emit_detail(progress_reporter, "Recipe source", recipe_source)
-    if recipe_source == "local-override" and reproducibility.canonical_recipe is not None:
-        canonical_build = reproducibility.canonical_recipe.build
-        if canonical_build.command:
-            emit_detail(
-                progress_reporter,
-                "Canonical build command",
-                " ".join(canonical_build.command),
-            )
-    effective_execution = reproducibility.effective_execution
-    if effective_execution is not None:
-        emit_detail(progress_reporter, "Execution backend", effective_execution.backend)
-    effective_build = effective_execution.build if effective_execution is not None else None
-    if effective_build is not None and effective_build.command:
-        emit_detail(
-            progress_reporter,
-            "Build command",
-            " ".join(effective_build.command),
-        )
-    if effective_build is not None and effective_build.working_directory is not None:
-        emit_detail(
-            progress_reporter,
-            "Build working directory",
-            effective_build.working_directory,
-        )
-    if effective_build is not None and effective_build.injected_environment_keys:
-        emit_detail(
-            progress_reporter,
-            "Injected environment keys",
-            ", ".join(effective_build.injected_environment_keys),
-        )
-    override_fields = _override_field_summary(reproducibility)
-    if override_fields:
-        emit_detail(
-            progress_reporter,
-            "Override fields",
-            ", ".join(override_fields),
-        )
-    if reproducibility.failure_class is not None:
-        emit_detail(
-            progress_reporter,
-            "Failure class",
-            reproducibility.failure_class,
-        )
-    if reproducibility.evidence:
-        emit_detail(
-            progress_reporter,
-            "Retained evidence",
-            ", ".join(reference.label for reference in reproducibility.evidence),
-        )
-
-
-def _override_field_summary(
-    reproducibility: ArtifactReproducibilityReport,
-) -> list[str]:
-    build_override = reproducibility.override.build
-    if build_override is None:
-        return []
-    fields: list[str] = []
-    if build_override.command is not None:
-        fields.append("build.command")
-    if build_override.working_directory is not None:
-        fields.append("build.working_directory")
-    if build_override.output_globs is not None:
-        fields.append("build.output_globs")
-    fields.extend(f"build.env.{key}" for key in build_override.env_keys)
-    return fields
-
-
-def _summarize_counts(values: list[str]) -> str:
-    counts: dict[str, int] = {}
-    for value in values:
-        counts[value] = counts.get(value, 0) + 1
-    return ", ".join(f"{value}={count}" for value, count in sorted(counts.items()))
-
-
-def _count_summaries(values: list[str]) -> list[InspectReproCountSummary]:
-    counts: dict[str, int] = {}
-    for value in values:
-        counts[value] = counts.get(value, 0) + 1
-    return [
-        InspectReproCountSummary(key=value, count=count)
-        for value, count in sorted(counts.items())
-    ]
-
-
-def _render_count_summaries(summaries: list[InspectReproCountSummary]) -> str:
-    return ", ".join(f"{summary.key}={summary.count}" for summary in summaries)
-
-
-def _inspect_repro_summary(
-    targets: list[ReproducibilityFailureInspectionTarget],
-) -> InspectReproSummaryV1:
-    source_failure_count = sum(1 for target in targets if target.kind == "source-artifact")
-    secondary_failure_count = len(targets) - source_failure_count
-    return InspectReproSummaryV1(
-        failure_count=len(targets),
-        source_failure_count=source_failure_count,
-        secondary_failure_count=secondary_failure_count,
-        failure_kinds=_count_summaries([target.kind for target in targets]),
-        failure_classes=_count_summaries(
-            [target.reproducibility.failure_class or "unspecified" for target in targets]
-        ),
-        failure_groups=_count_summaries(
-            [_failure_group_label(target) for target in targets]
-        ),
-    )
-
-
-def _grouped_failure_targets(
-    targets: list[ReproducibilityFailureInspectionTarget],
-) -> dict[str, list[str]]:
-    grouped: dict[str, list[str]] = {}
-    for target in targets:
-        grouped.setdefault(_failure_group_label(target), []).append(target.artifact_id)
-    return grouped
-
-
-def _failure_group_label(target: ReproducibilityFailureInspectionTarget) -> str:
-    scope = "source" if target.kind == "source-artifact" else "secondary"
-    failure_class = target.reproducibility.failure_class or "unspecified"
-    return f"{scope}/{target.kind}/{failure_class}"
-
-
-def _secondary_recipe_source(
-    reproducibility: ArtifactReproducibilityReport,
-) -> Literal["canonical-profile", "local-override"]:
-    return "local-override" if reproducibility.override.applied else "canonical-profile"
-
-
-def _inspect_repro_target_payload(
-    target: ReproducibilityFailureInspectionTarget,
-) -> InspectReproTargetV1:
-    reproducibility = target.reproducibility
-    verification = target.verification
-    source_artifact_verification = isinstance(verification, SourceArtifactVerificationSection)
-    recipe_source = (
-        "verifier-internal"
-        if source_artifact_verification
-        else _secondary_recipe_source(reproducibility)
-    )
-    return InspectReproTargetV1(
-        section_label=target.section_label,
-        artifact_id=target.artifact_id,
-        kind=target.kind,
-        failure_class=reproducibility.failure_class,
-        profile_id=reproducibility.profile_id,
-        comparison_mode=reproducibility.comparison_mode,
-        recipe_source=recipe_source,
-        evidence_labels=[reference.label for reference in reproducibility.evidence],
-        override_fields=_override_field_summary(reproducibility),
-    )
-
-
 __all__ = ["inspect_repro_report", "inspect_repro_report_json"]
