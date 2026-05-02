@@ -2883,11 +2883,18 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 "path_rules",
                 "matches_remote_bytes",
                 "failure_class",
+                "verified_path_count",
+                "failed_path_count",
+                "skipped_path_count",
                 "path_results",
                 "issues",
             ],
             list(metadata_payload),
         )
+        self.assertGreater(metadata_payload["verified_path_count"], 0)
+        self.assertEqual(0, metadata_payload["failed_path_count"])
+        self.assertGreaterEqual(metadata_payload["skipped_path_count"], 0)
+        self.assertEqual([], metadata_payload["path_results"])
         self.assertEqual(
             [".buildish-out/m2repo"],
             secondary_verification["reproducibility"]["effective_execution"]["build"]["output_paths"],
@@ -2977,6 +2984,18 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             "path-comparison-failed",
             secondary_verification["reproducibility"]["failure_class"],
         )
+        metadata_reference = next(
+            reference
+            for reference in secondary_verification["reproducibility"]["evidence"]
+            if reference["label"] == "comparison-metadata"
+        )
+        metadata_payload = json.loads(
+            (fixture.inspection_bundle_path / metadata_reference["path"]).read_text(encoding="utf-8")
+        )
+        self.assertGreaterEqual(metadata_payload["verified_path_count"], 0)
+        self.assertEqual(1, metadata_payload["failed_path_count"])
+        self.assertGreaterEqual(metadata_payload["skipped_path_count"], 0)
+        self.assertEqual(1, len(metadata_payload["path_results"]))
 
     def test_inspect_repro_command_reports_saved_maven_repository_drift(self) -> None:
         if not command_available("gpg"):

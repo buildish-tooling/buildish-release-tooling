@@ -62,9 +62,6 @@ def inspect_maven_repository_reproducibility(
         for output_path in metadata.effective_execution.build.output_paths:
             emit_detail(progress_reporter, "Rebuild output", output_path)
     path_results = metadata.path_results
-    if not path_results:
-        emit_warning(progress_reporter, "No repository path results were retained for this artifact")
-        return
     verified_results = [
         path_result
         for path_result in path_results
@@ -80,11 +77,24 @@ def inspect_maven_repository_reproducibility(
         for path_result in path_results
         if path_result.verdict == "skipped"
     ]
-    emit_detail(progress_reporter, "Compared staged paths", str(len(path_results)))
-    emit_detail(progress_reporter, "Verified comparable paths", str(len(verified_results)))
-    emit_detail(progress_reporter, "Failed comparable paths", str(len(failed_results)))
-    emit_detail(progress_reporter, "Skipped remote-only paths", str(len(skipped_results)))
-    if not failed_results:
+    verified_count = metadata.verified_path_count
+    if verified_count is None:
+        verified_count = len(verified_results)
+    failed_count = metadata.failed_path_count
+    if failed_count is None:
+        failed_count = len(failed_results)
+    skipped_count = metadata.skipped_path_count
+    if skipped_count is None:
+        skipped_count = len(skipped_results)
+    total_compared_path_count = verified_count + failed_count + skipped_count
+    if total_compared_path_count == 0 and not path_results:
+        emit_warning(progress_reporter, "No repository path results were retained for this artifact")
+        return
+    emit_detail(progress_reporter, "Compared staged paths", str(total_compared_path_count))
+    emit_detail(progress_reporter, "Verified comparable paths", str(verified_count))
+    emit_detail(progress_reporter, "Failed comparable paths", str(failed_count))
+    emit_detail(progress_reporter, "Skipped remote-only paths", str(skipped_count))
+    if not failed_results and failed_count == 0:
         emit_success(progress_reporter, "No failed comparable repository paths were retained")
         return
     emit_detail(progress_reporter, "Failed by mode", _failed_mode_summary(failed_results))

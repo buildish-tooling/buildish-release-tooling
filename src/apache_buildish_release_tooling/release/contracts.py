@@ -825,6 +825,9 @@ class MavenRepositoryReproducibilityMetadata(BuildishContractModel):
     path_rules: list[MavenRepositoryPathRuleReport] = Field(default_factory=list)
     matches_remote_bytes: bool | None = None
     failure_class: NonEmptyString | None = None
+    verified_path_count: int | None = Field(default=None, ge=0)
+    failed_path_count: int | None = Field(default=None, ge=0)
+    skipped_path_count: int | None = Field(default=None, ge=0)
     path_results: list[MavenRepositoryPathResultReport] = Field(default_factory=list)
     issues: list[str] = Field(default_factory=list)
 

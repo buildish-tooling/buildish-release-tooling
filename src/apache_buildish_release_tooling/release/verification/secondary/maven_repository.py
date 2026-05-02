@@ -435,6 +435,15 @@ def _verify_maven_repository_reproducibility(
                 failure_class = "build-failed"
             issues.append(str(exc))
     if inspection_bundle_root is not None:
+        verified_path_count = sum(
+            1 for path_result in path_results if path_result.verdict == "verified"
+        )
+        failed_path_count = sum(
+            1 for path_result in path_results if path_result.verdict == "failed"
+        )
+        skipped_path_count = sum(
+            1 for path_result in path_results if path_result.verdict == "skipped"
+        )
         metadata_path = write_reproducibility_metadata(
             inspection_bundle_root,
             artifact_id=artifact_id,
@@ -451,7 +460,14 @@ def _verify_maven_repository_reproducibility(
                 path_rules=list(path_rules),
                 matches_remote_bytes=matches_remote_bytes,
                 failure_class=failure_class,
-                path_results=path_results,
+                verified_path_count=verified_path_count,
+                failed_path_count=failed_path_count,
+                skipped_path_count=skipped_path_count,
+                path_results=[
+                    path_result
+                    for path_result in path_results
+                    if path_result.verdict == "failed"
+                ],
                 issues=issues,
             ),
         )
