@@ -172,6 +172,96 @@ class LoadComponentConfigTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "verify_rc.source.reproducibility.profile_id"):
             load_component_config(str(config_path))
 
+    def test_load_component_config_rejects_incompatible_verify_rc_comparison_modes(self) -> None:
+        base_lines = [
+            "component_id: buildish-example",
+            "source_artifact_prefix: apache-buildish-example",
+            "asf_dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+            "asf_dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+            "asf_keys_url: https://downloads.apache.org/incubator/buildish/KEYS",
+            "moving_tags_enabled: true",
+            "latest_tag_enabled: false",
+            "secondary_targets:",
+            "  - github-action",
+            "final_tag_mode: rc-source-commit",
+            "vote_release_name: Apache Buildish Example",
+            "release_verification_guide_url: https://buildish.apache.org/buildish-example/release-verification/",
+            "verify_rc_instructions: verify",
+            "prepare_rc_runs_tests: false",
+            "release_branch_ci_required: true",
+            "verify_rc:",
+            "  profiles:",
+            "    test-profile:",
+            "      kind: {kind}",
+            "      build:",
+            "        command: [\"./buildish-release-tooling/rebuild.sh\"]",
+            "        output_globs:",
+            "          - dist/output",
+            "      comparison:",
+        ]
+        cases = (
+            (
+                "source-artifact",
+                [
+                    "        mode: platform-digest",
+                    "        image_ref: ghcr.io/apache/buildish-example:test",
+                ],
+                "source-artifact, generic-file, python-distribution, and npm-package profiles must use comparison.mode 'exact-bytes'",
+            ),
+            (
+                "generic-file",
+                [
+                    "        mode: repository-tree",
+                    "        repository_dir: .buildish-out/m2repo",
+                ],
+                "source-artifact, generic-file, python-distribution, and npm-package profiles must use comparison.mode 'exact-bytes'",
+            ),
+            (
+                "python-distribution",
+                [
+                    "        mode: repository-tree",
+                    "        repository_dir: .buildish-out/m2repo",
+                ],
+                "source-artifact, generic-file, python-distribution, and npm-package profiles must use comparison.mode 'exact-bytes'",
+            ),
+            (
+                "npm-package",
+                [
+                    "        mode: platform-digest",
+                    "        image_ref: ghcr.io/apache/buildish-example:test",
+                ],
+                "source-artifact, generic-file, python-distribution, and npm-package profiles must use comparison.mode 'exact-bytes'",
+            ),
+            (
+                "maven-repository",
+                [
+                    "        mode: exact-bytes",
+                ],
+                "verify_rc maven-repository profiles must use comparison.mode 'repository-tree'",
+            ),
+            (
+                "oci-image",
+                [
+                    "        mode: exact-bytes",
+                ],
+                "verify_rc oci-image profiles must use comparison.mode 'platform-digest' or 'provenance-only'",
+            ),
+        )
+
+        for index, (kind, comparison_lines, expected_error) in enumerate(cases, start=1):
+            with self.subTest(kind=kind):
+                sandbox_dir = create_build_test_sandbox()
+                self.addCleanup(cleanup_sandbox, sandbox_dir)
+                config_path = sandbox_dir / f"component-{index}.yaml"
+                config_path.write_text(
+                    "\n".join(
+                        [line.format(kind=kind) for line in base_lines] + comparison_lines
+                    ),
+                    encoding="utf-8",
+                )
+                with self.assertRaisesRegex(ValueError, expected_error):
+                    load_component_config(str(config_path))
+
     def test_load_checked_in_component_configs(self) -> None:
         expected_targets = {
             "buildish-mammoth-cache": ["github-action", "github-release"],

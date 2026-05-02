@@ -114,6 +114,22 @@ are:
 That contract is deliberate so reports and bundles do not leak secrets or machine-local
 credentials.
 
+### Current comparison-mode matrix
+
+Schema version `1` currently supports this reproducibility comparison-mode matrix:
+
+- `source-artifact`: `exact-bytes`
+- `generic-file`: `exact-bytes`
+- `generic-file-with-openpgp`: `exact-bytes`
+- `python-distribution`: `exact-bytes`
+- `npm-package`: `exact-bytes`
+- `maven-repository`: `repository-tree`
+- `oci-image`: `platform-digest` or `provenance-only`
+
+That matrix is part of the current contract. New modes or incompatible remapping of existing
+artifact kinds to different modes require an explicit schema or configuration-contract change, not
+silent expansion.
+
 ## Inspection bundle
 
 When `verify-rc` attempts reproducibility checks, it may emit a curated inspection bundle next to
