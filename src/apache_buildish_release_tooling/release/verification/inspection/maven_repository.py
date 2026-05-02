@@ -107,6 +107,9 @@ def inspect_maven_repository_reproducibility(
     diagnosis = _failure_diagnosis(failed_results)
     if diagnosis is not None:
         emit_info(progress_reporter, diagnosis)
+    additional_hint = _additional_failure_hint(failed_results)
+    if additional_hint is not None:
+        emit_info(progress_reporter, additional_hint)
     emit_failure(
         progress_reporter,
         f"{len(failed_results)} comparable repository path(s) failed local comparison",
@@ -230,4 +233,17 @@ def _failure_diagnosis(failed_results: list[MavenRepositoryPathResultReport]) ->
         for path_result in failed_results
     ):
         return "Archive member drift is present inside one or more rebuilt repository artifacts"
+    return None
+
+
+def _additional_failure_hint(failed_results: list[MavenRepositoryPathResultReport]) -> str | None:
+    categories = {_failure_category(path_result) for path_result in failed_results}
+    if categories == {"metadata-text"}:
+        return "Maven hint: start with versioning, generated POM/module files, and other descriptor text paths"
+    if categories == {"archive-payload"}:
+        return "Maven hint: start with rebuilt JAR/WAR archive contents before checking descriptor side files"
+    if "missing-local" in categories:
+        return "Maven hint: a local rebuild output path is missing; compare packaging scope and repository publication layout first"
+    if categories == {"metadata-text", "archive-payload"}:
+        return "Maven hint: both descriptor files and packaged repository artifacts drifted; confirm descriptor/version outputs before archive payloads"
     return None

@@ -3147,6 +3147,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Failed by category: metadata-text=1", inspect_completed.stderr)
         self.assertIn("Failed by repository directory: org/example/app/1.0.0=1", inspect_completed.stderr)
         self.assertIn("Likely descriptor/text drift", inspect_completed.stderr)
+        self.assertIn(
+            "Maven hint: start with versioning, generated POM/module files, and other descriptor text paths",
+            inspect_completed.stderr,
+        )
         self.assertIn("Failed metadata/text paths: 1", inspect_completed.stderr)
         self.assertIn(
             "Metadata/text path: org/example/app/1.0.0/app-1.0.0.pom [exact-bytes] raw bytes differ",
@@ -3471,6 +3475,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Drift classification: top-level-and-platform-payload", inspect_completed.stderr)
         self.assertIn("Changed platform: linux/arm64", inspect_completed.stderr)
         self.assertIn("Platform payload drift is present", inspect_completed.stderr)
+        self.assertIn(
+            "OCI hint: compare the rebuilt platform images above before reviewing top-level manifest/index metadata",
+            inspect_completed.stderr,
+        )
 
     def _prepare_verification_fixture(
         self,

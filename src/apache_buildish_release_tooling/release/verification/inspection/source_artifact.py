@@ -117,6 +117,26 @@ def inspect_source_artifact_reproducibility(
             progress_reporter,
             "Source artifact hint: this often points to gzip or outer tarball container settings rather than source-tree content drift",
         )
+    elif archive_analysis is not None and archive_analysis.classification == "entry-metadata-drift":
+        emit_info(
+            progress_reporter,
+            "Source artifact hint: compare tar member mtimes, modes, ownership fields, and archive file selection",
+        )
+    elif archive_analysis is not None and archive_analysis.classification == "entry-order-drift":
+        emit_info(
+            progress_reporter,
+            "Source artifact hint: compare tar member ordering and source tree enumeration before packing",
+        )
+    elif archive_analysis is not None and archive_analysis.classification == "entry-content-drift":
+        emit_info(
+            progress_reporter,
+            "Source artifact hint: compare the materialized source tree and any generated files before packaging",
+        )
+    elif archive_analysis is not None and archive_analysis.classification == "mixed-entry-drift":
+        emit_info(
+            progress_reporter,
+            "Source artifact hint: more than one source archive dimension changed; start with member metadata before payload drift",
+        )
     inline_diff = text_diff(staged_bytes, rebuilt_bytes)
     if inline_diff:
         emit_info(progress_reporter, "Unified text diff")

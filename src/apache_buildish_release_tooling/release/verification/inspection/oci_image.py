@@ -136,10 +136,29 @@ def inspect_oci_image_reproducibility(
                 progress_reporter,
                 "Platform payload drift is present; inspect the changed platform digests above first",
             )
+            if changed_platforms:
+                emit_info(
+                    progress_reporter,
+                    "OCI hint: compare the rebuilt platform images above before reviewing top-level manifest/index metadata",
+                )
+            if missing_platforms:
+                emit_info(
+                    progress_reporter,
+                    "OCI hint: at least one expected platform was not rebuilt or published by the local reproduction path",
+                )
+            if unexpected_platforms:
+                emit_info(
+                    progress_reporter,
+                    "OCI hint: the local rebuild published additional platforms that are absent from the signed manifest",
+                )
         elif classification == "top-level-digest-only":
             emit_info(
                 progress_reporter,
                 "Only the top-level OCI digest evidence was retained; inspect the rebuilt digest first",
+            )
+            emit_info(
+                progress_reporter,
+                "OCI hint: compare manifest/config serialization or registry-side index metadata before per-platform payloads",
             )
     if reproducibility.failure_class is not None:
         emit_detail(progress_reporter, "Failure class summary", reproducibility.failure_class)

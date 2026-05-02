@@ -162,22 +162,58 @@ def _emit_file_like_archive_hint(
     if isinstance(verification, PythonDistributionVerificationReport):
         distribution_type = _distribution_type(verification.filename)
         if distribution_type == "wheel":
-            emit_info(
-                progress_reporter,
-                "Wheel hint: this often points to ZIP member metadata, entry order, or wheel payload generation drift",
-            )
+            emit_info(progress_reporter, _wheel_hint(archive_analysis.classification))
             return
         if distribution_type == "sdist":
             emit_info(
                 progress_reporter,
-                "Sdist hint: this often points to tar member metadata, file selection, or source packaging drift",
+                _sdist_hint(archive_analysis.classification),
             )
             return
     if isinstance(verification, NpmPackageVerificationReport):
-        emit_info(
-            progress_reporter,
-            "npm hint: this often points to npm pack file selection, tar header metadata, or generated package contents",
+        emit_info(progress_reporter, _npm_hint(archive_analysis.classification))
+
+
+def _wheel_hint(classification: str) -> str:
+    if classification == "entry-metadata-drift":
+        return (
+            "Wheel hint: compare ZIP member mtimes, permissions, and wheel metadata files such as "
+            "*.dist-info/RECORD"
         )
+    if classification == "entry-order-drift":
+        return "Wheel hint: compare wheel member ordering and file enumeration in the build backend"
+    if classification == "outer-container-drift":
+        return (
+            "Wheel hint: ZIP container bytes changed while member payloads stayed stable; compare "
+            "archive-level metadata first"
+        )
+    if classification == "entry-content-drift":
+        return "Wheel hint: compare generated wheel payload files and *.dist-info contents"
+    return "Wheel hint: this often points to ZIP member metadata, entry order, or wheel payload generation drift"
+
+
+def _sdist_hint(classification: str) -> str:
+    if classification == "entry-metadata-drift":
+        return "Sdist hint: compare tar member mtimes, modes, ownership fields, and file selection"
+    if classification == "entry-order-drift":
+        return "Sdist hint: compare tar member ordering and source tree enumeration before packing"
+    if classification == "outer-container-drift":
+        return "Sdist hint: compare outer compression or tarball container settings before source-tree contents"
+    if classification == "entry-content-drift":
+        return "Sdist hint: compare source packaging inputs and generated files included in the archive"
+    return "Sdist hint: this often points to tar member metadata, file selection, or source packaging drift"
+
+
+def _npm_hint(classification: str) -> str:
+    if classification == "entry-metadata-drift":
+        return "npm hint: compare tar header mtime, mode, owner, and package file selection from npm pack"
+    if classification == "entry-order-drift":
+        return "npm hint: compare npm pack file ordering and the final package file list"
+    if classification == "outer-container-drift":
+        return "npm hint: compare outer gzip or tarball container bytes before generated package contents"
+    if classification == "entry-content-drift":
+        return "npm hint: compare generated package contents and files selected by npm pack"
+    return "npm hint: this often points to npm pack file selection, tar header metadata, or generated package contents"
 
 
 def _distribution_type(filename: str) -> str:
