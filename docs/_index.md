@@ -31,6 +31,7 @@ descriptive, not contractual.
 
 - [Codebase Layout](codebase-layout.md)
 - [Test Suite Layout](test-suite.md)
+- [Verification Report and Bundle Contract](verification-contracts.md)
 
 The public contract is intentionally narrow:
 
@@ -51,12 +52,13 @@ component through the CLI only, pinned to an exact immutable Git ref.
   ways
 - patch releases should keep the documented contract stable and only fix behavior
 
-Current exception during early verifier development:
+Verification-specific machine-readable contracts are now documented and supported explicitly:
 
-- the machine-readable `verify-rc` report JSON schema is still treated as internal implementation
-  detail and may change without backward-compatibility between early-development revisions
-- the current stable contract is that `verify-rc` can write a JSON report when asked, not that every
-  JSON field layout is already frozen
+- `verify-rc` report JSON schema version `1`
+- inspection-bundle schema version `1`
+- `inspect-repro --json` schema version `1`
+
+See [Verification Report and Bundle Contract](verification-contracts.md) for the supported shapes.
 
 Release-critical workflows should pin:
 
