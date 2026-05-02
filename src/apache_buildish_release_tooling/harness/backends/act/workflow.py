@@ -17,11 +17,10 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 
 from apache_buildish_release_tooling.harness.config import ResolvedReleaseHarnessConfig
 from apache_buildish_release_tooling.harness.runtime import HarnessWorkspace
-from apache_buildish_release_tooling.harness.yaml_types import YamlValue
+from apache_buildish_release_tooling.harness.yaml_types import YamlMapping, YamlValue, require_yaml_mapping
 from apache_buildish_release_tooling.harness.backends.act.workflow_helpers import (
     _bootstrap_step,
     _generated_action_references,
@@ -88,32 +87,33 @@ def _rewrite_workflow(
             raise ValueError(f"workflow job {job_id} must be a mapping")
         raw_steps = job_payload.get("steps")
         if raw_steps is None:
-            original_steps: tuple[object, ...] = ()
+            original_steps: tuple[YamlMapping, ...] = ()
         elif isinstance(raw_steps, list):
-            original_steps = tuple(raw_steps)
+            original_steps = tuple(
+                require_yaml_mapping(
+                    step_payload,
+                    source=f"workflow job {job_id} step",
+                )
+                for step_payload in raw_steps
+            )
         else:
             raise ValueError(f"workflow job {job_id} has a non-list steps block")
-        rewritten_steps: list[object] = [cast(object, _bootstrap_step())]
+        rewritten_steps: list[YamlValue] = [_bootstrap_step()]
         generated_action_references = _generated_action_references()
         for index, step_payload in enumerate(original_steps, start=1):
-            if not isinstance(step_payload, dict):
-                raise ValueError(f"workflow job {job_id} contains a non-mapping step")
             rewritten_steps.append(
-                cast(
-                    object,
-                    _rewrite_step(
-                        job_id=str(job_id),
-                        step_payload=step_payload,
-                        step_index=index,
-                        bindings=bindings,
-                        generated_action_references=generated_action_references,
-                        real_cli_commands=real_cli_commands,
-                        generated_gpg_fixture=generated_gpg_fixture,
-                    ),
+                _rewrite_step(
+                    job_id=str(job_id),
+                    step_payload=step_payload,
+                    step_index=index,
+                    bindings=bindings,
+                    generated_action_references=generated_action_references,
+                    real_cli_commands=real_cli_commands,
+                    generated_gpg_fixture=generated_gpg_fixture,
                 )
             )
-        rewritten_steps.append(cast(object, _job_status_step(str(job_id))))
-        job_payload["steps"] = cast(list[YamlValue], rewritten_steps)
+        rewritten_steps.append(_job_status_step(str(job_id)))
+        job_payload["steps"] = rewritten_steps
     destination = workspace.root / ".github" / "workflows" / workflow_path.name
     destination.parent.mkdir(parents=True, exist_ok=True)
     original_copy = destination.with_name(f"{destination.stem}.original{destination.suffix}")

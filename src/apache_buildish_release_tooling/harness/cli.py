@@ -28,6 +28,11 @@ from apache_buildish_release_tooling.harness.backend import (
 )
 from apache_buildish_release_tooling.harness.config import load_release_harness_config
 from apache_buildish_release_tooling.harness.errors import HarnessExternalToolError
+from apache_buildish_release_tooling.harness.models import (
+    HarnessRunResultJson,
+    HarnessSequenceEntryJson,
+    HarnessSequenceRunResultJson,
+)
 from apache_buildish_release_tooling.harness.runtime import HarnessRunResult, HarnessWorkspace
 from apache_buildish_release_tooling.harness.scenario import load_scenario
 
@@ -89,26 +94,26 @@ def main(argv: list[str] | None = None) -> None:
     exit_code = 0
     try:
         if args.command == "resolve-config":
-            payload = load_release_harness_config(args.config).to_json_dict()
+            payload = load_release_harness_config(args.config).to_json_model().model_dump(mode="json")
         else:
             if args.command == "run-sequence":
                 scenarios = [load_scenario(path) for path in args.scenarios]
                 results = run_scenario_sequence(scenarios, workspace_root=args.workspace_root)
-                payload = {
-                    "sequence": [
-                        {
-                            "scenario": str(path),
-                            "workspace": str(result.workspace.root),
-                            "inspectable_paths": result.workspace.inspectable_paths(),
-                            "selected_job_ids": result.selected_job_ids,
-                            "failed_job_ids": result.failed_job_ids,
-                            "blocked_job_ids": result.blocked_job_ids,
-                            "job_statuses": result.job_statuses,
-                        }
+                payload = HarnessSequenceRunResultJson(
+                    sequence=[
+                        HarnessSequenceEntryJson(
+                            scenario=str(path),
+                            workspace=str(result.workspace.root),
+                            inspectable_paths=result.workspace.inspectable_paths_model(),
+                            selected_job_ids=result.selected_job_ids,
+                            failed_job_ids=result.failed_job_ids,
+                            blocked_job_ids=result.blocked_job_ids,
+                            job_statuses=result.job_statuses,
+                        )
                         for path, result in zip(args.scenarios, results, strict=False)
                     ],
-                    "final_workspace": str(results[-1].workspace.root) if results else "",
-                }
+                    final_workspace=str(results[-1].workspace.root) if results else "",
+                ).model_dump(mode="json")
                 for scenario_path, result in zip(args.scenarios, results, strict=False):
                     sys.stderr.write(
                         f"buildish-release-harness scenario: {scenario_path}\n"
@@ -126,14 +131,7 @@ def main(argv: list[str] | None = None) -> None:
                     )
                 else:
                     result = rerun_failed_jobs(scenario, args.workspace)
-                payload = {
-                    "workspace": str(result.workspace.root),
-                    "inspectable_paths": result.workspace.inspectable_paths(),
-                    "selected_job_ids": result.selected_job_ids,
-                    "failed_job_ids": result.failed_job_ids,
-                    "blocked_job_ids": result.blocked_job_ids,
-                    "job_statuses": result.job_statuses,
-                }
+                payload = _run_result_payload(result).model_dump(mode="json")
                 _emit_run_diagnostics(result)
                 if result.failed_job_ids or result.blocked_job_ids:
                     exit_code = 1
@@ -162,6 +160,19 @@ def _emit_run_diagnostics(result: HarnessRunResult) -> None:
     if result.blocked_job_ids:
         sys.stderr.write(f"blocked jobs: {', '.join(result.blocked_job_ids)}\n")
     _emit_act_stderr_log(result.workspace)
+
+
+def _run_result_payload(result: HarnessRunResult) -> HarnessRunResultJson:
+    """Return the typed CLI JSON payload for one harness run or rerun."""
+
+    return HarnessRunResultJson(
+        workspace=str(result.workspace.root),
+        inspectable_paths=result.workspace.inspectable_paths_model(),
+        selected_job_ids=result.selected_job_ids,
+        failed_job_ids=result.failed_job_ids,
+        blocked_job_ids=result.blocked_job_ids,
+        job_statuses=result.job_statuses,
+    )
 
 
 def _emit_act_stderr_log(workspace: HarnessWorkspace) -> None:

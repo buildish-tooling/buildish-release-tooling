@@ -16,11 +16,15 @@
 
 from __future__ import annotations
 
+import json
 import unittest
+from io import StringIO
 from pathlib import Path
+from unittest import mock
 
 import yaml
 
+from apache_buildish_release_tooling.harness.cli import main as harness_main
 from apache_buildish_release_tooling.harness.config import (
     default_local_override_path,
     load_release_harness_config,
@@ -174,3 +178,72 @@ class ReleaseHarnessConfigTest(unittest.TestCase):
             self.sandbox_dir / "buildish-mammoth-cache",
             repository_root_for_config(config_path),
         )
+
+    def test_resolved_config_json_model_preserves_binding_fields(self) -> None:
+        """Resolved harness configs should serialize through the typed JSON model."""
+
+        repo_root = self.sandbox_dir / "buildish-site-pipeline"
+        harness_dir = repo_root / "buildish-release-tooling" / "harness"
+        harness_dir.mkdir(parents=True)
+        config_path = harness_dir / "release-harness.yaml"
+        self._write_yaml(
+            config_path,
+            {
+                "schema_version": "1",
+                "self_repository": {
+                    "repository_id": "apache/buildish-site-pipeline",
+                },
+                "repository_overrides": {
+                    "apache/buildish-release-tooling": {
+                        "local_checkout_mode": "always",
+                    }
+                },
+            },
+        )
+
+        payload = load_release_harness_config(config_path).to_json_model().model_dump(mode="json")
+
+        self.assertEqual(str(config_path), payload["config_path"])
+        self.assertEqual(
+            "apache/buildish-site-pipeline",
+            payload["self_repository"]["repository_id"],
+        )
+        self.assertEqual(
+            "always",
+            payload["repository_overrides"]["apache/buildish-release-tooling"]["local_checkout_mode"],
+        )
+
+    def test_cli_resolve_config_emits_typed_json_payload(self) -> None:
+        """The harness CLI should emit the typed resolved-config payload."""
+
+        repo_root = self.sandbox_dir / "buildish-mammoth-cache"
+        harness_dir = repo_root / "buildish-release-tooling" / "harness"
+        harness_dir.mkdir(parents=True)
+        config_path = harness_dir / "release-harness.yaml"
+        self._write_yaml(
+            config_path,
+            {
+                "schema_version": "1",
+                "self_repository": {
+                    "repository_id": "apache/buildish-mammoth-cache",
+                },
+            },
+        )
+        stdout = StringIO()
+        stderr = StringIO()
+
+        with (
+            mock.patch("sys.stdout", stdout),
+            mock.patch("sys.stderr", stderr),
+        ):
+            with self.assertRaises(SystemExit) as exc_info:
+                harness_main(["resolve-config", str(config_path)])
+
+        self.assertEqual(0, exc_info.exception.code)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(str(config_path), payload["config_path"])
+        self.assertEqual(
+            str(repo_root),
+            payload["self_repository"]["local_path"],
+        )
+        self.assertEqual("", stderr.getvalue())

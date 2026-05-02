@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
 
 import yaml
 
@@ -29,9 +28,10 @@ from apache_buildish_release_tooling.harness.config import (
 from apache_buildish_release_tooling.harness.models import HarnessScenario
 from apache_buildish_release_tooling.harness.runtime import HarnessWorkspace
 from apache_buildish_release_tooling.harness.uv_shim import render_uv_shim_script, uv_shim_config
+from apache_buildish_release_tooling.harness.yaml_types import YamlMapping, require_yaml_mapping
 
 
-def _bootstrap_step() -> dict[str, Any]:
+def _bootstrap_step() -> YamlMapping:
     """Return the injected step that exports harness paths through `GITHUB_ENV`."""
 
     return {
@@ -68,13 +68,13 @@ def _bootstrap_step() -> dict[str, Any]:
 def _rewrite_step(
     *,
     job_id: str,
-    step_payload: dict[str, Any],
+    step_payload: YamlMapping,
     step_index: int,
     bindings: ResolvedReleaseHarnessConfig,
     generated_action_references: dict[str, str],
     real_cli_commands: set[str],
     generated_gpg_fixture: bool,
-) -> dict[str, Any]:
+) -> YamlMapping:
     """Rewrite one workflow step for local harness execution."""
 
     uses = step_payload.get("uses")
@@ -83,7 +83,9 @@ def _rewrite_step(
         and uses.startswith("astral-sh/setup-uv@")
         and not real_cli_commands
     ):
-        rewritten = {key: value for key, value in step_payload.items() if key not in {"uses", "with"}}
+        rewritten: YamlMapping = {
+            key: value for key, value in step_payload.items() if key not in {"uses", "with"}
+        }
         rewritten["uses"] = generated_action_references["setup-uv-noop"]
         return rewritten
     if isinstance(uses, str) and uses.startswith("actions/checkout@"):
@@ -98,7 +100,10 @@ def _rewrite_step(
         return dict(step_payload)
     step_id = _step_identifier(step_payload, step_index)
     rewritten = dict(step_payload)
-    env = dict(rewritten.get("env") or {})
+    env = _optional_step_mapping(
+        rewritten.get("env"),
+        source=f"workflow step {step_id} env",
+    )
     if generated_gpg_fixture:
         env.pop("BUILDISH_GPG_PRIVATE_KEY", None)
     env["BUILDISH_HARNESS_JOB_ID"] = job_id
@@ -108,13 +113,16 @@ def _rewrite_step(
 
 
 def _rewrite_checkout_step(
-    step_payload: dict[str, Any],
+    step_payload: YamlMapping,
     bindings: ResolvedReleaseHarnessConfig,
     generated_action_reference: str,
-) -> dict[str, Any] | None:
+) -> YamlMapping | None:
     """Rewrite one `actions/checkout` step to the generated local composite action."""
 
-    with_payload = dict(step_payload.get("with") or {})
+    with_payload = _optional_step_mapping(
+        step_payload.get("with"),
+        source="workflow actions/checkout with",
+    )
     repository_id = str(with_payload.get("repository", bindings.self_repository.repository_id))
     source_binding: ResolvedRepositoryBinding | None = None
     mode: str | None = None
@@ -128,7 +136,9 @@ def _rewrite_checkout_step(
             mode = "local-source-tree"
     if source_binding is None or mode is None:
         return None
-    rewritten = {key: value for key, value in step_payload.items() if key not in {"uses", "with"}}
+    rewritten: YamlMapping = {
+        key: value for key, value in step_payload.items() if key not in {"uses", "with"}
+    }
     rewritten["uses"] = generated_action_reference
     rewritten["with"] = {
         "source_path": f".buildish-release-harness/repo-sources/{_repository_slug(repository_id)}",
@@ -148,7 +158,7 @@ def _generated_action_references() -> dict[str, str]:
     }
 
 
-def _step_identifier(step_payload: dict[str, Any], step_index: int) -> str:
+def _step_identifier(step_payload: YamlMapping, step_index: int) -> str:
     """Return a stable identifier for one workflow step."""
 
     raw_identifier = step_payload.get("id")
@@ -162,7 +172,7 @@ def _step_identifier(step_payload: dict[str, Any], step_index: int) -> str:
     return f"step-{step_index}"
 
 
-def _job_status_step(job_id: str) -> dict[str, Any]:
+def _job_status_step(job_id: str) -> YamlMapping:
     """Return the injected terminal step that records the job outcome."""
 
     return {
@@ -177,6 +187,14 @@ def _job_status_step(job_id: str) -> dict[str, Any]:
             f"\"$GITHUB_WORKSPACE/.buildish-release-harness/job-statuses/{job_id}.status\"\n"
         ),
     }
+
+
+def _optional_step_mapping(raw_payload: object, *, source: str) -> YamlMapping:
+    """Return an optional workflow step mapping or an empty mapping."""
+
+    if raw_payload is None:
+        return {}
+    return require_yaml_mapping(raw_payload, source=source)
 
 
 def _write_setup_uv_noop_action(workspace: HarnessWorkspace) -> None:

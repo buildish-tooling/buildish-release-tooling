@@ -27,6 +27,7 @@ from pathlib import Path
 from apache_buildish_release_tooling.harness.models import (
     GitRepositoryFixture,
     HarnessCommandTraceEntry,
+    HarnessInspectablePaths,
     HarnessJobStatus,
     HarnessJobStatusesFile,
     HarnessScenario,
@@ -57,27 +58,32 @@ class HarnessWorkspace:
     shims_dir: Path
     bash_env_file: Path
 
-    def inspectable_paths(self) -> dict[str, str]:
-        """Return stable inspectable workspace paths for CLI output and JSON results."""
+    def inspectable_paths_model(self) -> HarnessInspectablePaths:
+        """Return typed inspectable workspace paths for CLI output and JSON results."""
 
-        return {
-            "workspace_root": str(self.root),
-            "primary_git_checkout": str(self.root),
-            "rewritten_workflows": str(self.root / ".github" / "workflows"),
-            "harness_root": str(self.harness_dir),
-            "generated_actions": str(self.actions_dir),
-            "repo_sources": str(self.repo_sources_dir),
-            "git_origins": str(self.git_origins_dir),
-            "self_git_origin": str(self.git_origins_dir / "self"),
-            "git_checkouts": str(self.git_checkouts_dir),
-            "svn_root": str(self.svn_dir),
-            "svn_repository": str(self.svn_repository_dir),
-            "svn_working_copy": str(self.svn_working_copy_dir),
-            "step_summaries": str(self.summaries_dir),
-            "job_summaries": str(self.job_summaries_dir),
-            "job_statuses": str(self.job_statuses_dir),
-            "command_trace": str(self.trace_file),
-        }
+        return HarnessInspectablePaths(
+            workspace_root=str(self.root),
+            primary_git_checkout=str(self.root),
+            rewritten_workflows=str(self.root / ".github" / "workflows"),
+            harness_root=str(self.harness_dir),
+            generated_actions=str(self.actions_dir),
+            repo_sources=str(self.repo_sources_dir),
+            git_origins=str(self.git_origins_dir),
+            self_git_origin=str(self.git_origins_dir / "self"),
+            git_checkouts=str(self.git_checkouts_dir),
+            svn_root=str(self.svn_dir),
+            svn_repository=str(self.svn_repository_dir),
+            svn_working_copy=str(self.svn_working_copy_dir),
+            step_summaries=str(self.summaries_dir),
+            job_summaries=str(self.job_summaries_dir),
+            job_statuses=str(self.job_statuses_dir),
+            command_trace=str(self.trace_file),
+        )
+
+    def inspectable_paths(self) -> dict[str, str]:
+        """Return stable inspectable workspace paths as a plain dict for existing callers."""
+
+        return self.inspectable_paths_model().model_dump(mode="json")
 
 
 @dataclass(frozen=True)

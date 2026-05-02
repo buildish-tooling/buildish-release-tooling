@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 import yaml
 from pydantic import ConfigDict, Field
@@ -63,6 +63,28 @@ class ReleaseHarnessConfig(BuildishContractModel):
     repository_overrides: dict[str, RepositoryOverrideConfig] = Field(default_factory=dict)
 
 
+class ResolvedRepositoryBindingJson(BuildishContractModel):
+    """Machine-readable JSON payload for one resolved harness repository binding."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    repository_id: str
+    local_checkout_mode: str
+    local_path: str
+
+
+class ResolvedReleaseHarnessConfigJson(BuildishContractModel):
+    """Machine-readable JSON payload for one resolved harness config file."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    config_path: str
+    local_override_path: str
+    local_override_present: bool
+    self_repository: ResolvedRepositoryBindingJson
+    repository_overrides: dict[str, ResolvedRepositoryBindingJson] = Field(default_factory=dict)
+
+
 @dataclass(frozen=True)
 class ResolvedRepositoryBinding:
     """Resolved repository binding for one logical repository identifier."""
@@ -71,14 +93,14 @@ class ResolvedRepositoryBinding:
     local_checkout_mode: str
     local_path: Path
 
-    def to_json_dict(self) -> dict[str, str]:
-        """Return a JSON-serializable representation."""
+    def to_json_model(self) -> ResolvedRepositoryBindingJson:
+        """Return a typed JSON payload representation."""
 
-        return {
-            "repository_id": self.repository_id,
-            "local_checkout_mode": self.local_checkout_mode,
-            "local_path": str(self.local_path),
-        }
+        return ResolvedRepositoryBindingJson(
+            repository_id=self.repository_id,
+            local_checkout_mode=self.local_checkout_mode,
+            local_path=str(self.local_path),
+        )
 
 
 @dataclass(frozen=True)
@@ -91,19 +113,19 @@ class ResolvedReleaseHarnessConfig:
     self_repository: ResolvedRepositoryBinding
     repository_overrides: dict[str, ResolvedRepositoryBinding]
 
-    def to_json_dict(self) -> dict[str, Any]:
-        """Return a JSON-serializable representation."""
+    def to_json_model(self) -> ResolvedReleaseHarnessConfigJson:
+        """Return a typed JSON payload representation."""
 
-        return {
-            "config_path": str(self.config_path),
-            "local_override_path": str(self.local_override_path),
-            "local_override_present": self.local_override_present,
-            "self_repository": self.self_repository.to_json_dict(),
-            "repository_overrides": {
-                repository_id: binding.to_json_dict()
+        return ResolvedReleaseHarnessConfigJson(
+            config_path=str(self.config_path),
+            local_override_path=str(self.local_override_path),
+            local_override_present=self.local_override_present,
+            self_repository=self.self_repository.to_json_model(),
+            repository_overrides={
+                repository_id: binding.to_json_model()
                 for repository_id, binding in sorted(self.repository_overrides.items())
             },
-        }
+        )
 
 
 def repository_root_for_config(config_path: Path) -> Path:

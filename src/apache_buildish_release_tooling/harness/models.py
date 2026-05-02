@@ -286,6 +286,65 @@ class HarnessJobStatusesFile(RootModel[dict[str, HarnessJobStatus]]):
     """Persisted per-job harness execution statuses."""
 
 
+class HarnessInspectablePaths(BuildishContractModel):
+    """Stable inspectable workspace paths exposed by the harness CLI."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_root: str
+    primary_git_checkout: str
+    rewritten_workflows: str
+    harness_root: str
+    generated_actions: str
+    repo_sources: str
+    git_origins: str
+    self_git_origin: str
+    git_checkouts: str
+    svn_root: str
+    svn_repository: str
+    svn_working_copy: str
+    step_summaries: str
+    job_summaries: str
+    job_statuses: str
+    command_trace: str
+
+
+class HarnessRunResultJson(BuildishContractModel):
+    """Machine-readable JSON payload for one harness run or rerun."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace: str
+    inspectable_paths: HarnessInspectablePaths
+    selected_job_ids: list[str] = Field(default_factory=list)
+    failed_job_ids: list[str] = Field(default_factory=list)
+    blocked_job_ids: list[str] = Field(default_factory=list)
+    job_statuses: dict[str, HarnessJobStatus] = Field(default_factory=dict)
+
+
+class HarnessSequenceEntryJson(BuildishContractModel):
+    """One sequence-run entry returned by the harness CLI."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    scenario: str
+    workspace: str
+    inspectable_paths: HarnessInspectablePaths
+    selected_job_ids: list[str] = Field(default_factory=list)
+    failed_job_ids: list[str] = Field(default_factory=list)
+    blocked_job_ids: list[str] = Field(default_factory=list)
+    job_statuses: dict[str, HarnessJobStatus] = Field(default_factory=dict)
+
+
+class HarnessSequenceRunResultJson(BuildishContractModel):
+    """Machine-readable JSON payload for one harness sequence run."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sequence: list[HarnessSequenceEntryJson] = Field(default_factory=list)
+    final_workspace: str
+
+
 def ordered_job_ids(jobs: Sequence[JobScenario]) -> list[str]:
     """Return the job identifiers in declaration order."""
 
