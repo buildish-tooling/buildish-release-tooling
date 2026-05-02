@@ -18,9 +18,14 @@ from __future__ import annotations
 
 import hashlib
 import unittest
-from typing import Any, cast
 from unittest import mock
 
+from apache_buildish_release_tooling.release.contracts import (
+    GenericFileSecondaryArtifact,
+    GithubWorkflowProvenance,
+    ManifestTrustRoots,
+    ToolingProvenance,
+)
 from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
 from apache_buildish_release_tooling.release.rc_vote_manifest import (
     build_rc_vote_manifest,
@@ -49,12 +54,12 @@ class RcVoteManifestTest(unittest.TestCase):
         keys_payload = b"test-key\n"
         keys_path.write_bytes(keys_payload)
         metadata = trust_root_metadata(keys_path.as_uri())
-        asf_keys = cast(dict[str, Any], metadata["asf_keys"])
-        self.assertEqual(f"{keys_path.as_uri()}", asf_keys["uri"])
-        self.assertEqual(len(keys_payload), asf_keys["known_length_bytes"])
+        asf_keys = metadata.asf_keys
+        self.assertEqual(f"{keys_path.as_uri()}", asf_keys.uri)
+        self.assertEqual(len(keys_payload), asf_keys.known_length_bytes)
         self.assertEqual(
             hashlib.sha512(keys_payload).hexdigest(),
-            asf_keys["known_prefix_sha512"],
+            asf_keys.known_prefix_sha512,
         )
 
     def test_build_rc_vote_manifest_emits_expected_shape(self) -> None:
@@ -113,33 +118,35 @@ class RcVoteManifestTest(unittest.TestCase):
         with (
             mock.patch(
                 "apache_buildish_release_tooling.release.rc_vote_manifest.tooling_provenance",
-                return_value={
-                    "repository": "apache/buildish-release-tooling",
-                    "repository_url": "https://github.com/apache/buildish-release-tooling",
-                    "git_commit_sha": "fedcba9876543210fedcba9876543210fedcba98",
-                    "git_ref": "refs/heads/main",
-                },
+                return_value=ToolingProvenance(
+                    repository="apache/buildish-release-tooling",
+                    repository_url="https://github.com/apache/buildish-release-tooling",
+                    git_commit_sha="fedcba9876543210fedcba9876543210fedcba98",
+                    git_ref="refs/heads/main",
+                ),
             ),
             mock.patch(
                 "apache_buildish_release_tooling.release.rc_vote_manifest.github_workflow_provenance",
-                return_value={
-                    "repository": "apache/buildish-example",
-                    "workflow": "Releasey Prepare RC",
-                    "workflow_ref": "apache/buildish-example/.github/workflows/releasey-20-prepare-rc.yml@refs/heads/main",
-                    "run_id": 42,
-                    "run_attempt": 1,
-                    "run_url": "https://github.com/apache/buildish-example/actions/runs/42",
-                },
+                return_value=GithubWorkflowProvenance(
+                    repository="apache/buildish-example",
+                    workflow="Releasey Prepare RC",
+                    workflow_ref="apache/buildish-example/.github/workflows/releasey-20-prepare-rc.yml@refs/heads/main",
+                    run_id=42,
+                    run_attempt=1,
+                    run_url="https://github.com/apache/buildish-example/actions/runs/42",
+                ),
             ),
             mock.patch(
                 "apache_buildish_release_tooling.release.rc_vote_manifest.trust_root_metadata",
-                return_value={
-                    "asf_keys": {
-                        "uri": "https://downloads.apache.org/incubator/buildish/KEYS",
-                        "known_length_bytes": 9,
-                        "known_prefix_sha512": "a" * 128,
+                return_value=ManifestTrustRoots.model_validate(
+                    {
+                        "asf_keys": {
+                            "uri": "https://downloads.apache.org/incubator/buildish/KEYS",
+                            "known_length_bytes": 9,
+                            "known_prefix_sha512": "a" * 128,
+                        }
                     }
-                },
+                ),
             ),
             mock.patch(
                 "apache_buildish_release_tooling.release.rc_vote_manifest.created_at_utc",
@@ -156,25 +163,27 @@ class RcVoteManifestTest(unittest.TestCase):
                 rc_tag_target_commit="89abcdef0123456789abcdef0123456789abcdef",
                 source_artifact_sha512="b" * 128,
                 secondary_artifacts=[
-                    {
-                        "artifact_id": "bootstrap-zip",
-                        "kind": "generic-file",
-                        "role": "bootstrap-convenience-archive",
-                        "filename": "buildish-example-bootstrap.zip",
-                        "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
-                        "artifact_origin": "source-commit",
-                        "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
-                        "reproducibility": {
-                            "profile_id": "bootstrap-zip",
-                        },
-                        "checksums": {
-                            "sha512": {
-                                "value": "c" * 128,
-                                "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip.sha512",
-                            }
-                        },
-                        "signatures": [],
-                    }
+                    GenericFileSecondaryArtifact.model_validate(
+                        {
+                            "artifact_id": "bootstrap-zip",
+                            "kind": "generic-file",
+                            "role": "bootstrap-convenience-archive",
+                            "filename": "buildish-example-bootstrap.zip",
+                            "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
+                            "artifact_origin": "source-commit",
+                            "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                            "reproducibility": {
+                                "profile_id": "bootstrap-zip",
+                            },
+                            "checksums": {
+                                "sha512": {
+                                    "value": "c" * 128,
+                                    "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip.sha512",
+                                }
+                            },
+                            "signatures": [],
+                        }
+                    )
                 ],
             )
         self.assertEqual("rc-vote", manifest.manifest_type)
@@ -189,9 +198,11 @@ class RcVoteManifestTest(unittest.TestCase):
         )
         source_reproducibility = manifest.vote_materials.source_artifacts[0].reproducibility
         self.assertIsNotNone(source_reproducibility)
+        if source_reproducibility is None:
+            self.fail("source reproducibility selector missing")
         self.assertEqual(
             "source-release",
-            cast(Any, source_reproducibility).profile_id,
+            source_reproducibility.profile_id,
         )
         self.assertEqual(
             "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/rc-vote-manifest.json",
@@ -207,10 +218,16 @@ class RcVoteManifestTest(unittest.TestCase):
         )
         self.assertEqual(1714032000, manifest.source_date_epoch)
         self.assertEqual("v1.2.3-rc2", manifest.draft_github_release.tag)
-        secondary_artifact = cast(Any, manifest.vote_materials.secondary_artifacts[0])
+        secondary_artifact = manifest.vote_materials.secondary_artifacts[0]
+        self.assertIsInstance(secondary_artifact, GenericFileSecondaryArtifact)
+        if not isinstance(secondary_artifact, GenericFileSecondaryArtifact):
+            self.fail("unexpected secondary artifact kind")
+        self.assertIsNotNone(secondary_artifact.reproducibility)
+        if secondary_artifact.reproducibility is None:
+            self.fail("secondary artifact reproducibility selector missing")
         self.assertEqual(
             "bootstrap-zip",
-            cast(Any, secondary_artifact.reproducibility).profile_id,
+            secondary_artifact.reproducibility.profile_id,
         )
         self.assertEqual(
             "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",

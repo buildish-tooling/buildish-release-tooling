@@ -19,15 +19,18 @@ from __future__ import annotations
 import re
 from argparse import Namespace
 from pathlib import Path
-from typing import Any
 
 from apache_buildish_release_tooling.release.artifact_registration.common import (
-    apply_common_artifact_metadata,
+    common_artifact_metadata,
 )
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationResult,
 )
-from apache_buildish_release_tooling.release.contracts import GenericFileSecondaryArtifact
+from apache_buildish_release_tooling.release.contracts import (
+    GenericFileSecondaryArtifact,
+    Sha512ChecksumPayload,
+    Sha512Checksums,
+)
 from apache_buildish_release_tooling.release.source_artifact import sha512
 
 _SHA512_PATTERN = re.compile(r"^[0-9a-fA-F]{128}$")
@@ -79,21 +82,22 @@ def build_generic_file_registration(args: Namespace, bundle_dir: Path) -> Artifa
     local_file = _resolved_local_file(getattr(args, "file", None))
     digest_value = _normalized_sha512(local_file, getattr(args, "sha512", None))
     filename = _resolved_filename(local_file, getattr(args, "filename", None))
-    artifact: dict[str, Any] = {
-        "artifact_id": args.artifact_id,
-        "kind": "generic-file",
-        "filename": filename,
-        "uri": uri,
-        "checksums": {
-            "sha512": {
-                "value": digest_value,
-            }
-        },
-        "signatures": [],
-    }
-    if args.sha512_uri:
-        artifact["checksums"]["sha512"]["uri"] = args.sha512_uri.strip()
-    apply_common_artifact_metadata(artifact, args)
+    common_metadata = common_artifact_metadata(args)
     return ArtifactRegistrationResult(
-        secondary_artifact=GenericFileSecondaryArtifact.model_validate(artifact)
+        secondary_artifact=GenericFileSecondaryArtifact(
+            artifact_id=args.artifact_id,
+            role=common_metadata.role,
+            artifact_origin=common_metadata.artifact_origin,
+            git_commit_sha=common_metadata.git_commit_sha,
+            reproducibility=common_metadata.reproducibility,
+            filename=filename,
+            uri=uri,
+            checksums=Sha512Checksums(
+                sha512=Sha512ChecksumPayload(
+                    value=digest_value,
+                    uri=args.sha512_uri.strip() if args.sha512_uri else None,
+                )
+            ),
+            signatures=[],
+        )
     )

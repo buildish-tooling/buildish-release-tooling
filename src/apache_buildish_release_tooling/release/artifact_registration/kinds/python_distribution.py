@@ -19,15 +19,17 @@ from __future__ import annotations
 import re
 from argparse import Namespace
 from pathlib import Path
-from typing import Any
 
 from apache_buildish_release_tooling.release.artifact_registration.common import (
-    apply_common_artifact_metadata,
+    common_artifact_metadata,
 )
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationResult,
 )
 from apache_buildish_release_tooling.release.contracts import (
+    PyPiAttestationAuth,
+    Sha256ChecksumPayload,
+    Sha256Checksums,
     PythonDistributionSecondaryArtifact,
 )
 from apache_buildish_release_tooling.release.source_artifact import checksum
@@ -94,33 +96,37 @@ def build_python_distribution_registration(
 
     del bundle_dir  # reserved for future inventory-producing variants
     local_file = _resolved_local_file(getattr(args, "file", None))
-    artifact: dict[str, Any] = {
-        "artifact_id": args.artifact_id,
-        "kind": "python-distribution",
-        "filename": _resolved_filename(local_file, getattr(args, "filename", None)),
-        "uri": _required_text(getattr(args, "uri", None), option_name="--uri"),
-        "index_url": _required_text(getattr(args, "index_url", None), option_name="--index-url"),
-        "project_name": _required_text(getattr(args, "project_name", None), option_name="--project-name"),
-        "version": _required_text(getattr(args, "package_version", None), option_name="--package-version"),
-        "checksums": {
-            "sha256": {
-                "value": _normalized_sha256(local_file, getattr(args, "sha256", None)),
-            }
-        },
-    }
+    common_metadata = common_artifact_metadata(args)
     sha256_uri = _optional_text(getattr(args, "sha256_uri", None), option_name="--sha256-uri")
-    if sha256_uri is not None:
-        artifact["checksums"]["sha256"]["uri"] = sha256_uri
     attestation_repository = _optional_text(
         getattr(args, "attestation_repository", None),
         option_name="--attestation-repository",
     )
-    if attestation_repository is not None:
-        artifact["authenticity"] = {
-            "scheme": "pypi-attestation",
-            "repository": attestation_repository,
-        }
-    apply_common_artifact_metadata(artifact, args)
     return ArtifactRegistrationResult(
-        secondary_artifact=PythonDistributionSecondaryArtifact.model_validate(artifact)
+        secondary_artifact=PythonDistributionSecondaryArtifact(
+            artifact_id=args.artifact_id,
+            role=common_metadata.role,
+            artifact_origin=common_metadata.artifact_origin,
+            git_commit_sha=common_metadata.git_commit_sha,
+            reproducibility=common_metadata.reproducibility,
+            filename=_resolved_filename(local_file, getattr(args, "filename", None)),
+            uri=_required_text(getattr(args, "uri", None), option_name="--uri"),
+            index_url=_required_text(getattr(args, "index_url", None), option_name="--index-url"),
+            project_name=_required_text(
+                getattr(args, "project_name", None),
+                option_name="--project-name",
+            ),
+            version=_required_text(getattr(args, "package_version", None), option_name="--package-version"),
+            checksums=Sha256Checksums(
+                sha256=Sha256ChecksumPayload(
+                    value=_normalized_sha256(local_file, getattr(args, "sha256", None)),
+                    uri=sha256_uri,
+                )
+            ),
+            authenticity=(
+                PyPiAttestationAuth(repository=attestation_repository)
+                if attestation_repository is not None
+                else None
+            ),
+        )
     )

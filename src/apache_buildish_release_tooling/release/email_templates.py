@@ -16,11 +16,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from string import Template
 from textwrap import dedent
-from typing import Any, cast
 
+from apache_buildish_release_tooling.release.contracts import (
+    AnySecondaryArtifact,
+    GenericFileSecondaryArtifact,
+    GenericFileWithOpenPgpSecondaryArtifact,
+    MavenRepositorySecondaryArtifact,
+    NpmPackageSecondaryArtifact,
+    OciImageSecondaryArtifact,
+    PythonDistributionSecondaryArtifact,
+    RcVoteManifestV1,
+    SourceArtifactContract,
+)
 from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
 
 
@@ -58,39 +69,87 @@ def _render_template(template_text: str, values: dict[str, str]) -> str:
     return Template(dedent(template_text).strip()).substitute(values)
 
 
-def _string_field(payload: dict[str, Any], key: str) -> str:
-    """Resolve one required string field from a manifest-style payload."""
-
-    value = payload.get(key)
-    if not isinstance(value, str) or not value:
-        raise ValueError(f"expected non-empty string field: {key}")
-    return value
+ArtifactEmailEntry = SourceArtifactContract | AnySecondaryArtifact
 
 
-def _mapping_field(payload: dict[str, Any], key: str) -> dict[str, Any]:
-    """Resolve one required mapping field from a manifest-style payload."""
-
-    value = payload.get(key)
-    if not isinstance(value, dict):
-        raise ValueError(f"expected mapping field: {key}")
-    return cast(dict[str, Any], value)
-
-
-def _list_field(payload: dict[str, Any], key: str) -> list[dict[str, Any]]:
-    """Resolve one required list-of-mappings field from a manifest-style payload."""
-
-    value = payload.get(key)
-    if not isinstance(value, list):
-        raise ValueError(f"expected list field: {key}")
-    mappings: list[dict[str, Any]] = []
-    for item in value:
-        if not isinstance(item, dict):
-            raise ValueError(f"expected list item mapping in field: {key}")
-        mappings.append(cast(dict[str, Any], item))
-    return mappings
+def _artifact_display_name(artifact: ArtifactEmailEntry) -> str:
+    if isinstance(
+        artifact,
+        (
+            SourceArtifactContract,
+            GenericFileSecondaryArtifact,
+            GenericFileWithOpenPgpSecondaryArtifact,
+            PythonDistributionSecondaryArtifact,
+            NpmPackageSecondaryArtifact,
+        ),
+    ):
+        return artifact.filename
+    if isinstance(artifact, MavenRepositorySecondaryArtifact):
+        return f"staging repository {artifact.staging_repository_id}"
+    if isinstance(artifact, OciImageSecondaryArtifact):
+        return f"{artifact.registry}/{artifact.repository}@{artifact.digest}"
+    raise TypeError(f"unsupported artifact type for email rendering: {type(artifact)!r}")
 
 
-def _artifact_block(label: str, artifacts: list[dict[str, Any]]) -> str:
+def _artifact_primary_uri(artifact: ArtifactEmailEntry) -> str:
+    if isinstance(artifact, MavenRepositorySecondaryArtifact):
+        return artifact.base_url
+    return artifact.uri
+
+
+def _append_artifact_checksum_lines(lines: list[str], artifact: ArtifactEmailEntry) -> None:
+    if isinstance(
+        artifact,
+        (
+            SourceArtifactContract,
+            GenericFileSecondaryArtifact,
+            GenericFileWithOpenPgpSecondaryArtifact,
+        ),
+    ):
+        lines.append(f"  SHA512: {artifact.checksums.sha512.value}")
+        if artifact.checksums.sha512.uri is not None:
+            lines.append(f"  SHA512 file: {artifact.checksums.sha512.uri}")
+        return
+    if isinstance(artifact, PythonDistributionSecondaryArtifact):
+        lines.append(f"  SHA256: {artifact.checksums.sha256.value}")
+        if artifact.checksums.sha256.uri is not None:
+            lines.append(f"  SHA256 file: {artifact.checksums.sha256.uri}")
+        return
+    if isinstance(artifact, NpmPackageSecondaryArtifact):
+        lines.append(f"  Integrity: {artifact.integrity}")
+        checksum_payload = artifact.checksums.sha512 or artifact.checksums.sha256
+        if checksum_payload is None:
+            return
+        algorithm = "SHA512" if artifact.checksums.sha512 is not None else "SHA256"
+        lines.append(f"  {algorithm}: {checksum_payload.value}")
+        if checksum_payload.uri is not None:
+            lines.append(f"  {algorithm} file: {checksum_payload.uri}")
+        return
+    if isinstance(artifact, MavenRepositorySecondaryArtifact):
+        lines.append(f"  Inventory: {artifact.inventory.filename}")
+        lines.append(f"  Inventory SHA512: {artifact.inventory.sha512}")
+        return
+    if isinstance(artifact, OciImageSecondaryArtifact):
+        lines.append(f"  Digest: {artifact.digest}")
+        if artifact.platform_digests:
+            for platform_digest in artifact.platform_digests:
+                lines.append(f"  Platform {platform_digest.platform}: {platform_digest.digest}")
+
+
+def _append_artifact_signature_lines(lines: list[str], artifact: ArtifactEmailEntry) -> None:
+    if isinstance(
+        artifact,
+        (
+            SourceArtifactContract,
+            GenericFileSecondaryArtifact,
+            GenericFileWithOpenPgpSecondaryArtifact,
+        ),
+    ):
+        for signature in artifact.signatures:
+            lines.append(f"  Signature: {signature.uri}")
+
+
+def _artifact_block(label: str, artifacts: Sequence[ArtifactEmailEntry]) -> str:
     """Render one artifact-group section for a plain-text ASF email."""
 
     lines = [f"{label}:"]
@@ -98,30 +157,10 @@ def _artifact_block(label: str, artifacts: list[dict[str, Any]]) -> str:
         lines.append("* <none>")
         return "\n".join(lines)
     for artifact in artifacts:
-        filename = str(artifact.get("filename") or artifact.get("uri") or "<unnamed artifact>")
-        lines.append(f"* {filename}")
-        artifact_uri = artifact.get("uri")
-        if isinstance(artifact_uri, str) and artifact_uri:
-            lines.append(f"  URL: {artifact_uri}")
-        checksums = artifact.get("checksums")
-        if isinstance(checksums, dict):
-            for algorithm, checksum_payload in checksums.items():
-                if not isinstance(checksum_payload, dict):
-                    continue
-                checksum_value = checksum_payload.get("value")
-                checksum_uri = checksum_payload.get("uri")
-                if isinstance(checksum_value, str) and checksum_value:
-                    lines.append(f"  {algorithm.upper()}: {checksum_value}")
-                if isinstance(checksum_uri, str) and checksum_uri:
-                    lines.append(f"  {algorithm.upper()} file: {checksum_uri}")
-        signatures = artifact.get("signatures")
-        if isinstance(signatures, list):
-            for signature in signatures:
-                if not isinstance(signature, dict):
-                    continue
-                signature_uri = signature.get("uri")
-                if isinstance(signature_uri, str) and signature_uri:
-                    lines.append(f"  Signature: {signature_uri}")
+        lines.append(f"* {_artifact_display_name(artifact)}")
+        lines.append(f"  URL: {_artifact_primary_uri(artifact)}")
+        _append_artifact_checksum_lines(lines, artifact)
+        _append_artifact_signature_lines(lines, artifact)
     return "\n".join(lines)
 
 
@@ -190,20 +229,17 @@ def render_project_rc_vote_email(
     component_config: ComponentConfig,
     state: PrepareRcState,
     rc_tag_target_commit: str,
-    manifest_payload: dict[str, Any],
+    manifest_payload: RcVoteManifestV1,
     draft_release_url: str,
     bootstrap_script_url: str | None = None,
     bootstrap_invoker: str | None = None,
 ) -> RenderedEmail:
     """Render the project mailing-list RC vote email from authoritative RC state."""
 
-    trust_roots = _mapping_field(manifest_payload, "trust_roots")
-    asf_keys = _mapping_field(trust_roots, "asf_keys")
-    vote_materials = _mapping_field(manifest_payload, "vote_materials")
-    verification = _mapping_field(manifest_payload, "verification")
-    authoritative_manifest = _mapping_field(verification, "authoritative_manifest")
-    source_artifacts = _list_field(vote_materials, "source_artifacts")
-    secondary_artifacts = _list_field(vote_materials, "secondary_artifacts")
+    asf_keys = manifest_payload.trust_roots.asf_keys
+    source_artifacts = manifest_payload.vote_materials.source_artifacts
+    secondary_artifacts = manifest_payload.vote_materials.secondary_artifacts
+    authoritative_manifest = manifest_payload.verification.authoritative_manifest
     version = state.final_tag.removeprefix("v")
     release_display_name = _release_display_name(component_config, version)
     source_commit_lines = [f"* Git tag target commit SHA: {rc_tag_target_commit}"]
@@ -265,16 +301,10 @@ def render_project_rc_vote_email(
                 "Secondary artifacts under vote",
                 secondary_artifacts,
             ),
-            "keys_url": _string_field(asf_keys, "uri"),
-            "manifest_url": _string_field(authoritative_manifest, "uri"),
-            "manifest_sha512_url": _string_field(
-                _mapping_field(authoritative_manifest, "checksum_uris"),
-                "sha512",
-            ),
-            "manifest_signature_url": _string_field(
-                _list_field(authoritative_manifest, "signatures")[0],
-                "uri",
-            ),
+            "keys_url": asf_keys.uri,
+            "manifest_url": authoritative_manifest.uri,
+            "manifest_sha512_url": authoritative_manifest.checksum_uris["sha512"],
+            "manifest_signature_url": authoritative_manifest.signatures[0].uri,
             "draft_release_block": _draft_release_block(draft_release_url),
             "verification_bootstrap_block": _verification_bootstrap_block(
                 bootstrap_script_url=bootstrap_script_url,
@@ -294,14 +324,13 @@ def render_incubator_rc_vote_email(
     *,
     component_config: ComponentConfig,
     state: PrepareRcState,
-    manifest_payload: dict[str, Any],
+    manifest_payload: RcVoteManifestV1,
     bootstrap_script_url: str | None = None,
     bootstrap_invoker: str | None = None,
 ) -> RenderedEmail:
     """Render the later-use IPMC vote request email for podling releases."""
 
-    verification = _mapping_field(manifest_payload, "verification")
-    authoritative_manifest = _mapping_field(verification, "authoritative_manifest")
+    authoritative_manifest = manifest_payload.verification.authoritative_manifest
     version = state.final_tag.removeprefix("v")
     release_display_name = _release_display_name(component_config, version)
     body = _render_template(
@@ -340,7 +369,7 @@ def render_incubator_rc_vote_email(
             "project_name": component_config.vote_release_name,
             "release_display_name": release_display_name,
             "rc_label": _rc_label(state.rc_number),
-            "manifest_url": _string_field(authoritative_manifest, "uri"),
+            "manifest_url": authoritative_manifest.uri,
             "verification_bootstrap_block": _verification_bootstrap_block(
                 bootstrap_script_url=bootstrap_script_url,
                 bootstrap_invoker=bootstrap_invoker,

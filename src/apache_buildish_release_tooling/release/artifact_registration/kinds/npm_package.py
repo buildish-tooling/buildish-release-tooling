@@ -22,16 +22,21 @@ import re
 from argparse import Namespace
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
 from apache_buildish_release_tooling.release.artifact_registration.common import (
-    apply_common_artifact_metadata,
+    common_artifact_metadata,
 )
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationResult,
 )
-from apache_buildish_release_tooling.release.contracts import NpmPackageSecondaryArtifact
+from apache_buildish_release_tooling.release.contracts import (
+    NpmChecksums,
+    NpmPackageSecondaryArtifact,
+    NpmProvenanceAuth,
+    Sha256ChecksumPayload,
+    Sha512ChecksumPayload,
+)
 from apache_buildish_release_tooling.release.source_artifact import checksum
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -338,37 +343,42 @@ def build_npm_package_registration(args: Namespace, bundle_dir: Path) -> Artifac
         explicit_sha256=getattr(args, "sha256", None),
         explicit_sha512=getattr(args, "sha512", None),
     )
-    artifact: dict[str, Any] = {
-        "artifact_id": args.artifact_id,
-        "kind": "npm-package",
-        "filename": publication.filename,
-        "uri": publication.uri,
-        "registry_url": publication.registry_url,
-        "package_name": publication.package_name,
-        "version": publication.version,
-        "integrity": integrity_value,
-        "checksums": {
-            algorithm: {
-                "value": digest_value,
-            }
-        },
-    }
+    common_metadata = common_artifact_metadata(args)
     checksum_uri = _optional_text(
         getattr(args, f"{algorithm}_uri", None),
         option_name=f"--{algorithm}-uri",
     )
-    if checksum_uri is not None:
-        artifact["checksums"][algorithm]["uri"] = checksum_uri
     attestation_repository = _optional_text(
         getattr(args, "attestation_repository", None),
         option_name="--attestation-repository",
     )
-    if attestation_repository is not None:
-        artifact["authenticity"] = {
-            "scheme": "npm-provenance",
-            "repository": attestation_repository,
-        }
-    apply_common_artifact_metadata(artifact, args)
+    checksums = (
+        NpmChecksums(
+            sha256=Sha256ChecksumPayload(value=digest_value, uri=checksum_uri),
+        )
+        if algorithm == "sha256"
+        else NpmChecksums(
+            sha512=Sha512ChecksumPayload(value=digest_value, uri=checksum_uri),
+        )
+    )
     return ArtifactRegistrationResult(
-        secondary_artifact=NpmPackageSecondaryArtifact.model_validate(artifact)
+        secondary_artifact=NpmPackageSecondaryArtifact(
+            artifact_id=args.artifact_id,
+            role=common_metadata.role,
+            artifact_origin=common_metadata.artifact_origin,
+            git_commit_sha=common_metadata.git_commit_sha,
+            reproducibility=common_metadata.reproducibility,
+            filename=publication.filename,
+            uri=publication.uri,
+            registry_url=publication.registry_url,
+            package_name=publication.package_name,
+            version=publication.version,
+            integrity=integrity_value,
+            checksums=checksums,
+            authenticity=(
+                NpmProvenanceAuth(repository=attestation_repository)
+                if attestation_repository is not None
+                else None
+            ),
+        )
     )

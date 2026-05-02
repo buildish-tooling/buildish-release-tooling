@@ -25,7 +25,6 @@ from apache_buildish_release_tooling.release.contracts import (
     GenericFileSecondaryArtifact,
     GenericFileVerificationReport,
     GenericFileWithOpenPgpSecondaryArtifact,
-    SignatureVerificationPayload,
 )
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
@@ -168,10 +167,7 @@ def verify_generic_file(
             matches_manifest=checksum_matches_manifest,
             sidecar_verified=checksum_sidecar_verified,
         ),
-        signatures=[
-            SignatureVerificationPayload.model_validate(signature_payload(signature))
-            for signature in signature_verifications
-        ],
+        signatures=[signature_payload(signature) for signature in signature_verifications],
         inventory=inventory_verification.report_payload if inventory_verification is not None else None,
         reproducibility=reproducibility_verification,
     )

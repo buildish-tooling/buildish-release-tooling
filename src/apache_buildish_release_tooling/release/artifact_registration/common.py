@@ -17,7 +17,9 @@
 from __future__ import annotations
 
 from argparse import Namespace
-from typing import Any
+from dataclasses import dataclass
+
+from apache_buildish_release_tooling.release.contracts import ReproducibilitySelector
 
 
 def _optional_trimmed_text(raw_value: object | None) -> str | None:
@@ -31,11 +33,20 @@ def _optional_trimmed_text(raw_value: object | None) -> str | None:
     return normalized
 
 
-def apply_common_artifact_metadata(artifact: dict[str, Any], args: Namespace) -> None:
-    """Apply common optional metadata fields shared across artifact kinds."""
+@dataclass(frozen=True)
+class CommonArtifactMetadata:
+    """Common optional metadata fields shared across artifact kinds."""
 
-    if args.role:
-        artifact["role"] = args.role
+    role: str | None = None
+    artifact_origin: str | None = None
+    git_commit_sha: str | None = None
+    reproducibility: ReproducibilitySelector | None = None
+
+
+def common_artifact_metadata(args: Namespace) -> CommonArtifactMetadata:
+    """Resolve common optional metadata fields shared across artifact kinds."""
+
+    role = _optional_trimmed_text(getattr(args, "role", None))
     git_commit_sha = _optional_trimmed_text(getattr(args, "git_commit_sha", None))
     artifact_origin = _optional_trimmed_text(getattr(args, "artifact_origin", None))
     reproducibility_profile_id = _optional_trimmed_text(
@@ -43,9 +54,14 @@ def apply_common_artifact_metadata(artifact: dict[str, Any], args: Namespace) ->
     )
     if artifact_origin is None and git_commit_sha is not None:
         artifact_origin = "source-commit"
-    if artifact_origin is not None:
-        artifact["artifact_origin"] = artifact_origin
-    if git_commit_sha is not None:
-        artifact["git_commit_sha"] = git_commit_sha
-    if reproducibility_profile_id is not None:
-        artifact["reproducibility"] = {"profile_id": reproducibility_profile_id}
+    reproducibility = (
+        ReproducibilitySelector(profile_id=reproducibility_profile_id)
+        if reproducibility_profile_id is not None
+        else None
+    )
+    return CommonArtifactMetadata(
+        role=role,
+        artifact_origin=artifact_origin,
+        git_commit_sha=git_commit_sha,
+        reproducibility=reproducibility,
+    )

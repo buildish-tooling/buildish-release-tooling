@@ -18,9 +18,9 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
+from apache_buildish_release_tooling.release.contracts import SignatureVerificationPayload
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.process import run_logged_command
 from apache_buildish_release_tooling.release.source_artifact import checksum
@@ -84,10 +84,10 @@ class GpgVerifier:
         )
 
 
-def signature_payload(signature: SignatureVerification) -> dict[str, Any]:
-    """Return a JSON-serializable signature-verification payload."""
+def signature_payload(signature: SignatureVerification) -> SignatureVerificationPayload:
+    """Return one typed detached-signature verification payload."""
 
-    return asdict(signature)
+    return SignatureVerificationPayload(**asdict(signature))
 
 
 def signature_summary(signature: SignatureVerification) -> str:

@@ -21,7 +21,6 @@ import sys
 from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 from typing import Literal
 
 from apache_buildish_release_tooling.release.contracts import (
@@ -459,21 +458,15 @@ def override_payload(
     if resolved_profile is None or resolved_profile.build_override is None:
         return ArtifactReproducibilityOverrideReport(applied=False)
     build_override = resolved_profile.build_override
-    build_payload: ArtifactReproducibilityBuildOverrideReport | None = None
-    payload_kwargs: dict[str, Any] = {}
-    if build_override.command is not None:
-        payload_kwargs["command"] = list(build_override.command)
-    if build_override.working_dir is not None:
-        payload_kwargs["working_directory"] = build_override.working_dir
-    if build_override.output_globs is not None:
-        payload_kwargs["output_globs"] = list(build_override.output_globs)
-    if build_override.env:
+    build_payload = ArtifactReproducibilityBuildOverrideReport(
+        command=list(build_override.command) if build_override.command is not None else None,
+        working_directory=build_override.working_dir,
+        output_globs=list(build_override.output_globs) if build_override.output_globs is not None else None,
         # Environment variable names only. Values are intentionally omitted from
         # reports so reproducibility output cannot leak secrets or machine-local
         # credentials.
-        payload_kwargs["env_keys"] = sorted(build_override.env)
-    if payload_kwargs:
-        build_payload = ArtifactReproducibilityBuildOverrideReport(**payload_kwargs)
+        env_keys=sorted(build_override.env),
+    )
     return ArtifactReproducibilityOverrideReport(
         applied=True,
         build=build_payload,

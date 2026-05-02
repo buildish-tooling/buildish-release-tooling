@@ -20,7 +20,13 @@ from pathlib import Path
 from typing import cast
 import unittest
 
-from apache_buildish_release_tooling.release.contracts import SourceArtifactContract
+from apache_buildish_release_tooling.release.contracts import (
+    AnySecondaryArtifactVerification,
+    ArtifactReproducibilityEffectiveBuildExecutionReport,
+    ArtifactReproducibilityEffectiveExecutionReport,
+    ArtifactReproducibilityReport,
+    SourceArtifactContract,
+)
 from apache_buildish_release_tooling.release.verification.common import SignatureVerification
 from apache_buildish_release_tooling.release.verification.phase1 import (
     _report_markdown,
@@ -62,9 +68,10 @@ class VerifyRcPhase1ReportTest(unittest.TestCase):
         )
 
         self.assertIsNotNone(payload)
-        payload = cast(dict[str, object], payload)
-        self.assertEqual("source-artifact-from-git", payload["profile_id"])
-        self.assertIsNone(payload["canonical_recipe"])
+        if payload is None:
+            self.fail("expected reproducibility payload")
+        self.assertEqual("source-artifact-from-git", payload.profile_id)
+        self.assertIsNone(payload.canonical_recipe)
 
     def test_source_artifact_reproducibility_payload_is_none_without_rebuild_or_failures(self) -> None:
         source_artifact = SourceArtifactContract.model_validate(
@@ -125,26 +132,25 @@ class VerifyRcPhase1ReportTest(unittest.TestCase):
                 source_artifact_url="https://dist.apache.org/example/apache-buildish-example-1.2.3-incubating-src.tar.gz",
                 source_artifact_signature=signature,
                 actual_source_sha512="f" * 128,
-                source_artifact_reproducibility={
-                    "profile_id": "source-artifact-from-git",
-                    "verdict": "verified",
-                    "comparison_mode": "exact-bytes",
-                    "canonical_recipe": None,
-                    "effective_execution": {
-                        "backend": "host-direct",
-                        "build": {
-                            "command": ["internal:create-from-git"],
-                            "working_directory": "source-repository",
-                            "output_paths": ["rebuilt-source.tar.gz"],
-                            "injected_environment_keys": [],
-                        },
-                    },
-                    "override": {"applied": False},
-                    "matches_remote_bytes": True,
-                    "failure_class": None,
-                    "evidence": [],
-                    "issues": [],
-                },
+                source_artifact_reproducibility=ArtifactReproducibilityReport(
+                    profile_id="source-artifact-from-git",
+                    verdict="verified",
+                    comparison_mode="exact-bytes",
+                    canonical_recipe=None,
+                    effective_execution=ArtifactReproducibilityEffectiveExecutionReport(
+                        backend="host-direct",
+                        build=ArtifactReproducibilityEffectiveBuildExecutionReport(
+                            command=["internal:create-from-git"],
+                            working_directory="source-repository",
+                            output_paths=["rebuilt-source.tar.gz"],
+                            injected_environment_keys=[],
+                        ),
+                    ),
+                    matches_remote_bytes=True,
+                    failure_class=None,
+                    evidence=[],
+                    issues=[],
+                ),
                 manifest_issues=[],
                 source_artifact_issues=[],
                 reproducibility_decision=ReproducibilityModeDecision(
@@ -157,9 +163,12 @@ class VerifyRcPhase1ReportTest(unittest.TestCase):
                 ),
                 build_checks_attempted=False,
                 secondary_artifact_verifications=[
-                    {
-                        "artifact_id": "odd-artifact",
-                        "kind": "mystery-kind",
-                    }
+                    cast(
+                        AnySecondaryArtifactVerification,
+                        {
+                            "artifact_id": "odd-artifact",
+                            "kind": "mystery-kind",
+                        },
+                    )
                 ],
             )

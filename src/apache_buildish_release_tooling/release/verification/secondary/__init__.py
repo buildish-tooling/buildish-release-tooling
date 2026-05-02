@@ -22,13 +22,20 @@ from typing import Any
 from pydantic import BaseModel
 
 from apache_buildish_release_tooling.release.contracts import (
+    ArtifactReproducibilityBuildOverrideReport,
+    ArtifactReproducibilityReport,
     AnySecondaryArtifactVerification,
+    GenericFileVerificationReport,
     GenericFileSecondaryArtifact,
     GenericFileWithOpenPgpSecondaryArtifact,
     InvalidSecondaryArtifactVerificationReport,
+    MavenRepositoryVerificationReport,
     MavenRepositorySecondaryArtifact,
+    NpmPackageVerificationReport,
     NpmPackageSecondaryArtifact,
+    OciImageVerificationReport,
     OciImageSecondaryArtifact,
+    PythonDistributionVerificationReport,
     PythonDistributionSecondaryArtifact,
     RcVoteManifestReadV1,
     StrictSecondaryArtifactAdapter,
@@ -184,10 +191,7 @@ def verify_secondary_artifacts(
                 declared_kind=declared_kind,
                 issues=[str(exc)],
             )
-        _emit_secondary_artifact_summary(
-            progress_reporter,
-            verification.model_dump(mode="json", exclude_none=True),
-        )
+        _emit_secondary_artifact_summary(progress_reporter, verification)
         verifications.append(verification)
     return verifications
 
@@ -231,71 +235,63 @@ def _malformed_secondary_artifact_issue(artifact_entry: dict[str, Any], manifest
 
 def _emit_secondary_artifact_summary(
     progress_reporter: ProgressReporter,
-    verification: dict[str, Any],
+    verification: AnySecondaryArtifactVerification,
 ) -> None:
-    kind = verification["kind"]
-    issues = [str(issue) for issue in verification.get("issues", [])]
-    if kind == INVALID_SECONDARY_ARTIFACT_KIND:
+    issues = [str(issue) for issue in verification.issues]
+    if isinstance(verification, InvalidSecondaryArtifactVerificationReport):
         for issue in issues:
             emit_failure(progress_reporter, issue)
         return
-    if kind in {"generic-file", "generic-file-with-openpgp"}:
-        checksum_payload = verification.get("checksum")
-        emit_detail(progress_reporter, "File", verification.get("filename", "n/a"))
-        emit_detail(progress_reporter, "URL", verification.get("uri", "n/a"))
+    if isinstance(verification, GenericFileVerificationReport):
+        checksum_payload = verification.checksum
+        emit_detail(progress_reporter, "File", verification.filename)
+        emit_detail(progress_reporter, "URL", verification.uri)
         if (
-            isinstance(checksum_payload, dict)
-            and checksum_payload.get("matches_manifest")
-            and checksum_payload.get("algorithm")
-            and checksum_payload.get("value")
+            checksum_payload.matches_manifest
+            and checksum_payload.algorithm
+            and checksum_payload.value
         ):
             emit_success(
                 progress_reporter,
-                f"Verified checksum: {checksum_payload['algorithm']}:{checksum_payload['value']}",
+                f"Verified checksum: {checksum_payload.algorithm}:{checksum_payload.value}",
             )
-        if isinstance(checksum_payload, dict) and checksum_payload.get("sidecar_verified"):
+        if checksum_payload.sidecar_verified:
             emit_success(progress_reporter, "Verified checksum sidecar")
-        signature_verifications = verification.get("signatures", [])
-        for signature_verification in signature_verifications:
+        for signature_verification in verification.signatures:
             emit_success(
                 progress_reporter,
-                f"Verified signature: {signature_verification['signer_fingerprint']}",
+                f"Verified signature: {signature_verification.signer_fingerprint}",
             )
-        inventory_payload = verification.get("inventory")
-        if isinstance(inventory_payload, dict):
+        if verification.inventory is not None:
             emit_success(
                 progress_reporter,
-                f"Verified inventory: {inventory_payload['filename']}",
+                f"Verified inventory: {verification.inventory.filename}",
             )
-        reproducibility_payload = verification.get("reproducibility")
-        if isinstance(reproducibility_payload, dict):
-            _emit_reproducibility_details(progress_reporter, reproducibility_payload)
-            if reproducibility_payload.get("matches_remote_bytes") is True:
+        if verification.reproducibility is not None:
+            _emit_reproducibility_details(progress_reporter, verification.reproducibility)
+            if verification.reproducibility.matches_remote_bytes is True:
                 emit_success(progress_reporter, "Verified rebuilt artifact matches staged bytes")
         for issue in issues:
             emit_failure(progress_reporter, issue)
         return
-    if kind == "maven-repository":
-        inventory_payload = verification["inventory"]
-        live_repository = verification["live_repository"]
-        emit_detail(progress_reporter, "Base URL", verification["base_url"])
-        if isinstance(inventory_payload, dict):
-            emit_detail(progress_reporter, "Inventory", inventory_payload["filename"])
-        if live_repository.get("matches_signed_inventory") and live_repository.get("entry_count") is not None:
+    if isinstance(verification, MavenRepositoryVerificationReport):
+        live_repository = verification.live_repository
+        emit_detail(progress_reporter, "Base URL", verification.base_url)
+        if verification.inventory is not None:
+            emit_detail(progress_reporter, "Inventory", verification.inventory.filename)
+        if live_repository.matches_signed_inventory and live_repository.entry_count is not None:
             emit_success(
                 progress_reporter,
-                f"Verified live repository against signed inventory: {live_repository['entry_count']} entries",
+                f"Verified live repository against signed inventory: {live_repository.entry_count} entries",
             )
-        signature_verifications = live_repository.get("signature_verifications", [])
-        if signature_verifications:
+        if live_repository.signature_verifications:
             emit_info(
                 progress_reporter,
-                f"Verified detached signatures for {len(signature_verifications)} repository files",
+                f"Verified detached signatures for {len(live_repository.signature_verifications)} repository files",
             )
-        reproducibility_payload = verification.get("reproducibility")
-        if isinstance(reproducibility_payload, dict):
-            _emit_reproducibility_details(progress_reporter, reproducibility_payload)
-            if reproducibility_payload.get("matches_remote_bytes") is True:
+        if verification.reproducibility is not None:
+            _emit_reproducibility_details(progress_reporter, verification.reproducibility)
+            if verification.reproducibility.matches_remote_bytes is True:
                 emit_success(
                     progress_reporter,
                     "Verified rebuilt repository matches the staged repository policy",
@@ -303,119 +299,109 @@ def _emit_secondary_artifact_summary(
         for issue in issues:
             emit_failure(progress_reporter, issue)
         return
-    if kind == "python-distribution":
-        checksum_payload = verification["checksum"]
-        index_resolution = verification["index_resolution"]
-        emit_detail(progress_reporter, "Project", f"{verification['project_name']} {verification['version']}")
-        emit_detail(progress_reporter, "File", verification["filename"])
-        emit_detail(progress_reporter, "URL", verification["uri"])
-        emit_detail(progress_reporter, "Simple index", index_resolution["project_index_url"])
-        if checksum_payload.get("matches_manifest") and checksum_payload.get("algorithm") and checksum_payload.get("value"):
+    if isinstance(verification, PythonDistributionVerificationReport):
+        checksum_payload = verification.checksum
+        index_resolution = verification.index_resolution
+        emit_detail(progress_reporter, "Project", f"{verification.project_name} {verification.version}")
+        emit_detail(progress_reporter, "File", verification.filename)
+        emit_detail(progress_reporter, "URL", verification.uri)
+        emit_detail(progress_reporter, "Simple index", index_resolution.project_index_url)
+        if checksum_payload.matches_manifest and checksum_payload.algorithm and checksum_payload.value:
             emit_success(
                 progress_reporter,
-                f"Verified checksum: {checksum_payload['algorithm']}:{checksum_payload['value']}",
+                f"Verified checksum: {checksum_payload.algorithm}:{checksum_payload.value}",
             )
-        if checksum_payload["sidecar_verified"]:
+        if checksum_payload.sidecar_verified:
             emit_success(progress_reporter, "Verified checksum sidecar")
-        if index_resolution.get("resolved_url") is not None:
+        if index_resolution.resolved_url is not None:
             emit_success(progress_reporter, "Verified simple index entry")
-        reproducibility_payload = verification.get("reproducibility")
-        if isinstance(reproducibility_payload, dict):
-            _emit_reproducibility_details(progress_reporter, reproducibility_payload)
-            if reproducibility_payload.get("matches_remote_bytes") is True:
+        if verification.reproducibility is not None:
+            _emit_reproducibility_details(progress_reporter, verification.reproducibility)
+            if verification.reproducibility.matches_remote_bytes is True:
                 emit_success(progress_reporter, "Verified rebuilt artifact matches staged bytes")
         for issue in issues:
             emit_failure(progress_reporter, issue)
         return
-    if kind == "oci-image":
-        inspection = verification["inspection"]
-        emit_detail(progress_reporter, "Image", inspection["image_ref"])
-        if inspection.get("digest_matches_manifest"):
-            emit_success(progress_reporter, f"Verified digest: {verification['digest']}")
-        if inspection.get("platform_digests_match"):
+    if isinstance(verification, OciImageVerificationReport):
+        inspection = verification.inspection
+        emit_detail(progress_reporter, "Image", inspection.image_ref)
+        if inspection.digest_matches_manifest:
+            emit_success(progress_reporter, f"Verified digest: {verification.digest}")
+        if inspection.platform_digests_match:
             emit_success(progress_reporter, "Verified platform digests")
-        reproducibility_payload = verification.get("reproducibility")
-        if isinstance(reproducibility_payload, dict):
-            _emit_reproducibility_details(progress_reporter, reproducibility_payload)
-            if reproducibility_payload.get("matches_remote_bytes") is True:
+        if verification.reproducibility is not None:
+            _emit_reproducibility_details(progress_reporter, verification.reproducibility)
+            if verification.reproducibility.matches_remote_bytes is True:
                 emit_success(progress_reporter, "Verified rebuilt image digests match the staged image")
         for issue in issues:
             emit_failure(progress_reporter, issue)
         return
-    if kind == "npm-package":
-        checksum_payload = verification["checksum"]
-        registry_resolution = verification["registry_resolution"]
-        emit_detail(progress_reporter, "Package", f"{verification['package_name']} {verification['version']}")
-        emit_detail(progress_reporter, "Registry", verification["registry_url"])
-        emit_detail(progress_reporter, "Tarball", verification["uri"])
-        if verification["integrity"].get("matches_downloaded_bytes"):
-            emit_success(progress_reporter, f"Verified integrity: {verification['integrity']['value']}")
-        if checksum_payload.get("matches_manifest") and checksum_payload.get("algorithm") and checksum_payload.get("value"):
+    if isinstance(verification, NpmPackageVerificationReport):
+        checksum_payload = verification.checksum
+        registry_resolution = verification.registry_resolution
+        emit_detail(progress_reporter, "Package", f"{verification.package_name} {verification.version}")
+        emit_detail(progress_reporter, "Registry", verification.registry_url)
+        emit_detail(progress_reporter, "Tarball", verification.uri)
+        if verification.integrity.matches_downloaded_bytes:
+            emit_success(progress_reporter, f"Verified integrity: {verification.integrity.value}")
+        if checksum_payload.matches_manifest and checksum_payload.algorithm and checksum_payload.value:
             emit_success(
                 progress_reporter,
-                f"Verified checksum: {checksum_payload['algorithm']}:{checksum_payload['value']}",
+                f"Verified checksum: {checksum_payload.algorithm}:{checksum_payload.value}",
             )
-        if checksum_payload["sidecar_verified"]:
+        if checksum_payload.sidecar_verified:
             emit_success(progress_reporter, "Verified checksum sidecar")
-        if registry_resolution.get("metadata_url") is not None:
+        if registry_resolution.metadata_url is not None:
             emit_success(
                 progress_reporter,
-                f"Verified registry metadata: {registry_resolution['metadata_url']}",
+                f"Verified registry metadata: {registry_resolution.metadata_url}",
             )
-        reproducibility_payload = verification.get("reproducibility")
-        if isinstance(reproducibility_payload, dict):
-            _emit_reproducibility_details(progress_reporter, reproducibility_payload)
-            if reproducibility_payload.get("matches_remote_bytes") is True:
+        if verification.reproducibility is not None:
+            _emit_reproducibility_details(progress_reporter, verification.reproducibility)
+            if verification.reproducibility.matches_remote_bytes is True:
                 emit_success(progress_reporter, "Verified rebuilt artifact matches staged bytes")
         for issue in issues:
             emit_failure(progress_reporter, issue)
         return
     raise ValueError(
         "unsupported secondary artifact kind for console reporting: "
-        f"{verification['artifact_id']} ({kind})"
+        f"{verification.artifact_id} ({verification.kind})"
     )
 
 
 def _emit_reproducibility_details(
     progress_reporter: ProgressReporter,
-    reproducibility_payload: dict[str, Any],
+    reproducibility_payload: ArtifactReproducibilityReport,
 ) -> None:
-    override_payload = reproducibility_payload.get("override", {})
-    recipe_source = (
-        "local-override"
-        if isinstance(override_payload, dict) and override_payload.get("applied")
-        else "canonical-profile"
-    )
+    recipe_source = "local-override" if reproducibility_payload.override.applied else "canonical-profile"
     emit_detail(
         progress_reporter,
         "Reproducibility profile",
-        str(reproducibility_payload.get("profile_id", "n/a")),
+        reproducibility_payload.profile_id,
     )
     emit_detail(
         progress_reporter,
         "Recipe source",
         recipe_source,
     )
-    canonical_build = _nested_mapping(reproducibility_payload, "canonical_recipe", "build")
-    effective_build = _nested_mapping(reproducibility_payload, "effective_execution", "build")
-    override_build = _nested_mapping(reproducibility_payload, "override", "build")
-    if recipe_source == "local-override" and canonical_build:
-        canonical_command = canonical_build.get("command", [])
+    canonical_build = reproducibility_payload.canonical_recipe.build if reproducibility_payload.canonical_recipe else None
+    effective_build = reproducibility_payload.effective_execution.build if reproducibility_payload.effective_execution else None
+    override_build = reproducibility_payload.override.build
+    if recipe_source == "local-override" and canonical_build is not None:
+        canonical_command = canonical_build.command
         if canonical_command:
             emit_detail(
                 progress_reporter,
                 "Canonical build command",
                 " ".join(str(part) for part in canonical_command),
             )
-    build_command = effective_build.get("command", []) if effective_build else []
+    build_command = effective_build.command if effective_build else []
     if build_command:
         emit_detail(progress_reporter, "Build command", " ".join(str(part) for part in build_command))
-    build_working_directory = effective_build.get("working_directory") if effective_build else None
+    build_working_directory = effective_build.working_directory if effective_build else None
     if build_working_directory:
         emit_detail(progress_reporter, "Build working directory", str(build_working_directory))
-    injected_environment_keys = (
-        effective_build.get("injected_environment_keys", []) if effective_build else []
-    )
+    injected_environment_keys = effective_build.injected_environment_keys if effective_build else []
     if injected_environment_keys:
         emit_detail(
             progress_reporter,
@@ -425,30 +411,21 @@ def _emit_reproducibility_details(
     override_fields = _override_field_summary(override_build)
     if override_fields:
         emit_detail(progress_reporter, "Override fields", ", ".join(str(field) for field in override_fields))
-    for output_path in (effective_build.get("output_paths", []) if effective_build else []):
+    for output_path in (effective_build.output_paths if effective_build else []):
         emit_detail(progress_reporter, "Rebuild output", str(output_path))
 
 
-def _nested_mapping(payload: dict[str, Any], *path: str) -> dict[str, Any] | None:
-    current: Any = payload
-    for key in path:
-        if not isinstance(current, dict):
-            return None
-        current = current.get(key)
-    return current if isinstance(current, dict) else None
-
-
-def _override_field_summary(override_build: dict[str, Any] | None) -> list[str]:
+def _override_field_summary(
+    override_build: ArtifactReproducibilityBuildOverrideReport | None,
+) -> list[str]:
     if override_build is None:
         return []
     fields: list[str] = []
-    if override_build.get("command") is not None:
+    if override_build.command is not None:
         fields.append("build.command")
-    if override_build.get("working_directory") is not None:
+    if override_build.working_directory is not None:
         fields.append("build.working_directory")
-    if override_build.get("output_globs") is not None:
+    if override_build.output_globs is not None:
         fields.append("build.output_globs")
-    env_keys = override_build.get("env_keys")
-    if isinstance(env_keys, list):
-        fields.extend(f"build.env.{key}" for key in env_keys if isinstance(key, str))
+    fields.extend(f"build.env.{key}" for key in override_build.env_keys)
     return fields

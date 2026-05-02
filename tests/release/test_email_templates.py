@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import unittest
 
+from apache_buildish_release_tooling.release.contracts import RcVoteManifestV1
 from apache_buildish_release_tooling.release.email_templates import (
     render_announce_email,
     render_incubator_rc_vote_email,
@@ -75,61 +76,96 @@ class EmailTemplatesTest(unittest.TestCase):
         )
 
     @staticmethod
-    def _manifest_payload() -> dict[str, object]:
+    def _manifest_payload() -> RcVoteManifestV1:
         """Return a reusable RC vote-manifest payload for template tests."""
 
-        return {
-            "trust_roots": {
-                "asf_keys": {
-                    "uri": "https://downloads.apache.org/incubator/buildish/KEYS",
-                }
-            },
-            "vote_materials": {
-                "source_artifacts": [
-                    {
-                        "filename": "apache-buildish-example-1.2.3-incubating-src.tar.gz",
-                        "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/apache-buildish-example-1.2.3-incubating-src.tar.gz",
-                        "checksums": {
-                            "sha512": {
-                                "value": "abc123",
-                                "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/apache-buildish-example-1.2.3-incubating-src.tar.gz.sha512",
-                            }
+        return RcVoteManifestV1.model_validate(
+            {
+                "schema_version": "1",
+                "manifest_type": "rc-vote",
+                "component_id": "buildish-example",
+                "version": "1.2.3",
+                "release_line": "1.2.x",
+                "release_branch": "release/1.2.x",
+                "source_repository_url": "https://github.com/apache/buildish-example",
+                "source_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                "source_date_epoch": 1714032000,
+                "rc_tag": "v1.2.3-rc2",
+                "final_tag": "v1.2.3",
+                "final_tag_mode": "detached-materialization-commit",
+                "provenance": {
+                    "created_at": "2026-04-23T10:15:30Z",
+                    "tooling": {
+                        "repository": "apache/buildish-release-tooling",
+                        "repository_url": "https://github.com/apache/buildish-release-tooling",
+                        "git_commit_sha": "fedcba9876543210fedcba9876543210fedcba98",
+                    },
+                },
+                "trust_roots": {
+                    "asf_keys": {
+                        "uri": "https://downloads.apache.org/incubator/buildish/KEYS",
+                        "known_length_bytes": 9,
+                        "known_prefix_sha512": "a" * 128,
+                    }
+                },
+                "draft_github_release": {
+                    "repository": "apache/buildish-example",
+                    "tag": "v1.2.3-rc2",
+                    "url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc2",
+                },
+                "vote_materials": {
+                    "source_artifacts": [
+                        {
+                            "role": "asf-source-release",
+                            "filename": "apache-buildish-example-1.2.3-incubating-src.tar.gz",
+                            "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/apache-buildish-example-1.2.3-incubating-src.tar.gz",
+                            "artifact_origin": "source-commit",
+                            "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                            "checksums": {
+                                "sha512": {
+                                    "value": "a" * 128,
+                                    "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/apache-buildish-example-1.2.3-incubating-src.tar.gz.sha512",
+                                }
+                            },
+                            "signatures": [
+                                {
+                                    "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/apache-buildish-example-1.2.3-incubating-src.tar.gz.asc",
+                                }
+                            ],
+                        }
+                    ],
+                    "secondary_artifacts": [
+                        {
+                            "artifact_id": "buildish-example-zip",
+                            "kind": "generic-file",
+                            "filename": "buildish-example.zip",
+                            "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example.zip",
+                            "checksums": {
+                                "sha512": {
+                                    "value": "b" * 128,
+                                    "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example.zip.sha512",
+                                }
+                            },
+                            "signatures": [],
+                        }
+                    ],
+                },
+                "verification": {
+                    "staging_svn_url": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/",
+                    "authoritative_manifest": {
+                        "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/rc-vote-manifest.json",
+                        "checksum_uris": {
+                            "sha512": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/rc-vote-manifest.json.sha512",
                         },
                         "signatures": [
                             {
-                                "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/apache-buildish-example-1.2.3-incubating-src.tar.gz.asc",
+                                "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/rc-vote-manifest.json.asc",
                             }
                         ],
-                    }
-                ],
-                "secondary_artifacts": [
-                    {
-                        "filename": "buildish-example.zip",
-                        "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example.zip",
-                        "checksums": {
-                            "sha512": {
-                                "value": "def456",
-                                "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example.zip.sha512",
-                            }
-                        },
-                        "signatures": [],
-                    }
-                ],
-            },
-            "verification": {
-                "authoritative_manifest": {
-                    "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/rc-vote-manifest.json",
-                    "checksum_uris": {
-                        "sha512": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/rc-vote-manifest.json.sha512",
                     },
-                    "signatures": [
-                        {
-                            "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/rc-vote-manifest.json.asc",
-                        }
-                    ],
-                }
-            },
-        }
+                },
+            }
+        )
 
     def test_render_project_rc_vote_email_includes_rc_inventory_and_verification_guide(self) -> None:
         component_config = self._component_config(incubator_vote_enabled=True)

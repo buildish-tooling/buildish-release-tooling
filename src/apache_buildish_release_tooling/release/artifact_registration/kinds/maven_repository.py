@@ -32,14 +32,16 @@ from urllib.parse import unquote, urljoin, urlparse
 import urllib3
 
 from apache_buildish_release_tooling.release.artifact_registration.common import (
-    apply_common_artifact_metadata,
+    common_artifact_metadata,
 )
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationResult,
 )
 from apache_buildish_release_tooling.release.contracts import (
+    MavenRepositoryInventoryEntry,
     MavenRepositoryInventoryV1,
     MavenRepositorySecondaryArtifact,
+    SupplementalInventoryReference,
 )
 from apache_buildish_release_tooling.release.manifest import write_manifest
 from apache_buildish_release_tooling.release.progress import ProgressReporter
@@ -510,35 +512,31 @@ def _inventory_payload(
         progress_reporter=progress_reporter,
     )
     progress_reporter.emit(f"building maven repository inventory: 0/{len(repository_files)} entries")
-    entries: list[dict[str, Any]] = []
+    entries: list[MavenRepositoryInventoryEntry] = []
     total_size_bytes = 0
     for repository_file in repository_files:
         total_size_bytes += repository_file.size_bytes
         entries.append(
-            {
-                "path": repository_file.relative_path,
-                "size_bytes": repository_file.size_bytes,
-                "sha512": _inventory_entry_sha512(
+            MavenRepositoryInventoryEntry(
+                path=repository_file.relative_path,
+                size_bytes=repository_file.size_bytes,
+                sha512=_inventory_entry_sha512(
                     repository_file,
                     files_by_relative_path=files_by_relative_path,
                     cache=cache,
                     remote_http_client=remote_http_client,
                 ),
-            }
+            )
         )
         progress_reporter.update(
             f"building maven repository inventory: {len(entries)}/{len(repository_files)} entries"
         )
     return (
-        MavenRepositoryInventoryV1.model_validate(
-            {
-                "schema_version": "1",
-                "inventory_type": "maven-repository",
-                "artifact_id": artifact_id,
-                "staging_repository_id": staging_repository_id,
-                "base_url": base_url,
-                "entries": entries,
-            }
+        MavenRepositoryInventoryV1(
+            artifact_id=artifact_id,
+            staging_repository_id=staging_repository_id,
+            base_url=base_url,
+            entries=entries,
         ),
         total_size_bytes,
     )
@@ -587,23 +585,25 @@ def build_maven_repository_registration(
     inventory_path = bundle_dir / inventory_filename
     write_manifest(inventory_path, inventory_payload)
     inventory_sha512 = sha512(inventory_path)
-    artifact: dict[str, Any] = {
-        "artifact_id": args.artifact_id,
-        "kind": "maven-repository",
-        "staging_repository_id": staging_repository_id,
-        "base_url": base_url,
-        "inventory": {
-            "filename": inventory_filename,
-            "sha512": inventory_sha512,
-            "entry_count": len(repository_files),
-            "total_size_bytes": total_size_bytes,
-        },
-    }
-    apply_common_artifact_metadata(artifact, args)
+    common_metadata = common_artifact_metadata(args)
     progress_reporter.emit(
         f"wrote maven repository inventory: {len(repository_files)} entries, {total_size_bytes} bytes"
     )
     return ArtifactRegistrationResult(
-        secondary_artifact=MavenRepositorySecondaryArtifact.model_validate(artifact),
+        secondary_artifact=MavenRepositorySecondaryArtifact(
+            artifact_id=args.artifact_id,
+            role=common_metadata.role,
+            artifact_origin=common_metadata.artifact_origin,
+            git_commit_sha=common_metadata.git_commit_sha,
+            reproducibility=common_metadata.reproducibility,
+            staging_repository_id=staging_repository_id,
+            base_url=base_url,
+            inventory=SupplementalInventoryReference(
+                filename=inventory_filename,
+                sha512=inventory_sha512,
+                entry_count=len(repository_files),
+                total_size_bytes=total_size_bytes,
+            ),
+        ),
         inventory_paths=(inventory_path,),
     )

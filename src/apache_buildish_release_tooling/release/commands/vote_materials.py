@@ -525,7 +525,7 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
         component_config=context.component_config,
         state=state,
         rc_tag_target_commit=rc_tag_target_commit,
-        manifest_payload=artifacts.manifest_payload.model_dump(mode="json", exclude_none=True),
+        manifest_payload=artifacts.manifest_payload,
         draft_release_url=selected_release.release_url,
         bootstrap_script_url=f"{state.staging_url.rstrip('/')}/{artifacts.bootstrap_artifacts.script_path.name}",
         bootstrap_invoker=artifacts.bootstrap_artifacts.invoker_snippet,
@@ -535,7 +535,7 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
         incubator_vote_email = render_incubator_rc_vote_email(
             component_config=context.component_config,
             state=state,
-            manifest_payload=artifacts.manifest_payload.model_dump(mode="json", exclude_none=True),
+            manifest_payload=artifacts.manifest_payload,
             bootstrap_script_url=(
                 f"{state.staging_url.rstrip('/')}/{artifacts.bootstrap_artifacts.script_path.name}"
             ),

@@ -49,7 +49,6 @@ from apache_buildish_release_tooling.release.contracts import (
     MavenRepositoryReproducibilityMetadata,
     MavenRepositorySecondaryArtifact,
     MavenRepositoryVerificationReport,
-    SignatureVerificationPayload,
 )
 from apache_buildish_release_tooling.release.models import (
     ComponentConfig,
@@ -295,9 +294,7 @@ def verify_maven_repository(
                 LiveRepositorySignatureVerification(
                     path=relative_path,
                     target_path=target_path,
-                    signature=SignatureVerificationPayload.model_validate(
-                        signature_payload(signature_verification)
-                    ),
+                    signature=signature_payload(signature_verification),
                 )
                 for relative_path, target_path, signature_verification in signature_verifications
             ],

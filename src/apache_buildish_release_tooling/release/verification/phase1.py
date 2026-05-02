@@ -16,23 +16,35 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import ValidationError
 
 from apache_buildish_release_tooling.release.contracts import (
     AnySecondaryArtifactVerification,
+    ArtifactReproducibilityBuildOverrideReport,
+    ArtifactReproducibilityReport,
     ArtifactReproducibilityEffectiveBuildExecutionReport,
     ArtifactReproducibilityEffectiveExecutionReport,
     ArtifactReproducibilityOverrideReport,
+    GenericFileVerificationReport,
+    InspectionEvidenceReference,
+    InvalidSecondaryArtifactVerificationReport,
+    ManifestVerificationSection,
+    MavenRepositoryVerificationReport,
+    NpmPackageVerificationReport,
+    OciImageVerificationReport,
+    PythonDistributionVerificationReport,
+    ReproducibilityExecutionSection,
     RcVoteManifestReadV1,
-    SecondaryArtifactVerificationAdapter,
     SourceArtifactReproducibilityMetadata,
     SourceArtifactContract,
+    SourceArtifactVerificationSection,
     RetainedArtifactSnapshot,
+    VerificationFailurePayload,
     VerifyRcReportV1,
 )
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
@@ -62,7 +74,6 @@ from apache_buildish_release_tooling.release.verification.inspection.archive_sha
     build_shallow_archive_analysis,
 )
 from apache_buildish_release_tooling.release.verification.secondary import (
-    INVALID_SECONDARY_ARTIFACT_KIND,
     verify_secondary_artifacts,
 )
 from apache_buildish_release_tooling.release.verification.rebuild import (
@@ -151,7 +162,7 @@ def verify_rc_phase1(
     rebuilt_source_sha512: str | None = None
     source_artifact_matches_source_commit = False
     rebuilt_source_artifact_path: Path | None = None
-    source_artifact_reproducibility: dict[str, Any] | None = None
+    source_artifact_reproducibility: ArtifactReproducibilityReport | None = None
     secondary_artifact_verifications: list[AnySecondaryArtifactVerification] = []
     reproducibility_decision = ReproducibilityModeDecision(
         requested_mode=requested_mode,
@@ -630,96 +641,84 @@ def _phase1_result(
     source_artifact_signature: SignatureVerification | None,
     rebuilt_source_sha512: str | None,
     source_artifact_matches_source_commit: bool,
-    source_artifact_reproducibility: dict[str, Any] | None,
+    source_artifact_reproducibility: ArtifactReproducibilityReport | None,
     secondary_artifact_verifications: list[AnySecondaryArtifactVerification],
     reproducibility_decision: ReproducibilityModeDecision,
     build_checks_attempted: bool,
 ) -> VerifyRcPhase1Result:
-    verdict = "verified" if not failures else "failed"
+    verdict: Literal["verified", "failed"] = "verified" if not failures else "failed"
     manifest_issues = _failure_messages(failures, scope="vote-manifest")
     source_artifact_issues = _failure_messages(failures, scope="source-artifact")
-    secondary_artifact_verification_payloads = [
-        SecondaryArtifactVerificationAdapter.validate_python(verification).model_dump(mode="json")
-        for verification in secondary_artifact_verifications
-    ]
-    report_payload = VerifyRcReportV1.model_validate(
-        {
-            "schema_version": "1",
-            "report_type": "verify-rc",
-            "component_id": component_id,
-            "version": version,
-            "rc_tag": rc_tag,
-            "source_commit_sha": source_commit_sha,
-            "source_date_epoch": source_date_epoch,
-            "source_repository_url": source_repository_url,
-            "manifest_url": manifest_url,
-            "keys_url": keys_url,
-            "verdict": verdict,
-            "work_dir": str(work_dir),
-            "failures": [
-                {
-                    "scope": failure.scope,
-                    "subject": failure.subject,
-                    "message": failure.message,
-                }
-                for failure in failures
-            ],
-            "manifest_verification": {
-                "verdict": "verified"
-                if manifest_signature is not None and keys_url_matches_manifest
-                else "failed",
-                "sha512": manifest_sha512,
-                "keys_url_matches_manifest": keys_url_matches_manifest,
-                "keys_url_matches_component_config": keys_url_matches_component_config,
-                "signature": (
-                    signature_payload(manifest_signature)
-                    if manifest_signature is not None
-                    else None
-                ),
-                "rc_tag_target_commit": rc_tag_target_commit,
-                "rc_tag_matches_source_commit_sha": (
-                    rc_tag_target_commit is not None
-                    and source_commit_sha is not None
-                    and rc_tag_target_commit == source_commit_sha
-                ),
-                "issues": manifest_issues,
-            },
-            "source_artifact_verification": {
-                "verdict": "verified"
-                if (
-                    source_artifact_filename is not None
-                    and source_artifact_url is not None
-                    and actual_source_sha512 is not None
-                    and source_artifact_signature is not None
-                    and source_artifact_matches_source_commit
-                )
-                else "failed",
-                "filename": source_artifact_filename,
-                "uri": source_artifact_url,
-                "sha512": actual_source_sha512,
-                "sha512_sidecar_verified": source_sha512_sidecar_verified,
-                "signature": (
-                    signature_payload(source_artifact_signature)
-                    if source_artifact_signature is not None
-                    else None
-                ),
-                "rebuilt_sha512": rebuilt_source_sha512,
-                "matches_source_commit_sha": source_artifact_matches_source_commit,
-                "reproducibility": source_artifact_reproducibility,
-                "issues": source_artifact_issues,
-            },
-            "reproducibility_execution": {
-                "requested_mode": reproducibility_decision.requested_mode,
-                "effective_mode": reproducibility_decision.effective_mode,
-                "build_checks_attempted": build_checks_attempted,
-                "execution_backend": "host-direct" if build_checks_attempted else "none",
-                "inherits_host_home": True if build_checks_attempted else None,
-                "prompt_used": reproducibility_decision.prompt_used,
-                "prompt_confirmed": reproducibility_decision.prompt_confirmed,
-                "skipped_reason": reproducibility_decision.build_checks_skipped_reason,
-            },
-            "secondary_artifact_verifications": secondary_artifact_verification_payloads,
-        }
+    report_payload = VerifyRcReportV1(
+        component_id=component_id,
+        version=version,
+        rc_tag=rc_tag,
+        source_commit_sha=source_commit_sha,
+        source_date_epoch=source_date_epoch,
+        source_repository_url=source_repository_url,
+        manifest_url=manifest_url,
+        keys_url=keys_url,
+        verdict=verdict,
+        work_dir=str(work_dir),
+        failures=[
+            VerificationFailurePayload(
+                scope=failure.scope,
+                subject=failure.subject,
+                message=failure.message,
+            )
+            for failure in failures
+        ],
+        manifest_verification=ManifestVerificationSection(
+            verdict="verified"
+            if manifest_signature is not None and keys_url_matches_manifest
+            else "failed",
+            sha512=manifest_sha512,
+            keys_url_matches_manifest=keys_url_matches_manifest,
+            keys_url_matches_component_config=keys_url_matches_component_config,
+            signature=signature_payload(manifest_signature) if manifest_signature is not None else None,
+            rc_tag_target_commit=rc_tag_target_commit,
+            rc_tag_matches_source_commit_sha=(
+                rc_tag_target_commit is not None
+                and source_commit_sha is not None
+                and rc_tag_target_commit == source_commit_sha
+            ),
+            issues=manifest_issues,
+        ),
+        source_artifact_verification=SourceArtifactVerificationSection(
+            verdict="verified"
+            if (
+                source_artifact_filename is not None
+                and source_artifact_url is not None
+                and actual_source_sha512 is not None
+                and source_artifact_signature is not None
+                and source_artifact_matches_source_commit
+            )
+            else "failed",
+            filename=source_artifact_filename,
+            uri=source_artifact_url,
+            sha512=actual_source_sha512,
+            sha512_sidecar_verified=source_sha512_sidecar_verified,
+            signature=(
+                signature_payload(source_artifact_signature)
+                if source_artifact_signature is not None
+                else None
+            ),
+            rebuilt_sha512=rebuilt_source_sha512,
+            matches_source_commit_sha=source_artifact_matches_source_commit,
+            reproducibility=source_artifact_reproducibility,
+            issues=source_artifact_issues,
+        ),
+        reproducibility_execution=ReproducibilityExecutionSection(
+            requested_mode=reproducibility_decision.requested_mode,
+            effective_mode=reproducibility_decision.effective_mode,
+            build_checks_attempted=build_checks_attempted,
+            execution_backend="host-direct" if build_checks_attempted else "none",
+            inherits_host_home=True if build_checks_attempted else None,
+            prompt_used=reproducibility_decision.prompt_used,
+            prompt_confirmed=reproducibility_decision.prompt_confirmed,
+            skipped_reason=reproducibility_decision.build_checks_skipped_reason,
+        ),
+        secondary_artifact_verifications=secondary_artifact_verifications,
     )
 
     report_markdown = _report_markdown(
@@ -738,12 +737,12 @@ def _phase1_result(
         source_artifact_url=source_artifact_url,
         source_artifact_signature=source_artifact_signature,
         actual_source_sha512=actual_source_sha512,
-        source_artifact_reproducibility=source_artifact_reproducibility,
+        source_artifact_reproducibility=report_payload.source_artifact_verification.reproducibility,
         manifest_issues=manifest_issues,
         source_artifact_issues=source_artifact_issues,
         reproducibility_decision=reproducibility_decision,
         build_checks_attempted=build_checks_attempted,
-        secondary_artifact_verifications=secondary_artifact_verification_payloads,
+        secondary_artifact_verifications=report_payload.secondary_artifact_verifications,
     )
     return VerifyRcPhase1Result(
         verdict=verdict,
@@ -881,12 +880,14 @@ def _report_markdown(
     source_artifact_url: str | None,
     source_artifact_signature: SignatureVerification | None,
     actual_source_sha512: str | None,
-    source_artifact_reproducibility: dict[str, Any] | None,
+    source_artifact_reproducibility: ArtifactReproducibilityReport | None,
     manifest_issues: list[str],
     source_artifact_issues: list[str],
     reproducibility_decision: ReproducibilityModeDecision,
     build_checks_attempted: bool,
-    secondary_artifact_verifications: list[dict[str, Any]],
+    secondary_artifact_verifications: Sequence[
+        AnySecondaryArtifactVerification | dict[str, object]
+    ],
 ) -> str:
     lines = [
         "## Verify RC",
@@ -941,7 +942,7 @@ def _report_markdown(
             ),
         ]
     )
-    if isinstance(source_artifact_reproducibility, dict):
+    if source_artifact_reproducibility is not None:
         _append_source_artifact_reproducibility_markdown(
             lines,
             reproducibility_payload=source_artifact_reproducibility,
@@ -980,158 +981,156 @@ def _report_markdown(
         )
     else:
         for verification in secondary_artifact_verifications:
-            kind = verification["kind"]
+            if isinstance(verification, dict):
+                raw_artifact_id = verification.get("artifact_id")
+                artifact_id = _md_value(raw_artifact_id if isinstance(raw_artifact_id, str) else None)
+                raw_kind = verification.get("kind")
+                kind = _md_value(raw_kind if isinstance(raw_kind, str) else None)
+                raise ValueError(
+                    "unsupported secondary artifact kind for markdown reporting: "
+                    f"{artifact_id} ({kind})"
+                )
+            kind = verification.kind
             lines.extend(
                 [
-                    f"#### `{verification['artifact_id']}`",
+                    f"#### `{verification.artifact_id}`",
                     "",
                     f"- Kind: `{kind}`",
                 ]
             )
-            if kind in {"generic-file", "generic-file-with-openpgp"}:
-                checksum_payload = verification["checksum"]
+            if isinstance(verification, GenericFileVerificationReport):
+                checksum_payload = verification.checksum
                 lines.extend(
                     [
-                        f"- File: `{verification['filename']}`",
-                        f"- URL: `{verification['uri']}`",
+                        f"- File: `{verification.filename}`",
+                        f"- URL: `{verification.uri}`",
                     ]
                 )
-                if checksum_payload.get("algorithm") and checksum_payload.get("value"):
+                if checksum_payload.algorithm and checksum_payload.value:
                     lines.append(
-                        f"- Checksum observed: `{checksum_payload['algorithm']}:{checksum_payload['value']}`"
+                        f"- Checksum observed: `{checksum_payload.algorithm}:{checksum_payload.value}`"
                     )
                 lines.append(
-                    f"- Checksum matched signed manifest: `{checksum_payload.get('matches_manifest')}`"
+                    f"- Checksum matched signed manifest: `{checksum_payload.matches_manifest}`"
                 )
                 lines.append(
-                    f"- Checksum sidecar verified: `{checksum_payload['sidecar_verified']}`"
+                    f"- Checksum sidecar verified: `{checksum_payload.sidecar_verified}`"
                 )
-                signature_verifications = verification.get("signatures", [])
-                if signature_verifications:
-                    for signature_verification in signature_verifications:
-                        lines.append(
-                            f"- Signature verified: `{signature_verification['signer_fingerprint']}`"
-                        )
-                inventory_payload = verification.get("inventory")
-                if isinstance(inventory_payload, dict):
+                for signature_verification in verification.signatures:
                     lines.append(
-                        f"- Inventory verified: `{inventory_payload['filename']}`"
+                        f"- Signature verified: `{signature_verification.signer_fingerprint}`"
                     )
-                reproducibility_payload = verification.get("reproducibility")
-                if isinstance(reproducibility_payload, dict):
+                if verification.inventory is not None:
+                    lines.append(
+                        f"- Inventory verified: `{verification.inventory.filename}`"
+                    )
+                if verification.reproducibility is not None:
                     _append_reproducibility_markdown(
                         lines,
-                        reproducibility_payload=reproducibility_payload,
+                        reproducibility_payload=verification.reproducibility,
                         match_summary_label="Rebuilt bytes matched staged artifact",
                     )
-            elif kind == "maven-repository":
-                inventory_payload = verification["inventory"]
-                live_repository = verification["live_repository"]
+            elif isinstance(verification, MavenRepositoryVerificationReport):
+                live_repository = verification.live_repository
                 lines.extend(
                     [
-                        f"- Base URL: `{verification['base_url']}`",
-                        f"- Inventory verified: `{inventory_payload['filename'] if isinstance(inventory_payload, dict) else 'n/a'}`",
-                        f"- Live repository entry count: `{live_repository['entry_count']}`",
-                        f"- Live repository matches signed inventory: `{live_repository['matches_signed_inventory']}`",
+                        f"- Base URL: `{verification.base_url}`",
+                        f"- Inventory verified: `{verification.inventory.filename if verification.inventory is not None else 'n/a'}`",
+                        f"- Live repository entry count: `{live_repository.entry_count}`",
+                        f"- Live repository matches signed inventory: `{live_repository.matches_signed_inventory}`",
                     ]
                 )
-                signature_verifications = live_repository.get("signature_verifications", [])
-                for signature_verification in signature_verifications:
+                for repository_signature in live_repository.signature_verifications:
                     lines.append(
-                        f"- Signature verified: `{signature_verification['path']}` by `{signature_verification['signature']['signer_fingerprint']}`"
+                        f"- Signature verified: `{repository_signature.path}` by `{repository_signature.signature.signer_fingerprint}`"
                     )
-                reproducibility_payload = verification.get("reproducibility")
-                if isinstance(reproducibility_payload, dict):
+                if verification.reproducibility is not None:
                     _append_reproducibility_markdown(
                         lines,
-                        reproducibility_payload=reproducibility_payload,
+                        reproducibility_payload=verification.reproducibility,
                         match_summary_label="Rebuilt repository matched staged policy",
                     )
-            elif kind == "python-distribution":
-                checksum_payload = verification["checksum"]
-                index_resolution = verification["index_resolution"]
+            elif isinstance(verification, PythonDistributionVerificationReport):
+                checksum_payload = verification.checksum
+                index_resolution = verification.index_resolution
                 lines.extend(
                     [
-                        f"- File: `{verification['filename']}`",
-                        f"- URL: `{verification['uri']}`",
-                        f"- Project: `{verification['project_name']}` `{verification['version']}`",
+                        f"- File: `{verification.filename}`",
+                        f"- URL: `{verification.uri}`",
+                        f"- Project: `{verification.project_name}` `{verification.version}`",
                     ]
                 )
-                if checksum_payload.get("algorithm") and checksum_payload.get("value"):
+                if checksum_payload.algorithm and checksum_payload.value:
                     lines.append(
-                        f"- Checksum observed: `{checksum_payload['algorithm']}:{checksum_payload['value']}`"
+                        f"- Checksum observed: `{checksum_payload.algorithm}:{checksum_payload.value}`"
                     )
                 lines.extend(
                     [
-                        f"- Checksum matched signed manifest: `{checksum_payload.get('matches_manifest')}`",
-                        f"- Checksum sidecar verified: `{checksum_payload['sidecar_verified']}`",
-                        f"- Simple index verified: `{index_resolution['project_index_url']}`",
-                        f"- Simple index hash matched: `{index_resolution['sha256_matches_index']}`",
+                        f"- Checksum matched signed manifest: `{checksum_payload.matches_manifest}`",
+                        f"- Checksum sidecar verified: `{checksum_payload.sidecar_verified}`",
+                        f"- Simple index verified: `{index_resolution.project_index_url}`",
+                        f"- Simple index hash matched: `{index_resolution.sha256_matches_index}`",
                     ]
                 )
-                reproducibility_payload = verification.get("reproducibility")
-                if isinstance(reproducibility_payload, dict):
+                if verification.reproducibility is not None:
                     _append_reproducibility_markdown(
                         lines,
-                        reproducibility_payload=reproducibility_payload,
+                        reproducibility_payload=verification.reproducibility,
                         match_summary_label="Rebuilt bytes matched staged artifact",
                     )
-            elif kind == "oci-image":
-                inspection = verification["inspection"]
+            elif isinstance(verification, OciImageVerificationReport):
+                inspection = verification.inspection
                 lines.extend(
                     [
-                        f"- Image: `{inspection['image_ref']}`",
-                        f"- Digest verified: `{verification['digest']}`",
-                        f"- Platform digests matched: `{inspection['platform_digests_match']}`",
+                        f"- Image: `{inspection.image_ref}`",
+                        f"- Digest verified: `{verification.digest}`",
+                        f"- Platform digests matched: `{inspection.platform_digests_match}`",
                     ]
                 )
-                reproducibility_payload = verification.get("reproducibility")
-                if isinstance(reproducibility_payload, dict):
+                if verification.reproducibility is not None:
                     _append_reproducibility_markdown(
                         lines,
-                        reproducibility_payload=reproducibility_payload,
+                        reproducibility_payload=verification.reproducibility,
                         match_summary_label="Rebuilt image matched staged digests",
                     )
-            elif kind == "npm-package":
-                checksum_payload = verification["checksum"]
-                registry_resolution = verification["registry_resolution"]
+            elif isinstance(verification, NpmPackageVerificationReport):
+                checksum_payload = verification.checksum
+                registry_resolution = verification.registry_resolution
                 lines.extend(
                     [
-                        f"- Package: `{verification['package_name']}` `{verification['version']}`",
-                        f"- Tarball: `{verification['uri']}`",
-                        f"- Integrity verified: `{verification['integrity']['value']}`",
-                        f"- Integrity matched downloaded bytes: `{verification['integrity']['matches_downloaded_bytes']}`",
-                        f"- Integrity matched signed manifest checksum: `{verification['integrity']['matches_manifest_checksum']}`",
+                        f"- Package: `{verification.package_name}` `{verification.version}`",
+                        f"- Tarball: `{verification.uri}`",
+                        f"- Integrity verified: `{verification.integrity.value}`",
+                        f"- Integrity matched downloaded bytes: `{verification.integrity.matches_downloaded_bytes}`",
+                        f"- Integrity matched signed manifest checksum: `{verification.integrity.matches_manifest_checksum}`",
                     ]
                 )
-                if checksum_payload.get("algorithm") and checksum_payload.get("value"):
+                if checksum_payload.algorithm and checksum_payload.value:
                     lines.append(
-                        f"- Checksum observed: `{checksum_payload['algorithm']}:{checksum_payload['value']}`"
+                        f"- Checksum observed: `{checksum_payload.algorithm}:{checksum_payload.value}`"
                     )
                 lines.extend(
                     [
-                        f"- Checksum matched signed manifest: `{checksum_payload.get('matches_manifest')}`",
-                        f"- Registry metadata verified: `{registry_resolution['metadata_url']}`",
-                        f"- Registry tarball matched: `{registry_resolution['tarball_url_matches_manifest']}`",
-                        f"- Registry integrity matched: `{registry_resolution['integrity_matches_manifest']}`",
+                        f"- Checksum matched signed manifest: `{checksum_payload.matches_manifest}`",
+                        f"- Registry metadata verified: `{registry_resolution.metadata_url}`",
+                        f"- Registry tarball matched: `{registry_resolution.tarball_url_matches_manifest}`",
+                        f"- Registry integrity matched: `{registry_resolution.integrity_matches_manifest}`",
                     ]
                 )
-                reproducibility_payload = verification.get("reproducibility")
-                if isinstance(reproducibility_payload, dict):
+                if verification.reproducibility is not None:
                     _append_reproducibility_markdown(
                         lines,
-                        reproducibility_payload=reproducibility_payload,
+                        reproducibility_payload=verification.reproducibility,
                         match_summary_label="Rebuilt bytes matched staged artifact",
                     )
-            elif kind == INVALID_SECONDARY_ARTIFACT_KIND:
-                declared_kind = verification.get("declared_kind")
-                lines.append(f"- Declared kind: `{_md_value(declared_kind if isinstance(declared_kind, str) else None)}`")
+            elif isinstance(verification, InvalidSecondaryArtifactVerificationReport):
+                lines.append(f"- Declared kind: `{_md_value(verification.declared_kind)}`")
             else:
                 raise ValueError(
                     "unsupported secondary artifact kind for markdown reporting: "
-                    f"{verification['artifact_id']} ({kind})"
+                    f"{verification.artifact_id} ({kind})"
                 )
-            for issue in verification.get("issues", []):
+            for issue in verification.issues:
                 lines.append(f"- ✗ {issue}")
             lines.append("")
     lines.extend(
@@ -1166,47 +1165,40 @@ def _report_markdown(
 def _append_reproducibility_markdown(
     lines: list[str],
     *,
-    reproducibility_payload: dict[str, Any],
+    reproducibility_payload: ArtifactReproducibilityReport,
     match_summary_label: str,
 ) -> None:
-    override_payload = reproducibility_payload.get("override", {})
-    recipe_source = (
-        "local-override"
-        if isinstance(override_payload, dict) and override_payload.get("applied")
-        else "canonical-profile"
-    )
+    recipe_source = "local-override" if reproducibility_payload.override.applied else "canonical-profile"
     lines.extend(
         [
-            f"- Reproducibility profile: `{reproducibility_payload['profile_id']}`",
-            f"- Reproducibility verdict: `{reproducibility_payload['verdict']}`",
-            f"- Reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
+            f"- Reproducibility profile: `{reproducibility_payload.profile_id}`",
+            f"- Reproducibility verdict: `{reproducibility_payload.verdict}`",
+            f"- Reproducibility mode: `{reproducibility_payload.comparison_mode}`",
             f"- Recipe source: `{recipe_source}`",
-            f"- {match_summary_label}: `{reproducibility_payload['matches_remote_bytes']}`",
+            f"- {match_summary_label}: `{reproducibility_payload.matches_remote_bytes}`",
         ]
     )
-    canonical_build = _nested_mapping(reproducibility_payload, "canonical_recipe", "build")
-    effective_execution = _nested_mapping(reproducibility_payload, "effective_execution")
-    effective_build = _nested_mapping(reproducibility_payload, "effective_execution", "build")
-    override_build = _nested_mapping(reproducibility_payload, "override", "build")
-    if effective_execution is not None and effective_execution.get("backend") is not None:
-        lines.append(f"- Execution backend: `{effective_execution['backend']}`")
+    canonical_build = reproducibility_payload.canonical_recipe.build if reproducibility_payload.canonical_recipe else None
+    effective_execution = reproducibility_payload.effective_execution
+    effective_build = effective_execution.build if effective_execution is not None else None
+    override_build = reproducibility_payload.override.build
+    if effective_execution is not None:
+        lines.append(f"- Execution backend: `{effective_execution.backend}`")
     if recipe_source == "local-override" and canonical_build is not None:
-        canonical_command = canonical_build.get("command", [])
+        canonical_command = canonical_build.command
         if canonical_command:
             lines.append(
                 "- Canonical build command: `"
                 + " ".join(str(part) for part in canonical_command)
                 + "`"
             )
-    build_command = effective_build.get("command", []) if effective_build else []
+    build_command = effective_build.command if effective_build else []
     if build_command:
         lines.append("- Build command: `" + " ".join(str(part) for part in build_command) + "`")
-    build_working_directory = effective_build.get("working_directory") if effective_build else None
+    build_working_directory = effective_build.working_directory if effective_build else None
     if build_working_directory:
         lines.append(f"- Build working directory: `{build_working_directory}`")
-    injected_environment_keys = (
-        effective_build.get("injected_environment_keys", []) if effective_build else []
-    )
+    injected_environment_keys = effective_build.injected_environment_keys if effective_build else []
     if injected_environment_keys:
         lines.append(
             "- Injected environment keys: `"
@@ -1220,68 +1212,56 @@ def _append_reproducibility_markdown(
             + ", ".join(str(field) for field in override_fields)
             + "`"
         )
-    if reproducibility_payload.get("failure_class") is not None:
+    if reproducibility_payload.failure_class is not None:
         lines.append(
-            f"- Reproducibility failure class: `{reproducibility_payload['failure_class']}`"
+            f"- Reproducibility failure class: `{reproducibility_payload.failure_class}`"
         )
-    for output_path in (effective_build.get("output_paths", []) if effective_build else []):
+    for output_path in (effective_build.output_paths if effective_build else []):
         lines.append(f"- Rebuild output: `{output_path}`")
-    for evidence_reference in reproducibility_payload.get("evidence", []):
-        if not isinstance(evidence_reference, dict):
-            continue
-        if evidence_reference.get("label") and evidence_reference.get("path"):
-            lines.append(
-                f"- Reproducibility evidence `{evidence_reference['label']}`: `{evidence_reference['path']}`"
-            )
+    for evidence_reference in reproducibility_payload.evidence:
+        lines.append(
+            f"- Reproducibility evidence `{evidence_reference.label}`: `{evidence_reference.path}`"
+        )
 
 
 def _append_source_artifact_reproducibility_markdown(
     lines: list[str],
     *,
-    reproducibility_payload: dict[str, Any],
+    reproducibility_payload: ArtifactReproducibilityReport,
 ) -> None:
     lines.extend(
         [
-            f"- Source reproducibility profile: `{reproducibility_payload['profile_id']}`",
-            f"- Source reproducibility verdict: `{reproducibility_payload['verdict']}`",
-            f"- Source reproducibility mode: `{reproducibility_payload['comparison_mode']}`",
+            f"- Source reproducibility profile: `{reproducibility_payload.profile_id}`",
+            f"- Source reproducibility verdict: `{reproducibility_payload.verdict}`",
+            f"- Source reproducibility mode: `{reproducibility_payload.comparison_mode}`",
             "- Source recipe source: `verifier-internal`",
-            f"- Rebuilt bytes matched declared source commit: `{reproducibility_payload['matches_remote_bytes']}`",
+            f"- Rebuilt bytes matched declared source commit: `{reproducibility_payload.matches_remote_bytes}`",
         ]
     )
-    effective_execution = _nested_mapping(reproducibility_payload, "effective_execution")
-    effective_build = _nested_mapping(reproducibility_payload, "effective_execution", "build")
-    if effective_execution is not None and effective_execution.get("backend") is not None:
-        lines.append(f"- Source rebuild backend: `{effective_execution['backend']}`")
-    build_command = effective_build.get("command", []) if effective_build else []
+    effective_execution = reproducibility_payload.effective_execution
+    effective_build = effective_execution.build if effective_execution is not None else None
+    if effective_execution is not None:
+        lines.append(f"- Source rebuild backend: `{effective_execution.backend}`")
+    build_command = effective_build.command if effective_build else []
     if build_command:
         lines.append(
             "- Source rebuild command: `"
             + " ".join(str(part) for part in build_command)
             + "`"
         )
-    build_working_directory = effective_build.get("working_directory") if effective_build else None
+    build_working_directory = effective_build.working_directory if effective_build else None
     if build_working_directory:
         lines.append(f"- Source rebuild working directory: `{build_working_directory}`")
-    for output_path in (effective_build.get("output_paths", []) if effective_build else []):
+    for output_path in (effective_build.output_paths if effective_build else []):
         lines.append(f"- Source rebuild output: `{output_path}`")
-    if reproducibility_payload.get("failure_class") is not None:
+    if reproducibility_payload.failure_class is not None:
         lines.append(
-            f"- Source reproducibility failure class: `{reproducibility_payload['failure_class']}`"
+            f"- Source reproducibility failure class: `{reproducibility_payload.failure_class}`"
         )
 
 
 def _md_value(value: str | None) -> str:
     return value if value is not None else "n/a"
-
-
-def _nested_mapping(payload: dict[str, Any], *path: str) -> dict[str, Any] | None:
-    current: Any = payload
-    for key in path:
-        if not isinstance(current, dict):
-            return None
-        current = current.get(key)
-    return current if isinstance(current, dict) else None
 
 
 def _source_artifact_reproducibility_payload(
@@ -1293,7 +1273,7 @@ def _source_artifact_reproducibility_payload(
     source_artifact_matches_source_commit: bool,
     failures: list[VerificationFailure],
     inspection_bundle_root: Path | None,
-) -> dict[str, Any] | None:
+) -> ArtifactReproducibilityReport | None:
     reproducibility_issues = [
         failure.message
         for failure in failures
@@ -1333,7 +1313,7 @@ def _source_artifact_reproducibility_payload(
         and rebuilt_source_artifact_path.exists()
         else None
     )
-    evidence: list[dict[str, str]] = []
+    evidence: list[InspectionEvidenceReference] = []
     if inspection_bundle_root is not None and source_artifact_path is not None:
         metadata_payload = SourceArtifactReproducibilityMetadata(
             profile_id=profile_id,
@@ -1363,65 +1343,62 @@ def _source_artifact_reproducibility_payload(
             inspection_bundle_root,
             payload=metadata_payload,
         )
-        evidence.append({"label": "comparison-metadata", "path": metadata_path})
+        evidence.append(
+            InspectionEvidenceReference(
+                label="comparison-metadata",
+                path=metadata_path,
+            )
+        )
         if reproducibility_issues:
             evidence.append(
-                {
-                    "label": "staged-artifact",
-                    "path": retain_source_artifact_evidence_file(
+                InspectionEvidenceReference(
+                    label="staged-artifact",
+                    path=retain_source_artifact_evidence_file(
                         inspection_bundle_root,
                         label_directory="staged",
                         source_path=source_artifact_path,
                     ),
-                }
+                )
             )
             if rebuilt_source_artifact_path is not None:
                 evidence.append(
-                    {
-                        "label": "rebuilt-artifact",
-                        "path": retain_source_artifact_evidence_file(
+                    InspectionEvidenceReference(
+                        label="rebuilt-artifact",
+                        path=retain_source_artifact_evidence_file(
                             inspection_bundle_root,
                             label_directory="rebuilt",
                             source_path=rebuilt_source_artifact_path,
                         ),
-                    }
+                    )
                 )
-    return {
-        "profile_id": profile_id,
-        "verdict": "failed" if reproducibility_issues else "verified",
-        "comparison_mode": "exact-bytes",
-        "canonical_recipe": None,
-        "effective_execution": (
-            effective_execution.model_dump(mode="json", exclude_none=True)
-            if effective_execution is not None
-            else None
-        ),
-        "override": ArtifactReproducibilityOverrideReport(applied=False).model_dump(mode="json"),
-        "matches_remote_bytes": (
+    return ArtifactReproducibilityReport(
+        profile_id=profile_id,
+        verdict="failed" if reproducibility_issues else "verified",
+        comparison_mode="exact-bytes",
+        canonical_recipe=None,
+        effective_execution=effective_execution,
+        override=ArtifactReproducibilityOverrideReport(applied=False),
+        matches_remote_bytes=(
             source_artifact_matches_source_commit if rebuilt_source_sha512 is not None else None
         ),
-        "failure_class": failure_class,
-        "archive_analysis": (
-            archive_analysis.model_dump(mode="json", exclude_none=True)
-            if archive_analysis is not None
-            else None
-        ),
-        "evidence": evidence,
-        "issues": reproducibility_issues,
-    }
+        failure_class=failure_class,
+        archive_analysis=archive_analysis,
+        evidence=evidence,
+        issues=reproducibility_issues,
+    )
 
 
-def _override_field_summary(override_build: dict[str, Any] | None) -> list[str]:
+def _override_field_summary(
+    override_build: ArtifactReproducibilityBuildOverrideReport | None,
+) -> list[str]:
     if override_build is None:
         return []
     fields: list[str] = []
-    if override_build.get("command") is not None:
+    if override_build.command is not None:
         fields.append("build.command")
-    if override_build.get("working_directory") is not None:
+    if override_build.working_directory is not None:
         fields.append("build.working_directory")
-    if override_build.get("output_globs") is not None:
+    if override_build.output_globs is not None:
         fields.append("build.output_globs")
-    env_keys = override_build.get("env_keys")
-    if isinstance(env_keys, list):
-        fields.extend(f"build.env.{key}" for key in env_keys if isinstance(key, str))
+    fields.extend(f"build.env.{key}" for key in override_build.env_keys)
     return fields

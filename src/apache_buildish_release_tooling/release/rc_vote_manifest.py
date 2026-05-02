@@ -22,14 +22,27 @@ import subprocess
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 from urllib.request import urlopen
 
 from apache_buildish_release_tooling.release.git_repo import GitRepository
 from apache_buildish_release_tooling.release.github_checks import resolve_repository_slug
 from apache_buildish_release_tooling.release.contracts import (
+    AuthoritativeManifestReference,
+    DraftGithubRelease,
+    GithubWorkflowProvenance,
+    ManifestProvenance,
+    ManifestTrustRoots,
+    ManifestVerificationMetadataStrict,
+    ReproducibilitySelector,
+    Sha512ChecksumPayload,
+    Sha512Checksums,
+    SignatureReference,
+    SourceArtifactContract,
+    ToolingProvenance,
+    VoteMaterialsStrict,
     AnySecondaryArtifact,
+    AsfKeysTrustRoot,
     RcVoteManifestV1,
 )
 from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
@@ -72,25 +85,22 @@ def _tooling_git_ref(repo: GitRepository) -> tuple[str | None, str | None]:
     return symbolic_ref, None
 
 
-def tooling_provenance() -> dict[str, object]:
+def tooling_provenance() -> ToolingProvenance:
     """Build provenance metadata for the checked-out release-tooling source tree."""
 
     repo = GitRepository.from_current_worktree(_tooling_repo_root())
     repository, repository_url = origin_repository_metadata(repo)
     git_ref, version = _tooling_git_ref(repo)
-    provenance: dict[str, object] = {
-        "repository": repository,
-        "repository_url": repository_url,
-        "git_commit_sha": repo.current_head_commit(),
-    }
-    if git_ref is not None:
-        provenance["git_ref"] = git_ref
-    if version is not None:
-        provenance["version"] = version
-    return provenance
+    return ToolingProvenance(
+        repository=repository,
+        repository_url=repository_url,
+        git_commit_sha=repo.current_head_commit(),
+        git_ref=git_ref,
+        version=version,
+    )
 
 
-def github_workflow_provenance(default_repository: str) -> dict[str, object] | None:
+def github_workflow_provenance(default_repository: str) -> GithubWorkflowProvenance | None:
     """Build GitHub Actions workflow provenance when running inside GitHub Actions."""
 
     repository = os.environ.get("GITHUB_REPOSITORY") or default_repository
@@ -98,18 +108,20 @@ def github_workflow_provenance(default_repository: str) -> dict[str, object] | N
     if not run_id:
         return None
     server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
-    provenance: dict[str, object] = {
-        "repository": repository,
-        "workflow": os.environ.get("GITHUB_WORKFLOW", ""),
-        "workflow_ref": os.environ.get("GITHUB_WORKFLOW_REF", ""),
-        "run_id": int(run_id),
-    }
+    run_url = (
+        f"{server_url.rstrip('/')}/{repository}/actions/runs/{run_id}"
+        if repository
+        else None
+    )
     run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT")
-    if run_attempt and run_attempt.isdigit():
-        provenance["run_attempt"] = int(run_attempt)
-    if repository:
-        provenance["run_url"] = f"{server_url.rstrip('/')}/{repository}/actions/runs/{run_id}"
-    return provenance
+    return GithubWorkflowProvenance(
+        repository=repository,
+        workflow=os.environ.get("GITHUB_WORKFLOW", ""),
+        workflow_ref=os.environ.get("GITHUB_WORKFLOW_REF", ""),
+        run_id=int(run_id),
+        run_attempt=int(run_attempt) if run_attempt and run_attempt.isdigit() else None,
+        run_url=run_url,
+    )
 
 
 def created_at_utc() -> str:
@@ -162,17 +174,17 @@ def read_uri_text(uri: str) -> str:
     return read_uri_bytes(uri).decode("utf-8")
 
 
-def trust_root_metadata(keys_uri: str) -> dict[str, object]:
+def trust_root_metadata(keys_uri: str) -> ManifestTrustRoots:
     """Build the KEYS trust-root block for one explicit ASF KEYS URI."""
 
     keys_payload = read_uri_bytes(keys_uri)
-    return {
-        "asf_keys": {
-            "uri": keys_uri,
-            "known_length_bytes": len(keys_payload),
-            "known_prefix_sha512": hashlib.sha512(keys_payload).hexdigest(),
-        }
-    }
+    return ManifestTrustRoots(
+        asf_keys=AsfKeysTrustRoot(
+            uri=keys_uri,
+            known_length_bytes=len(keys_payload),
+            known_prefix_sha512=hashlib.sha512(keys_payload).hexdigest(),
+        )
+    )
 
 
 def build_rc_vote_manifest(
@@ -185,7 +197,7 @@ def build_rc_vote_manifest(
     draft_release_url: str,
     rc_tag_target_commit: str,
     source_artifact_sha512: str,
-    secondary_artifacts: Sequence[AnySecondaryArtifact | dict[str, Any]],
+    secondary_artifacts: Sequence[AnySecondaryArtifact],
 ) -> RcVoteManifestV1:
     """Build the machine-readable RC inventory staged for vote."""
 
@@ -201,76 +213,58 @@ def build_rc_vote_manifest(
         if component_config.verify_rc is not None and component_config.verify_rc.source is not None
         else None
     )
-    source_artifact_payload: dict[str, Any] = {
-        "role": "asf-source-release",
-        "filename": state.source_artifact_name,
-        "uri": source_artifact_url,
-        "artifact_origin": "source-commit",
-        "git_commit_sha": state.resolved_source_ref,
-        "checksums": {
-            "sha512": {
-                "value": source_artifact_sha512,
-                "uri": f"{source_artifact_url}.sha512",
-            }
-        },
-        "signatures": [
-            {
-                "type": "openpgp-detached-ascii-armored",
-                "uri": f"{source_artifact_url}.asc",
-            }
-        ],
-    }
-    if source_reproducibility is not None:
-        source_artifact_payload["reproducibility"] = {
-            "profile_id": source_reproducibility.profile_id,
-        }
-
-    manifest: dict[str, Any] = {
-        "schema_version": "1",
-        "manifest_type": "rc-vote",
-        "component_id": component_config.component_id,
-        "version": state.final_tag.removeprefix("v"),
-        "release_line": derive_specific_release_line(state.final_tag.removeprefix("v")),
-        "release_branch": state.resolved_release_branch,
-        "source_repository_url": source_repository_url,
-        "source_commit_sha": state.resolved_source_ref,
-        "source_date_epoch": state.source_date_epoch,
-        "rc_tag": state.rc_tag,
-        "final_tag": state.final_tag,
-        "final_tag_mode": component_config.final_tag_mode,
-        "provenance": {
-            "created_at": created_at_utc(),
-            "tooling": tooling_provenance(),
-        },
-        "trust_roots": trust_root_metadata(component_config.asf_keys_url),
-        "draft_github_release": {
-            "repository": repository_slug,
-            "tag": draft_release_tag,
-            "url": draft_release_url,
-        },
-        "vote_materials": {
-            "source_artifacts": [source_artifact_payload],
-            "secondary_artifacts": list(secondary_artifacts),
-        },
-        "verification": {
-            "staging_svn_url": f"{staging_url}/",
-            "authoritative_manifest": {
-                "uri": manifest_url,
-                "checksum_uris": {
-                    "sha512": f"{manifest_url}.sha512",
-                },
-                "signatures": [
-                    {
-                        "type": "openpgp-detached-ascii-armored",
-                        "uri": f"{manifest_url}.asc",
-                    }
-                ],
-            }
-        },
-    }
-    if materialized_commit_sha is not None:
-        manifest["materialized_commit_sha"] = materialized_commit_sha
-    github_provenance = github_workflow_provenance(repository_slug)
-    if github_provenance is not None:
-        manifest["provenance"]["github"] = github_provenance
-    return RcVoteManifestV1.model_validate(manifest)
+    source_artifact_payload = SourceArtifactContract(
+        filename=state.source_artifact_name,
+        uri=source_artifact_url,
+        artifact_origin="source-commit",
+        git_commit_sha=state.resolved_source_ref,
+        reproducibility=(
+            ReproducibilitySelector(profile_id=source_reproducibility.profile_id)
+            if source_reproducibility is not None
+            else None
+        ),
+        checksums=Sha512Checksums(
+            sha512=Sha512ChecksumPayload(
+                value=source_artifact_sha512,
+                uri=f"{source_artifact_url}.sha512",
+            )
+        ),
+        signatures=[SignatureReference(uri=f"{source_artifact_url}.asc")],
+    )
+    provenance = ManifestProvenance(
+        created_at=created_at_utc(),
+        tooling=tooling_provenance(),
+        github=github_workflow_provenance(repository_slug),
+    )
+    return RcVoteManifestV1(
+        component_id=component_config.component_id,
+        version=state.final_tag.removeprefix("v"),
+        release_line=derive_specific_release_line(state.final_tag.removeprefix("v")),
+        release_branch=state.resolved_release_branch,
+        source_repository_url=source_repository_url,
+        source_commit_sha=state.resolved_source_ref,
+        source_date_epoch=state.source_date_epoch,
+        rc_tag=state.rc_tag,
+        final_tag=state.final_tag,
+        final_tag_mode=component_config.final_tag_mode,
+        provenance=provenance,
+        trust_roots=trust_root_metadata(component_config.asf_keys_url),
+        draft_github_release=DraftGithubRelease(
+            repository=repository_slug,
+            tag=draft_release_tag,
+            url=draft_release_url,
+        ),
+        vote_materials=VoteMaterialsStrict(
+            source_artifacts=[source_artifact_payload],
+            secondary_artifacts=list(secondary_artifacts),
+        ),
+        verification=ManifestVerificationMetadataStrict(
+            staging_svn_url=f"{staging_url}/",
+            authoritative_manifest=AuthoritativeManifestReference(
+                uri=manifest_url,
+                checksum_uris={"sha512": f"{manifest_url}.sha512"},
+                signatures=[SignatureReference(uri=f"{manifest_url}.asc")],
+            ),
+        ),
+        materialized_commit_sha=materialized_commit_sha,
+    )

@@ -23,12 +23,15 @@ from pathlib import Path
 from typing import Any
 
 from apache_buildish_release_tooling.release.artifact_registration.common import (
-    apply_common_artifact_metadata,
+    common_artifact_metadata,
 )
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationResult,
 )
-from apache_buildish_release_tooling.release.contracts import OciImageSecondaryArtifact
+from apache_buildish_release_tooling.release.contracts import (
+    OciImageSecondaryArtifact,
+    OciPlatformDigest,
+)
 from apache_buildish_release_tooling.release.process import (
     CommandExecutionError,
     run_logged_command,
@@ -77,10 +80,10 @@ def _normalized_digest(raw_value: object | None, *, option_name: str) -> str:
     return digest
 
 
-def _platform_digest_entries(raw_values: list[str] | None) -> list[dict[str, str]]:
+def _platform_digest_entries(raw_values: list[str] | None) -> list[OciPlatformDigest]:
     if not raw_values:
         return []
-    entries: list[dict[str, str]] = []
+    entries: list[OciPlatformDigest] = []
     seen_platforms: set[str] = set()
     for raw_entry in raw_values:
         if "=" not in raw_entry:
@@ -93,10 +96,10 @@ def _platform_digest_entries(raw_values: list[str] | None) -> list[dict[str, str
             raise ValueError(f"oci-image --platform-digest declared platform more than once: {platform}")
         seen_platforms.add(platform)
         entries.append(
-            {
-                "platform": platform,
-                "digest": _normalized_digest(digest_value, option_name="--platform-digest"),
-            }
+            OciPlatformDigest(
+                platform=platform,
+                digest=_normalized_digest(digest_value, option_name="--platform-digest"),
+            )
         )
     return entries
 
@@ -141,11 +144,11 @@ def _platform_string(platform_payload: dict[str, Any]) -> str | None:
     return f"{os_name}/{architecture}"
 
 
-def _derived_platform_digest_entries(manifest_payload: dict[str, Any]) -> list[dict[str, str]]:
+def _derived_platform_digest_entries(manifest_payload: dict[str, Any]) -> list[OciPlatformDigest]:
     manifest_entries = manifest_payload.get("manifests")
     if not isinstance(manifest_entries, list):
         return []
-    platform_digests: list[dict[str, str]] = []
+    platform_digests: list[OciPlatformDigest] = []
     seen_platforms: set[str] = set()
     for manifest_entry in manifest_entries:
         if not isinstance(manifest_entry, dict):
@@ -160,10 +163,13 @@ def _derived_platform_digest_entries(manifest_payload: dict[str, Any]) -> list[d
             raise ValueError(f"oci-image registry manifest declared platform more than once: {platform}")
         seen_platforms.add(platform)
         platform_digests.append(
-            {
-                "platform": platform,
-                "digest": _normalized_digest(manifest_entry.get("digest"), option_name="registry manifest digest"),
-            }
+            OciPlatformDigest(
+                platform=platform,
+                digest=_normalized_digest(
+                    manifest_entry.get("digest"),
+                    option_name="registry manifest digest",
+                ),
+            )
         )
     return platform_digests
 
@@ -172,7 +178,7 @@ def _inspect_image_ref(
     image_ref: str,
     *,
     log_commands: bool = True,
-) -> tuple[str, str, str, list[dict[str, str]]]:
+) -> tuple[str, str, str, list[OciPlatformDigest]]:
     try:
         completed = run_logged_command(
             [
@@ -203,7 +209,7 @@ def _inspect_image_ref(
     return registry, repository, digest, _derived_platform_digest_entries(manifest_payload)
 
 
-def _manual_or_derived_details(args: Namespace) -> tuple[str, str, str, list[dict[str, str]]]:
+def _manual_or_derived_details(args: Namespace) -> tuple[str, str, str, list[OciPlatformDigest]]:
     image_ref = getattr(args, "image_ref", None)
     if image_ref is not None:
         if any(
@@ -232,17 +238,18 @@ def build_oci_image_registration(args: Namespace, bundle_dir: Path) -> ArtifactR
     del bundle_dir  # reserved for future inventory-producing variants
     registry, repository, digest, platform_digests = _manual_or_derived_details(args)
     uri = _optional_text(getattr(args, "uri", None), option_name="--uri")
-    artifact: dict[str, Any] = {
-        "artifact_id": args.artifact_id,
-        "kind": "oci-image",
-        "uri": uri or _default_reference_uri(registry, repository, digest),
-        "registry": registry,
-        "repository": repository,
-        "digest": digest,
-    }
-    if platform_digests:
-        artifact["platform_digests"] = platform_digests
-    apply_common_artifact_metadata(artifact, args)
+    common_metadata = common_artifact_metadata(args)
     return ArtifactRegistrationResult(
-        secondary_artifact=OciImageSecondaryArtifact.model_validate(artifact)
+        secondary_artifact=OciImageSecondaryArtifact(
+            artifact_id=args.artifact_id,
+            role=common_metadata.role,
+            artifact_origin=common_metadata.artifact_origin,
+            git_commit_sha=common_metadata.git_commit_sha,
+            reproducibility=common_metadata.reproducibility,
+            uri=uri or _default_reference_uri(registry, repository, digest),
+            registry=registry,
+            repository=repository,
+            digest=digest,
+            platform_digests=platform_digests or None,
+        )
     )
