@@ -58,6 +58,22 @@ class GitHubGitRefsTest(unittest.TestCase):
                     target_sha="tag-object-sha",
                 )
 
+    def test_update_ref_rejects_invalid_object_payload(self) -> None:
+        with mock.patch(
+            "apache_buildish_release_tooling.release.github_git_refs.run_logged_command",
+            return_value=subprocess.CompletedProcess([], 0, json.dumps({"sha": []}), ""),
+        ):
+            with self.assertRaisesRegex(
+                ValueError,
+                "GitHub ref update returned a malformed GitHub Git object payload",
+            ):
+                github_git_refs.update_ref(
+                    "apache/buildish-example",
+                    ref_name="refs/tags/v1",
+                    target_sha="deadbeef",
+                    force=True,
+                )
+
     def test_create_annotated_tag_object_posts_expected_payload(self) -> None:
         with mock.patch(
             "apache_buildish_release_tooling.release.github_git_refs.run_logged_command",
