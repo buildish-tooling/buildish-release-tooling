@@ -176,9 +176,12 @@ def run_inspect_repro(args: Namespace) -> str | None:
     """Inspect one saved verify-rc report plus its curated reproducibility bundle."""
 
     if bool(getattr(args, "json", False)):
+        if bool(getattr(args, "compact", False)):
+            raise ValueError("--compact is only supported for the human inspect-repro transcript")
         payload = inspect_repro_report_json(
             Path(args.report_json),
             artifact_ids=tuple(getattr(args, "artifact_ids", [])),
+            failure_classes=tuple(getattr(args, "failure_classes", [])),
             summary_only=bool(getattr(args, "summary_only", False)),
         )
         return payload.model_dump_json(indent=2, exclude_none=True)
@@ -193,7 +196,9 @@ def run_inspect_repro(args: Namespace) -> str | None:
         Path(args.report_json),
         progress_reporter=progress_reporter,
         artifact_ids=tuple(getattr(args, "artifact_ids", [])),
+        failure_classes=tuple(getattr(args, "failure_classes", [])),
         summary_only=bool(getattr(args, "summary_only", False)),
+        compact=bool(getattr(args, "compact", False)),
     )
     return None
 

@@ -1097,10 +1097,16 @@ class InspectReproTargetV1(BuildishContractModel):
     artifact_id: NonEmptyString
     kind: NonEmptyString
     failure_class: NonEmptyString | None = None
+    failure_group: NonEmptyString
     profile_id: NonEmptyString
     comparison_mode: NonEmptyString
     recipe_source: Literal["verifier-internal", "canonical-profile", "local-override"]
+    execution_backend: NonEmptyString | None = None
+    build_command: list[NonEmptyString] = Field(default_factory=list)
+    build_working_directory: NonEmptyString | None = None
+    injected_environment_keys: list[NonEmptyString] = Field(default_factory=list)
     evidence_labels: list[NonEmptyString] = Field(default_factory=list)
+    evidence: list[InspectionEvidenceReference] = Field(default_factory=list)
     override_fields: list[NonEmptyString] = Field(default_factory=list)
 
 
@@ -1118,6 +1124,7 @@ class InspectReproReportV1(BuildishContractModel):
     report_json_path: NonEmptyString
     inspection_bundle_path: NonEmptyString
     selected_artifact_ids: list[NonEmptyString] = Field(default_factory=list)
+    selected_failure_classes: list[NonEmptyString] = Field(default_factory=list)
     summary_only: bool = False
     summary: InspectReproSummaryV1
     targets: list[InspectReproTargetV1] = Field(default_factory=list)

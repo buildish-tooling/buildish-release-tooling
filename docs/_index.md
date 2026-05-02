@@ -421,7 +421,9 @@ verify_rc:
   - effective build working directory
   - injected environment keys
 - supports `--artifact-id <id>` to narrow inspection to one or more selected failures
+- supports `--failure-class <class>` to narrow inspection to one or more saved failure classes
 - supports `--summary-only` to print only the saved grouped summary and selected targets
+- supports `--compact` to print the grouped summary plus compact per-target headers without deep analyzer output
 - supports `--json` to emit machine-readable inspection output to stdout instead of the human transcript
 
 Typical operator flow:
@@ -467,8 +469,16 @@ buildish-release-tooling inspect-repro \
   --artifact-id maven-staging-main \
   build/verify-rc-report.json
 
+# Inspect only saved Maven path-comparison failures
+buildish-release-tooling inspect-repro \
+  --failure-class path-comparison-failed \
+  build/verify-rc-report.json
+
 # Print only the grouped summary and selected targets
 buildish-release-tooling inspect-repro --summary-only build/verify-rc-report.json
+
+# Print the grouped summary plus compact per-target headers
+buildish-release-tooling inspect-repro --compact build/verify-rc-report.json
 
 # Emit machine-readable inspect-repro JSON
 buildish-release-tooling inspect-repro --json build/verify-rc-report.json

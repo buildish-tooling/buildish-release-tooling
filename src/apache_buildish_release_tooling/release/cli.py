@@ -695,9 +695,24 @@ def _register_verification_commands(subparsers: Subparsers) -> None:
         ),
     )
     inspect_repro.add_argument(
+        "--failure-class",
+        dest="failure_classes",
+        action="append",
+        default=[],
+        help=(
+            "Inspect only the selected reproducibility failure classes. "
+            "Repeat for multiple classes such as byte-mismatch or path-comparison-failed."
+        ),
+    )
+    inspect_repro.add_argument(
         "--summary-only",
         action="store_true",
         help="Only print the saved failure summary and selected targets; skip per-artifact deep analysis.",
+    )
+    inspect_repro.add_argument(
+        "--compact",
+        action="store_true",
+        help="Print the grouped summary plus compact per-target headers without deep analyzer output.",
     )
     inspect_repro.add_argument(
         "--json",

@@ -1915,6 +1915,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 "report_json_path",
                 "inspection_bundle_path",
                 "selected_artifact_ids",
+                "selected_failure_classes",
                 "summary_only",
                 "summary",
                 "targets",
@@ -1930,6 +1931,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertTrue(payload["build_checks_attempted"])
         self.assertFalse(payload["summary_only"])
         self.assertEqual([], payload["selected_artifact_ids"])
+        self.assertEqual([], payload["selected_failure_classes"])
         self.assertEqual(1, payload["summary"]["failure_count"])
         self.assertEqual(
             [{"key": "secondary/generic-file/byte-mismatch", "count": 1}],
@@ -1940,9 +1942,30 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual("bootstrap-zip", target["artifact_id"])
         self.assertEqual("generic-file", target["kind"])
         self.assertEqual("byte-mismatch", target["failure_class"])
+        self.assertEqual("secondary/generic-file/byte-mismatch", target["failure_group"])
         self.assertEqual("bootstrap-zip", target["profile_id"])
         self.assertEqual("canonical-profile", target["recipe_source"])
+        self.assertEqual("host-direct", target["execution_backend"])
+        self.assertEqual(
+            ["sh", "buildish-release-tooling/rebuild-bootstrap.sh"],
+            target["build_command"],
+        )
+        self.assertEqual(".", target["build_working_directory"])
+        self.assertEqual(
+            [
+                "BUILDISH_PROJECT_ROOT",
+                "BUILDISH_SOURCE_DATE_EPOCH",
+                "BUILDISH_WORK_DIR",
+                "SOURCE_DATE_EPOCH",
+                "TMPDIR",
+            ],
+            target["injected_environment_keys"],
+        )
         self.assertIn("comparison-metadata", target["evidence_labels"])
+        self.assertEqual(
+            ["comparison-metadata", "staged-artifact", "rebuilt-artifact"],
+            [evidence["label"] for evidence in target["evidence"]],
+        )
 
     def test_inspect_repro_json_contract_for_summary_only_mixed_failures(self) -> None:
         if not command_available("gpg"):
@@ -2011,6 +2034,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 "report_json_path",
                 "inspection_bundle_path",
                 "selected_artifact_ids",
+                "selected_failure_classes",
                 "summary_only",
                 "summary",
                 "targets",
@@ -2019,6 +2043,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         )
         self.assertTrue(payload["summary_only"])
         self.assertEqual([], payload["selected_artifact_ids"])
+        self.assertEqual([], payload["selected_failure_classes"])
         self.assertEqual(4, payload["summary"]["failure_count"])
         self.assertEqual(1, payload["summary"]["source_failure_count"])
         self.assertEqual(3, payload["summary"]["secondary_failure_count"])
@@ -2177,6 +2202,126 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Failure target: bootstrap-zip [generic-file] byte-mismatch", inspect_completed.stderr)
         self.assertNotIn("Source Artifact 1/1", inspect_completed.stderr)
         self.assertIn("Artifact 1/1: bootstrap-zip", inspect_completed.stderr)
+
+    def test_inspect_repro_command_can_filter_to_selected_failure_classes(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            drift_source_artifact=True,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+            include_maven_repository=True,
+            include_maven_repository_reproducibility=True,
+            drift_maven_repository_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                "--failure-class",
+                "path-comparison-failed",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn("Selected failure classes: path-comparison-failed", inspect_completed.stderr)
+        self.assertIn("Reproducibility failures: 1", inspect_completed.stderr)
+        self.assertIn(
+            "Failure target: maven-staging-main [maven-repository] path-comparison-failed",
+            inspect_completed.stderr,
+        )
+        self.assertNotIn("Failure target: source-artifact [source-artifact] byte-mismatch", inspect_completed.stderr)
+        self.assertNotIn("Failure target: bootstrap-zip [generic-file] byte-mismatch", inspect_completed.stderr)
+        self.assertIn("Artifact 1/1: maven-staging-main", inspect_completed.stderr)
+
+    def test_inspect_repro_command_compact_mode_omits_deep_analysis(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            drift_source_artifact=True,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                "--compact",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn(
+            "Compact mode requested; emitting compact per-artifact headers only",
+            inspect_completed.stderr,
+        )
+        self.assertIn("Source Artifact 1/2", inspect_completed.stderr)
+        self.assertIn("Artifact 2/2: bootstrap-zip", inspect_completed.stderr)
+        self.assertIn("Failure class: byte-mismatch", inspect_completed.stderr)
+        self.assertNotIn("Unified text diff", inspect_completed.stderr)
+        self.assertNotIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
+        self.assertIn(
+            "Summarized 2 saved reproducibility failure(s) in compact mode",
+            inspect_completed.stderr,
+        )
 
     def test_inspect_repro_command_summary_only_skips_per_artifact_analysis(self) -> None:
         if not command_available("gpg"):

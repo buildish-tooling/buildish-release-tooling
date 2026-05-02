@@ -55,11 +55,10 @@ from apache_buildish_release_tooling.release.verification.inspection.report_load
     load_supported_verify_rc_report,
 )
 from apache_buildish_release_tooling.release.verification.inspection.targets import (
+    apply_reproducibility_target_filters,
     failing_reproducibility_targets,
-    filtered_reproducibility_targets,
     inspect_repro_summary,
     inspect_repro_target_payload,
-    renumber_reproducibility_targets,
 )
 from apache_buildish_release_tooling.release.verification.inspection.transcript import (
     emit_failure_summary,
@@ -74,7 +73,9 @@ def inspect_repro_report(
     *,
     progress_reporter: ProgressReporter,
     artifact_ids: tuple[str, ...] = (),
+    failure_classes: tuple[str, ...] = (),
     summary_only: bool = False,
+    compact: bool = False,
 ) -> None:
     """Read one saved verify-rc report and inspect any retained reproducibility evidence."""
 
@@ -114,12 +115,21 @@ def inspect_repro_report(
             "No reproducibility failures recorded in the verify-rc report",
         )
         return
-    if artifact_ids:
-        requested_ids = tuple(dict.fromkeys(artifact_ids))
-        targets = renumber_reproducibility_targets(
-            filtered_reproducibility_targets(targets, artifact_ids=requested_ids)
-        )
+    requested_ids = tuple(dict.fromkeys(artifact_ids))
+    requested_failure_classes = tuple(dict.fromkeys(failure_classes))
+    targets = apply_reproducibility_target_filters(
+        targets,
+        artifact_ids=requested_ids,
+        failure_classes=requested_failure_classes,
+    )
+    if requested_ids:
         emit_detail(progress_reporter, "Selected artifact ids", ", ".join(requested_ids))
+    if requested_failure_classes:
+        emit_detail(
+            progress_reporter,
+            "Selected failure classes",
+            ", ".join(requested_failure_classes),
+        )
     total_failure_count = len(targets)
     emit_failure_summary(progress_reporter, targets=targets)
     emit_failure_target_list(progress_reporter, targets=targets)
@@ -132,6 +142,24 @@ def inspect_repro_report(
         emit_success(
             progress_reporter,
             f"Summarized {total_failure_count} saved reproducibility failure(s)",
+        )
+        return
+    if compact:
+        emit_info(
+            progress_reporter,
+            "Compact mode requested; emitting compact per-artifact headers only",
+        )
+        for target in targets:
+            emit_reproducibility_header(
+                progress_reporter,
+                section_label=target.section_label,
+                reproducibility=target.reproducibility,
+                verification=target.verification,
+            )
+        emit_section(progress_reporter, "Outcome")
+        emit_success(
+            progress_reporter,
+            f"Summarized {total_failure_count} saved reproducibility failure(s) in compact mode",
         )
         return
     emit_info(
@@ -210,6 +238,7 @@ def inspect_repro_report_json(
     report_path: Path,
     *,
     artifact_ids: tuple[str, ...] = (),
+    failure_classes: tuple[str, ...] = (),
     summary_only: bool = False,
 ) -> InspectReproReportV1:
     """Build machine-readable inspect-repro output for one saved verify-rc report."""
@@ -231,10 +260,12 @@ def inspect_repro_report_json(
     )
     targets = failing_reproducibility_targets(report)
     selected_artifact_ids = tuple(dict.fromkeys(artifact_ids))
-    if selected_artifact_ids:
-        targets = renumber_reproducibility_targets(
-            filtered_reproducibility_targets(targets, artifact_ids=selected_artifact_ids)
-        )
+    selected_failure_classes = tuple(dict.fromkeys(failure_classes))
+    targets = apply_reproducibility_target_filters(
+        targets,
+        artifact_ids=selected_artifact_ids,
+        failure_classes=selected_failure_classes,
+    )
     summary = inspect_repro_summary(targets)
     target_payloads = [
         inspect_repro_target_payload(target)
@@ -250,6 +281,7 @@ def inspect_repro_report_json(
         report_json_path=str(report_path),
         inspection_bundle_path=str(bundle_root),
         selected_artifact_ids=list(selected_artifact_ids),
+        selected_failure_classes=list(selected_failure_classes),
         summary_only=summary_only,
         summary=summary,
         targets=target_payloads,

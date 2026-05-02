@@ -85,17 +85,67 @@ def filtered_reproducibility_targets(
     targets: list[ReproducibilityFailureInspectionTarget],
     *,
     artifact_ids: tuple[str, ...],
+    failure_classes: tuple[str, ...] = (),
 ) -> list[ReproducibilityFailureInspectionTarget]:
     """Filter retained failures to explicit artifact ids or raise a direct error."""
 
-    allowed_ids = set(artifact_ids)
-    filtered_targets = [target for target in targets if target.artifact_id in allowed_ids]
+    filtered_targets = list(targets)
+    if artifact_ids:
+        allowed_ids = set(artifact_ids)
+        filtered_targets = [
+            target for target in filtered_targets if target.artifact_id in allowed_ids
+        ]
+    if failure_classes:
+        allowed_failure_classes = set(failure_classes)
+        filtered_targets = [
+            target
+            for target in filtered_targets
+            if (target.reproducibility.failure_class or "unspecified") in allowed_failure_classes
+        ]
     if filtered_targets:
         return filtered_targets
-    available_ids = ", ".join(sorted(target.artifact_id for target in targets))
+    available_ids = ", ".join(sorted(target.artifact_id for target in targets)) or "none"
+    available_failure_classes = (
+        ", ".join(
+            sorted({target.reproducibility.failure_class or "unspecified" for target in targets})
+        )
+        or "none"
+    )
+    if artifact_ids and not failure_classes:
+        raise ValueError(
+            "requested inspect-repro artifact ids did not match any retained reproducibility failures: "
+            f"{', '.join(artifact_ids)}; available: {available_ids}"
+        )
+    if failure_classes and not artifact_ids:
+        raise ValueError(
+            "requested inspect-repro failure classes did not match any retained reproducibility failures: "
+            f"{', '.join(failure_classes)}; available: {available_failure_classes}"
+        )
     raise ValueError(
-        "requested inspect-repro artifact ids did not match any retained reproducibility failures: "
-        f"{', '.join(artifact_ids)}; available: {available_ids or 'none'}"
+        "requested inspect-repro filters did not match any retained reproducibility failures: "
+        f"artifact_ids={','.join(artifact_ids) or 'none'} "
+        f"failure_classes={','.join(failure_classes) or 'none'}; "
+        f"available_artifact_ids={available_ids}; "
+        f"available_failure_classes={available_failure_classes}"
+    )
+
+
+def apply_reproducibility_target_filters(
+    targets: list[ReproducibilityFailureInspectionTarget],
+    *,
+    artifact_ids: tuple[str, ...],
+    failure_classes: tuple[str, ...],
+) -> list[ReproducibilityFailureInspectionTarget]:
+    """Apply all requested inspect-repro filters while preserving stable numbering."""
+
+    if not artifact_ids and not failure_classes:
+        return renumber_reproducibility_targets(targets)
+    return renumber_reproducibility_targets(
+        filtered_reproducibility_targets(
+            targets,
+            artifact_ids=artifact_ids,
+            failure_classes=failure_classes,
+        )
     )
 
 
@@ -206,10 +256,32 @@ def inspect_repro_target_payload(
         artifact_id=target.artifact_id,
         kind=target.kind,
         failure_class=reproducibility.failure_class,
+        failure_group=failure_group_label(target),
         profile_id=reproducibility.profile_id,
         comparison_mode=reproducibility.comparison_mode,
         recipe_source=recipe_source,
+        execution_backend=(
+            reproducibility.effective_execution.backend
+            if reproducibility.effective_execution is not None
+            else None
+        ),
+        build_command=(
+            list(reproducibility.effective_execution.build.command)
+            if reproducibility.effective_execution is not None
+            else []
+        ),
+        build_working_directory=(
+            reproducibility.effective_execution.build.working_directory
+            if reproducibility.effective_execution is not None
+            else None
+        ),
+        injected_environment_keys=(
+            list(reproducibility.effective_execution.build.injected_environment_keys)
+            if reproducibility.effective_execution is not None
+            else []
+        ),
         evidence_labels=[reference.label for reference in reproducibility.evidence],
+        evidence=list(reproducibility.evidence),
         override_fields=override_field_summary(reproducibility),
     )
 

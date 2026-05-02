@@ -206,6 +206,7 @@ Top-level fields currently emitted:
 - `report_json_path`
 - `inspection_bundle_path`
 - `selected_artifact_ids`
+- `selected_failure_classes`
 - `summary_only`
 - `summary`
 - `targets`
@@ -224,11 +225,24 @@ Each `targets[*]` entry identifies one selected reproducibility failure with:
 - `artifact_id`
 - `kind`
 - `failure_class`
+- `failure_group`
 - `profile_id`
 - `comparison_mode`
 - `recipe_source`
+- `execution_backend`
+- `build_command`
+- `build_working_directory`
+- `injected_environment_keys`
 - `evidence_labels`
+- `evidence`
 - `override_fields`
+
+Human `inspect-repro` transcript behavior in schema version `1` also supports:
+
+- `--artifact-id <id>` target filtering
+- `--failure-class <class>` failure-class filtering
+- `--summary-only` grouped-summary mode
+- `--compact` grouped-summary plus compact per-target headers without deep analyzer output
 
 ## Artifact-kind stability rules
 
