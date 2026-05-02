@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from argparse import Namespace
 from dataclasses import dataclass
 import io
@@ -73,6 +74,15 @@ class VerificationFixture:
     work_dir: Path
     extra_env: dict[str, str]
     prepend_dirs: tuple[Path, ...]
+
+
+@dataclass(frozen=True)
+class BundleMetadataShapeCase:
+    """One verify-rc full-mode fixture used for bundle-metadata shape coverage."""
+
+    name: str
+    build_fixture: Callable[[Path], VerificationFixture]
+    expected: dict[str, dict[str, object]]
 
 
 def _write_zip_archive(
@@ -154,6 +164,33 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 for verification in secondary_verifications
                 if isinstance(verification, dict)
             },
+        }
+
+    def _bundle_metadata_shape(
+        self,
+        bundle_root: Path,
+        *,
+        metadata_path: str,
+    ) -> dict[str, object]:
+        payload = json.loads((bundle_root / metadata_path).read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            self.fail("inspection bundle metadata payload must be an object")
+        canonical_recipe = payload.get("canonical_recipe")
+        effective_execution = payload.get("effective_execution")
+        override = payload.get("override")
+        archive_analysis = payload.get("archive_analysis")
+        return {
+            "keys": list(payload),
+            "kind": payload.get("kind"),
+            "profile_id": payload.get("profile_id"),
+            "comparison_mode": payload.get("comparison_mode"),
+            "canonical_recipe_keys": list(canonical_recipe) if isinstance(canonical_recipe, dict) else None,
+            "effective_execution_keys": (
+                list(effective_execution) if isinstance(effective_execution, dict) else None
+            ),
+            "override_keys": list(override) if isinstance(override, dict) else None,
+            "override_applied": override.get("applied") if isinstance(override, dict) else None,
+            "archive_analysis_keys": list(archive_analysis) if isinstance(archive_analysis, dict) else None,
         }
 
     def test_verify_rc_command_reports_progress_for_successful_run(self) -> None:
@@ -547,6 +584,265 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("\x1b[32m✓ Verified manifest signature: ", completed.stderr)
         self.assertIn("\x1b[32m✓ Verified RC: buildish-example 1.2.3 (v1.2.3-rc0)\x1b[0m", completed.stderr)
         self.assertNotIn("\x1b[", fixture.log_path.read_text(encoding="utf-8"))
+
+    def test_verify_rc_bundle_metadata_shapes_cover_artifact_kinds(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        cases = (
+            BundleMetadataShapeCase(
+                name="source-and-generic",
+                build_fixture=lambda case_dir: self._prepare_verification_fixture(
+                    case_dir,
+                    secondary_kind="generic-file",
+                    include_generic_file_reproducibility=True,
+                ),
+                expected={
+                    "source-artifact/reproducibility/metadata.json": {
+                        "keys": [
+                            "profile_id",
+                            "comparison_mode",
+                            "failure_class",
+                            "archive_analysis",
+                            "staged_artifact",
+                            "rebuilt_artifact",
+                            "matches_remote_bytes",
+                            "issues",
+                        ],
+                        "kind": None,
+                        "profile_id": "source-artifact-from-git",
+                        "comparison_mode": "exact-bytes",
+                        "canonical_recipe_keys": None,
+                        "effective_execution_keys": None,
+                        "override_keys": None,
+                        "override_applied": None,
+                        "archive_analysis_keys": [
+                            "classification",
+                            "raw_bytes_equal",
+                            "archive_format",
+                            "staged_archive_format",
+                            "rebuilt_archive_format",
+                            "staged_entry_count",
+                            "rebuilt_entry_count",
+                            "missing_paths",
+                            "unexpected_paths",
+                            "entry_order_mismatches",
+                            "metadata_mismatches",
+                            "content_mismatches",
+                        ],
+                    },
+                    "secondary-artifacts/bootstrap-zip/reproducibility/metadata.json": {
+                        "keys": [
+                            "artifact_id",
+                            "kind",
+                            "profile_id",
+                            "comparison_mode",
+                            "canonical_recipe",
+                            "effective_execution",
+                            "override",
+                            "failure_class",
+                            "archive_analysis",
+                            "staged_artifact",
+                            "rebuilt_outputs",
+                            "matches_remote_bytes",
+                            "issues",
+                        ],
+                        "kind": "generic-file",
+                        "profile_id": "bootstrap-zip",
+                        "comparison_mode": "exact-bytes",
+                        "canonical_recipe_keys": ["build"],
+                        "effective_execution_keys": ["backend", "build"],
+                        "override_keys": ["applied", "build"],
+                        "override_applied": False,
+                        "archive_analysis_keys": None,
+                    },
+                },
+            ),
+            BundleMetadataShapeCase(
+                name="python",
+                build_fixture=lambda case_dir: self._prepare_verification_fixture(
+                    case_dir,
+                    include_python_distribution=True,
+                    include_python_distribution_reproducibility=True,
+                ),
+                expected={
+                    "secondary-artifacts/pypi-wheel/reproducibility/metadata.json": {
+                        "keys": [
+                            "artifact_id",
+                            "kind",
+                            "profile_id",
+                            "comparison_mode",
+                            "canonical_recipe",
+                            "effective_execution",
+                            "override",
+                            "failure_class",
+                            "archive_analysis",
+                            "staged_artifact",
+                            "rebuilt_outputs",
+                            "matches_remote_bytes",
+                            "issues",
+                        ],
+                        "kind": "python-distribution",
+                        "profile_id": "pypi-wheel",
+                        "comparison_mode": "exact-bytes",
+                        "canonical_recipe_keys": ["build"],
+                        "effective_execution_keys": ["backend", "build"],
+                        "override_keys": ["applied", "build"],
+                        "override_applied": False,
+                        "archive_analysis_keys": None,
+                    },
+                },
+            ),
+            BundleMetadataShapeCase(
+                name="npm",
+                build_fixture=lambda case_dir: self._prepare_verification_fixture(
+                    case_dir,
+                    include_npm_package=True,
+                    include_npm_package_reproducibility=True,
+                ),
+                expected={
+                    "secondary-artifacts/npm-package-main/reproducibility/metadata.json": {
+                        "keys": [
+                            "artifact_id",
+                            "kind",
+                            "profile_id",
+                            "comparison_mode",
+                            "canonical_recipe",
+                            "effective_execution",
+                            "override",
+                            "failure_class",
+                            "archive_analysis",
+                            "staged_artifact",
+                            "rebuilt_outputs",
+                            "matches_remote_bytes",
+                            "issues",
+                        ],
+                        "kind": "npm-package",
+                        "profile_id": "npm-package-main",
+                        "comparison_mode": "exact-bytes",
+                        "canonical_recipe_keys": ["build"],
+                        "effective_execution_keys": ["backend", "build"],
+                        "override_keys": ["applied", "build"],
+                        "override_applied": False,
+                        "archive_analysis_keys": None,
+                    },
+                },
+            ),
+            BundleMetadataShapeCase(
+                name="maven",
+                build_fixture=lambda case_dir: self._prepare_verification_fixture(
+                    case_dir,
+                    include_maven_repository=True,
+                    include_maven_repository_reproducibility=True,
+                ),
+                expected={
+                    "secondary-artifacts/maven-staging-main/reproducibility/metadata.json": {
+                        "keys": [
+                            "artifact_id",
+                            "kind",
+                            "profile_id",
+                            "comparison_mode",
+                            "canonical_recipe",
+                            "effective_execution",
+                            "override",
+                            "repository_dir",
+                            "require_signatures",
+                            "path_rules",
+                            "matches_remote_bytes",
+                            "failure_class",
+                            "verified_path_count",
+                            "failed_path_count",
+                            "skipped_path_count",
+                            "path_results",
+                            "issues",
+                        ],
+                        "kind": "maven-repository",
+                        "profile_id": "maven-staging",
+                        "comparison_mode": "repository-tree",
+                        "canonical_recipe_keys": ["build"],
+                        "effective_execution_keys": ["backend", "build"],
+                        "override_keys": ["applied", "build"],
+                        "override_applied": False,
+                        "archive_analysis_keys": None,
+                    },
+                },
+            ),
+            BundleMetadataShapeCase(
+                name="oci",
+                build_fixture=lambda case_dir: self._prepare_verification_fixture(
+                    case_dir,
+                    include_oci_image=True,
+                    include_oci_image_reproducibility=True,
+                ),
+                expected={
+                    "secondary-artifacts/ghcr-main-image/reproducibility/metadata.json": {
+                        "keys": [
+                            "artifact_id",
+                            "kind",
+                            "profile_id",
+                            "comparison_mode",
+                            "canonical_recipe",
+                            "effective_execution",
+                            "override",
+                            "image_ref",
+                            "declared_digest",
+                            "expected_platform_digests",
+                            "rebuilt_digest",
+                            "rebuilt_platform_digests",
+                            "matches_remote_bytes",
+                            "failure_class",
+                            "issues",
+                        ],
+                        "kind": "oci-image",
+                        "profile_id": "oci-main-image",
+                        "comparison_mode": "platform-digest",
+                        "canonical_recipe_keys": ["build"],
+                        "effective_execution_keys": ["backend", "build"],
+                        "override_keys": ["applied", "build"],
+                        "override_applied": False,
+                        "archive_analysis_keys": None,
+                    },
+                },
+            ),
+        )
+
+        for case in cases:
+            with self.subTest(case=case.name):
+                case_dir = sandbox_dir / case.name
+                case_dir.mkdir(parents=True, exist_ok=True)
+                fixture = case.build_fixture(case_dir)
+                completed = run_cli(
+                    [
+                        "verify-rc",
+                        "--component-config",
+                        str(fixture.config_path),
+                        "--allow-non-production-release-targets",
+                        "--mode",
+                        "full",
+                        "--work-dir",
+                        str(fixture.work_dir),
+                        "--report-json",
+                        str(fixture.report_json_path),
+                        "--inspection-bundle",
+                        str(fixture.inspection_bundle_path),
+                        fixture.manifest_url,
+                        fixture.keys_url,
+                    ],
+                    cwd=fixture.origin_dir,
+                    env=self._fixture_cli_env(fixture),
+                )
+
+                self.assertEqual(0, completed.returncode, msg=completed.stderr)
+                observed_shapes = {
+                    metadata_path: self._bundle_metadata_shape(
+                        fixture.inspection_bundle_path,
+                        metadata_path=metadata_path,
+                    )
+                    for metadata_path in case.expected
+                }
+                self.assertEqual(case.expected, observed_shapes)
 
     def test_verify_rc_command_verifies_manifest_source_and_rc_tag_binding(self) -> None:
         if not command_available("gpg"):
