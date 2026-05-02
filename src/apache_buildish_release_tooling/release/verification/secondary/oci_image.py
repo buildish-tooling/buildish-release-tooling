@@ -17,10 +17,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.oci_image import (
     _inspect_image_ref,
+)
+from apache_buildish_release_tooling.release.contracts import (
+    ArtifactReproducibilityCanonicalRecipeReport,
+    ArtifactReproducibilityEffectiveExecutionReport,
+    ArtifactReproducibilityOverrideReport,
+    OciImageReproducibilityMetadata,
+    OciPlatformDigest,
 )
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.verification.inspection_bundle import (
@@ -58,12 +65,21 @@ def verify_oci_image(
     image_ref = f"{registry}/{repository}@{declared_digest}"
     issues: list[str] = []
     live_digest: str | None = None
-    live_platform_digests: list[dict[str, str]] = []
+    live_platform_digests: list[OciPlatformDigest] = []
     try:
-        _inspected_registry, _inspected_repository, live_digest, live_platform_digests = _inspect_image_ref(
+        (
+            _inspected_registry,
+            _inspected_repository,
+            live_digest,
+            raw_live_platform_digests,
+        ) = _inspect_image_ref(
             image_ref,
             log_commands=False,
         )
+        live_platform_digests = [
+            OciPlatformDigest.model_validate(entry)
+            for entry in raw_live_platform_digests
+        ]
     except Exception as exc:
         issues.append(str(exc))
     digest_matches_manifest = live_digest == declared_digest if live_digest is not None else False
@@ -80,11 +96,11 @@ def verify_oci_image(
         expected_platform_digests = []
     if expected_platform_digests and live_digest is not None:
         expected_by_platform = {
-            entry["platform"]: entry["digest"]
+            entry.platform: entry.digest
             for entry in expected_platform_digests
         }
         live_by_platform = {
-            entry["platform"]: entry["digest"]
+            entry.platform: entry.digest
             for entry in live_platform_digests
         }
         platform_digests_match = live_by_platform == expected_by_platform
@@ -134,7 +150,7 @@ def _verify_oci_image_reproducibility(
     manifest_url: str,
     artifact_id: str,
     declared_digest: str,
-    expected_platform_digests: list[dict[str, str]],
+    expected_platform_digests: list[OciPlatformDigest],
     component_config: ComponentConfig | None,
     project_root: Path | None,
     source_date_epoch: int | None,
@@ -161,13 +177,16 @@ def _verify_oci_image_reproducibility(
     profile_id = required_non_empty_string(raw_reproducibility, "profile_id", source=manifest_url)
     issues: list[str] = []
     matches_remote_bytes: bool | None = None
-    comparison_mode = "platform-digest"
+    comparison_mode: Literal["platform-digest", "provenance-only"] = "platform-digest"
     failure_class: str | None = None
     evidence: list[dict[str, str]] = []
     image_ref: str | None = None
     rebuilt_digest: str | None = None
-    rebuilt_platform_digests: list[dict[str, str]] = []
+    rebuilt_platform_digests: list[OciPlatformDigest] = []
     resolved_profile: ResolvedRebuildProfile | None = None
+    canonical_recipe: ArtifactReproducibilityCanonicalRecipeReport | None = None
+    effective_execution: ArtifactReproducibilityEffectiveExecutionReport | None = None
+    override: ArtifactReproducibilityOverrideReport = override_payload(None)
     build_result = None
     if component_config is None:
         failure_class = failure_class or "missing-component-config"
@@ -189,20 +208,26 @@ def _verify_oci_image_reproducibility(
                 profile_overrides=profile_overrides,
             )
             profile = resolved_profile.profile
-            comparison_mode = required_non_empty_string(
+            raw_comparison_mode = required_non_empty_string(
                 profile.comparison,
                 "mode",
                 source=f"verify_rc profile {profile_id!r}",
             )
-            if comparison_mode not in {"platform-digest", "provenance-only"}:
+            if raw_comparison_mode not in {"platform-digest", "provenance-only"}:
                 raise ValueError(
                     f"verify_rc profile {profile_id!r} must use comparison.mode 'platform-digest' or 'provenance-only' for oci-image artifacts"
                 )
+            comparison_mode = cast(
+                Literal["platform-digest", "provenance-only"],
+                raw_comparison_mode,
+            )
             image_ref = required_non_empty_string(
                 profile.comparison,
                 "image_ref",
                 source=f"verify_rc profile {profile_id!r}",
             )
+            canonical_recipe = canonical_recipe_payload(resolved_profile)
+            override = override_payload(resolved_profile)
         except Exception as exc:
             failure_class = failure_class or "invalid-profile"
             issues.append(str(exc))
@@ -215,10 +240,23 @@ def _verify_oci_image_reproducibility(
                 work_dir=work_dir,
                 source_date_epoch=source_date_epoch,
             )
-            _rebuilt_registry, _rebuilt_repository, rebuilt_digest, rebuilt_platform_digests = _inspect_image_ref(
+            effective_execution = effective_execution_payload(
+                build_result=build_result,
+                project_root=project_root,
+            )
+            (
+                _rebuilt_registry,
+                _rebuilt_repository,
+                rebuilt_digest,
+                raw_rebuilt_platform_digests,
+            ) = _inspect_image_ref(
                 image_ref,
                 log_commands=False,
             )
+            rebuilt_platform_digests = [
+                OciPlatformDigest.model_validate(entry)
+                for entry in raw_rebuilt_platform_digests
+            ]
             if comparison_mode == "platform-digest":
                 if rebuilt_digest != declared_digest:
                     failure_class = failure_class or "digest-mismatch"
@@ -228,11 +266,11 @@ def _verify_oci_image_reproducibility(
                     )
                 if expected_platform_digests:
                     expected_by_platform = {
-                        entry["platform"]: entry["digest"]
+                        entry.platform: entry.digest
                         for entry in expected_platform_digests
                     }
                     rebuilt_by_platform = {
-                        entry["platform"]: entry["digest"]
+                        entry.platform: entry.digest
                         for entry in rebuilt_platform_digests
                     }
                     if rebuilt_by_platform != expected_by_platform:
@@ -250,38 +288,40 @@ def _verify_oci_image_reproducibility(
         metadata_path = write_reproducibility_metadata(
             inspection_bundle_root,
             artifact_id=artifact_id,
-            payload={
-                "artifact_id": artifact_id,
-                "kind": "oci-image",
-                "profile_id": profile_id,
-                "comparison_mode": comparison_mode,
-                "canonical_recipe": canonical_recipe_payload(resolved_profile),
-                "effective_execution": effective_execution_payload(
-                    build_result=build_result,
-                    project_root=project_root,
-                ),
-                "override": override_payload(resolved_profile),
-                "image_ref": image_ref,
-                "declared_digest": declared_digest,
-                "expected_platform_digests": expected_platform_digests,
-                "rebuilt_digest": rebuilt_digest,
-                "rebuilt_platform_digests": rebuilt_platform_digests,
-                "matches_remote_bytes": matches_remote_bytes,
-                "failure_class": failure_class,
-                "issues": issues,
-            },
+            payload=OciImageReproducibilityMetadata(
+                artifact_id=artifact_id,
+                kind="oci-image",
+                profile_id=profile_id,
+                comparison_mode=comparison_mode,
+                canonical_recipe=canonical_recipe,
+                effective_execution=effective_execution,
+                override=override,
+                image_ref=image_ref,
+                declared_digest=declared_digest,
+                expected_platform_digests=expected_platform_digests,
+                rebuilt_digest=rebuilt_digest,
+                rebuilt_platform_digests=rebuilt_platform_digests,
+                matches_remote_bytes=matches_remote_bytes,
+                failure_class=failure_class,
+                issues=issues,
+            ),
         )
         evidence.append({"label": "comparison-metadata", "path": metadata_path})
     return {
         "profile_id": profile_id,
         "verdict": "failed" if issues else "verified",
         "comparison_mode": comparison_mode,
-        "canonical_recipe": canonical_recipe_payload(resolved_profile),
-        "effective_execution": effective_execution_payload(
-            build_result=build_result,
-            project_root=project_root,
+        "canonical_recipe": (
+            canonical_recipe.model_dump(mode="json", exclude_none=True)
+            if canonical_recipe is not None
+            else None
         ),
-        "override": override_payload(resolved_profile),
+        "effective_execution": (
+            effective_execution.model_dump(mode="json", exclude_none=True)
+            if effective_execution is not None
+            else None
+        ),
+        "override": override.model_dump(mode="json", exclude_none=True),
         "matches_remote_bytes": matches_remote_bytes,
         "failure_class": failure_class,
         "evidence": evidence,
@@ -293,13 +333,13 @@ def _platform_digests_from_manifest(
     artifact_entry: dict[str, Any],
     *,
     source: str,
-) -> list[dict[str, str]]:
+) -> list[OciPlatformDigest]:
     raw_entries = artifact_entry.get("platform_digests")
     if raw_entries is None:
         return []
     if not isinstance(raw_entries, list):
         raise ValueError(f"oci-image platform_digests must be a list: {source}")
-    entries: list[dict[str, str]] = []
+    entries: list[OciPlatformDigest] = []
     seen_platforms: set[str] = set()
     for raw_entry in raw_entries:
         if not isinstance(raw_entry, dict):
@@ -309,5 +349,5 @@ def _platform_digests_from_manifest(
             raise ValueError(f"oci-image platform declared more than once in manifest: {platform}")
         seen_platforms.add(platform)
         digest_value = required_non_empty_string(raw_entry, "digest", source=source).lower()
-        entries.append({"platform": platform, "digest": digest_value})
+        entries.append(OciPlatformDigest(platform=platform, digest=digest_value))
     return entries

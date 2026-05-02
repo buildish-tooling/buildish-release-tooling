@@ -108,13 +108,13 @@ class ShallowArchiveAnalysisTest(unittest.TestCase):
             self.assertIsNotNone(analysis)
             if analysis is None:
                 self.fail("expected archive analysis for zip metadata drift")
-            self.assertEqual("entry-metadata-drift", analysis["classification"])
-            self.assertEqual([], analysis["missing_paths"])
-            self.assertEqual([], analysis["unexpected_paths"])
-            self.assertEqual([], analysis["content_mismatches"])
+            self.assertEqual("entry-metadata-drift", analysis.classification)
+            self.assertEqual([], analysis.missing_paths)
+            self.assertEqual([], analysis.unexpected_paths)
+            self.assertEqual([], analysis.content_mismatches)
             self.assertEqual(
                 ["example/__init__.py: mtime, mode"],
-                analysis["metadata_mismatches"],
+                analysis.metadata_mismatches,
             )
 
     def test_tar_entry_set_drift_is_classified_separately(self) -> None:
@@ -142,11 +142,11 @@ class ShallowArchiveAnalysisTest(unittest.TestCase):
             self.assertIsNotNone(analysis)
             if analysis is None:
                 self.fail("expected archive analysis for tar entry-set drift")
-            self.assertEqual("entry-set-drift", analysis["classification"])
-            self.assertEqual(["package/README.md"], analysis["missing_paths"])
-            self.assertEqual([], analysis["unexpected_paths"])
-            self.assertEqual([], analysis["metadata_mismatches"])
-            self.assertEqual([], analysis["content_mismatches"])
+            self.assertEqual("entry-set-drift", analysis.classification)
+            self.assertEqual(["package/README.md"], analysis.missing_paths)
+            self.assertEqual([], analysis.unexpected_paths)
+            self.assertEqual([], analysis.metadata_mismatches)
+            self.assertEqual([], analysis.content_mismatches)
 
     def test_gzip_outer_container_drift_is_classified_separately(self) -> None:
         with TemporaryDirectory() as temporary_directory:
@@ -173,13 +173,13 @@ class ShallowArchiveAnalysisTest(unittest.TestCase):
             self.assertIsNotNone(analysis)
             if analysis is None:
                 self.fail("expected archive analysis for gzip outer drift")
-            self.assertEqual("outer-container-drift", analysis["classification"])
-            self.assertFalse(analysis["raw_bytes_equal"])
-            self.assertEqual("tar", analysis["archive_format"])
-            self.assertEqual([], analysis["missing_paths"])
-            self.assertEqual([], analysis["unexpected_paths"])
-            self.assertEqual([], analysis["metadata_mismatches"])
-            self.assertEqual([], analysis["content_mismatches"])
+            self.assertEqual("outer-container-drift", analysis.classification)
+            self.assertFalse(analysis.raw_bytes_equal)
+            self.assertEqual("tar", analysis.archive_format)
+            self.assertEqual([], analysis.missing_paths)
+            self.assertEqual([], analysis.unexpected_paths)
+            self.assertEqual([], analysis.metadata_mismatches)
+            self.assertEqual([], analysis.content_mismatches)
 
     def test_zip_entry_order_drift_is_reported_separately(self) -> None:
         with TemporaryDirectory() as temporary_directory:
@@ -199,12 +199,12 @@ class ShallowArchiveAnalysisTest(unittest.TestCase):
             self.assertIsNotNone(analysis)
             if analysis is None:
                 self.fail("expected archive analysis for zip entry-order drift")
-            self.assertEqual("entry-order-drift", analysis["classification"])
+            self.assertEqual("entry-order-drift", analysis.classification)
             self.assertEqual(
                 ["position 1: staged=example/a.txt rebuilt=example/b.txt"],
-                analysis["entry_order_mismatches"],
+                analysis.entry_order_mismatches,
             )
-            self.assertEqual([], analysis["missing_paths"])
-            self.assertEqual([], analysis["unexpected_paths"])
-            self.assertEqual([], analysis["metadata_mismatches"])
-            self.assertEqual([], analysis["content_mismatches"])
+            self.assertEqual([], analysis.missing_paths)
+            self.assertEqual([], analysis.unexpected_paths)
+            self.assertEqual([], analysis.metadata_mismatches)
+            self.assertEqual([], analysis.content_mismatches)

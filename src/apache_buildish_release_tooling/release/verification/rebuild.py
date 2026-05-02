@@ -24,6 +24,14 @@ from pathlib import Path
 from typing import Any
 from typing import Literal
 
+from apache_buildish_release_tooling.release.contracts import (
+    ArtifactReproducibilityCanonicalBuildRecipeReport,
+    ArtifactReproducibilityCanonicalRecipeReport,
+    ArtifactReproducibilityEffectiveBuildExecutionReport,
+    ArtifactReproducibilityEffectiveExecutionReport,
+    ArtifactReproducibilityBuildOverrideReport,
+    ArtifactReproducibilityOverrideReport,
+)
 from apache_buildish_release_tooling.release.models import (
     ComponentConfig,
     VerifyRcBuildConfig,
@@ -392,23 +400,23 @@ def run_host_direct_profile(
 
 def canonical_recipe_payload(
     resolved_profile: ResolvedRebuildProfile | None,
-) -> dict[str, Any] | None:
+) -> ArtifactReproducibilityCanonicalRecipeReport | None:
     """Return one structured canonical recipe payload for reporting."""
 
     if resolved_profile is None:
         return None
     canonical_build = resolved_profile.canonical_profile.build
-    return {
-        "build": {
-            "command": list(canonical_build.command),
-            "working_directory": canonical_build.working_dir or ".",
-            "output_globs": list(canonical_build.output_globs),
+    return ArtifactReproducibilityCanonicalRecipeReport(
+        build=ArtifactReproducibilityCanonicalBuildRecipeReport(
+            command=list(canonical_build.command),
+            working_directory=canonical_build.working_dir or ".",
+            output_globs=list(canonical_build.output_globs),
             # Environment variable names only. Values are intentionally omitted
             # from reports so reproducibility output cannot leak secrets or
             # machine-local credentials.
-            "env_keys": sorted(canonical_build.env),
-        }
-    }
+            env_keys=sorted(canonical_build.env),
+        )
+    )
 
 
 def effective_execution_payload(
@@ -416,7 +424,7 @@ def effective_execution_payload(
     build_result: HostDirectBuildResult | None,
     project_root: Path | None,
     output_paths: list[str] | None = None,
-) -> dict[str, Any] | None:
+) -> ArtifactReproducibilityEffectiveExecutionReport | None:
     """Return one structured effective-execution payload for reporting."""
 
     if build_result is None or project_root is None:
@@ -429,44 +437,47 @@ def effective_execution_payload(
         effective_output_paths = [
             str(path.relative_to(project_root)) for path in build_result.output_paths
         ]
-    return {
-        "backend": "host-direct",
-        "build": {
-            "command": list(build_result.command),
-            "working_directory": working_directory,
-            "output_paths": effective_output_paths,
+    return ArtifactReproducibilityEffectiveExecutionReport(
+        backend="host-direct",
+        build=ArtifactReproducibilityEffectiveBuildExecutionReport(
+            command=list(build_result.command),
+            working_directory=working_directory,
+            output_paths=effective_output_paths,
             # Environment variable names only. Values are intentionally omitted
             # from reports so reproducibility output cannot leak secrets or
             # machine-local credentials.
-            "injected_environment_keys": list(build_result.injected_environment_keys),
-        },
-    }
+            injected_environment_keys=list(build_result.injected_environment_keys),
+        ),
+    )
 
 
 def override_payload(
     resolved_profile: ResolvedRebuildProfile | None,
-) -> dict[str, Any]:
+) -> ArtifactReproducibilityOverrideReport:
     """Return one sparse structured override payload for reporting."""
 
     if resolved_profile is None or resolved_profile.build_override is None:
-        return {"applied": False}
+        return ArtifactReproducibilityOverrideReport(applied=False)
     build_override = resolved_profile.build_override
-    build_payload: dict[str, Any] = {}
+    build_payload: ArtifactReproducibilityBuildOverrideReport | None = None
+    payload_kwargs: dict[str, Any] = {}
     if build_override.command is not None:
-        build_payload["command"] = list(build_override.command)
+        payload_kwargs["command"] = list(build_override.command)
     if build_override.working_dir is not None:
-        build_payload["working_directory"] = build_override.working_dir
+        payload_kwargs["working_directory"] = build_override.working_dir
     if build_override.output_globs is not None:
-        build_payload["output_globs"] = list(build_override.output_globs)
+        payload_kwargs["output_globs"] = list(build_override.output_globs)
     if build_override.env:
         # Environment variable names only. Values are intentionally omitted from
         # reports so reproducibility output cannot leak secrets or machine-local
         # credentials.
-        build_payload["env_keys"] = sorted(build_override.env)
-    return {
-        "applied": True,
-        "build": build_payload or None,
-    }
+        payload_kwargs["env_keys"] = sorted(build_override.env)
+    if payload_kwargs:
+        build_payload = ArtifactReproducibilityBuildOverrideReport(**payload_kwargs)
+    return ArtifactReproducibilityOverrideReport(
+        applied=True,
+        build=build_payload,
+    )
 
 
 def prompt_for_candidate_code_execution() -> bool:

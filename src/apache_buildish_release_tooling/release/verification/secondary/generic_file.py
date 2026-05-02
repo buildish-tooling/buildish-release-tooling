@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
@@ -55,6 +55,9 @@ def verify_generic_file(
 ) -> dict[str, Any]:
     artifact_id = required_non_empty_string(artifact_entry, "artifact_id", source=manifest_url)
     kind = required_non_empty_string(artifact_entry, "kind", source=manifest_url)
+    if kind not in {"generic-file", "generic-file-with-openpgp"}:
+        raise ValueError(f"unexpected generic-file verification kind: {kind}")
+    typed_kind = cast(Literal["generic-file", "generic-file-with-openpgp"], kind)
     filename = required_non_empty_string(artifact_entry, "filename", source=manifest_url)
     artifact_uri = required_non_empty_string(artifact_entry, "uri", source=manifest_url)
     issues: list[str] = []
@@ -151,7 +154,7 @@ def verify_generic_file(
             artifact_entry,
             manifest_url=manifest_url,
             artifact_id=artifact_id,
-            kind=kind,
+            kind=typed_kind,
             artifact_path=artifact_path,
             work_dir=work_dir / "reproducibility",
             component_config=component_config,
@@ -164,7 +167,7 @@ def verify_generic_file(
 
     verification: dict[str, Any] = {
         "artifact_id": artifact_id,
-        "kind": kind,
+        "kind": typed_kind,
         "verdict": "failed" if issues else "verified",
         "issues": issues,
         "filename": filename,
@@ -189,7 +192,7 @@ def _generic_file_reproducibility(
     *,
     manifest_url: str,
     artifact_id: str,
-    kind: str,
+    kind: Literal["generic-file", "generic-file-with-openpgp"],
     artifact_path: Path | None,
     work_dir: Path,
     component_config: ComponentConfig | None,

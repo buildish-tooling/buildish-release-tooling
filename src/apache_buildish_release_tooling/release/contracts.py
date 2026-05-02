@@ -584,6 +584,22 @@ class ShallowArchiveAnalysisReport(BuildishContractModel):
     content_mismatches: list[NonEmptyString] = Field(default_factory=list)
 
 
+class RetainedArtifactSnapshot(BuildishContractModel):
+    """One retained file snapshot described inside an inspection-bundle metadata document."""
+
+    filename: NonEmptyString
+    sha512: Sha512Hex
+    size_bytes: int = Field(ge=0)
+
+
+class RebuiltOutputSnapshot(BuildishContractModel):
+    """One rebuilt output file described inside an inspection-bundle metadata document."""
+
+    path: NonEmptyString
+    sha512: Sha512Hex
+    size_bytes: int = Field(ge=0)
+
+
 class ArtifactReproducibilityCanonicalBuildRecipeReport(BuildishContractModel):
     """Canonical build recipe declared by the verified source tree for one profile."""
 
@@ -655,6 +671,116 @@ class ArtifactReproducibilityReport(BuildishContractModel):
     failure_class: NonEmptyString | None = None
     archive_analysis: ShallowArchiveAnalysisReport | None = None
     evidence: list[InspectionEvidenceReference] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+
+
+class FileLikeReproducibilityMetadata(BuildishContractModel):
+    """Retained comparison metadata for one file-like reproducibility failure or drift."""
+
+    artifact_id: NonEmptyString
+    kind: Literal[
+        "generic-file",
+        "generic-file-with-openpgp",
+        "python-distribution",
+        "npm-package",
+    ]
+    profile_id: NonEmptyString
+    comparison_mode: NonEmptyString
+    canonical_recipe: ArtifactReproducibilityCanonicalRecipeReport | None = None
+    effective_execution: ArtifactReproducibilityEffectiveExecutionReport | None = None
+    override: ArtifactReproducibilityOverrideReport = Field(
+        default_factory=ArtifactReproducibilityOverrideReport
+    )
+    failure_class: NonEmptyString | None = None
+    archive_analysis: ShallowArchiveAnalysisReport | None = None
+    staged_artifact: RetainedArtifactSnapshot
+    rebuilt_outputs: list[RebuiltOutputSnapshot] = Field(default_factory=list)
+    matches_remote_bytes: bool | None = None
+    issues: list[str] = Field(default_factory=list)
+
+
+class SourceArtifactReproducibilityMetadata(BuildishContractModel):
+    """Retained comparison metadata for source-artifact reproducibility inspection."""
+
+    profile_id: NonEmptyString
+    comparison_mode: NonEmptyString
+    failure_class: NonEmptyString | None = None
+    archive_analysis: ShallowArchiveAnalysisReport | None = None
+    staged_artifact: RetainedArtifactSnapshot
+    rebuilt_artifact: RetainedArtifactSnapshot | None = None
+    matches_remote_bytes: bool | None = None
+    issues: list[str] = Field(default_factory=list)
+
+
+MavenRepositoryPathMode = Literal[
+    "exact-bytes",
+    "zip-normalized",
+    "content-only",
+    "remote-only",
+]
+MavenRepositoryPathVerdict = Literal["verified", "failed", "skipped"]
+
+
+class MavenRepositoryPathRuleReport(BuildishContractModel):
+    """One regex-based Maven repository path rule retained for inspection."""
+
+    pattern: NonEmptyString
+    mode: MavenRepositoryPathMode
+
+
+class MavenRepositoryPathResultReport(BuildishContractModel):
+    """One comparable staged Maven repository path result retained for inspection."""
+
+    path: NonEmptyString
+    mode: MavenRepositoryPathMode
+    verdict: MavenRepositoryPathVerdict
+    detail: NonEmptyString
+    raw_bytes_equal: bool | None = None
+    normalized_match: bool | None = None
+    staged_sha512: Sha512Hex | None = None
+    rebuilt_sha512: Sha512Hex | None = None
+
+
+class MavenRepositoryReproducibilityMetadata(BuildishContractModel):
+    """Retained comparison metadata for one Maven repository reproducibility run."""
+
+    artifact_id: NonEmptyString
+    kind: Literal["maven-repository"] = "maven-repository"
+    profile_id: NonEmptyString
+    comparison_mode: Literal["repository-tree"] = "repository-tree"
+    canonical_recipe: ArtifactReproducibilityCanonicalRecipeReport | None = None
+    effective_execution: ArtifactReproducibilityEffectiveExecutionReport | None = None
+    override: ArtifactReproducibilityOverrideReport = Field(
+        default_factory=ArtifactReproducibilityOverrideReport
+    )
+    repository_dir: NonEmptyString | None = None
+    require_signatures: bool = False
+    path_rules: list[MavenRepositoryPathRuleReport] = Field(default_factory=list)
+    matches_remote_bytes: bool | None = None
+    failure_class: NonEmptyString | None = None
+    path_results: list[MavenRepositoryPathResultReport] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+
+
+class OciImageReproducibilityMetadata(BuildishContractModel):
+    """Retained comparison metadata for one OCI image reproducibility run."""
+
+    artifact_id: NonEmptyString
+    kind: Literal["oci-image"] = "oci-image"
+    profile_id: NonEmptyString
+    comparison_mode: Literal["platform-digest", "provenance-only"]
+    canonical_recipe: ArtifactReproducibilityCanonicalRecipeReport | None = None
+    effective_execution: ArtifactReproducibilityEffectiveExecutionReport | None = None
+    override: ArtifactReproducibilityOverrideReport = Field(
+        default_factory=ArtifactReproducibilityOverrideReport
+    )
+    image_ref: NonEmptyString | None = None
+    declared_digest: OciContentDigest
+    expected_platform_digests: list[OciPlatformDigest] = Field(default_factory=list)
+    rebuilt_digest: OciContentDigest | None = None
+    rebuilt_platform_digests: list[OciPlatformDigest] = Field(default_factory=list)
+    matches_remote_bytes: bool | None = None
+    failure_class: NonEmptyString | None = None
     issues: list[str] = Field(default_factory=list)
 
 
@@ -839,24 +965,32 @@ __all__ = [
     "ArtifactReproducibilityReport",
     "GenericFileSecondaryArtifact",
     "GenericFileVerificationReport",
+    "FileLikeReproducibilityMetadata",
     "GenericFileWithOpenPgpSecondaryArtifact",
     "GithubWorkflowProvenance",
     "InvalidSecondaryArtifactVerificationReport",
     "InspectionBundleSection",
     "InspectionEvidenceReference",
+    "MavenRepositoryPathResultReport",
+    "MavenRepositoryReproducibilityMetadata",
     "MavenRepositoryInventoryV1",
     "MavenRepositorySecondaryArtifact",
     "MavenRepositoryVerificationReport",
     "NpmPackageSecondaryArtifact",
     "NpmPackageVerificationReport",
     "OciImageSecondaryArtifact",
+    "OciImageReproducibilityMetadata",
     "OciImageVerificationReport",
     "PythonDistributionSecondaryArtifact",
     "PythonDistributionVerificationReport",
     "RcVoteManifestReadV1",
     "RcVoteManifestV1",
+    "RetainedArtifactSnapshot",
+    "RebuiltOutputSnapshot",
     "SecondaryArtifactVerificationAdapter",
     "SecondaryArtifactManifestV1",
+    "ShallowArchiveAnalysisReport",
+    "SourceArtifactReproducibilityMetadata",
     "StrictSecondaryArtifactAdapter",
     "SupplementalInventoryReference",
     "ReproducibilityExecutionSection",

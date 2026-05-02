@@ -22,9 +22,10 @@ from io import BytesIO
 from pathlib import Path
 import stat
 import tarfile
-from typing import Any, Literal
+from typing import Literal
 import zipfile
 
+from apache_buildish_release_tooling.release.contracts import ShallowArchiveAnalysisReport
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.verification.common import (
     emit_detail,
@@ -74,7 +75,7 @@ def build_shallow_archive_analysis(
     *,
     staged_path: Path,
     rebuilt_path: Path,
-) -> dict[str, Any] | None:
+) -> ShallowArchiveAnalysisReport | None:
     """Return one durable shallow archive-analysis payload for a retained artifact pair."""
 
     staged_bytes = staged_path.read_bytes()
@@ -85,40 +86,56 @@ def build_shallow_archive_analysis(
         return None
     staged_format = staged_description.archive_format if staged_description is not None else "non-archive"
     rebuilt_format = rebuilt_description.archive_format if rebuilt_description is not None else "non-archive"
-    payload: dict[str, Any] = {
-        "raw_bytes_equal": staged_bytes == rebuilt_bytes,
-        "staged_archive_format": staged_format,
-        "rebuilt_archive_format": rebuilt_format,
-        "staged_entry_count": (len(staged_description.entries) if staged_description is not None else None),
-        "rebuilt_entry_count": (len(rebuilt_description.entries) if rebuilt_description is not None else None),
-        "missing_paths": [],
-        "unexpected_paths": [],
-        "entry_order_mismatches": [],
-        "metadata_mismatches": [],
-        "content_mismatches": [],
-    }
+    raw_bytes_equal = staged_bytes == rebuilt_bytes
+    staged_entry_count = len(staged_description.entries) if staged_description is not None else None
+    rebuilt_entry_count = len(rebuilt_description.entries) if rebuilt_description is not None else None
     if staged_description is None or rebuilt_description is None:
-        payload["classification"] = "archive-vs-non-archive"
-        return payload
-    if staged_description.archive_format != rebuilt_description.archive_format:
-        payload["classification"] = "archive-format-mismatch"
-        return payload
-    comparison = _compare_archives(staged_description, rebuilt_description)
-    payload["archive_format"] = staged_description.archive_format
-    if comparison is None:
-        payload["classification"] = (
-            "entries-match"
-            if staged_bytes == rebuilt_bytes
-            else "outer-container-drift"
+        return ShallowArchiveAnalysisReport(
+            classification="archive-vs-non-archive",
+            raw_bytes_equal=raw_bytes_equal,
+            staged_archive_format=staged_format,
+            rebuilt_archive_format=rebuilt_format,
+            staged_entry_count=staged_entry_count,
+            rebuilt_entry_count=rebuilt_entry_count,
         )
-        return payload
-    payload["classification"] = comparison.classification
-    payload["missing_paths"] = comparison.missing_paths
-    payload["unexpected_paths"] = comparison.unexpected_paths
-    payload["entry_order_mismatches"] = comparison.entry_order_mismatches
-    payload["metadata_mismatches"] = comparison.metadata_mismatches
-    payload["content_mismatches"] = comparison.content_mismatches
-    return payload
+    if staged_description.archive_format != rebuilt_description.archive_format:
+        return ShallowArchiveAnalysisReport(
+            classification="archive-format-mismatch",
+            raw_bytes_equal=raw_bytes_equal,
+            staged_archive_format=staged_format,
+            rebuilt_archive_format=rebuilt_format,
+            staged_entry_count=staged_entry_count,
+            rebuilt_entry_count=rebuilt_entry_count,
+        )
+    comparison = _compare_archives(staged_description, rebuilt_description)
+    if comparison is None:
+        return ShallowArchiveAnalysisReport(
+            classification=(
+                "entries-match"
+                if staged_bytes == rebuilt_bytes
+                else "outer-container-drift"
+            ),
+            archive_format=staged_description.archive_format,
+            raw_bytes_equal=raw_bytes_equal,
+            staged_archive_format=staged_format,
+            rebuilt_archive_format=rebuilt_format,
+            staged_entry_count=staged_entry_count,
+            rebuilt_entry_count=rebuilt_entry_count,
+        )
+    return ShallowArchiveAnalysisReport(
+        classification=comparison.classification,
+        archive_format=staged_description.archive_format,
+        raw_bytes_equal=raw_bytes_equal,
+        staged_archive_format=staged_format,
+        rebuilt_archive_format=rebuilt_format,
+        staged_entry_count=staged_entry_count,
+        rebuilt_entry_count=rebuilt_entry_count,
+        missing_paths=comparison.missing_paths,
+        unexpected_paths=comparison.unexpected_paths,
+        entry_order_mismatches=comparison.entry_order_mismatches,
+        metadata_mismatches=comparison.metadata_mismatches,
+        content_mismatches=comparison.content_mismatches,
+    )
 
 
 def inspect_shallow_archive_pair(
@@ -140,9 +157,9 @@ def inspect_shallow_archive_pair(
     if analysis is None:
         return False
     emit_info(progress_reporter, "Shallow archive comparison")
-    staged_format = str(analysis["staged_archive_format"])
-    rebuilt_format = str(analysis["rebuilt_archive_format"])
-    if analysis["classification"] == "archive-vs-non-archive":
+    staged_format = str(analysis.staged_archive_format)
+    rebuilt_format = str(analysis.rebuilt_archive_format)
+    if analysis.classification == "archive-vs-non-archive":
         emit_failure(
             progress_reporter,
             "One retained artifact is a readable top-level archive and the other is not",
@@ -150,10 +167,22 @@ def inspect_shallow_archive_pair(
         emit_detail(progress_reporter, "Staged archive format", staged_format)
         emit_detail(progress_reporter, "Rebuilt archive format", rebuilt_format)
         return True
-    emit_detail(progress_reporter, "Archive format", str(analysis.get("archive_format", staged_format)))
-    emit_detail(progress_reporter, "Staged entry count", str(analysis.get("staged_entry_count", "n/a")))
-    emit_detail(progress_reporter, "Rebuilt entry count", str(analysis.get("rebuilt_entry_count", "n/a")))
-    if analysis["classification"] == "archive-format-mismatch":
+    emit_detail(
+        progress_reporter,
+        "Archive format",
+        str(analysis.archive_format or staged_format),
+    )
+    emit_detail(
+        progress_reporter,
+        "Staged entry count",
+        str(analysis.staged_entry_count) if analysis.staged_entry_count is not None else "n/a",
+    )
+    emit_detail(
+        progress_reporter,
+        "Rebuilt entry count",
+        str(analysis.rebuilt_entry_count) if analysis.rebuilt_entry_count is not None else "n/a",
+    )
+    if analysis.classification == "archive-format-mismatch":
         emit_failure(
             progress_reporter,
             "Retained staged and rebuilt artifacts use different top-level archive formats",
@@ -161,13 +190,13 @@ def inspect_shallow_archive_pair(
         emit_detail(progress_reporter, "Staged archive format", staged_format)
         emit_detail(progress_reporter, "Rebuilt archive format", rebuilt_format)
         return True
-    if analysis["classification"] == "entries-match":
+    if analysis.classification == "entries-match":
         emit_success(
             progress_reporter,
             "Top-level archive entries and member payloads match after shallow inspection",
         )
         return True
-    if analysis["classification"] == "outer-container-drift":
+    if analysis.classification == "outer-container-drift":
         emit_success(
             progress_reporter,
             "Top-level archive entries and member payloads match after shallow inspection",
@@ -180,32 +209,32 @@ def inspect_shallow_archive_pair(
         _emit_archive_hint(progress_reporter, classification="outer-container-drift")
         return True
     emit_failure(progress_reporter, "Top-level archive entries differ after shallow inspection")
-    classification = str(analysis["classification"])
+    classification = analysis.classification
     emit_detail(progress_reporter, "Archive drift classification", classification)
     _emit_path_list(
         progress_reporter,
         heading="Missing archive entries",
-        entries=[str(path) for path in analysis["missing_paths"]],
+        entries=[str(path) for path in analysis.missing_paths],
     )
     _emit_path_list(
         progress_reporter,
         heading="Unexpected archive entries",
-        entries=[str(path) for path in analysis["unexpected_paths"]],
+        entries=[str(path) for path in analysis.unexpected_paths],
     )
     _emit_mismatch_list(
         progress_reporter,
         heading="Archive entry-order mismatches",
-        mismatches=[str(detail) for detail in analysis["entry_order_mismatches"]],
+        mismatches=[str(detail) for detail in analysis.entry_order_mismatches],
     )
     _emit_mismatch_list(
         progress_reporter,
         heading="Archive metadata mismatches",
-        mismatches=[str(detail) for detail in analysis["metadata_mismatches"]],
+        mismatches=[str(detail) for detail in analysis.metadata_mismatches],
     )
     _emit_path_list(
         progress_reporter,
         heading="Archive member-content mismatches",
-        entries=[str(path) for path in analysis["content_mismatches"]],
+        entries=[str(path) for path in analysis.content_mismatches],
     )
     _emit_archive_hint(progress_reporter, classification=classification)
     return True

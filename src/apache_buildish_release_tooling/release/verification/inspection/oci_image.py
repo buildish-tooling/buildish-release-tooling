@@ -16,11 +16,12 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from apache_buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityReport,
+    OciImageReproducibilityMetadata,
+    OciPlatformDigest,
     OciImageVerificationReport,
 )
 from apache_buildish_release_tooling.release.progress import ProgressReporter
@@ -51,31 +52,27 @@ def inspect_oci_image_reproducibility(
     if metadata_path is None:
         emit_warning(progress_reporter, "No comparison metadata was retained for this artifact")
         return
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    emit_detail(progress_reporter, "Metadata", str(metadata_path))
-    image_ref = metadata.get("image_ref")
-    if isinstance(image_ref, str):
-        emit_detail(progress_reporter, "Rebuilt image ref", image_ref)
-    rebuilt_digest = metadata.get("rebuilt_digest")
-    if isinstance(rebuilt_digest, str):
-        emit_detail(progress_reporter, "Rebuilt digest", rebuilt_digest)
-    declared_digest = metadata.get("declared_digest")
-    if isinstance(declared_digest, str):
-        emit_detail(progress_reporter, "Expected digest", declared_digest)
-    rebuilt_platform_digests = metadata.get("rebuilt_platform_digests")
-    expected_platform_digests = metadata.get("expected_platform_digests")
-    top_level_digest_matches = (
-        isinstance(rebuilt_digest, str)
-        and isinstance(declared_digest, str)
-        and rebuilt_digest == declared_digest
+    metadata = OciImageReproducibilityMetadata.model_validate_json(
+        metadata_path.read_text(encoding="utf-8")
     )
-    if isinstance(rebuilt_digest, str) and isinstance(declared_digest, str):
+    emit_detail(progress_reporter, "Metadata", str(metadata_path))
+    if metadata.image_ref is not None:
+        emit_detail(progress_reporter, "Rebuilt image ref", metadata.image_ref)
+    rebuilt_digest = metadata.rebuilt_digest
+    if rebuilt_digest is not None:
+        emit_detail(progress_reporter, "Rebuilt digest", rebuilt_digest)
+    declared_digest = metadata.declared_digest
+    emit_detail(progress_reporter, "Expected digest", declared_digest)
+    top_level_digest_matches = (
+        rebuilt_digest is not None and rebuilt_digest == declared_digest
+    )
+    if rebuilt_digest is not None:
         if top_level_digest_matches:
             emit_success(progress_reporter, "Top-level image digest matched the signed manifest")
         else:
             emit_failure(progress_reporter, "Top-level image digest differs from the signed manifest")
-    expected_by_platform = _platform_digest_map(expected_platform_digests)
-    rebuilt_by_platform = _platform_digest_map(rebuilt_platform_digests)
+    expected_by_platform = _platform_digest_map(metadata.expected_platform_digests)
+    rebuilt_by_platform = _platform_digest_map(metadata.rebuilt_platform_digests)
     changed_platforms: list[str] = []
     missing_platforms: list[str] = []
     unexpected_platforms: list[str] = []
@@ -170,11 +167,7 @@ def _platform_digest_map(raw_entries: object) -> dict[str, str] | None:
         return None
     entries: dict[str, str] = {}
     for raw_entry in raw_entries:
-        if not isinstance(raw_entry, dict):
+        if not isinstance(raw_entry, OciPlatformDigest):
             return None
-        platform = raw_entry.get("platform")
-        digest = raw_entry.get("digest")
-        if not isinstance(platform, str) or not isinstance(digest, str):
-            return None
-        entries[platform] = digest
+        entries[raw_entry.platform] = raw_entry.digest
     return entries

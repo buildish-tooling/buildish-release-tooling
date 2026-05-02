@@ -16,11 +16,11 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from apache_buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityReport,
+    SourceArtifactReproducibilityMetadata,
     SourceArtifactVerificationSection,
 )
 from apache_buildish_release_tooling.release.progress import ProgressReporter
@@ -58,18 +58,18 @@ def inspect_source_artifact_reproducibility(
     if metadata_path is None:
         emit_warning(progress_reporter, "No comparison metadata was retained for the source artifact")
         return
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata = SourceArtifactReproducibilityMetadata.model_validate_json(
+        metadata_path.read_text(encoding="utf-8")
+    )
     emit_detail(progress_reporter, "Metadata", str(metadata_path))
-    staged_metadata = metadata.get("staged_artifact", {})
-    if isinstance(staged_metadata, dict):
-        emit_detail(progress_reporter, "Staged SHA512", str(staged_metadata.get("sha512", "n/a")))
-        emit_detail(progress_reporter, "Staged size", str(staged_metadata.get("size_bytes", "n/a")))
-    rebuilt_metadata = metadata.get("rebuilt_artifact", {})
-    if isinstance(rebuilt_metadata, dict):
+    emit_detail(progress_reporter, "Staged SHA512", metadata.staged_artifact.sha512)
+    emit_detail(progress_reporter, "Staged size", str(metadata.staged_artifact.size_bytes))
+    rebuilt_metadata = metadata.rebuilt_artifact
+    if rebuilt_metadata is not None:
         emit_detail(
             progress_reporter,
             "Rebuilt artifact",
-            f"{rebuilt_metadata.get('filename', 'n/a')} ({rebuilt_metadata.get('sha512', 'n/a')})",
+            f"{rebuilt_metadata.filename} ({rebuilt_metadata.sha512})",
         )
     staged_path = evidence_path(
         reproducibility.evidence,
@@ -106,8 +106,8 @@ def inspect_source_artifact_reproducibility(
         staged_path=staged_path,
         rebuilt_path=rebuilt_path,
     )
-    archive_analysis = metadata.get("archive_analysis")
-    if isinstance(archive_analysis, dict) and archive_analysis.get("classification") == "outer-container-drift":
+    archive_analysis = metadata.archive_analysis
+    if archive_analysis is not None and archive_analysis.classification == "outer-container-drift":
         emit_info(
             progress_reporter,
             "Source artifact hint: this often points to gzip or outer tarball container settings rather than source-tree content drift",

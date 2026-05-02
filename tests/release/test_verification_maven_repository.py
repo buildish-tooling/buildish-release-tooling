@@ -105,17 +105,17 @@ class MavenRepositoryReproducibilityTest(unittest.TestCase):
                 "org/example/app/1.0.0/app-1.0.0.pom.asc",
                 "org/example/app/1.0.0/app-1.0.0.pom.sha512",
             },
-            {result["path"] for result in path_results},
+            {result.path for result in path_results},
         )
         self.assertEqual(
             {"org/example/app/1.0.0/app-1.0.0.pom.asc", "org/example/app/1.0.0/app-1.0.0.pom.sha512"},
             {
-                result["path"]
+                result.path
                 for result in path_results
-                if result["verdict"] == "skipped"
+                if result.verdict == "skipped"
             },
         )
         self.assertNotIn(
             "com/example/dependency/2.0.0/dependency-2.0.0.jar",
-            {result["path"] for result in path_results},
+            {result.path for result in path_results},
         )

@@ -16,14 +16,15 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from apache_buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityReport,
+    FileLikeReproducibilityMetadata,
     GenericFileVerificationReport,
     NpmPackageVerificationReport,
     PythonDistributionVerificationReport,
+    ShallowArchiveAnalysisReport,
 )
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.verification.common import (
@@ -63,30 +64,18 @@ def inspect_file_like_reproducibility(
     if metadata_path is None:
         emit_warning(progress_reporter, "No comparison metadata was retained for this artifact")
         return
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata = FileLikeReproducibilityMetadata.model_validate_json(
+        metadata_path.read_text(encoding="utf-8")
+    )
     emit_detail(progress_reporter, "Metadata", str(metadata_path))
-    staged_metadata = metadata.get("staged_artifact", {})
-    if isinstance(staged_metadata, dict):
+    emit_detail(progress_reporter, "Staged SHA512", metadata.staged_artifact.sha512)
+    emit_detail(progress_reporter, "Staged size", str(metadata.staged_artifact.size_bytes))
+    for output in metadata.rebuilt_outputs:
         emit_detail(
             progress_reporter,
-            "Staged SHA512",
-            str(staged_metadata.get("sha512", "n/a")),
+            "Rebuilt output",
+            f"{output.path} ({output.sha512})",
         )
-        emit_detail(
-            progress_reporter,
-            "Staged size",
-            str(staged_metadata.get("size_bytes", "n/a")),
-        )
-    rebuilt_outputs = metadata.get("rebuilt_outputs", [])
-    if isinstance(rebuilt_outputs, list):
-        for output in rebuilt_outputs:
-            if not isinstance(output, dict):
-                continue
-            emit_detail(
-                progress_reporter,
-                "Rebuilt output",
-                f"{output.get('path', 'n/a')} ({output.get('sha512', 'n/a')})",
-            )
     staged_path = evidence_path(
         reproducibility.evidence,
         label="staged-artifact",
@@ -134,7 +123,7 @@ def inspect_file_like_reproducibility(
     _emit_file_like_archive_hint(
         progress_reporter,
         verification=verification,
-        archive_analysis=metadata.get("archive_analysis"),
+        archive_analysis=metadata.archive_analysis,
     )
     if inline_diff:
         emit_info(progress_reporter, "Unified text diff")
@@ -160,11 +149,9 @@ def _emit_file_like_archive_hint(
     verification: GenericFileVerificationReport
     | PythonDistributionVerificationReport
     | NpmPackageVerificationReport,
-    archive_analysis: object,
+    archive_analysis: ShallowArchiveAnalysisReport | None,
 ) -> None:
-    if not isinstance(archive_analysis, dict):
-        return
-    if not isinstance(archive_analysis.get("classification"), str):
+    if archive_analysis is None:
         return
     if isinstance(verification, PythonDistributionVerificationReport):
         distribution_type = _distribution_type(verification.filename)

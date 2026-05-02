@@ -24,9 +24,14 @@ from typing import Any, Literal
 from pydantic import ValidationError
 
 from apache_buildish_release_tooling.release.contracts import (
+    ArtifactReproducibilityEffectiveBuildExecutionReport,
+    ArtifactReproducibilityEffectiveExecutionReport,
+    ArtifactReproducibilityOverrideReport,
     RcVoteManifestReadV1,
     SecondaryArtifactVerificationAdapter,
+    SourceArtifactReproducibilityMetadata,
     SourceArtifactContract,
+    RetainedArtifactSnapshot,
     VerifyRcReportV1,
 )
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
@@ -1309,49 +1314,54 @@ def _source_artifact_reproducibility_payload(
             if rebuilt_source_sha512 is not None and not source_artifact_matches_source_commit
             else "build-failed"
         )
-    effective_execution = None
+    effective_execution: ArtifactReproducibilityEffectiveExecutionReport | None = None
     if rebuilt_source_artifact_path is not None:
-        effective_execution = {
-            "backend": "host-direct",
-            "build": {
-                "command": ["internal:create-from-git"],
-                "working_directory": "source-repository",
-                "output_paths": [rebuilt_source_artifact_path.name],
-                "injected_environment_keys": [],
-            },
-        }
+        effective_execution = ArtifactReproducibilityEffectiveExecutionReport(
+            backend="host-direct",
+            build=ArtifactReproducibilityEffectiveBuildExecutionReport(
+                command=["internal:create-from-git"],
+                working_directory="source-repository",
+                output_paths=[rebuilt_source_artifact_path.name],
+                injected_environment_keys=[],
+            ),
+        )
+    archive_analysis = (
+        build_shallow_archive_analysis(
+            staged_path=source_artifact_path,
+            rebuilt_path=rebuilt_source_artifact_path,
+        )
+        if source_artifact_path is not None
+        and rebuilt_source_artifact_path is not None
+        and source_artifact_path.exists()
+        and rebuilt_source_artifact_path.exists()
+        else None
+    )
     evidence: list[dict[str, str]] = []
     if inspection_bundle_root is not None and source_artifact_path is not None:
-        metadata_payload: dict[str, Any] = {
-            "profile_id": profile_id,
-            "comparison_mode": "exact-bytes",
-            "failure_class": failure_class,
-            "archive_analysis": (
-                build_shallow_archive_analysis(
-                    staged_path=source_artifact_path,
-                    rebuilt_path=rebuilt_source_artifact_path,
+        metadata_payload = SourceArtifactReproducibilityMetadata(
+            profile_id=profile_id,
+            comparison_mode="exact-bytes",
+            failure_class=failure_class,
+            archive_analysis=archive_analysis,
+            staged_artifact=RetainedArtifactSnapshot(
+                filename=source_artifact.filename,
+                sha512=sha512(source_artifact_path),
+                size_bytes=source_artifact_path.stat().st_size,
+            ),
+            rebuilt_artifact=(
+                RetainedArtifactSnapshot(
+                    filename=rebuilt_source_artifact_path.name,
+                    sha512=rebuilt_source_sha512,
+                    size_bytes=rebuilt_source_artifact_path.stat().st_size,
                 )
-                if rebuilt_source_artifact_path is not None
-                and source_artifact_path.exists()
-                and rebuilt_source_artifact_path.exists()
+                if rebuilt_source_artifact_path is not None and rebuilt_source_sha512 is not None
                 else None
             ),
-            "staged_artifact": {
-                "filename": source_artifact.filename,
-                "sha512": sha512(source_artifact_path),
-                "size_bytes": source_artifact_path.stat().st_size,
-            },
-            "matches_remote_bytes": (
+            matches_remote_bytes=(
                 source_artifact_matches_source_commit if rebuilt_source_sha512 is not None else None
             ),
-            "issues": reproducibility_issues,
-        }
-        if rebuilt_source_artifact_path is not None:
-            metadata_payload["rebuilt_artifact"] = {
-                "filename": rebuilt_source_artifact_path.name,
-                "sha512": rebuilt_source_sha512,
-                "size_bytes": rebuilt_source_artifact_path.stat().st_size,
-            }
+            issues=reproducibility_issues,
+        )
         metadata_path = write_source_artifact_reproducibility_metadata(
             inspection_bundle_root,
             payload=metadata_payload,
@@ -1384,21 +1394,19 @@ def _source_artifact_reproducibility_payload(
         "verdict": "failed" if reproducibility_issues else "verified",
         "comparison_mode": "exact-bytes",
         "canonical_recipe": None,
-        "effective_execution": effective_execution,
-        "override": {"applied": False},
+        "effective_execution": (
+            effective_execution.model_dump(mode="json", exclude_none=True)
+            if effective_execution is not None
+            else None
+        ),
+        "override": ArtifactReproducibilityOverrideReport(applied=False).model_dump(mode="json"),
         "matches_remote_bytes": (
             source_artifact_matches_source_commit if rebuilt_source_sha512 is not None else None
         ),
         "failure_class": failure_class,
         "archive_analysis": (
-            build_shallow_archive_analysis(
-                staged_path=source_artifact_path,
-                rebuilt_path=rebuilt_source_artifact_path,
-            )
-            if source_artifact_path is not None
-            and rebuilt_source_artifact_path is not None
-            and source_artifact_path.exists()
-            and rebuilt_source_artifact_path.exists()
+            archive_analysis.model_dump(mode="json", exclude_none=True)
+            if archive_analysis is not None
             else None
         ),
         "evidence": evidence,

@@ -22,6 +22,8 @@ from pathlib import Path
 import re
 from typing import Any
 
+from pydantic import BaseModel
+
 from apache_buildish_release_tooling.release.manifest import write_manifest
 
 _SAFE_PATH_COMPONENT_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
@@ -48,7 +50,7 @@ def write_reproducibility_metadata(
     bundle_root: Path,
     *,
     artifact_id: str,
-    payload: Mapping[str, Any],
+    payload: Mapping[str, Any] | BaseModel,
 ) -> str:
     """Write one reproducibility metadata JSON file and return its bundle-relative path."""
 
@@ -60,7 +62,7 @@ def write_reproducibility_metadata(
 def write_source_artifact_reproducibility_metadata(
     bundle_root: Path,
     *,
-    payload: Mapping[str, Any],
+    payload: Mapping[str, Any] | BaseModel,
 ) -> str:
     """Write source-artifact reproducibility metadata and return its bundle-relative path."""
 

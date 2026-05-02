@@ -17,8 +17,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
+from apache_buildish_release_tooling.release.contracts import (
+    ArtifactReproducibilityCanonicalRecipeReport,
+    ArtifactReproducibilityEffectiveExecutionReport,
+    ArtifactReproducibilityOverrideReport,
+    FileLikeReproducibilityMetadata,
+    RebuiltOutputSnapshot,
+    RetainedArtifactSnapshot,
+    ShallowArchiveAnalysisReport,
+)
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.inspection_bundle import (
@@ -45,7 +54,12 @@ def verify_host_direct_single_file_reproducibility(
     *,
     manifest_url: str,
     artifact_id: str,
-    kind: str,
+    kind: Literal[
+        "generic-file",
+        "generic-file-with-openpgp",
+        "python-distribution",
+        "npm-package",
+    ],
     artifact_path: Path | None,
     work_dir: Path,
     component_config: ComponentConfig | None,
@@ -80,6 +94,10 @@ def verify_host_direct_single_file_reproducibility(
     failure_class: str | None = None
     evidence: list[dict[str, str]] = []
     resolved_profile: ResolvedRebuildProfile | None = None
+    canonical_recipe: ArtifactReproducibilityCanonicalRecipeReport | None = None
+    effective_execution: ArtifactReproducibilityEffectiveExecutionReport | None = None
+    override: ArtifactReproducibilityOverrideReport = override_payload(None)
+    archive_analysis: ShallowArchiveAnalysisReport | None = None
     if component_config is None:
         issues.append(
             f"build-based reproducibility for {artifact_id} requires --component-config to resolve profile {profile_id!r}"
@@ -104,6 +122,8 @@ def verify_host_direct_single_file_reproducibility(
             )
             profile = resolved_profile.profile
             comparison_mode = str(profile.comparison.get("mode", comparison_mode))
+            canonical_recipe = canonical_recipe_payload(resolved_profile)
+            override = override_payload(resolved_profile)
         except Exception as exc:
             issues.append(str(exc))
     if not issues and profile is not None and project_root is not None and artifact_path is not None:
@@ -121,6 +141,14 @@ def verify_host_direct_single_file_reproducibility(
                     f"{subject_label} reproducibility profile {profile_id!r} must produce exactly one output file"
                 )
             built_artifact_path = build_result.output_paths[0]
+            effective_execution = effective_execution_payload(
+                build_result=build_result,
+                project_root=project_root,
+            )
+            archive_analysis = build_shallow_archive_analysis(
+                staged_path=artifact_path,
+                rebuilt_path=built_artifact_path,
+            )
             matches_remote_bytes = built_artifact_path.read_bytes() == artifact_path.read_bytes()
             if not matches_remote_bytes:
                 failure_class = "byte-mismatch"
@@ -137,43 +165,35 @@ def verify_host_direct_single_file_reproducibility(
         and build_result is not None
     ):
         rebuilt_outputs = [
-            {
-                "path": str(path.relative_to(project_root)),
-                "sha512": checksum(path, "sha512"),
-                "size_bytes": path.stat().st_size,
-            }
+            RebuiltOutputSnapshot(
+                path=str(path.relative_to(project_root)),
+                sha512=checksum(path, "sha512"),
+                size_bytes=path.stat().st_size,
+            )
             for path in build_result.output_paths
         ]
         metadata_path = write_reproducibility_metadata(
             inspection_bundle_root,
             artifact_id=artifact_id,
-            payload={
-                "artifact_id": artifact_id,
-                "kind": kind,
-                "profile_id": profile_id,
-                "comparison_mode": comparison_mode,
-                "canonical_recipe": canonical_recipe_payload(resolved_profile),
-                "effective_execution": effective_execution_payload(
-                    build_result=build_result,
-                    project_root=project_root,
+            payload=FileLikeReproducibilityMetadata(
+                artifact_id=artifact_id,
+                kind=kind,
+                profile_id=profile_id,
+                comparison_mode=comparison_mode,
+                canonical_recipe=canonical_recipe,
+                effective_execution=effective_execution,
+                override=override,
+                failure_class=failure_class,
+                archive_analysis=archive_analysis,
+                staged_artifact=RetainedArtifactSnapshot(
+                    filename=artifact_path.name,
+                    sha512=checksum(artifact_path, "sha512"),
+                    size_bytes=artifact_path.stat().st_size,
                 ),
-                "override": override_payload(resolved_profile),
-                "failure_class": failure_class,
-                "archive_analysis": build_shallow_archive_analysis(
-                    staged_path=artifact_path,
-                    rebuilt_path=build_result.output_paths[0],
-                )
-                if len(build_result.output_paths) == 1
-                else None,
-                "staged_artifact": {
-                    "filename": artifact_path.name,
-                    "sha512": checksum(artifact_path, "sha512"),
-                    "size_bytes": artifact_path.stat().st_size,
-                },
-                "rebuilt_outputs": rebuilt_outputs,
-                "matches_remote_bytes": matches_remote_bytes,
-                "issues": issues,
-            },
+                rebuilt_outputs=rebuilt_outputs,
+                matches_remote_bytes=matches_remote_bytes,
+                issues=issues,
+            ),
         )
         evidence.append({"label": "comparison-metadata", "path": metadata_path})
         if issues:
@@ -204,20 +224,22 @@ def verify_host_direct_single_file_reproducibility(
         "profile_id": profile_id,
         "verdict": "failed" if issues else "verified",
         "comparison_mode": comparison_mode,
-        "canonical_recipe": canonical_recipe_payload(resolved_profile),
-        "effective_execution": effective_execution_payload(
-            build_result=build_result,
-            project_root=project_root,
+        "canonical_recipe": (
+            canonical_recipe.model_dump(mode="json", exclude_none=True)
+            if canonical_recipe is not None
+            else None
         ),
-        "override": override_payload(resolved_profile),
+        "effective_execution": (
+            effective_execution.model_dump(mode="json", exclude_none=True)
+            if effective_execution is not None
+            else None
+        ),
+        "override": override.model_dump(mode="json", exclude_none=True),
         "matches_remote_bytes": matches_remote_bytes,
         "failure_class": failure_class,
         "archive_analysis": (
-            build_shallow_archive_analysis(
-                staged_path=artifact_path,
-                rebuilt_path=build_result.output_paths[0],
-            )
-            if artifact_path is not None and build_result is not None and len(build_result.output_paths) == 1
+            archive_analysis.model_dump(mode="json", exclude_none=True)
+            if archive_analysis is not None
             else None
         ),
         "evidence": evidence,

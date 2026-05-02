@@ -21,7 +21,7 @@ import io
 import re
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     _RemoteHttpClient,
@@ -30,6 +30,15 @@ from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_r
     _repository_file_bytes,
     _repository_files,
     _validated_repository_root,
+)
+from apache_buildish_release_tooling.release.contracts import (
+    ArtifactReproducibilityCanonicalRecipeReport,
+    ArtifactReproducibilityEffectiveExecutionReport,
+    ArtifactReproducibilityOverrideReport,
+    MavenRepositoryPathMode,
+    MavenRepositoryPathResultReport,
+    MavenRepositoryPathRuleReport,
+    MavenRepositoryReproducibilityMetadata,
 )
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.progress import ProgressReporter
@@ -327,10 +336,13 @@ def _verify_maven_repository_reproducibility(
     evidence: list[dict[str, str]] = []
     repository_dir: str | None = None
     require_signatures = False
-    path_rules: tuple[dict[str, str], ...] = ()
-    path_results: list[dict[str, Any]] = []
+    path_rules: tuple[MavenRepositoryPathRuleReport, ...] = ()
+    path_results: list[MavenRepositoryPathResultReport] = []
     rebuilt_repository_path: Path | None = None
     resolved_profile: ResolvedRebuildProfile | None = None
+    canonical_recipe: ArtifactReproducibilityCanonicalRecipeReport | None = None
+    effective_execution: ArtifactReproducibilityEffectiveExecutionReport | None = None
+    override: ArtifactReproducibilityOverrideReport = override_payload(None)
     profile = None
     build_result = None
     if component_config is None:
@@ -375,6 +387,8 @@ def _verify_maven_repository_reproducibility(
                 profile.comparison.get("path_rules"),
                 source=f"verify_rc profile {profile_id!r}",
             )
+            canonical_recipe = canonical_recipe_payload(resolved_profile)
+            override = override_payload(resolved_profile)
         except Exception as exc:
             failure_class = failure_class or "invalid-profile"
             issues.append(str(exc))
@@ -393,6 +407,11 @@ def _verify_maven_repository_reproducibility(
                 project_root=project_root,
                 work_dir=work_dir,
                 source_date_epoch=source_date_epoch,
+            )
+            effective_execution = effective_execution_payload(
+                build_result=build_result,
+                project_root=project_root,
+                output_paths=[repository_dir] if repository_dir is not None else None,
             )
             rebuilt_repository_path = project_root / repository_dir
             if not rebuilt_repository_path.is_dir():
@@ -420,39 +439,39 @@ def _verify_maven_repository_reproducibility(
         metadata_path = write_reproducibility_metadata(
             inspection_bundle_root,
             artifact_id=artifact_id,
-            payload={
-                "artifact_id": artifact_id,
-                "kind": "maven-repository",
-                "profile_id": profile_id,
-                "comparison_mode": comparison_mode,
-                "canonical_recipe": canonical_recipe_payload(resolved_profile),
-                "effective_execution": effective_execution_payload(
-                    build_result=build_result,
-                    project_root=project_root,
-                    output_paths=[repository_dir] if repository_dir is not None else None,
-                ),
-                "override": override_payload(resolved_profile),
-                "repository_dir": repository_dir,
-                "require_signatures": require_signatures,
-                "path_rules": list(path_rules),
-                "matches_remote_bytes": matches_remote_bytes,
-                "failure_class": failure_class,
-                "path_results": path_results,
-                "issues": issues,
-            },
+            payload=MavenRepositoryReproducibilityMetadata(
+                artifact_id=artifact_id,
+                kind="maven-repository",
+                profile_id=profile_id,
+                comparison_mode="repository-tree",
+                canonical_recipe=canonical_recipe,
+                effective_execution=effective_execution,
+                override=override,
+                repository_dir=repository_dir,
+                require_signatures=require_signatures,
+                path_rules=list(path_rules),
+                matches_remote_bytes=matches_remote_bytes,
+                failure_class=failure_class,
+                path_results=path_results,
+                issues=issues,
+            ),
         )
         evidence.append({"label": "comparison-metadata", "path": metadata_path})
     return {
         "profile_id": profile_id,
         "verdict": "failed" if issues else "verified",
         "comparison_mode": comparison_mode,
-        "canonical_recipe": canonical_recipe_payload(resolved_profile),
-        "effective_execution": effective_execution_payload(
-            build_result=build_result,
-            project_root=project_root,
-            output_paths=[repository_dir] if repository_dir is not None else None,
+        "canonical_recipe": (
+            canonical_recipe.model_dump(mode="json", exclude_none=True)
+            if canonical_recipe is not None
+            else None
         ),
-        "override": override_payload(resolved_profile),
+        "effective_execution": (
+            effective_execution.model_dump(mode="json", exclude_none=True)
+            if effective_execution is not None
+            else None
+        ),
+        "override": override.model_dump(mode="json", exclude_none=True),
         "matches_remote_bytes": matches_remote_bytes,
         "failure_class": failure_class,
         "evidence": evidence,
@@ -475,12 +494,12 @@ def _validated_path_rules(
     raw_rules: Any,
     *,
     source: str,
-) -> tuple[dict[str, str], ...]:
+) -> tuple[MavenRepositoryPathRuleReport, ...]:
     if raw_rules is None:
         return ()
     if not isinstance(raw_rules, list):
         raise ValueError(f"verify_rc maven path_rules must be a list: {source}")
-    rules: list[dict[str, str]] = []
+    rules: list[MavenRepositoryPathRuleReport] = []
     for index, raw_rule in enumerate(raw_rules, start=1):
         if not isinstance(raw_rule, dict):
             raise ValueError(f"verify_rc maven path_rules[{index}] must be an object: {source}")
@@ -497,14 +516,22 @@ def _validated_path_rules(
             raise ValueError(
                 f"verify_rc maven path_rules[{index}] pattern is not a valid regular expression: {pattern}"
             ) from exc
-        rules.append({"pattern": pattern, "mode": mode})
+        rules.append(
+            MavenRepositoryPathRuleReport(
+                pattern=pattern,
+                mode=cast(MavenRepositoryPathMode, mode),
+            )
+        )
     return tuple(rules)
 
 
-def _path_mode_for_repository_entry(relative_path: str, path_rules: tuple[dict[str, str], ...]) -> str:
+def _path_mode_for_repository_entry(
+    relative_path: str,
+    path_rules: tuple[MavenRepositoryPathRuleReport, ...],
+) -> MavenRepositoryPathMode:
     for rule in path_rules:
-        if re.search(rule["pattern"], relative_path):
-            return rule["mode"]
+        if re.search(rule.pattern, relative_path):
+            return rule.mode
     if _is_default_remote_only_repository_entry(relative_path):
         return "remote-only"
     return "exact-bytes"
@@ -516,10 +543,10 @@ def _compare_maven_repository_trees(
     staged_by_path: dict[str, _RepositoryFile],
     staged_cache: dict[str, bytes],
     rebuilt_repository_path: Path,
-    path_rules: tuple[dict[str, str], ...],
+    path_rules: tuple[MavenRepositoryPathRuleReport, ...],
     require_signatures: bool,
     progress_reporter: ProgressReporter,
-) -> tuple[list[dict[str, Any]], list[str], bool]:
+) -> tuple[list[MavenRepositoryPathResultReport], list[str], bool]:
     emit_info(progress_reporter, f"Reusing staged repository snapshot for local comparison: {artifact_id}")
     emit_info(
         progress_reporter,
@@ -547,11 +574,11 @@ def _compare_repository_path_sets(
     staged_by_path: dict[str, _RepositoryFile],
     staged_cache: dict[str, bytes],
     rebuilt_repository_path: Path,
-    path_rules: tuple[dict[str, str], ...],
+    path_rules: tuple[MavenRepositoryPathRuleReport, ...],
     progress_reporter: ProgressReporter,
-) -> tuple[list[dict[str, Any]], list[str], bool]:
+) -> tuple[list[MavenRepositoryPathResultReport], list[str], bool]:
     issues: list[str] = []
-    path_results: list[dict[str, Any]] = []
+    path_results: list[MavenRepositoryPathResultReport] = []
     rebuilt_cache: dict[str, bytes] = {}
     comparable_staged_paths = {
         relative_path
@@ -563,12 +590,12 @@ def _compare_repository_path_sets(
         if mode != "remote-only":
             continue
         path_results.append(
-            {
-                "path": relative_path,
-                "mode": mode,
-                "verdict": "skipped",
-                "detail": "excluded from local comparison by path rule",
-            }
+            MavenRepositoryPathResultReport(
+                path=relative_path,
+                mode=mode,
+                verdict="skipped",
+                detail="excluded from local comparison by path rule",
+            )
         )
     common_paths = sorted(comparable_staged_paths)
     for index, relative_path in enumerate(common_paths, start=1):
@@ -583,12 +610,12 @@ def _compare_repository_path_sets(
                 f"{relative_path}"
             )
             path_results.append(
-                {
-                    "path": relative_path,
-                    "mode": mode,
-                    "verdict": "failed",
-                    "detail": "missing rebuilt path",
-                }
+                MavenRepositoryPathResultReport(
+                    path=relative_path,
+                    mode=mode,
+                    verdict="failed",
+                    detail="missing rebuilt path",
+                )
             )
             continue
         staged_payload = _cached_staged_repository_bytes(
@@ -603,7 +630,7 @@ def _compare_repository_path_sets(
         raw_bytes_equal = staged_payload == rebuilt_payload
         normalized_match: bool | None = None
         detail = "raw bytes matched exactly"
-        verdict = "verified"
+        verdict: Literal["verified", "failed", "skipped"] = "verified"
         if not raw_bytes_equal:
             if mode == "exact-bytes":
                 detail = "raw bytes differ"
@@ -644,16 +671,16 @@ def _compare_repository_path_sets(
                     f"{relative_path} -> {mode}"
                 )
         path_results.append(
-            {
-                "path": relative_path,
-                "mode": mode,
-                "verdict": verdict,
-                "detail": detail,
-                "raw_bytes_equal": raw_bytes_equal,
-                "normalized_match": normalized_match,
-                "staged_sha512": hashlib.sha512(staged_payload).hexdigest(),
-                "rebuilt_sha512": hashlib.sha512(rebuilt_payload).hexdigest(),
-            }
+            MavenRepositoryPathResultReport(
+                path=relative_path,
+                mode=mode,
+                verdict=verdict,
+                detail=detail,
+                raw_bytes_equal=raw_bytes_equal,
+                normalized_match=normalized_match,
+                staged_sha512=hashlib.sha512(staged_payload).hexdigest(),
+                rebuilt_sha512=hashlib.sha512(rebuilt_payload).hexdigest(),
+            )
         )
         update_info(
             progress_reporter,
@@ -759,8 +786,10 @@ def _normalized_zip_entries(
     return entries
 
 
-def _maven_reproducibility_failure_class(path_results: list[dict[str, Any]]) -> str:
-    if any(result.get("detail") in {"missing rebuilt path", "unexpected rebuilt path"} for result in path_results):
+def _maven_reproducibility_failure_class(
+    path_results: list[MavenRepositoryPathResultReport],
+) -> str:
+    if any(result.detail in {"missing rebuilt path", "unexpected rebuilt path"} for result in path_results):
         return "path-set-mismatch"
     return "path-comparison-failed"
 
