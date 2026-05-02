@@ -54,6 +54,17 @@ def _release_read_view(release: Mapping[str, object]) -> _GitHubReleaseRead | No
         return None
 
 
+def _validated_release_payload(payload: object, *, source: str) -> dict[str, object]:
+    """Validate one GitHub Release object payload returned by the API."""
+
+    if not isinstance(payload, dict):
+        raise ValueError(f"{source} did not return an object payload")
+    parsed = _release_read_view(payload)
+    if parsed is None:
+        raise ValueError(f"{source} returned a malformed GitHub Release payload")
+    return parsed.model_dump(mode="python", exclude_none=True)
+
+
 def list_releases(repository_slug: str) -> list[dict[str, object]]:
     """List GitHub releases for a repository through the GitHub CLI API."""
 
@@ -224,10 +235,10 @@ def create_draft_release(
             }
         ),
     )
-    payload = json.loads(completed.stdout)
-    if not isinstance(payload, dict):
-        raise ValueError("GitHub release creation did not return an object payload")
-    return payload
+    return _validated_release_payload(
+        json.loads(completed.stdout),
+        source="GitHub release creation",
+    )
 
 
 def update_release(
@@ -252,10 +263,10 @@ def update_release(
         ],
         input_text=json.dumps(payload),
     )
-    response_payload = json.loads(completed.stdout)
-    if not isinstance(response_payload, dict):
-        raise ValueError("GitHub release update did not return an object payload")
-    return response_payload
+    return _validated_release_payload(
+        json.loads(completed.stdout),
+        source="GitHub release update",
+    )
 
 
 def upload_release_assets(

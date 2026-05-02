@@ -226,6 +226,31 @@ class GitHubReleasesTest(unittest.TestCase):
             ),
         )
 
+    def test_create_draft_release_rejects_malformed_release_payload_variants(self) -> None:
+        malformed_payloads: tuple[object, ...] = (
+            [],
+            {"id": []},
+            {"id": 42, "draft": []},
+            {"id": 42, "assets": "broken"},
+        )
+        for payload in malformed_payloads:
+            with self.subTest(payload=payload):
+                with mock.patch(
+                    "apache_buildish_release_tooling.release.github_releases.run_logged_command",
+                    return_value=subprocess.CompletedProcess([], 0, json.dumps(payload), ""),
+                ):
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        "GitHub release creation",
+                    ):
+                        github_releases.create_draft_release(
+                            "apache/buildish-example",
+                            tag_name="v1.2.3",
+                            target_commitish="deadbeef",
+                            release_name="Apache Buildish Example 1.2.3",
+                            release_body="release body",
+                        )
+
     def test_update_release_posts_expected_payload(self) -> None:
         with mock.patch(
             "apache_buildish_release_tooling.release.github_releases.run_logged_command",
@@ -256,6 +281,29 @@ class GitHubReleasesTest(unittest.TestCase):
             ],
             input_text=json.dumps({"draft": False, "prerelease": False}),
         )
+
+    def test_update_release_rejects_malformed_release_payload_variants(self) -> None:
+        malformed_payloads: tuple[object, ...] = (
+            [],
+            {"id": "not-an-int"},
+            {"id": 42, "draft": "nope"},
+            {"id": 42, "assets": "broken"},
+        )
+        for payload in malformed_payloads:
+            with self.subTest(payload=payload):
+                with mock.patch(
+                    "apache_buildish_release_tooling.release.github_releases.run_logged_command",
+                    return_value=subprocess.CompletedProcess([], 0, json.dumps(payload), ""),
+                ):
+                    with self.assertRaisesRegex(
+                        ValueError,
+                        "GitHub release update",
+                    ):
+                        github_releases.update_release(
+                            "apache/buildish-example",
+                            42,
+                            payload={"draft": False, "prerelease": False},
+                        )
 
     def test_upload_release_assets_uses_release_upload_with_clobber(self) -> None:
         with mock.patch(
