@@ -16,7 +16,11 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+from typing import Literal
 import unittest
+
+from pydantic import ValidationError
 
 from apache_buildish_release_tooling.release.contracts import (
     GenericFileSecondaryArtifact,
@@ -180,3 +184,132 @@ class SecondarySharedTest(unittest.TestCase):
 
         self.assertEqual(1, len(entries))
         self.assertIsInstance(entries[0], GenericFileSecondaryArtifact)
+
+    def test_secondary_artifact_entries_wrap_field_mutation_matrix(self) -> None:
+        base_entry = {
+            "artifact_id": "bootstrap-zip",
+            "kind": "generic-file",
+            "filename": "buildish-example-bootstrap.zip",
+            "uri": "https://example.invalid/buildish-example-bootstrap.zip",
+            "checksums": {
+                "sha512": {
+                    "value": "a" * 128,
+                }
+            },
+            "signatures": [],
+        }
+        mutation_cases: tuple[
+            tuple[str, tuple[str, ...], object, Literal["wrapped", "validation-error"], str | None, str | None],
+            ...,
+        ] = (
+            (
+                "artifact-id-empty",
+                ("artifact_id",),
+                "   ",
+                "wrapped",
+                None,
+                "generic-file",
+            ),
+            (
+                "artifact-id-non-string",
+                ("artifact_id",),
+                [],
+                "validation-error",
+                None,
+                "generic-file",
+            ),
+            (
+                "kind-empty",
+                ("kind",),
+                " ",
+                "wrapped",
+                "bootstrap-zip",
+                None,
+            ),
+            (
+                "kind-non-string",
+                ("kind",),
+                {},
+                "validation-error",
+                "bootstrap-zip",
+                None,
+            ),
+            (
+                "filename-non-string",
+                ("filename",),
+                [],
+                "validation-error",
+                "bootstrap-zip",
+                "generic-file",
+            ),
+            (
+                "uri-empty",
+                ("uri",),
+                " ",
+                "wrapped",
+                "bootstrap-zip",
+                "generic-file",
+            ),
+            (
+                "sha512-not-object",
+                ("checksums", "sha512"),
+                "broken",
+                "validation-error",
+                "bootstrap-zip",
+                "generic-file",
+            ),
+            (
+                "sha512-value-wrong-length",
+                ("checksums", "sha512", "value"),
+                "abc",
+                "wrapped",
+                "bootstrap-zip",
+                "generic-file",
+            ),
+            (
+                "signatures-not-list",
+                ("signatures",),
+                "broken",
+                "validation-error",
+                "bootstrap-zip",
+                "generic-file",
+            ),
+        )
+        for case_name, path, replacement, expected_outcome, expected_artifact_id, expected_kind in mutation_cases:
+            with self.subTest(case=case_name):
+                entry = deepcopy(base_entry)
+                target: object = entry
+                for segment in path[:-1]:
+                    if not isinstance(target, dict):
+                        self.fail("mutation target must stay dictionary-shaped")
+                    target = target[segment]
+                if not isinstance(target, dict):
+                    self.fail("final mutation container must be a dictionary")
+                target[path[-1]] = replacement
+                if expected_outcome == "validation-error":
+                    with self.assertRaises(ValidationError):
+                        secondary_artifact_entries(
+                            {
+                                "vote_materials": {
+                                    "secondary_artifacts": [entry],
+                                }
+                            },
+                            source="https://example.invalid/rc-vote-manifest.json",
+                        )
+                    continue
+                entries = secondary_artifact_entries(
+                    {
+                        "vote_materials": {
+                            "secondary_artifacts": [entry],
+                        }
+                    },
+                    source="https://example.invalid/rc-vote-manifest.json",
+                )
+
+                self.assertEqual(1, len(entries))
+                self.assertIsInstance(entries[0], MalformedSecondaryArtifactEntry)
+                malformed_entry = entries[0]
+                if not isinstance(malformed_entry, MalformedSecondaryArtifactEntry):
+                    self.fail("expected malformed secondary artifact wrapper")
+                self.assertEqual(expected_artifact_id, malformed_entry.artifact_id)
+                self.assertEqual(expected_kind, malformed_entry.declared_kind)
