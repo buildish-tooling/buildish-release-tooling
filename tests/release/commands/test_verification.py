@@ -1001,6 +1001,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Archive format: zip", inspect_completed.stderr)
         self.assertIn("Archive drift classification: entry-content-drift", inspect_completed.stderr)
         self.assertIn("Archive member-content mismatches", inspect_completed.stderr)
+        self.assertIn(
+            "Likely cause: one or more top-level archive member payloads changed",
+            inspect_completed.stderr,
+        )
         self.assertIn("bootstrap.txt", inspect_completed.stderr)
 
     def test_verify_rc_persists_shallow_archive_analysis_for_archive_backed_generic_file(self) -> None:
@@ -1128,6 +1132,14 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             inspect_completed.stderr,
         )
         self.assertIn("Archive drift classification: outer-container-drift", inspect_completed.stderr)
+        self.assertIn(
+            "Likely cause: compression or outer-container bytes changed while extracted members stayed stable",
+            inspect_completed.stderr,
+        )
+        self.assertIn(
+            "Source artifact hint: this often points to gzip or outer tarball container settings rather than source-tree content drift",
+            inspect_completed.stderr,
+        )
         self.assertIn(
             "Top-level archive entries and member payloads match after shallow inspection",
             inspect_completed.stderr,
@@ -2101,6 +2113,14 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Archive format: zip", inspect_completed.stderr)
         self.assertIn("Archive drift classification: mixed-entry-drift", inspect_completed.stderr)
         self.assertIn("Archive metadata mismatches", inspect_completed.stderr)
+        self.assertIn(
+            "Likely cause: more than one top-level archive drift category is present",
+            inspect_completed.stderr,
+        )
+        self.assertIn(
+            "Wheel hint: this often points to ZIP member metadata, entry order, or wheel payload generation drift",
+            inspect_completed.stderr,
+        )
         self.assertIn("example/__init__.py", inspect_completed.stderr)
 
     def test_verify_rc_command_verifies_npm_package_secondary_artifact(self) -> None:
@@ -2304,6 +2324,14 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Archive format: tar", inspect_completed.stderr)
         self.assertIn("Archive drift classification: mixed-entry-drift", inspect_completed.stderr)
         self.assertIn("Archive metadata mismatches", inspect_completed.stderr)
+        self.assertIn(
+            "Likely cause: more than one top-level archive drift category is present",
+            inspect_completed.stderr,
+        )
+        self.assertIn(
+            "npm hint: this often points to npm pack file selection, tar header metadata, or generated package contents",
+            inspect_completed.stderr,
+        )
         self.assertIn("package/package.json", inspect_completed.stderr)
 
     def test_verify_rc_command_fails_closed_when_maven_repository_drifts_from_inventory(self) -> None:

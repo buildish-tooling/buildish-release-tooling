@@ -177,9 +177,11 @@ def inspect_shallow_archive_pair(
             "Archive drift appears limited to the outer container or compression bytes",
         )
         emit_detail(progress_reporter, "Archive drift classification", "outer-container-drift")
+        _emit_archive_hint(progress_reporter, classification="outer-container-drift")
         return True
     emit_failure(progress_reporter, "Top-level archive entries differ after shallow inspection")
-    emit_detail(progress_reporter, "Archive drift classification", str(analysis["classification"]))
+    classification = str(analysis["classification"])
+    emit_detail(progress_reporter, "Archive drift classification", classification)
     _emit_path_list(
         progress_reporter,
         heading="Missing archive entries",
@@ -205,6 +207,7 @@ def inspect_shallow_archive_pair(
         heading="Archive member-content mismatches",
         entries=[str(path) for path in analysis["content_mismatches"]],
     )
+    _emit_archive_hint(progress_reporter, classification=classification)
     return True
 
 
@@ -419,6 +422,29 @@ def _entry_order_mismatch_detail(staged_order: list[str], rebuilt_order: list[st
         if staged_path != rebuilt_path:
             return f"position {index}: staged={staged_path} rebuilt={rebuilt_path}"
     return "entry ordering differs"
+
+
+def _emit_archive_hint(progress_reporter: ProgressReporter, *, classification: str) -> None:
+    hint = _archive_hint(classification)
+    if hint is None:
+        return
+    emit_info(progress_reporter, hint)
+
+
+def _archive_hint(classification: str) -> str | None:
+    if classification == "outer-container-drift":
+        return "Likely cause: compression or outer-container bytes changed while extracted members stayed stable"
+    if classification == "entry-set-drift":
+        return "Likely cause: top-level archive members were added, omitted, or renamed"
+    if classification == "entry-order-drift":
+        return "Likely cause: the same top-level members were emitted in a different archive order"
+    if classification == "entry-metadata-drift":
+        return "Likely cause: timestamps, permissions, ownership fields, or symlink metadata changed"
+    if classification == "entry-content-drift":
+        return "Likely cause: one or more top-level archive member payloads changed"
+    if classification == "mixed-entry-drift":
+        return "Likely cause: more than one top-level archive drift category is present"
+    return None
 
 
 def _tar_entry_type(member: tarfile.TarInfo) -> str:

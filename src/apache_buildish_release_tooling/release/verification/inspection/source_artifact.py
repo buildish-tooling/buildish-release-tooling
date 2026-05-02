@@ -106,6 +106,12 @@ def inspect_source_artifact_reproducibility(
         staged_path=staged_path,
         rebuilt_path=rebuilt_path,
     )
+    archive_analysis = metadata.get("archive_analysis")
+    if isinstance(archive_analysis, dict) and archive_analysis.get("classification") == "outer-container-drift":
+        emit_info(
+            progress_reporter,
+            "Source artifact hint: this often points to gzip or outer tarball container settings rather than source-tree content drift",
+        )
     inline_diff = text_diff(staged_bytes, rebuilt_bytes)
     if inline_diff:
         emit_info(progress_reporter, "Unified text diff")

@@ -131,6 +131,11 @@ def inspect_file_like_reproducibility(
         staged_path=staged_path,
         rebuilt_path=rebuilt_path,
     )
+    _emit_file_like_archive_hint(
+        progress_reporter,
+        verification=verification,
+        archive_analysis=metadata.get("archive_analysis"),
+    )
     if inline_diff:
         emit_info(progress_reporter, "Unified text diff")
         for line in inline_diff:
@@ -147,3 +152,45 @@ def _classify_file_like_drift(
     if inline_diff:
         return "text-content-drift" if same_size else "size-and-text-drift"
     return "binary-content-drift" if same_size else "size-and-binary-drift"
+
+
+def _emit_file_like_archive_hint(
+    progress_reporter: ProgressReporter,
+    *,
+    verification: GenericFileVerificationReport
+    | PythonDistributionVerificationReport
+    | NpmPackageVerificationReport,
+    archive_analysis: object,
+) -> None:
+    if not isinstance(archive_analysis, dict):
+        return
+    if not isinstance(archive_analysis.get("classification"), str):
+        return
+    if isinstance(verification, PythonDistributionVerificationReport):
+        distribution_type = _distribution_type(verification.filename)
+        if distribution_type == "wheel":
+            emit_info(
+                progress_reporter,
+                "Wheel hint: this often points to ZIP member metadata, entry order, or wheel payload generation drift",
+            )
+            return
+        if distribution_type == "sdist":
+            emit_info(
+                progress_reporter,
+                "Sdist hint: this often points to tar member metadata, file selection, or source packaging drift",
+            )
+            return
+    if isinstance(verification, NpmPackageVerificationReport):
+        emit_info(
+            progress_reporter,
+            "npm hint: this often points to npm pack file selection, tar header metadata, or generated package contents",
+        )
+
+
+def _distribution_type(filename: str) -> str:
+    normalized = filename.lower()
+    if normalized.endswith(".whl"):
+        return "wheel"
+    if normalized.endswith(".tar.gz") or normalized.endswith(".zip"):
+        return "sdist"
+    return "unknown"
