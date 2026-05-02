@@ -23,10 +23,13 @@ import tarfile
 from tempfile import TemporaryDirectory
 import unittest
 import zipfile
+from io import StringIO
 
 from apache_buildish_release_tooling.release.verification.inspection.archive_shallow import (
     build_shallow_archive_analysis,
+    emit_shallow_archive_analysis,
 )
+from apache_buildish_release_tooling.release.progress import ProgressReporter
 
 
 def _write_zip_archive(
@@ -84,6 +87,46 @@ def _write_gzip_wrapped_tar(
 
 class ShallowArchiveAnalysisTest(unittest.TestCase):
     """Keep shallow tar/zip archive classification stable."""
+
+    def test_emit_shallow_archive_analysis_renders_saved_analysis_without_file_access(self) -> None:
+        stream = StringIO()
+        reporter = ProgressReporter(
+            enabled=True,
+            color_enabled=False,
+            stream=stream,
+            prefix="",
+        )
+
+        rendered = emit_shallow_archive_analysis(
+            reporter,
+            analysis=build_shallow_archive_analysis(
+                staged_path=self._archive_fixture_path(
+                    members=[("pkg/a.txt", b"a\n", 1714633201, 0o644)],
+                ),
+                rebuilt_path=self._archive_fixture_path(
+                    members=[("pkg/b.txt", b"a\n", 1714633201, 0o644)],
+                ),
+            ),
+        )
+
+        self.assertTrue(rendered)
+        transcript = stream.getvalue()
+        self.assertIn("Shallow archive comparison", transcript)
+        self.assertIn("Archive drift classification: entry-set-drift", transcript)
+        self.assertIn("Missing archive entries", transcript)
+        self.assertIn("Unexpected archive entries", transcript)
+
+    def _archive_fixture_path(
+        self,
+        *,
+        members: list[tuple[str, bytes, int, int]],
+    ) -> Path:
+        temporary_directory = TemporaryDirectory()
+        self.addCleanup(temporary_directory.cleanup)
+        temp_dir = Path(temporary_directory.name)
+        archive_path = temp_dir / "fixture.tgz"
+        _write_tgz_archive(archive_path, members=members)
+        return archive_path
 
     def test_zip_metadata_only_drift_is_classified_separately(self) -> None:
         with TemporaryDirectory() as temporary_directory:

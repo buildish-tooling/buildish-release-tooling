@@ -32,6 +32,7 @@ from apache_buildish_release_tooling.release.verification.common import (
     emit_warning,
 )
 from apache_buildish_release_tooling.release.verification.inspection.archive_shallow import (
+    emit_shallow_archive_analysis,
     inspect_shallow_archive_pair,
 )
 from apache_buildish_release_tooling.release.verification.inspection.shared import (
@@ -101,12 +102,16 @@ def inspect_source_artifact_reproducibility(
         "First differing byte",
         str(first_differing_byte(staged_bytes, rebuilt_bytes)),
     )
-    inspect_shallow_archive_pair(
-        progress_reporter,
-        staged_path=staged_path,
-        rebuilt_path=rebuilt_path,
-    )
     archive_analysis = metadata.archive_analysis
+    if not emit_shallow_archive_analysis(
+        progress_reporter,
+        analysis=archive_analysis,
+    ):
+        inspect_shallow_archive_pair(
+            progress_reporter,
+            staged_path=staged_path,
+            rebuilt_path=rebuilt_path,
+        )
     if archive_analysis is not None and archive_analysis.classification == "outer-container-drift":
         emit_info(
             progress_reporter,

@@ -154,6 +154,19 @@ def inspect_shallow_archive_pair(
         staged_path=staged_path,
         rebuilt_path=rebuilt_path,
     )
+    return emit_shallow_archive_analysis(
+        progress_reporter,
+        analysis=analysis,
+    )
+
+
+def emit_shallow_archive_analysis(
+    progress_reporter: ProgressReporter,
+    *,
+    analysis: ShallowArchiveAnalysisReport | None,
+) -> bool:
+    """Emit one shallow archive analysis already retained in an inspection bundle."""
+
     if analysis is None:
         return False
     emit_info(progress_reporter, "Shallow archive comparison")
