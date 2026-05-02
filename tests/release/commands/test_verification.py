@@ -1214,6 +1214,18 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             ["sh", "buildish-release-tooling/rebuild-bootstrap-local.sh"],
             reproducibility["override"]["build"]["command"],
         )
+        self.assertEqual(
+            ["profile_id", "verdict", "comparison_mode", "canonical_recipe", "effective_execution", "override", "matches_remote_bytes", "failure_class", "archive_analysis", "evidence", "issues"],
+            list(reproducibility),
+        )
+        self.assertEqual(
+            ["applied", "build"],
+            list(reproducibility["override"]),
+        )
+        self.assertEqual(
+            ["command", "working_directory", "output_globs", "env_keys"],
+            list(reproducibility["override"]["build"]),
+        )
 
     def test_verify_rc_command_does_not_report_override_env_values(self) -> None:
         if not command_available("gpg"):
@@ -1747,6 +1759,25 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         payload = json.loads(inspect_completed.stdout)
+        self.assertEqual(
+            [
+                "schema_version",
+                "report_type",
+                "verify_rc_report_schema_version",
+                "bundle_schema_version",
+                "component_id",
+                "rc_tag",
+                "verify_rc_verdict",
+                "build_checks_attempted",
+                "report_json_path",
+                "inspection_bundle_path",
+                "selected_artifact_ids",
+                "summary_only",
+                "summary",
+                "targets",
+            ],
+            list(payload),
+        )
         self.assertEqual("inspect-repro", payload["report_type"])
         self.assertEqual("1", payload["schema_version"])
         self.assertEqual("1", payload["verify_rc_report_schema_version"])
@@ -1769,6 +1800,119 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual("bootstrap-zip", target["profile_id"])
         self.assertEqual("canonical-profile", target["recipe_source"])
         self.assertIn("comparison-metadata", target["evidence_labels"])
+
+    def test_inspect_repro_json_contract_for_summary_only_mixed_failures(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            drift_source_artifact=True,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+            include_maven_repository=True,
+            include_maven_repository_reproducibility=True,
+            drift_maven_repository_reproducibility=True,
+            include_oci_image=True,
+            include_oci_image_reproducibility=True,
+            drift_oci_image_reproducibility_platform=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                "--json",
+                "--summary-only",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        payload = json.loads(inspect_completed.stdout)
+        self.assertEqual(
+            [
+                "schema_version",
+                "report_type",
+                "verify_rc_report_schema_version",
+                "bundle_schema_version",
+                "component_id",
+                "rc_tag",
+                "verify_rc_verdict",
+                "build_checks_attempted",
+                "report_json_path",
+                "inspection_bundle_path",
+                "selected_artifact_ids",
+                "summary_only",
+                "summary",
+                "targets",
+            ],
+            list(payload),
+        )
+        self.assertTrue(payload["summary_only"])
+        self.assertEqual([], payload["selected_artifact_ids"])
+        self.assertEqual(4, payload["summary"]["failure_count"])
+        self.assertEqual(1, payload["summary"]["source_failure_count"])
+        self.assertEqual(3, payload["summary"]["secondary_failure_count"])
+        self.assertEqual(
+            [
+                {"key": "generic-file", "count": 1},
+                {"key": "maven-repository", "count": 1},
+                {"key": "oci-image", "count": 1},
+                {"key": "source-artifact", "count": 1},
+            ],
+            payload["summary"]["failure_kinds"],
+        )
+        self.assertEqual(
+            [
+                {"key": "byte-mismatch", "count": 2},
+                {"key": "digest-mismatch", "count": 1},
+                {"key": "path-comparison-failed", "count": 1},
+            ],
+            payload["summary"]["failure_classes"],
+        )
+        self.assertEqual(
+            [
+                {"key": "secondary/generic-file/byte-mismatch", "count": 1},
+                {"key": "secondary/maven-repository/path-comparison-failed", "count": 1},
+                {"key": "secondary/oci-image/digest-mismatch", "count": 1},
+                {"key": "source/source-artifact/byte-mismatch", "count": 1},
+            ],
+            payload["summary"]["failure_groups"],
+        )
+        self.assertEqual(
+            ["source-artifact", "bootstrap-zip", "maven-staging-main", "ghcr-main-image"],
+            [target["artifact_id"] for target in payload["targets"]],
+        )
+        self.assertEqual(
+            ["source-artifact", "generic-file", "maven-repository", "oci-image"],
+            [target["kind"] for target in payload["targets"]],
+        )
 
     def test_inspect_repro_command_can_filter_to_selected_artifact_ids(self) -> None:
         if not command_available("gpg"):
