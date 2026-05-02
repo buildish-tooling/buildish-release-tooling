@@ -39,10 +39,8 @@ from apache_buildish_release_tooling.release.contracts import (
     ReproducibilityExecutionSection,
     RetainedArtifactSnapshot,
     SourceArtifactContract,
-    SourceArtifactReproducibilityMetadata,
     SourceArtifactVerificationSection,
     VerificationFailurePayload,
-    VerifyRcReportV1,
 )
 from apache_buildish_release_tooling.release.source_artifact import sha512
 from apache_buildish_release_tooling.release.verification.common import (
@@ -58,6 +56,10 @@ from apache_buildish_release_tooling.release.verification.inspection_bundle impo
 )
 from apache_buildish_release_tooling.release.verification.rebuild import (
     ReproducibilityModeDecision,
+)
+from apache_buildish_release_tooling.release.verification.schemas import (
+    SourceArtifactReproducibilityMetadata,
+    VerifyRcReportV1,
 )
 
 

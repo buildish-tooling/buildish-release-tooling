@@ -46,7 +46,6 @@ from apache_buildish_release_tooling.release.contracts import (
     MavenRepositoryPathMode,
     MavenRepositoryPathResultReport,
     MavenRepositoryPathRuleReport,
-    MavenRepositoryReproducibilityMetadata,
     MavenRepositorySecondaryArtifact,
     MavenRepositoryVerificationReport,
 )
@@ -65,6 +64,9 @@ from apache_buildish_release_tooling.release.verification.common import (
 )
 from apache_buildish_release_tooling.release.verification.inspection_bundle import (
     write_reproducibility_metadata,
+)
+from apache_buildish_release_tooling.release.verification.schemas import (
+    MavenRepositoryReproducibilityMetadata,
 )
 from apache_buildish_release_tooling.release.verification.rebuild import (
     ResolvedRebuildProfile,

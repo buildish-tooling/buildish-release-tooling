@@ -21,10 +21,10 @@ from pathlib import Path
 from apache_buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityReport,
     MavenRepositoryPathResultReport,
-    MavenRepositoryReproducibilityMetadata,
     MavenRepositoryVerificationReport,
 )
 from apache_buildish_release_tooling.release.progress import ProgressReporter
+from apache_buildish_release_tooling.release.verification.schemas import MavenRepositoryReproducibilityMetadata
 from apache_buildish_release_tooling.release.verification.common import (
     emit_detail,
     emit_failure,

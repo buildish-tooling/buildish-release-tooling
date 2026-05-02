@@ -19,7 +19,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from apache_buildish_release_tooling.release.contracts import (
+from apache_buildish_release_tooling.release.verification.schemas import (
     InspectionBundleManifestV1,
     VerifyRcReportV1,
 )

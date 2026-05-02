@@ -21,7 +21,6 @@ from typing import cast
 
 from apache_buildish_release_tooling.release.contracts import (
     GenericFileVerificationReport,
-    InspectReproReportV1,
     SourceArtifactVerificationSection,
 )
 from apache_buildish_release_tooling.release.progress import ProgressReporter
@@ -67,6 +66,7 @@ from apache_buildish_release_tooling.release.verification.inspection.transcript 
     emit_failure_target_list,
     emit_reproducibility_header,
 )
+from apache_buildish_release_tooling.release.verification.schemas import InspectReproReportV1
 
 
 def inspect_repro_report(

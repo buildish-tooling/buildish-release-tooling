@@ -24,7 +24,6 @@ from apache_buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityEffectiveExecutionReport,
     ArtifactReproducibilityReport,
     ArtifactReproducibilityOverrideReport,
-    FileLikeReproducibilityMetadata,
     GenericFileSecondaryArtifact,
     GenericFileWithOpenPgpSecondaryArtifact,
     InspectionEvidenceReference,
@@ -51,6 +50,7 @@ from apache_buildish_release_tooling.release.verification.rebuild import (
     resolve_effective_rebuild_profile,
     run_host_direct_profile,
 )
+from apache_buildish_release_tooling.release.verification.schemas import FileLikeReproducibilityMetadata
 
 FileLikeSecondaryArtifact = (
     GenericFileSecondaryArtifact

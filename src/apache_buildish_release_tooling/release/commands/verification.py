@@ -31,7 +31,6 @@ from apache_buildish_release_tooling.release.config import (
 )
 from apache_buildish_release_tooling.release.contracts import (
     InspectionBundleSection,
-    VerifyRcReportV1,
 )
 from apache_buildish_release_tooling.release.manifest import write_manifest
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
@@ -57,6 +56,7 @@ from apache_buildish_release_tooling.release.verification.rebuild import (
     prompt_for_candidate_code_execution,
     validate_rebuild_profile_overrides,
 )
+from apache_buildish_release_tooling.release.verification.schemas import VerifyRcReportV1
 
 from apache_buildish_release_tooling.release.commands._shared import _append_github_outputs
 

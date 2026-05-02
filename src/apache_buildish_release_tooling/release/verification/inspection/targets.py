@@ -23,9 +23,11 @@ from apache_buildish_release_tooling.release.contracts import (
     AnySecondaryArtifactVerification,
     ArtifactReproducibilityReport,
     InspectReproCountSummary,
+    SourceArtifactVerificationSection,
+)
+from apache_buildish_release_tooling.release.verification.schemas import (
     InspectReproSummaryV1,
     InspectReproTargetV1,
-    SourceArtifactVerificationSection,
     VerifyRcReportV1,
 )
 

@@ -20,10 +20,10 @@ from pathlib import Path
 
 from apache_buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityReport,
-    SourceArtifactReproducibilityMetadata,
     SourceArtifactVerificationSection,
 )
 from apache_buildish_release_tooling.release.progress import ProgressReporter
+from apache_buildish_release_tooling.release.verification.schemas import SourceArtifactReproducibilityMetadata
 from apache_buildish_release_tooling.release.verification.common import (
     emit_detail,
     emit_failure,

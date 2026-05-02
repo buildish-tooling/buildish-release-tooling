@@ -26,10 +26,12 @@ from pydantic import BaseModel
 from apache_buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityReport,
     InspectionBundleArtifactEntry,
+)
+from apache_buildish_release_tooling.release.manifest import write_manifest
+from apache_buildish_release_tooling.release.verification.schemas import (
     InspectionBundleManifestV1,
     VerifyRcReportV1,
 )
-from apache_buildish_release_tooling.release.manifest import write_manifest
 
 _SAFE_PATH_COMPONENT_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
 INSPECTION_BUNDLE_MANIFEST_FILENAME = "inspection-bundle.json"

@@ -28,7 +28,6 @@ from apache_buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityOverrideReport,
     ArtifactReproducibilityReport,
     InspectionEvidenceReference,
-    OciImageReproducibilityMetadata,
     OciImageSecondaryArtifact,
     OciImageVerificationReport,
     OciInspectionReport,
@@ -50,6 +49,7 @@ from apache_buildish_release_tooling.release.verification.rebuild import (
     resolve_effective_rebuild_profile,
     run_host_direct_profile,
 )
+from apache_buildish_release_tooling.release.verification.schemas import OciImageReproducibilityMetadata
 
 
 def verify_oci_image(

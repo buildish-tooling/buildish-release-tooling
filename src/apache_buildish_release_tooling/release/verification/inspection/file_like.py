@@ -20,13 +20,13 @@ from pathlib import Path
 
 from apache_buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityReport,
-    FileLikeReproducibilityMetadata,
     GenericFileVerificationReport,
     NpmPackageVerificationReport,
     PythonDistributionVerificationReport,
     ShallowArchiveAnalysisReport,
 )
 from apache_buildish_release_tooling.release.progress import ProgressReporter
+from apache_buildish_release_tooling.release.verification.schemas import FileLikeReproducibilityMetadata
 from apache_buildish_release_tooling.release.verification.common import (
     emit_detail,
     emit_failure,
