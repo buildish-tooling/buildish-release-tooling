@@ -19,12 +19,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Literal
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, RootModel, model_validator
 
 from apache_buildish_release_tooling.contracts import BuildishContractModel
 
 HarnessBackendName = Literal["custom", "act"]
 GpgFixtureMode = Literal["disabled", "generated-signing-key"]
+HarnessJobStatus = Literal["success", "failed", "blocked"]
 SvnInitialState = Literal[
     "absent",
     "empty",
@@ -241,6 +242,25 @@ class HarnessScenario(BuildishContractModel):
             if unknown_needs:
                 raise ValueError(f"job {job.id} references unknown needs: {', '.join(unknown_needs)}")
         return self
+
+
+class HarnessCommandTraceEntry(BuildishContractModel):
+    """One persisted command-trace entry recorded by harness tool shims."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tool: str
+    argv: list[str] = Field(default_factory=list)
+    cwd: str
+    env: dict[str, str] = Field(default_factory=dict)
+    exit_code: int
+    stdout: str = ""
+    stderr: str = ""
+    delegated: bool = False
+
+
+class HarnessJobStatusesFile(RootModel[dict[str, HarnessJobStatus]]):
+    """Persisted per-job harness execution statuses."""
 
 
 def ordered_job_ids(jobs: Sequence[JobScenario]) -> list[str]:

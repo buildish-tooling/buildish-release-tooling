@@ -24,9 +24,14 @@ import tempfile
 from datetime import UTC, datetime
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
-from apache_buildish_release_tooling.harness.models import GitRepositoryFixture, HarnessScenario
+from apache_buildish_release_tooling.harness.models import (
+    GitRepositoryFixture,
+    HarnessCommandTraceEntry,
+    HarnessJobStatus,
+    HarnessJobStatusesFile,
+    HarnessScenario,
+)
 
 
 @dataclass(frozen=True)
@@ -83,7 +88,7 @@ class HarnessRunResult:
     selected_job_ids: list[str]
     failed_job_ids: list[str]
     blocked_job_ids: list[str]
-    job_statuses: dict[str, str]
+    job_statuses: dict[str, HarnessJobStatus]
 
 
 def repo_root() -> Path:
@@ -257,29 +262,36 @@ def write_bash_env_hook(workspace: HarnessWorkspace, scenario: HarnessScenario) 
     workspace.bash_env_file.chmod(workspace.bash_env_file.stat().st_mode | 0o111)
 
 
-def load_job_statuses(workspace: HarnessWorkspace) -> dict[str, str]:
+def load_job_statuses(workspace: HarnessWorkspace) -> dict[str, HarnessJobStatus]:
     """Load persisted job statuses from a workspace."""
 
     if not workspace.job_status_file.exists():
         return {}
-    return json.loads(workspace.job_status_file.read_text(encoding="utf-8"))
+    payload = HarnessJobStatusesFile.model_validate_json(
+        workspace.job_status_file.read_text(encoding="utf-8")
+    )
+    return dict(payload.root)
 
 
-def write_job_statuses(workspace: HarnessWorkspace, statuses: dict[str, str]) -> None:
+def write_job_statuses(workspace: HarnessWorkspace, statuses: dict[str, HarnessJobStatus]) -> None:
     """Persist the current job statuses for rerun support."""
 
-    workspace.job_status_file.write_text(json.dumps(statuses, indent=2, sort_keys=True), encoding="utf-8")
+    payload = HarnessJobStatusesFile.model_validate(statuses)
+    workspace.job_status_file.write_text(
+        payload.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
 
 
-def summarize_trace(workspace: HarnessWorkspace) -> list[dict[str, Any]]:
+def summarize_trace(workspace: HarnessWorkspace) -> list[HarnessCommandTraceEntry]:
     """Load the JSONL command trace file of a workspace."""
 
     if not workspace.trace_file.exists():
         return []
-    entries: list[dict[str, Any]] = []
+    entries: list[HarnessCommandTraceEntry] = []
     for line in workspace.trace_file.read_text(encoding="utf-8").splitlines():
         if line.strip():
-            entries.append(json.loads(line))
+            entries.append(HarnessCommandTraceEntry.model_validate_json(line))
     return entries
 
 

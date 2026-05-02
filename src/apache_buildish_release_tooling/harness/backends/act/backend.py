@@ -30,7 +30,11 @@ from apache_buildish_release_tooling.harness.backends.base import Backend
 from apache_buildish_release_tooling.harness.config import load_release_harness_config
 from apache_buildish_release_tooling.harness.errors import HarnessExternalToolError
 from apache_buildish_release_tooling.harness.job_selection import rerunnable_job_ids
-from apache_buildish_release_tooling.harness.models import HarnessScenario, WorkflowScenario
+from apache_buildish_release_tooling.harness.models import (
+    HarnessJobStatus,
+    HarnessScenario,
+    WorkflowScenario,
+)
 from apache_buildish_release_tooling.harness.runtime import (
     HarnessRunResult,
     HarnessWorkspace,
@@ -313,10 +317,10 @@ def _job_status_directory(workspace: HarnessWorkspace) -> Path:
     return workspace.job_statuses_dir
 
 
-def _collect_recorded_job_statuses(workspace: HarnessWorkspace) -> dict[str, str]:
+def _collect_recorded_job_statuses(workspace: HarnessWorkspace) -> dict[str, HarnessJobStatus]:
     """Load all job-status files emitted by the rewritten workflow."""
 
-    statuses: dict[str, str] = {}
+    statuses: dict[str, HarnessJobStatus] = {}
     for path in sorted(_job_status_directory(workspace).glob("*.status")):
         statuses[path.stem] = _normalize_job_status(path.read_text(encoding="utf-8").strip())
     return statuses
@@ -389,13 +393,14 @@ def _job_needs(job_definitions: list[workflow.WorkflowJobDefinition], job_id: st
     raise KeyError(job_id)
 
 
-def _normalize_job_status(raw_status: str) -> str:
+def _normalize_job_status(raw_status: str) -> HarnessJobStatus:
     """Normalize runner-reported job states into the shared harness status vocabulary."""
 
-    return {
-        "failure": "failed",
-        "success": "success",
-    }.get(raw_status, raw_status or "unknown")
+    if raw_status == "success":
+        return "success"
+    if raw_status == "blocked":
+        return "blocked"
+    return "failed"
 
 
 ACT_BACKEND = ActBackend()

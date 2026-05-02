@@ -27,6 +27,7 @@ from apache_buildish_release_tooling.harness.backend import (
     rerun_failed_jobs,
     run_scenario,
 )
+from apache_buildish_release_tooling.harness.models import HarnessCommandTraceEntry
 from apache_buildish_release_tooling.harness.runtime import (
     summarize_trace,
 )
@@ -147,10 +148,10 @@ class HarnessIntegrationTest(unittest.TestCase):
         self.assertEqual([], result.blocked_job_ids)
         trace = summarize_trace(result.workspace)
         self.assertEqual(1, len(trace))
-        self.assertEqual("gh", trace[0]["tool"])
-        self.assertEqual(["api", "repos/demo"], trace[0]["argv"])
-        self.assertEqual("enabled", trace[0]["env"]["SCENARIO_FLAG"])
-        self.assertIn("BUILDISH_HARNESS_CALL_SITE", trace[0]["env"])
+        self.assertEqual("gh", trace[0].tool)
+        self.assertEqual(["api", "repos/demo"], trace[0].argv)
+        self.assertEqual("enabled", trace[0].env["SCENARIO_FLAG"])
+        self.assertIn("BUILDISH_HARNESS_CALL_SITE", trace[0].env)
         summary_path = result.workspace.summaries_dir / "prepare__call-gh.md"
         self.assertEqual("summary ok\n", summary_path.read_text(encoding="utf-8"))
         job_summary_path = result.workspace.job_summaries_dir / "prepare.md"
@@ -213,10 +214,10 @@ class HarnessIntegrationTest(unittest.TestCase):
         self.assertEqual("success", rerun_result.job_statuses["publish"])
         self.assertEqual("success", rerun_result.job_statuses["finalize"])
         trace = summarize_trace(rerun_result.workspace)
-        docker_invocations = [entry for entry in trace if entry["tool"] == "docker"]
+        docker_invocations = [entry for entry in trace if entry.tool == "docker"]
         self.assertEqual(2, len(docker_invocations))
-        self.assertEqual(17, docker_invocations[0]["exit_code"])
-        self.assertEqual(0, docker_invocations[1]["exit_code"])
+        self.assertEqual(17, docker_invocations[0].exit_code)
+        self.assertEqual(0, docker_invocations[1].exit_code)
         summary_path = rerun_result.workspace.summaries_dir / "finalize__write-summary.md"
         self.assertEqual("finalized\n", summary_path.read_text(encoding="utf-8"))
         job_summary_path = rerun_result.workspace.job_summaries_dir / "finalize.md"
@@ -262,8 +263,8 @@ class HarnessIntegrationTest(unittest.TestCase):
         self.assertEqual([], result.failed_job_ids)
         trace = summarize_trace(result.workspace)
         self.assertEqual(1, len(trace))
-        self.assertEqual("gh", trace[0]["tool"])
-        self.assertIn("BUILDISH_HARNESS_CALL_SITE", trace[0]["env"])
+        self.assertEqual("gh", trace[0].tool)
+        self.assertIn("BUILDISH_HARNESS_CALL_SITE", trace[0].env)
 
     def test_buildish_release_tooling_shim_appends_stdout_to_step_summary(self) -> None:
         """Mocked `buildish-release-tooling` invocations should populate the current step summary."""
@@ -379,10 +380,13 @@ class HarnessIntegrationTest(unittest.TestCase):
         self.assertEqual(0, exit_code)
         self.assertEqual("{\"ok\":true}\n", stdout)
         self.assertEqual("", stderr)
-        trace = [json.loads(line) for line in trace_path.read_text(encoding="utf-8").splitlines()]
+        trace = [
+            HarnessCommandTraceEntry.model_validate_json(line)
+            for line in trace_path.read_text(encoding="utf-8").splitlines()
+        ]
         self.assertEqual(1, len(trace))
-        self.assertEqual("gh", trace[0]["tool"])
-        self.assertEqual(["api", "repos/demo"], trace[0]["argv"])
+        self.assertEqual("gh", trace[0].tool)
+        self.assertEqual(["api", "repos/demo"], trace[0].argv)
 
     def test_uv_shim_preserves_summary_capture_through_bash_shim(self) -> None:
         """The `bash` shim must not truncate summaries when the `uv` shim runs beneath it."""
