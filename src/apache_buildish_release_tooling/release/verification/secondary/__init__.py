@@ -58,8 +58,12 @@ from .maven_repository import verify_maven_repository
 from .npm_package import verify_npm_package
 from .oci_image import verify_oci_image
 from .python_distribution import verify_python_distribution
-from .shared import SecondaryArtifactEntry, safe_path_component, secondary_artifact_entries
-from .shared import MalformedSecondaryArtifactEntry
+from .readers import (
+    MalformedSecondaryArtifactEntry,
+    SecondaryArtifactEntry,
+    secondary_artifact_entries,
+)
+from .shared import safe_path_component
 
 INVALID_SECONDARY_ARTIFACT_KIND = "_invalid-secondary-artifact-entry"
 

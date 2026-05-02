@@ -76,9 +76,9 @@ from apache_buildish_release_tooling.release.verification.rebuild import (
 )
 
 from .shared import (
-    _RawInventoryRead,
     downloaded_inventory,
 )
+from .readers import _RawInventoryRead
 
 
 @dataclass(frozen=True)

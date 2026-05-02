@@ -27,11 +27,10 @@ from apache_buildish_release_tooling.release.contracts import (
     RcVoteManifestReadV1,
     SecondaryArtifactEnvelopeRead,
 )
-from apache_buildish_release_tooling.release.verification.secondary.shared import (
+from apache_buildish_release_tooling.release.verification.secondary.readers import (
     MalformedSecondaryArtifactEntry,
     secondary_artifact_entries,
 )
-
 
 class SecondarySharedTest(unittest.TestCase):
     """Keep tolerant manifest-entry handling explicit and typed."""

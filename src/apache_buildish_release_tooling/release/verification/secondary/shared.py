@@ -17,17 +17,13 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict
-
 from apache_buildish_release_tooling.release.contracts import (
     AnySecondaryArtifact,
     InventoryVerificationReport,
-    RcVoteManifestReadV1,
     SecondaryArtifactChecksumsRead,
     SecondaryArtifactEnvelopeRead,
     SecondaryArtifactInventoryRead,
@@ -36,7 +32,6 @@ from apache_buildish_release_tooling.release.contracts import (
     Sha512Checksums,
     SignatureReference,
     SupplementalInventoryReference,
-    StrictSecondaryArtifactAdapter,
 )
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
@@ -45,6 +40,7 @@ from apache_buildish_release_tooling.release.verification.common import (
     SignatureVerification,
     validate_fetch_uri,
 )
+from apache_buildish_release_tooling.release.verification.secondary.readers import _RawInventoryRead
 
 SUPPORTED_CHECKSUMS = ("sha512", "sha256")
 CHECKSUM_LENGTHS = {
@@ -61,93 +57,6 @@ class DownloadedInventory:
     path: Path
     raw_payload: _RawInventoryRead
     report_payload: InventoryVerificationReport
-
-
-class _ExternalPayloadReadModel(BaseModel):
-    """Base model for tolerant external JSON fragments used by secondary verifiers."""
-
-    model_config = ConfigDict(extra="allow")
-
-
-class _RawVoteMaterialsRead(_ExternalPayloadReadModel):
-    secondary_artifacts: list[AnySecondaryArtifact | SecondaryArtifactEnvelopeRead] | None = None
-
-
-class _RawManifestRead(_ExternalPayloadReadModel):
-    vote_materials: _RawVoteMaterialsRead | None = None
-
-
-class _RawInventoryEntryRead(_ExternalPayloadReadModel):
-    path: str | None = None
-    size_bytes: int | None = None
-    sha512: str | None = None
-
-
-class _RawInventoryRead(_ExternalPayloadReadModel):
-    schema_version: str | None = None
-    inventory_type: str | None = None
-    artifact_id: str | None = None
-    staging_repository_id: str | None = None
-    base_url: str | None = None
-    entries: list[_RawInventoryEntryRead] | None = None
-
-
-@dataclass(frozen=True)
-class MalformedSecondaryArtifactEntry:
-    """One malformed secondary-artifact manifest entry preserved for fail-closed reporting."""
-
-    raw_payload: SecondaryArtifactEnvelopeRead | object
-    artifact_id: str | None = None
-    declared_kind: str | None = None
-
-
-SecondaryArtifactEntry = AnySecondaryArtifact | MalformedSecondaryArtifactEntry
-
-
-def secondary_artifact_entries(
-    manifest_payload: RcVoteManifestReadV1 | Mapping[str, object],
-    *,
-    source: str,
-) -> list[SecondaryArtifactEntry]:
-    secondary_artifacts: list[AnySecondaryArtifact | SecondaryArtifactEnvelopeRead] | None
-    if isinstance(manifest_payload, RcVoteManifestReadV1):
-        secondary_artifacts = list(manifest_payload.vote_materials.secondary_artifacts)
-    else:
-        raw_manifest = _RawManifestRead.model_validate(manifest_payload)
-        vote_materials = raw_manifest.vote_materials
-        if vote_materials is None:
-            raise ValueError(f"manifest is missing vote_materials: {source}")
-        secondary_artifacts = vote_materials.secondary_artifacts
-        if secondary_artifacts is None:
-            raise ValueError(f"manifest secondary_artifacts must be a list: {source}")
-    entries: list[SecondaryArtifactEntry] = []
-    for raw_entry in secondary_artifacts:
-        if isinstance(raw_entry, SecondaryArtifactEnvelopeRead):
-            try:
-                entries.append(
-                    StrictSecondaryArtifactAdapter.validate_python(
-                        raw_entry.model_dump(mode="json", exclude_none=True)
-                    )
-                )
-                continue
-            except Exception:
-                entries.append(
-                    MalformedSecondaryArtifactEntry(
-                        raw_payload=raw_entry,
-                        artifact_id=raw_entry.artifact_id.strip()
-                        if isinstance(raw_entry.artifact_id, str) and raw_entry.artifact_id.strip()
-                        else None,
-                        declared_kind=raw_entry.kind.strip()
-                        if isinstance(raw_entry.kind, str) and raw_entry.kind.strip()
-                        else None,
-                    )
-                )
-                continue
-        if isinstance(raw_entry, BaseModel):
-            entries.append(raw_entry)
-    return entries
-
-
 def preferred_checksum_payload(
     artifact_entry: AnySecondaryArtifact | SecondaryArtifactEnvelopeRead,
     *,
