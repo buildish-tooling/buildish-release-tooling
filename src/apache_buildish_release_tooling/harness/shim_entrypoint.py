@@ -23,7 +23,15 @@ import subprocess
 import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+
+from apache_buildish_release_tooling.harness.models import (
+    FileWriteAction,
+    HarnessBuiltinGhTagObject,
+    HarnessCommandTraceEntry,
+    HarnessShimState,
+    InvocationMatch,
+    ToolBehaviorResult,
+)
 
 
 def main() -> None:
@@ -34,26 +42,26 @@ def main() -> None:
     tool_name = sys.argv[1]
     argv = sys.argv[2:]
     state_path = Path(os.environ["BUILDISH_HARNESS_STATE_FILE"])
-    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state = HarnessShimState.model_validate_json(state_path.read_text(encoding="utf-8"))
     behavior_index, result = _resolve_behavior(state, tool_name, argv)
     if result is None:
         builtin_result = _handle_builtin_tool(tool_name, argv, state)
         if builtin_result is not None:
-            state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+            state_path.write_text(state.model_dump_json(indent=2), encoding="utf-8")
             _record_invocation(
                 state=state,
                 tool_name=tool_name,
                 argv=argv,
-                exit_code=int(builtin_result.get("exit_code", 0)),
-                stdout=str(builtin_result.get("stdout", "")),
-                stderr=str(builtin_result.get("stderr", "")),
+                exit_code=builtin_result.exit_code,
+                stdout=builtin_result.stdout,
+                stderr=builtin_result.stderr,
                 delegated=False,
             )
-            if builtin_stdout := str(builtin_result.get("stdout", "")):
+            if builtin_stdout := builtin_result.stdout:
                 sys.stdout.write(builtin_stdout)
-            if builtin_stderr := str(builtin_result.get("stderr", "")):
+            if builtin_stderr := builtin_result.stderr:
                 sys.stderr.write(builtin_stderr)
-            raise SystemExit(int(builtin_result.get("exit_code", 0)))
+            raise SystemExit(builtin_result.exit_code)
         stderr = f"buildish-release-harness: no scripted behavior for {tool_name} {' '.join(argv)}\n"
         _record_invocation(
             state=state,
@@ -67,8 +75,8 @@ def main() -> None:
         sys.stderr.write(stderr)
         raise SystemExit(127)
     _increment_behavior_count(state, tool_name, behavior_index)
-    state_path.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
-    if result.get("delegate_to_real_tool", False):
+    state_path.write_text(state.model_dump_json(indent=2), encoding="utf-8")
+    if result.delegate_to_real_tool:
         completed = _delegate_to_real_tool(tool_name, argv)
         _append_step_summary(_summary_text(tool_name, result, completed.stdout))
         _record_invocation(
@@ -85,10 +93,10 @@ def main() -> None:
         if completed.stderr:
             sys.stderr.write(completed.stderr)
         raise SystemExit(completed.returncode)
-    _perform_file_writes(state, result.get("writes", []))
-    stdout = str(result.get("stdout", ""))
-    stderr = str(result.get("stderr", ""))
-    exit_code = int(result.get("exit_code", 0))
+    _perform_file_writes(state, result.writes)
+    stdout = result.stdout
+    stderr = result.stderr
+    exit_code = result.exit_code
     _append_step_summary(_summary_text(tool_name, result, stdout))
     _record_invocation(
         state=state,
@@ -106,21 +114,21 @@ def main() -> None:
     raise SystemExit(exit_code)
 
 
-def _summary_text(tool_name: str, result: dict[str, Any], stdout: str) -> str:
+def _summary_text(tool_name: str, result: ToolBehaviorResult, stdout: str) -> str:
     """Return the summary fragment that should be appended for one shim invocation."""
 
     parts: list[str] = []
-    explicit_summary = str(result.get("summary", ""))
+    explicit_summary = result.summary
     if explicit_summary:
         parts.append(explicit_summary)
-    append_stdout = bool(result.get("append_stdout_to_summary", False))
+    append_stdout = result.append_stdout_to_summary
     if tool_name == "buildish-release-tooling" and not explicit_summary:
         parts.append(
             _buildish_release_tooling_summary(
                 command_argv=sys.argv[2:],
                 stdout=stdout,
-                stderr=str(result.get("stderr", "")),
-                exit_code=int(result.get("exit_code", 0)),
+                stderr=result.stderr,
+                exit_code=result.exit_code,
             )
         )
     elif append_stdout:
@@ -237,25 +245,29 @@ def _summary_destinations() -> list[Path]:
     return destinations
 
 
-def _resolve_behavior(state: dict[str, Any], tool_name: str, argv: list[str]) -> tuple[int, dict[str, Any] | None]:
+def _resolve_behavior(
+    state: HarnessShimState,
+    tool_name: str,
+    argv: list[str],
+) -> tuple[int, ToolBehaviorResult | None]:
     """Return the first matching scripted behavior that still has remaining uses."""
 
-    behaviors = list(state.get("tool_behaviors", {}).get(tool_name, []))
-    counts: dict[str, int] = state.setdefault("counts", {})
+    behaviors = list(state.tool_behaviors.get(tool_name, []))
+    counts = state.counts
     cwd = str(Path.cwd())
     env = os.environ
     for index, behavior in enumerate(behaviors):
         key = _count_key(tool_name, index)
-        times = behavior.get("times")
-        if times is not None and counts.get(key, 0) >= int(times):
+        times = behavior.times
+        if times is not None and counts.get(key, 0) >= times:
             continue
-        if _matches(behavior.get("match", {}), argv, cwd, env, str(state["workspace_root"])):
-            return index, dict(behavior.get("result", {}))
+        if _matches(behavior.match, argv, cwd, env, state.workspace_root):
+            return index, behavior.result
     return -1, None
 
 
 def _matches(
-    match: dict[str, Any],
+    match: InvocationMatch,
     argv: list[str],
     cwd: str,
     env: Mapping[str, str],
@@ -263,41 +275,40 @@ def _matches(
 ) -> bool:
     """Return whether the configured matcher accepts the current invocation."""
 
-    expected_argv = match.get("argv")
+    expected_argv = match.argv
     if expected_argv is not None and list(expected_argv) != argv:
         return False
-    expected_prefix = match.get("argv_prefix")
+    expected_prefix = match.argv_prefix
     if expected_prefix is not None and argv[: len(expected_prefix)] != list(expected_prefix):
         return False
-    expected_contains = list(match.get("argv_contains", []))
+    expected_contains = list(match.argv_contains)
     for fragment in expected_contains:
         if not any(fragment in argument for argument in argv):
             return False
-    expected_cwd = match.get("cwd")
+    expected_cwd = match.cwd
     if expected_cwd is not None:
         expected_path = Path(workspace_root) / str(expected_cwd)
         if Path(cwd) != expected_path:
             return False
-    expected_env = dict(match.get("env_contains", {}))
+    expected_env = dict(match.env_contains)
     for key, expected_value in expected_env.items():
         if env.get(key) != expected_value:
             return False
     return True
 
 
-def _increment_behavior_count(state: dict[str, Any], tool_name: str, behavior_index: int) -> None:
+def _increment_behavior_count(state: HarnessShimState, tool_name: str, behavior_index: int) -> None:
     """Increment the persisted call count for one scripted behavior."""
 
-    counts: dict[str, int] = state.setdefault("counts", {})
     key = _count_key(tool_name, behavior_index)
-    counts[key] = counts.get(key, 0) + 1
+    state.counts[key] = state.counts.get(key, 0) + 1
 
 
 def _handle_builtin_tool(
     tool_name: str,
     argv: list[str],
-    state: dict[str, Any],
-) -> dict[str, Any] | None:
+    state: HarnessShimState,
+) -> ToolBehaviorResult | None:
     """Handle built-in shim side effects for tools that need local mutable-state emulation."""
 
     if tool_name == "gh":
@@ -307,8 +318,8 @@ def _handle_builtin_tool(
 
 def _handle_builtin_gh(
     argv: list[str],
-    state: dict[str, Any],
-) -> dict[str, Any] | None:
+    state: HarnessShimState,
+) -> ToolBehaviorResult | None:
     """Handle the small GitHub CLI subset that must mutate local Git state in harness runs."""
 
     parsed = _parse_gh_api_request(argv)
@@ -317,19 +328,19 @@ def _handle_builtin_gh(
     method, endpoint = parsed
     if method == "POST" and endpoint.endswith("/git/tags"):
         stdin_text = sys.stdin.read()
-        payload = json.loads(stdin_text or "{}")
+        payload = HarnessBuiltinGhTagObject.model_validate(json.loads(stdin_text or "{}"))
         fake_sha = _store_builtin_gh_tag_object(state, payload)
-        return {"stdout": json.dumps({"sha": fake_sha})}
+        return ToolBehaviorResult(stdout=json.dumps({"sha": fake_sha}))
     if method == "POST" and endpoint.endswith("/git/refs"):
         stdin_text = sys.stdin.read()
         payload = json.loads(stdin_text or "{}")
         _apply_builtin_gh_tag_ref(state, endpoint, payload, force=False)
-        return {"stdout": json.dumps({"ref": payload.get("ref", "")})}
+        return ToolBehaviorResult(stdout=json.dumps({"ref": payload.get("ref", "")}))
     if method == "PATCH" and "/git/refs/tags/" in endpoint:
         stdin_text = sys.stdin.read()
         payload = json.loads(stdin_text or "{}")
         _apply_builtin_gh_tag_ref(state, endpoint, payload, force=True)
-        return {"stdout": json.dumps({"ref": f"refs/tags/{endpoint.rsplit('/', 1)[-1]}"})}
+        return ToolBehaviorResult(stdout=json.dumps({"ref": f"refs/tags/{endpoint.rsplit('/', 1)[-1]}"}))
     return None
 
 
@@ -361,19 +372,22 @@ def _parse_gh_api_request(argv: list[str]) -> tuple[str, str] | None:
     return method, endpoint
 
 
-def _store_builtin_gh_tag_object(state: dict[str, Any], payload: dict[str, Any]) -> str:
+def _store_builtin_gh_tag_object(
+    state: HarnessShimState,
+    payload: HarnessBuiltinGhTagObject,
+) -> str:
     """Persist one synthetic GitHub tag object payload in shim state."""
 
-    tag_objects: dict[str, dict[str, Any]] = state.setdefault("gh_tag_objects", {})
+    tag_objects = state.gh_tag_objects
     fake_sha = f"harness-tag-object-{len(tag_objects) + 1}"
     tag_objects[fake_sha] = payload
     return fake_sha
 
 
 def _apply_builtin_gh_tag_ref(
-    state: dict[str, Any],
+    state: HarnessShimState,
     endpoint: str,
-    payload: dict[str, Any],
+    payload: dict[str, object],
     *,
     force: bool,
 ) -> None:
@@ -382,12 +396,11 @@ def _apply_builtin_gh_tag_ref(
     ref_name = str(payload.get("ref") or f"refs/tags/{endpoint.rsplit('/', 1)[-1]}")
     tag_name = ref_name.removeprefix("refs/tags/")
     target_sha = str(payload.get("sha", ""))
-    tag_objects = state.setdefault("gh_tag_objects", {})
-    tag_payload = dict(tag_objects.get(target_sha) or {})
-    target_commit = str(tag_payload.get("object") or "")
+    tag_payload = state.gh_tag_objects.get(target_sha) or HarnessBuiltinGhTagObject()
+    target_commit = str(tag_payload.object or "")
     if not tag_name or not target_commit:
         raise SystemExit("buildish-release-harness: builtin gh tag ref mutation is missing tag metadata")
-    message = str(tag_payload.get("message") or tag_name)
+    message = str(tag_payload.message or tag_name)
     for repository in _builtin_gh_mutated_repositories(state):
         command = ["git", "-C", str(repository), "tag"]
         if force:
@@ -396,10 +409,10 @@ def _apply_builtin_gh_tag_ref(
         subprocess.run(command, check=True, capture_output=True, text=True)
 
 
-def _builtin_gh_mutated_repositories(state: dict[str, Any]) -> list[Path]:
+def _builtin_gh_mutated_repositories(state: HarnessShimState) -> list[Path]:
     """Return the local repositories that should reflect synthetic GitHub tag mutations."""
 
-    workspace_root = Path(str(state["workspace_root"]))
+    workspace_root = Path(state.workspace_root)
     origin_root = workspace_root / ".buildish-release-harness" / "git-origins" / "self"
     return [workspace_root, origin_root]
 
@@ -429,22 +442,22 @@ def _delegate_to_real_tool(tool_name: str, argv: list[str]) -> subprocess.Comple
     )
 
 
-def _perform_file_writes(state: dict[str, Any], writes: list[dict[str, Any]]) -> None:
+def _perform_file_writes(state: HarnessShimState, writes: list[FileWriteAction]) -> None:
     """Create or replace all files scripted by one shim response."""
 
-    workspace_root = Path(str(state["workspace_root"]))
+    workspace_root = Path(state.workspace_root)
     for write in writes:
-        raw_path = os.path.expandvars(str(write["path"]))
+        raw_path = os.path.expandvars(write.path)
         destination = Path(raw_path) if Path(raw_path).is_absolute() else (workspace_root / raw_path)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_text(str(write.get("content", "")), encoding="utf-8")
-        if bool(write.get("executable", False)):
+        destination.write_text(write.content, encoding="utf-8")
+        if write.executable:
             destination.chmod(destination.stat().st_mode | 0o111)
 
 
 def _record_invocation(
     *,
-    state: dict[str, Any],
+    state: HarnessShimState,
     tool_name: str,
     argv: list[str],
     exit_code: int,
@@ -454,24 +467,24 @@ def _record_invocation(
 ) -> None:
     """Append one normalized command-trace entry to the JSONL trace file."""
 
-    env_capture = list(state.get("env_capture", []))
+    env_capture = list(state.env_capture)
     env_snapshot = {key: os.environ[key] for key in env_capture if key in os.environ}
     call_site = os.environ.get("BUILDISH_HARNESS_CALL_SITE")
     if call_site is not None:
         env_snapshot["BUILDISH_HARNESS_CALL_SITE"] = call_site
-    entry = {
-        "tool": tool_name,
-        "argv": argv,
-        "cwd": str(Path.cwd()),
-        "env": env_snapshot,
-        "exit_code": exit_code,
-        "stdout": stdout,
-        "stderr": stderr,
-        "delegated": delegated,
-    }
-    trace_file = Path(str(state["trace_file"]))
+    entry = HarnessCommandTraceEntry(
+        tool=tool_name,
+        argv=argv,
+        cwd=str(Path.cwd()),
+        env=env_snapshot,
+        exit_code=exit_code,
+        stdout=stdout,
+        stderr=stderr,
+        delegated=delegated,
+    )
+    trace_file = Path(state.trace_file)
     with trace_file.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(entry, sort_keys=True))
+        handle.write(entry.model_dump_json())
         handle.write("\n")
 
 

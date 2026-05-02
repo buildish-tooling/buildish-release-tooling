@@ -27,7 +27,7 @@ from apache_buildish_release_tooling.harness.backend import (
     rerun_failed_jobs,
     run_scenario,
 )
-from apache_buildish_release_tooling.harness.models import HarnessCommandTraceEntry
+from apache_buildish_release_tooling.harness.models import HarnessCommandTraceEntry, HarnessShimState
 from apache_buildish_release_tooling.harness.runtime import (
     summarize_trace,
 )
@@ -152,6 +152,11 @@ class HarnessIntegrationTest(unittest.TestCase):
         self.assertEqual(["api", "repos/demo"], trace[0].argv)
         self.assertEqual("enabled", trace[0].env["SCENARIO_FLAG"])
         self.assertIn("BUILDISH_HARNESS_CALL_SITE", trace[0].env)
+        shim_state = HarnessShimState.model_validate_json(
+            result.workspace.state_file.read_text(encoding="utf-8")
+        )
+        self.assertEqual(result.workspace.root.as_posix(), shim_state.workspace_root)
+        self.assertIn("gh", shim_state.tool_behaviors)
         summary_path = result.workspace.summaries_dir / "prepare__call-gh.md"
         self.assertEqual("summary ok\n", summary_path.read_text(encoding="utf-8"))
         job_summary_path = result.workspace.job_summaries_dir / "prepare.md"

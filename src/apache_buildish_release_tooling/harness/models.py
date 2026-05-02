@@ -164,6 +164,29 @@ class ToolBehavior(BuildishContractModel):
     times: int | None = None
 
 
+class HarnessBuiltinGhTagObject(BuildishContractModel):
+    """Synthetic GitHub tag-object payload retained by the harness shim."""
+
+    model_config = ConfigDict(extra="allow")
+
+    tag: str | None = None
+    message: str | None = None
+    object: str | None = None
+
+
+class HarnessShimState(BuildishContractModel):
+    """Persisted subprocess-facing harness shim state."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_root: str
+    trace_file: str
+    env_capture: list[str] = Field(default_factory=list)
+    tool_behaviors: dict[str, list[ToolBehavior]] = Field(default_factory=dict)
+    counts: dict[str, int] = Field(default_factory=dict)
+    gh_tag_objects: dict[str, HarnessBuiltinGhTagObject] = Field(default_factory=dict)
+
+
 class StepScenario(BuildishContractModel):
     """A single shell step in a harness job."""
 

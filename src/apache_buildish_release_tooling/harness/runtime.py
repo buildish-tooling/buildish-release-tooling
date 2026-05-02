@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import json
 import re
 import shutil
 import subprocess
@@ -31,6 +30,7 @@ from apache_buildish_release_tooling.harness.models import (
     HarnessJobStatus,
     HarnessJobStatusesFile,
     HarnessScenario,
+    HarnessShimState,
 )
 
 
@@ -227,14 +227,16 @@ def init_git_repository(root: Path, repository: GitRepositoryFixture) -> None:
 def write_shim_state(workspace: HarnessWorkspace, scenario: HarnessScenario) -> None:
     """Persist the shim behavior configuration for subprocess-facing shims."""
 
-    state = {
-        "workspace_root": str(workspace.root),
-        "trace_file": str(workspace.trace_file),
-        "env_capture": scenario.env_capture,
-        "tool_behaviors": scenario.model_dump(mode="json")["tool_behaviors"],
-        "counts": {},
-    }
-    workspace.state_file.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+    state = HarnessShimState(
+        workspace_root=str(workspace.root),
+        trace_file=str(workspace.trace_file),
+        env_capture=list(scenario.env_capture),
+        tool_behaviors=scenario.tool_behaviors,
+    )
+    workspace.state_file.write_text(
+        state.model_dump_json(indent=2),
+        encoding="utf-8",
+    )
 
 
 def write_bash_env_hook(workspace: HarnessWorkspace, scenario: HarnessScenario) -> None:
