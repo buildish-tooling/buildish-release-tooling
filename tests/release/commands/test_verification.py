@@ -998,14 +998,25 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         self.assertIn("Inspect Repro", inspect_completed.stderr)
+        self.assertIn("Reproducibility failures: 1", inspect_completed.stderr)
+        self.assertIn("Source artifact failures: 0", inspect_completed.stderr)
+        self.assertIn("Secondary artifact failures: 1", inspect_completed.stderr)
+        self.assertIn("Failure kinds: generic-file=1", inspect_completed.stderr)
+        self.assertIn("Failure classes: byte-mismatch=1", inspect_completed.stderr)
         self.assertIn("Artifact 1/1: bootstrap-zip", inspect_completed.stderr)
         self.assertIn("Build command: sh buildish-release-tooling/rebuild-bootstrap.sh", inspect_completed.stderr)
         self.assertIn("Build working directory: .", inspect_completed.stderr)
         self.assertIn("Failure class: byte-mismatch", inspect_completed.stderr)
+        self.assertIn(
+            "Retained evidence: comparison-metadata, staged-artifact, rebuilt-artifact",
+            inspect_completed.stderr,
+        )
         self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
         self.assertIn("Drift classification: text-content-drift", inspect_completed.stderr)
         self.assertIn("Size delta bytes: 0", inspect_completed.stderr)
         self.assertIn("Unified text diff", inspect_completed.stderr)
+        self.assertIn("Outcome", inspect_completed.stderr)
+        self.assertIn("Inspected 1 saved reproducibility failure(s)", inspect_completed.stderr)
 
     def test_inspect_repro_command_reports_shallow_archive_drift_for_generic_file(self) -> None:
         if not command_available("gpg"):
@@ -1174,11 +1185,16 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         )
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn("Failure kinds: source-artifact=1", inspect_completed.stderr)
         self.assertIn("Source Artifact 1/1", inspect_completed.stderr)
         self.assertIn("Kind: source-artifact", inspect_completed.stderr)
         self.assertIn("Recipe source: verifier-internal", inspect_completed.stderr)
         self.assertIn("Build command: internal:create-from-git", inspect_completed.stderr)
         self.assertIn("Failure class: byte-mismatch", inspect_completed.stderr)
+        self.assertIn(
+            "Retained evidence: comparison-metadata, staged-artifact, rebuilt-artifact",
+            inspect_completed.stderr,
+        )
         self.assertIn("Retained staged and rebuilt source-artifact copies differ", inspect_completed.stderr)
         self.assertIn("Shallow archive comparison", inspect_completed.stderr)
         self.assertIn("Archive format: tar", inspect_completed.stderr)
@@ -1199,6 +1215,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             "Top-level archive entries and member payloads match after shallow inspection",
             inspect_completed.stderr,
         )
+        self.assertIn("Inspected 1 saved reproducibility failure(s)", inspect_completed.stderr)
 
     def test_inspect_repro_command_tolerates_missing_source_effective_execution(self) -> None:
         if not command_available("gpg"):

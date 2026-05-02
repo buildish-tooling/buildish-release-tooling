@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -55,6 +56,17 @@ from apache_buildish_release_tooling.release.verification.inspection.source_arti
 )
 
 
+@dataclass(frozen=True)
+class ReproducibilityFailureInspectionTarget:
+    """One retained reproducibility failure selected for inspect-repro analysis."""
+
+    section_label: str
+    kind: str
+    artifact_id: str
+    reproducibility: ArtifactReproducibilityReport
+    verification: AnySecondaryArtifactVerification | SourceArtifactVerificationSection
+
+
 def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReporter) -> None:
     """Read one saved verify-rc report and inspect any retained reproducibility evidence."""
 
@@ -81,58 +93,36 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
         "Build checks attempted",
         str(report.reproducibility_execution.build_checks_attempted),
     )
-    failing_source_artifact_reproducibility = (
-        report.source_artifact_verification.reproducibility
-        if isinstance(report.source_artifact_verification.reproducibility, ArtifactReproducibilityReport)
-        and report.source_artifact_verification.reproducibility.verdict == "failed"
-        else None
-    )
-    failing_reproducibility_checks: list[
-        tuple[AnySecondaryArtifactVerification, ArtifactReproducibilityReport]
-    ] = []
-    for verification in report.secondary_artifact_verifications:
-        reproducibility = getattr(verification, "reproducibility", None)
-        if not isinstance(reproducibility, ArtifactReproducibilityReport):
-            continue
-        if reproducibility.verdict != "failed":
-            continue
-        failing_reproducibility_checks.append((verification, reproducibility))
-    total_failure_count = len(failing_reproducibility_checks) + (
-        1 if failing_source_artifact_reproducibility is not None else 0
-    )
+    targets = _failing_reproducibility_targets(report)
+    total_failure_count = len(targets)
     if total_failure_count == 0:
         emit_success(
             progress_reporter,
             "No reproducibility failures recorded in the verify-rc report",
         )
         return
+    _emit_failure_summary(progress_reporter, targets=targets)
     emit_info(
         progress_reporter,
         f"Inspecting {total_failure_count} reproducibility failure(s) from the saved bundle",
     )
-    failure_index = 0
-    if failing_source_artifact_reproducibility is not None:
-        failure_index += 1
+    for target in targets:
         _emit_reproducibility_header(
             progress_reporter,
-            section_label=f"Source Artifact {failure_index}/{total_failure_count}",
-            reproducibility=failing_source_artifact_reproducibility,
-            verification=report.source_artifact_verification,
+            section_label=target.section_label,
+            reproducibility=target.reproducibility,
+            verification=target.verification,
         )
-        inspect_source_artifact_reproducibility(
-            progress_reporter,
-            verification=report.source_artifact_verification,
-            reproducibility=failing_source_artifact_reproducibility,
-            bundle_root=bundle_root,
-        )
-    for verification, reproducibility in failing_reproducibility_checks:
-        failure_index += 1
-        _emit_reproducibility_header(
-            progress_reporter,
-            section_label=f"Artifact {failure_index}/{total_failure_count}: {verification.artifact_id}",
-            reproducibility=reproducibility,
-            verification=verification,
-        )
+        if isinstance(target.verification, SourceArtifactVerificationSection):
+            inspect_source_artifact_reproducibility(
+                progress_reporter,
+                verification=target.verification,
+                reproducibility=target.reproducibility,
+                bundle_root=bundle_root,
+            )
+            continue
+        verification = target.verification
+        reproducibility = target.reproducibility
         if verification.kind in {"generic-file", "generic-file-with-openpgp"}:
             inspect_file_like_reproducibility(
                 progress_reporter,
@@ -177,6 +167,87 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
             progress_reporter,
             f"No inspect-repro analyzer is implemented yet for {verification.kind}",
         )
+    emit_section(progress_reporter, "Outcome")
+    emit_success(
+        progress_reporter,
+        f"Inspected {total_failure_count} saved reproducibility failure(s)",
+    )
+
+
+def _failing_reproducibility_targets(
+    report: VerifyRcReportV1,
+) -> list[ReproducibilityFailureInspectionTarget]:
+    targets: list[ReproducibilityFailureInspectionTarget] = []
+    source_reproducibility = report.source_artifact_verification.reproducibility
+    if (
+        isinstance(source_reproducibility, ArtifactReproducibilityReport)
+        and source_reproducibility.verdict == "failed"
+    ):
+        targets.append(
+            ReproducibilityFailureInspectionTarget(
+                section_label="Source Artifact",
+                kind="source-artifact",
+                artifact_id="source-artifact",
+                reproducibility=source_reproducibility,
+                verification=report.source_artifact_verification,
+            )
+        )
+    for verification in report.secondary_artifact_verifications:
+        reproducibility = getattr(verification, "reproducibility", None)
+        if not isinstance(reproducibility, ArtifactReproducibilityReport):
+            continue
+        if reproducibility.verdict != "failed":
+            continue
+        targets.append(
+            ReproducibilityFailureInspectionTarget(
+                section_label=f"Artifact: {verification.artifact_id}",
+                kind=verification.kind,
+                artifact_id=verification.artifact_id,
+                reproducibility=reproducibility,
+                verification=verification,
+            )
+        )
+    total_failure_count = len(targets)
+    normalized_targets: list[ReproducibilityFailureInspectionTarget] = []
+    for index, target in enumerate(targets, start=1):
+        normalized_targets.append(
+            ReproducibilityFailureInspectionTarget(
+                section_label=(
+                    f"Source Artifact {index}/{total_failure_count}"
+                    if target.kind == "source-artifact"
+                    else f"Artifact {index}/{total_failure_count}: {target.artifact_id}"
+                ),
+                kind=target.kind,
+                artifact_id=target.artifact_id,
+                reproducibility=target.reproducibility,
+                verification=target.verification,
+            )
+        )
+    return normalized_targets
+
+
+def _emit_failure_summary(
+    progress_reporter: ProgressReporter,
+    *,
+    targets: list[ReproducibilityFailureInspectionTarget],
+) -> None:
+    emit_detail(progress_reporter, "Reproducibility failures", str(len(targets)))
+    source_failure_count = sum(1 for target in targets if target.kind == "source-artifact")
+    secondary_failure_count = len(targets) - source_failure_count
+    emit_detail(progress_reporter, "Source artifact failures", str(source_failure_count))
+    emit_detail(progress_reporter, "Secondary artifact failures", str(secondary_failure_count))
+    emit_detail(
+        progress_reporter,
+        "Failure kinds",
+        _summarize_counts([target.kind for target in targets]),
+    )
+    emit_detail(
+        progress_reporter,
+        "Failure classes",
+        _summarize_counts(
+            [target.reproducibility.failure_class or "unspecified" for target in targets]
+        ),
+    )
 
 
 def _emit_reproducibility_header(
@@ -244,6 +315,12 @@ def _emit_reproducibility_header(
             "Failure class",
             reproducibility.failure_class,
         )
+    if reproducibility.evidence:
+        emit_detail(
+            progress_reporter,
+            "Retained evidence",
+            ", ".join(reference.label for reference in reproducibility.evidence),
+        )
 
 
 def _override_field_summary(
@@ -261,6 +338,13 @@ def _override_field_summary(
         fields.append("build.output_globs")
     fields.extend(f"build.env.{key}" for key in build_override.env_keys)
     return fields
+
+
+def _summarize_counts(values: list[str]) -> str:
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    return ", ".join(f"{value}={count}" for value, count in sorted(counts.items()))
 
 
 __all__ = ["inspect_repro_report"]
