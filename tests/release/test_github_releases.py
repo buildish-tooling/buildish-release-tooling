@@ -41,6 +41,31 @@ class GitHubReleasesTest(unittest.TestCase):
             actual = github_releases.list_releases("apache/buildish-example")
         self.assertEqual([{"id": 1, "draft": True}, {"id": 2, "draft": False}], actual)
 
+    def test_list_releases_ignores_malformed_release_objects(self) -> None:
+        with mock.patch(
+            "apache_buildish_release_tooling.release.github_releases.run_logged_command",
+            return_value=subprocess.CompletedProcess(
+                [],
+                0,
+                json.dumps(
+                    [
+                        {"id": 1, "draft": True, "tag_name": "v1.2.3"},
+                        {"id": [], "draft": True, "tag_name": "broken"},
+                        {"id": 2, "draft": False, "tag_name": "v1.2.2"},
+                    ]
+                ),
+                "",
+            ),
+        ):
+            actual = github_releases.list_releases("apache/buildish-example")
+        self.assertEqual(
+            [
+                {"id": 1, "draft": True, "tag_name": "v1.2.3"},
+                {"id": 2, "draft": False, "tag_name": "v1.2.2"},
+            ],
+            actual,
+        )
+
     def test_matching_draft_release_ids_matches_by_tag_or_name(self) -> None:
         actual = github_releases.matching_draft_release_ids(
             [
@@ -76,6 +101,19 @@ class GitHubReleasesTest(unittest.TestCase):
             asset_names=["rc-vote-manifest.json", "rc-vote-manifest.json.sha512"],
         )
         self.assertEqual({"rc-vote-manifest.json": 101}, actual)
+
+    def test_release_asset_ids_by_names_rejects_malformed_asset_payloads(self) -> None:
+        actual = github_releases.release_asset_ids_by_names(
+            {
+                "assets": [
+                    {"id": 101, "name": "rc-vote-manifest.json"},
+                    {"id": [], "name": "broken-entry"},
+                    {"id": 102, "name": ["still-broken"]},
+                ]
+            },
+            asset_names=["rc-vote-manifest.json", "broken-entry"],
+        )
+        self.assertEqual({}, actual)
 
     def test_delete_release_uses_delete_api_call(self) -> None:
         with mock.patch(

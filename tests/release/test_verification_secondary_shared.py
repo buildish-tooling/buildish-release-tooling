@@ -28,6 +28,27 @@ from apache_buildish_release_tooling.release.verification.secondary.shared impor
 class SecondarySharedTest(unittest.TestCase):
     """Keep tolerant manifest-entry handling explicit and typed."""
 
+    def test_secondary_artifact_entries_reject_missing_vote_materials(self) -> None:
+        with self.assertRaisesRegex(ValueError, "manifest is missing vote_materials"):
+            secondary_artifact_entries(
+                {},
+                source="https://example.invalid/rc-vote-manifest.json",
+            )
+
+    def test_secondary_artifact_entries_reject_non_list_secondary_artifacts(self) -> None:
+        with self.assertRaisesRegex(
+            Exception,
+            "vote_materials.secondary_artifacts",
+        ):
+            secondary_artifact_entries(
+                {
+                    "vote_materials": {
+                        "secondary_artifacts": "not-a-list",
+                    }
+                },
+                source="https://example.invalid/rc-vote-manifest.json",
+            )
+
     def test_secondary_artifact_entries_wrap_malformed_entries(self) -> None:
         entries = secondary_artifact_entries(
             {
