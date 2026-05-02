@@ -110,6 +110,52 @@ def _write_tgz_archive(
 class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
     """End-to-end coverage for the Phase 1a verify-rc command."""
 
+    @staticmethod
+    def _repro_shape(payload: dict[str, object] | None) -> dict[str, object] | None:
+        if payload is None:
+            return None
+        canonical_recipe = payload.get("canonical_recipe")
+        effective_execution = payload.get("effective_execution")
+        override = payload.get("override")
+        return {
+            "keys": list(payload),
+            "verdict": payload.get("verdict"),
+            "profile_id": payload.get("profile_id"),
+            "comparison_mode": payload.get("comparison_mode"),
+            "canonical_recipe_keys": list(canonical_recipe) if isinstance(canonical_recipe, dict) else None,
+            "effective_execution_keys": (
+                list(effective_execution) if isinstance(effective_execution, dict) else None
+            ),
+            "override_keys": list(override) if isinstance(override, dict) else None,
+            "override_applied": override.get("applied") if isinstance(override, dict) else None,
+        }
+
+    def _report_shape(self, payload: dict[str, object]) -> dict[str, object]:
+        source_verification = payload["source_artifact_verification"]
+        if not isinstance(source_verification, dict):
+            self.fail("source_artifact_verification must be an object")
+        secondary_verifications = payload["secondary_artifact_verifications"]
+        if not isinstance(secondary_verifications, list):
+            self.fail("secondary_artifact_verifications must be a list")
+        failures = payload["failures"]
+        if not isinstance(failures, list):
+            self.fail("failures must be a list")
+        inspection_bundle = payload.get("inspection_bundle")
+        if inspection_bundle is not None and not isinstance(inspection_bundle, dict):
+            self.fail("inspection_bundle must be an object when present")
+        return {
+            "top_level_keys": list(payload),
+            "verdict": payload["verdict"],
+            "failure_count": len(failures),
+            "inspection_bundle_keys": list(inspection_bundle) if inspection_bundle is not None else None,
+            "source_repro": self._repro_shape(source_verification.get("reproducibility")),
+            "secondary_repro": {
+                verification["artifact_id"]: self._repro_shape(verification.get("reproducibility"))
+                for verification in secondary_verifications
+                if isinstance(verification, dict)
+            },
+        }
+
     def test_verify_rc_command_reports_progress_for_successful_run(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
@@ -170,6 +216,299 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Verify RC\n=========", log_text)
         self.assertIn("+ git clone --quiet", log_text)
         self.assertIn("+ gpg --batch --quiet --import", log_text)
+
+    def test_verify_rc_report_shapes_cover_representative_variants(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        success_fixture = self._prepare_verification_fixture(
+            sandbox_dir / "success",
+            include_maven_repository=True,
+        )
+        success_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(success_fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--work-dir",
+                str(success_fixture.work_dir),
+                "--report-json",
+                str(success_fixture.report_json_path),
+                success_fixture.manifest_url,
+                success_fixture.keys_url,
+            ],
+            cwd=success_fixture.origin_dir,
+            env=self._fixture_cli_env(success_fixture),
+        )
+        self.assertEqual(0, success_completed.returncode, msg=success_completed.stderr)
+        success_shape = self._report_shape(
+            json.loads(success_fixture.report_json_path.read_text(encoding="utf-8"))
+        )
+        self.assertEqual(
+            {
+                "top_level_keys": [
+                    "schema_version",
+                    "report_type",
+                    "component_id",
+                    "version",
+                    "rc_tag",
+                    "source_commit_sha",
+                    "source_date_epoch",
+                    "source_repository_url",
+                    "manifest_url",
+                    "keys_url",
+                    "verdict",
+                    "work_dir",
+                    "failures",
+                    "manifest_verification",
+                    "source_artifact_verification",
+                    "reproducibility_execution",
+                    "inspection_bundle",
+                    "secondary_artifact_verifications",
+                ],
+                "verdict": "verified",
+                "failure_count": 0,
+                "inspection_bundle_keys": [
+                    "relative_path_from_report",
+                    "bundle_schema_version",
+                    "manifest_relative_path",
+                ],
+                "source_repro": {
+                    "keys": [
+                        "profile_id",
+                        "verdict",
+                        "comparison_mode",
+                        "canonical_recipe",
+                        "effective_execution",
+                        "override",
+                        "matches_remote_bytes",
+                        "failure_class",
+                        "archive_analysis",
+                        "evidence",
+                        "issues",
+                    ],
+                    "verdict": "verified",
+                    "profile_id": "source-artifact-from-git",
+                    "comparison_mode": "exact-bytes",
+                    "canonical_recipe_keys": None,
+                    "effective_execution_keys": ["backend", "build"],
+                    "override_keys": ["applied", "build"],
+                    "override_applied": False,
+                },
+                "secondary_repro": {"maven-staging-main": None},
+            },
+            success_shape,
+        )
+
+        mixed_failure_fixture = self._prepare_verification_fixture(
+            sandbox_dir / "mixed-failure",
+            include_maven_repository=True,
+            drift_maven_repository=True,
+            include_npm_package=True,
+            drift_npm_tarball=True,
+            drift_source_artifact=True,
+        )
+        mixed_failure_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(mixed_failure_fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--work-dir",
+                str(mixed_failure_fixture.work_dir),
+                "--report-json",
+                str(mixed_failure_fixture.report_json_path),
+                mixed_failure_fixture.manifest_url,
+                mixed_failure_fixture.keys_url,
+            ],
+            cwd=mixed_failure_fixture.origin_dir,
+            env=self._fixture_cli_env(mixed_failure_fixture),
+        )
+        self.assertEqual(1, mixed_failure_completed.returncode)
+        mixed_failure_shape = self._report_shape(
+            json.loads(mixed_failure_fixture.report_json_path.read_text(encoding="utf-8"))
+        )
+        self.assertEqual("failed", mixed_failure_shape["verdict"])
+        self.assertEqual(8, mixed_failure_shape["failure_count"])
+        self.assertEqual(
+            ["relative_path_from_report", "bundle_schema_version", "manifest_relative_path"],
+            mixed_failure_shape["inspection_bundle_keys"],
+        )
+        self.assertEqual(
+            {
+                "keys": [
+                    "profile_id",
+                    "verdict",
+                    "comparison_mode",
+                    "canonical_recipe",
+                    "effective_execution",
+                    "override",
+                    "matches_remote_bytes",
+                    "failure_class",
+                    "archive_analysis",
+                    "evidence",
+                    "issues",
+                ],
+                "verdict": "failed",
+                "profile_id": "source-artifact-from-git",
+                "comparison_mode": "exact-bytes",
+                "canonical_recipe_keys": None,
+                "effective_execution_keys": ["backend", "build"],
+                "override_keys": ["applied", "build"],
+                "override_applied": False,
+            },
+            mixed_failure_shape["source_repro"],
+        )
+        self.assertEqual(
+            {
+                "maven-staging-main": None,
+                "npm-package-main": None,
+            },
+            mixed_failure_shape["secondary_repro"],
+        )
+
+        full_repro_fixture = self._prepare_verification_fixture(
+            sandbox_dir / "full-repro",
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+        )
+        full_repro_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(full_repro_fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(full_repro_fixture.work_dir),
+                "--report-json",
+                str(full_repro_fixture.report_json_path),
+                "--inspection-bundle",
+                str(full_repro_fixture.inspection_bundle_path),
+                full_repro_fixture.manifest_url,
+                full_repro_fixture.keys_url,
+            ],
+            cwd=full_repro_fixture.origin_dir,
+            env=self._fixture_cli_env(full_repro_fixture),
+        )
+        self.assertEqual(0, full_repro_completed.returncode, msg=full_repro_completed.stderr)
+        full_repro_shape = self._report_shape(
+            json.loads(full_repro_fixture.report_json_path.read_text(encoding="utf-8"))
+        )
+        self.assertEqual("verified", full_repro_shape["verdict"])
+        self.assertEqual(
+            ["relative_path_from_report", "bundle_schema_version", "manifest_relative_path"],
+            full_repro_shape["inspection_bundle_keys"],
+        )
+        full_secondary_repro = full_repro_shape["secondary_repro"]
+        if not isinstance(full_secondary_repro, dict):
+            self.fail("secondary_repro must be a mapping")
+        self.assertEqual(
+            {
+                "keys": [
+                    "profile_id",
+                    "verdict",
+                    "comparison_mode",
+                    "canonical_recipe",
+                    "effective_execution",
+                    "override",
+                    "matches_remote_bytes",
+                    "failure_class",
+                    "archive_analysis",
+                    "evidence",
+                    "issues",
+                ],
+                "verdict": "verified",
+                "profile_id": "bootstrap-zip",
+                "comparison_mode": "exact-bytes",
+                "canonical_recipe_keys": ["build"],
+                "effective_execution_keys": ["backend", "build"],
+                "override_keys": ["applied", "build"],
+                "override_applied": False,
+            },
+            full_secondary_repro["bootstrap-zip"],
+        )
+
+        override_fixture = self._prepare_verification_fixture(
+            sandbox_dir / "override",
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+        )
+        override_path = sandbox_dir / "override" / "repro-overrides.yaml"
+        override_path.write_text(
+            "\n".join(
+                [
+                    "verify_rc:",
+                    "  profile_overrides:",
+                    "    bootstrap-zip:",
+                    "      build:",
+                    "        command:",
+                    "          - sh",
+                    "          - buildish-release-tooling/rebuild-bootstrap-local.sh",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        override_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(override_fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(override_fixture.work_dir),
+                "--report-json",
+                str(override_fixture.report_json_path),
+                "--inspection-bundle",
+                str(override_fixture.inspection_bundle_path),
+                "--repro-override-file",
+                str(override_path),
+                override_fixture.manifest_url,
+                override_fixture.keys_url,
+            ],
+            cwd=override_fixture.origin_dir,
+            env=self._fixture_cli_env(override_fixture),
+        )
+        self.assertEqual(0, override_completed.returncode, msg=override_completed.stderr)
+        override_shape = self._report_shape(
+            json.loads(override_fixture.report_json_path.read_text(encoding="utf-8"))
+        )
+        self.assertEqual("verified", override_shape["verdict"])
+        override_secondary_repro = override_shape["secondary_repro"]
+        if not isinstance(override_secondary_repro, dict):
+            self.fail("secondary_repro must be a mapping")
+        self.assertEqual(
+            {
+                "keys": [
+                    "profile_id",
+                    "verdict",
+                    "comparison_mode",
+                    "canonical_recipe",
+                    "effective_execution",
+                    "override",
+                    "matches_remote_bytes",
+                    "failure_class",
+                    "archive_analysis",
+                    "evidence",
+                    "issues",
+                ],
+                "verdict": "verified",
+                "profile_id": "bootstrap-zip",
+                "comparison_mode": "exact-bytes",
+                "canonical_recipe_keys": ["build"],
+                "effective_execution_keys": ["backend", "build"],
+                "override_keys": ["applied", "build"],
+                "override_applied": True,
+            },
+            override_secondary_repro["bootstrap-zip"],
+        )
 
     def test_verify_rc_command_colors_human_transcript_but_not_log_file(self) -> None:
         if not command_available("gpg"):
