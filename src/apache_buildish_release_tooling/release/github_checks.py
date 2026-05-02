@@ -19,34 +19,29 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import ValidationError
 
 from apache_buildish_release_tooling.release.external_json import parse_json_object
+from apache_buildish_release_tooling.release.github_api_models import ExternalGithubReadModel
 from apache_buildish_release_tooling.release.process import run_logged_command
 
 
-class _ExternalGithubReadModel(BaseModel):
-    """Tolerant GitHub API subset reader used by check-gate helpers."""
-
-    model_config = ConfigDict(extra="allow")
-
-
-class _CheckRunRead(_ExternalGithubReadModel):
+class _CheckRunRead(ExternalGithubReadModel):
     name: str | None = None
     status: str | None = None
     conclusion: str | None = None
 
 
-class _StatusRead(_ExternalGithubReadModel):
+class _StatusRead(ExternalGithubReadModel):
     context: str | None = None
     state: str | None = None
 
 
-class _CheckRunsPayloadRead(_ExternalGithubReadModel):
+class _CheckRunsPayloadRead(ExternalGithubReadModel):
     check_runs: list[_CheckRunRead] | None = None
 
 
-class _StatusesPayloadRead(_ExternalGithubReadModel):
+class _StatusesPayloadRead(ExternalGithubReadModel):
     statuses: list[_StatusRead] | None = None
 
 

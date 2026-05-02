@@ -20,24 +20,19 @@ import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import ValidationError
 
 from apache_buildish_release_tooling.release.external_json import validate_json_object_model
+from apache_buildish_release_tooling.release.github_api_models import ExternalGithubReadModel
 from apache_buildish_release_tooling.release.process import run_logged_command
 
 
-class _ExternalGithubReadModel(BaseModel):
-    """Tolerant GitHub Release API subset reader."""
-
-    model_config = ConfigDict(extra="allow")
-
-
-class _GitHubReleaseAssetRead(_ExternalGithubReadModel):
+class _GitHubReleaseAssetRead(ExternalGithubReadModel):
     id: int | None = None
     name: str | None = None
 
 
-class _GitHubReleaseRead(_ExternalGithubReadModel):
+class _GitHubReleaseRead(ExternalGithubReadModel):
     id: int | None = None
     draft: bool | None = None
     tag_name: str | None = None

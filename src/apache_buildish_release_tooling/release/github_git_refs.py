@@ -18,19 +18,12 @@ from __future__ import annotations
 
 import json
 
-from pydantic import BaseModel, ConfigDict
-
 from apache_buildish_release_tooling.release.external_json import validate_json_object_model_text
+from apache_buildish_release_tooling.release.github_api_models import ExternalGithubReadModel
 from apache_buildish_release_tooling.release.process import run_logged_command
 
 
-class _ExternalGithubReadModel(BaseModel):
-    """Tolerant GitHub Git API subset reader."""
-
-    model_config = ConfigDict(extra="allow")
-
-
-class _GitHubGitObjectRead(_ExternalGithubReadModel):
+class _GitHubGitObjectRead(ExternalGithubReadModel):
     sha: str | None = None
     ref: str | None = None
 
