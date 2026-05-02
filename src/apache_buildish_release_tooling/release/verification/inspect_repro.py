@@ -16,6 +16,7 @@
 
 from apache_buildish_release_tooling.release.verification.inspection import (
     inspect_repro_report,
+    inspect_repro_report_json,
 )
 
-__all__ = ["inspect_repro_report"]
+__all__ = ["inspect_repro_report", "inspect_repro_report_json"]

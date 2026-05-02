@@ -1066,6 +1066,75 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Outcome", inspect_completed.stderr)
         self.assertIn("Inspected 1 saved reproducibility failure(s)", inspect_completed.stderr)
 
+    def test_inspect_repro_command_can_emit_machine_readable_json(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                "--json",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        payload = json.loads(inspect_completed.stdout)
+        self.assertEqual("inspect-repro", payload["report_type"])
+        self.assertEqual("1", payload["schema_version"])
+        self.assertEqual("1", payload["verify_rc_report_schema_version"])
+        self.assertEqual("1", payload["bundle_schema_version"])
+        self.assertEqual("buildish-example", payload["component_id"])
+        self.assertEqual("v1.2.3-rc0", payload["rc_tag"])
+        self.assertTrue(payload["build_checks_attempted"])
+        self.assertFalse(payload["summary_only"])
+        self.assertEqual([], payload["selected_artifact_ids"])
+        self.assertEqual(1, payload["summary"]["failure_count"])
+        self.assertEqual(
+            [{"key": "secondary/generic-file/byte-mismatch", "count": 1}],
+            payload["summary"]["failure_groups"],
+        )
+        self.assertEqual(1, len(payload["targets"]))
+        target = payload["targets"][0]
+        self.assertEqual("bootstrap-zip", target["artifact_id"])
+        self.assertEqual("generic-file", target["kind"])
+        self.assertEqual("byte-mismatch", target["failure_class"])
+        self.assertEqual("bootstrap-zip", target["profile_id"])
+        self.assertEqual("canonical-profile", target["recipe_source"])
+        self.assertIn("comparison-metadata", target["evidence_labels"])
+
     def test_inspect_repro_command_can_filter_to_selected_artifact_ids(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")

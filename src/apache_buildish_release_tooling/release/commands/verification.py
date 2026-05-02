@@ -46,6 +46,9 @@ from apache_buildish_release_tooling.release.verification.common import (
     emit_title,
 )
 from apache_buildish_release_tooling.release.verification.inspect_repro import inspect_repro_report
+from apache_buildish_release_tooling.release.verification.inspection import (
+    inspect_repro_report_json,
+)
 from apache_buildish_release_tooling.release.verification.inspection_bundle import (
     INSPECTION_BUNDLE_MANIFEST_FILENAME,
     write_inspection_bundle_manifest,
@@ -169,9 +172,16 @@ def run_verify_rc(args: Namespace) -> None:
         raise SystemExit(1)
 
 
-def run_inspect_repro(args: Namespace) -> None:
+def run_inspect_repro(args: Namespace) -> str | None:
     """Inspect one saved verify-rc report plus its curated reproducibility bundle."""
 
+    if bool(getattr(args, "json", False)):
+        payload = inspect_repro_report_json(
+            Path(args.report_json),
+            artifact_ids=tuple(getattr(args, "artifact_ids", [])),
+            summary_only=bool(getattr(args, "summary_only", False)),
+        )
+        return payload.model_dump_json(indent=2, exclude_none=True)
     progress_reporter = ProgressReporter.from_mode(
         "on",
         stream=sys.stderr,
@@ -185,6 +195,7 @@ def run_inspect_repro(args: Namespace) -> None:
         artifact_ids=tuple(getattr(args, "artifact_ids", [])),
         summary_only=bool(getattr(args, "summary_only", False)),
     )
+    return None
 
 
 def _optional_component_config(args: Namespace) -> ComponentConfig | None:

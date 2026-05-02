@@ -1072,6 +1072,57 @@ class InspectionBundleManifestV1(BuildishContractModel):
     artifacts: list[InspectionBundleArtifactEntry] = Field(default_factory=list)
 
 
+class InspectReproCountSummary(BuildishContractModel):
+    """One count bucket emitted by inspect-repro machine-readable summaries."""
+
+    key: NonEmptyString
+    count: int = Field(ge=0)
+
+
+class InspectReproSummaryV1(BuildishContractModel):
+    """Top-level summary block for machine-readable inspect-repro output."""
+
+    failure_count: int = Field(ge=0)
+    source_failure_count: int = Field(ge=0)
+    secondary_failure_count: int = Field(ge=0)
+    failure_kinds: list[InspectReproCountSummary] = Field(default_factory=list)
+    failure_classes: list[InspectReproCountSummary] = Field(default_factory=list)
+    failure_groups: list[InspectReproCountSummary] = Field(default_factory=list)
+
+
+class InspectReproTargetV1(BuildishContractModel):
+    """One selected reproducibility failure reported by inspect-repro JSON mode."""
+
+    section_label: NonEmptyString
+    artifact_id: NonEmptyString
+    kind: NonEmptyString
+    failure_class: NonEmptyString | None = None
+    profile_id: NonEmptyString
+    comparison_mode: NonEmptyString
+    recipe_source: Literal["verifier-internal", "canonical-profile", "local-override"]
+    evidence_labels: list[NonEmptyString] = Field(default_factory=list)
+    override_fields: list[NonEmptyString] = Field(default_factory=list)
+
+
+class InspectReproReportV1(BuildishContractModel):
+    """Machine-readable inspect-repro output for automation and post-processing."""
+
+    schema_version: SchemaVersionV1 = "1"
+    report_type: Literal["inspect-repro"] = "inspect-repro"
+    verify_rc_report_schema_version: SchemaVersionV1
+    bundle_schema_version: SchemaVersionV1 | None = None
+    component_id: str | None = None
+    rc_tag: str | None = None
+    verify_rc_verdict: VerificationVerdict
+    build_checks_attempted: bool
+    report_json_path: NonEmptyString
+    inspection_bundle_path: NonEmptyString
+    selected_artifact_ids: list[NonEmptyString] = Field(default_factory=list)
+    summary_only: bool = False
+    summary: InspectReproSummaryV1
+    targets: list[InspectReproTargetV1] = Field(default_factory=list)
+
+
 class VerifyRcReportV1(BuildishContractModel):
     """Machine-readable Phase 1a RC verification report."""
 
@@ -1107,6 +1158,10 @@ __all__ = [
     "GenericFileWithOpenPgpSecondaryArtifact",
     "GithubWorkflowProvenance",
     "InvalidSecondaryArtifactVerificationReport",
+    "InspectReproCountSummary",
+    "InspectReproReportV1",
+    "InspectReproSummaryV1",
+    "InspectReproTargetV1",
     "InspectionBundleSection",
     "InspectionBundleArtifactEntry",
     "InspectionBundleManifestV1",

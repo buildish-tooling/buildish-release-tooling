@@ -699,6 +699,11 @@ def _register_verification_commands(subparsers: Subparsers) -> None:
         action="store_true",
         help="Only print the saved failure summary and selected targets; skip per-artifact deep analysis.",
     )
+    inspect_repro.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit machine-readable inspect-repro JSON to stdout instead of the human stderr transcript.",
+    )
     inspect_repro.add_argument("report_json")
 
 
