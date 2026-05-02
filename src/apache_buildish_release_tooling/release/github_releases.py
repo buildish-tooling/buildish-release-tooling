@@ -22,6 +22,7 @@ from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from apache_buildish_release_tooling.release.external_json import validate_json_object_model
 from apache_buildish_release_tooling.release.process import run_logged_command
 
 
@@ -57,11 +58,12 @@ def _release_read_view(release: Mapping[str, object]) -> _GitHubReleaseRead | No
 def _validated_release_payload(payload: object, *, source: str) -> dict[str, object]:
     """Validate one GitHub Release object payload returned by the API."""
 
-    if not isinstance(payload, dict):
-        raise ValueError(f"{source} did not return an object payload")
-    parsed = _release_read_view(payload)
-    if parsed is None:
-        raise ValueError(f"{source} returned a malformed GitHub Release payload")
+    parsed = validate_json_object_model(
+        _GitHubReleaseRead,
+        payload,
+        source=source,
+        expected_payload="GitHub Release",
+    )
     return parsed.model_dump(mode="python", exclude_none=True)
 
 

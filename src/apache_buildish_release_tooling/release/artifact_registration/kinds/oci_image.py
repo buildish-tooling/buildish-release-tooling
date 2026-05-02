@@ -32,6 +32,7 @@ from apache_buildish_release_tooling.release.contracts import (
     OciImageSecondaryArtifact,
     OciPlatformDigest,
 )
+from apache_buildish_release_tooling.release.external_json import validate_json_object_model_text
 from apache_buildish_release_tooling.release.process import (
     CommandExecutionError,
     run_logged_command,
@@ -211,12 +212,12 @@ def _inspect_image_ref(
         )
     except CommandExecutionError as exc:
         raise ValueError(f"oci-image failed to inspect --image-ref {image_ref}: {exc}") from exc
-    try:
-        manifest_payload = _OciManifestRead.model_validate_json(completed.stdout)
-    except Exception as exc:
-        raise ValueError(
-            f"oci-image docker buildx imagetools inspect returned invalid JSON for --image-ref {image_ref}"
-        ) from exc
+    manifest_payload = validate_json_object_model_text(
+        _OciManifestRead,
+        completed.stdout,
+        source=f"oci-image docker buildx imagetools inspect for --image-ref {image_ref}",
+        expected_payload="OCI manifest",
+    )
     registry, repository = _derived_registry_and_repository(image_ref)
     digest = _normalized_digest(manifest_payload.digest, option_name="registry manifest digest")
     return registry, repository, digest, _derived_platform_digest_entries(manifest_payload)

@@ -16,12 +16,12 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
+from apache_buildish_release_tooling.release.external_json import parse_json_object
 from apache_buildish_release_tooling.release.process import run_logged_command
 
 
@@ -79,10 +79,7 @@ def _statuses(payload: Mapping[str, object]) -> list[_StatusRead]:
 
 
 def _json_object_output(stdout: str, *, source: str) -> dict[str, object]:
-    payload = json.loads(stdout)
-    if not isinstance(payload, dict):
-        raise ValueError(f"{source} did not return a JSON object payload")
-    return payload
+    return parse_json_object(stdout, source=source)
 
 
 def resolve_repository_slug(repo_path: Path) -> str:

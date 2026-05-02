@@ -16,7 +16,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import re
 from argparse import Namespace
@@ -26,6 +25,7 @@ from urllib.parse import urlparse
 
 import yaml
 
+from apache_buildish_release_tooling.release.external_json import parse_json_object
 from apache_buildish_release_tooling.release.git_repo import GitRepository
 from apache_buildish_release_tooling.release.manifest import write_manifest
 from apache_buildish_release_tooling.release.models import AtrConfig, CommandContext, PrepareRcState
@@ -136,10 +136,7 @@ def _atr_env(config_path: Path) -> dict[str, str]:
 
 
 def _parse_json_output(stdout: str, *, source: str) -> dict[str, object]:
-    payload = json.loads(stdout)
-    if not isinstance(payload, dict):
-        raise ValueError(f"{source} did not return a JSON object payload")
-    return payload
+    return parse_json_object(stdout, source=source)
 
 
 def _atr_release_start_or_reuse(

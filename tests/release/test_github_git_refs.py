@@ -34,7 +34,7 @@ class GitHubGitRefsTest(unittest.TestCase):
         ):
             with self.assertRaisesRegex(
                 ValueError,
-                "GitHub tag-object creation did not return an object payload",
+                "GitHub tag-object creation did not return a JSON object payload",
             ):
                 github_git_refs.create_annotated_tag_object(
                     "apache/buildish-example",
@@ -50,7 +50,7 @@ class GitHubGitRefsTest(unittest.TestCase):
         ):
             with self.assertRaisesRegex(
                 ValueError,
-                "GitHub ref creation returned an invalid payload",
+                "GitHub ref creation returned a malformed GitHub Git object payload",
             ):
                 github_git_refs.create_ref(
                     "apache/buildish-example",

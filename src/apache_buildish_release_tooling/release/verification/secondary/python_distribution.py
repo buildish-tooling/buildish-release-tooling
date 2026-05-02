@@ -32,6 +32,7 @@ from apache_buildish_release_tooling.release.contracts import (
     PythonDistributionVerificationReport,
     PythonIndexResolutionReport,
 )
+from apache_buildish_release_tooling.release.external_json import validate_json_object_model_text
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
@@ -279,12 +280,12 @@ def _read_simple_index_bytes(project_index_url: str) -> bytes:
 
 
 def _simple_index_json_entries(project_index_url: str, payload_bytes: bytes) -> list[_SimpleIndexEntry]:
-    try:
-        payload = _SimpleIndexJsonRead.model_validate_json(payload_bytes)
-    except Exception as exc:
-        raise ValueError(
-            f"python-distribution simple index JSON must be an object with a files list: {project_index_url}"
-        ) from exc
+    payload = validate_json_object_model_text(
+        _SimpleIndexJsonRead,
+        payload_bytes,
+        source=f"python-distribution simple index JSON at {project_index_url}",
+        expected_payload="simple-index",
+    )
     entries: list[_SimpleIndexEntry] = []
     for raw_file in payload.files:
         filename = raw_file.filename

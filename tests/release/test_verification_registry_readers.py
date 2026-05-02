@@ -28,6 +28,7 @@ from apache_buildish_release_tooling.release.artifact_registration.kinds.oci_ima
 )
 from apache_buildish_release_tooling.release.verification.secondary.npm_package import (
     _NpmRegistryMetadataRead,
+    _npm_registry_package_metadata,
     _typed_npm_registry_metadata,
 )
 from apache_buildish_release_tooling.release.verification.secondary.python_distribution import (
@@ -48,7 +49,7 @@ class VerificationRegistryReadersTest(unittest.TestCase):
             with self.subTest(payload_bytes=payload_bytes):
                 with self.assertRaisesRegex(
                     ValueError,
-                    "python-distribution simple index JSON must be an object with a files list",
+                    "python-distribution simple index JSON at .* returned a malformed simple-index payload",
                 ):
                     _simple_index_json_entries(
                         "https://example.invalid/simple/buildish-example/",
@@ -58,7 +59,7 @@ class VerificationRegistryReadersTest(unittest.TestCase):
     def test_simple_index_json_entries_rejects_non_object_payload(self) -> None:
         with self.assertRaisesRegex(
             ValueError,
-            "python-distribution simple index JSON must be an object with a files list",
+            "python-distribution simple index JSON at .* did not return a JSON object payload",
         ):
             _simple_index_json_entries(
                 "https://example.invalid/simple/buildish-example/",
@@ -111,7 +112,7 @@ class VerificationRegistryReadersTest(unittest.TestCase):
     def test_simple_index_json_entries_rejects_non_string_hash_values(self) -> None:
         with self.assertRaisesRegex(
             ValueError,
-            "python-distribution simple index JSON must be an object with a files list",
+            "python-distribution simple index JSON at .* returned a malformed simple-index payload",
         ):
             _simple_index_json_entries(
                 "https://example.invalid/simple/buildish-example/",
@@ -211,11 +212,32 @@ class VerificationRegistryReadersTest(unittest.TestCase):
                 with self.assertRaises(ValidationError):
                     _NpmRegistryMetadataRead.model_validate(payload)
 
+    def test_npm_registry_package_metadata_reports_normalized_malformed_payload_error(self) -> None:
+        with mock.patch(
+            "apache_buildish_release_tooling.release.verification.secondary.npm_package._npm_registry_metadata_urls",
+            return_value=(("https://registry.example.invalid/buildish-example", "plain-path"),),
+        ), mock.patch(
+            "apache_buildish_release_tooling.release.verification.secondary.npm_package._read_npm_registry_bytes",
+            return_value=b"[]",
+        ):
+            with self.assertRaisesRegex(
+                ValueError,
+                "npm-package registry metadata could not be fetched for buildish-example: "
+                "https://registry.example.invalid/buildish-example: "
+                "npm-package registry metadata at https://registry.example.invalid/buildish-example "
+                "did not return a JSON object payload",
+            ):
+                _npm_registry_package_metadata(
+                    "https://registry.example.invalid/",
+                    "buildish-example",
+                    allow_non_production_release_targets=True,
+                )
+
     def test_inspect_image_ref_rejects_invalid_external_payload_variants(self) -> None:
         malformed_payloads: tuple[tuple[str, str], ...] = (
             (
                 "[]",
-                "oci-image docker buildx imagetools inspect returned invalid JSON",
+                "oci-image docker buildx imagetools inspect for --image-ref .* did not return a JSON object payload",
             ),
             (
                 json.dumps(

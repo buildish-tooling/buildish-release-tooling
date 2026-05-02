@@ -31,6 +31,7 @@ from apache_buildish_release_tooling.release.contracts import (
     NpmPackageVerificationReport,
     NpmRegistryResolutionReport,
 )
+from apache_buildish_release_tooling.release.external_json import validate_json_object_model_text
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
@@ -366,8 +367,11 @@ def _npm_registry_package_metadata(
             purpose=f"npm registry metadata URL for {package_name}",
         )
         try:
-            payload = _NpmRegistryMetadataRead.model_validate_json(
-                _read_npm_registry_bytes(metadata_url)
+            payload = validate_json_object_model_text(
+                _NpmRegistryMetadataRead,
+                _read_npm_registry_bytes(metadata_url),
+                source=f"npm-package registry metadata at {metadata_url}",
+                expected_payload="npm registry metadata",
             )
         except Exception as exc:
             fetch_errors.append(f"{metadata_url}: {exc}")

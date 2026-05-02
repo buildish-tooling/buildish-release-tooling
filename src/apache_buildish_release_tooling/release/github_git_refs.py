@@ -18,8 +18,9 @@ from __future__ import annotations
 
 import json
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict
 
+from apache_buildish_release_tooling.release.external_json import validate_json_object_model_text
 from apache_buildish_release_tooling.release.process import run_logged_command
 
 
@@ -35,13 +36,12 @@ class _GitHubGitObjectRead(_ExternalGithubReadModel):
 
 
 def _json_object_output(stdout: str, *, source: str) -> dict[str, object]:
-    payload = json.loads(stdout)
-    if not isinstance(payload, dict):
-        raise ValueError(f"{source} did not return an object payload")
-    try:
-        parsed = _GitHubGitObjectRead.model_validate(payload)
-    except ValidationError as exc:
-        raise ValueError(f"{source} returned an invalid payload") from exc
+    parsed = validate_json_object_model_text(
+        _GitHubGitObjectRead,
+        stdout,
+        source=source,
+        expected_payload="GitHub Git object",
+    )
     return parsed.model_dump(mode="python", exclude_none=True)
 
 
