@@ -25,6 +25,9 @@ from apache_buildish_release_tooling.release.verification.inspection_bundle impo
     retain_evidence_file,
     write_reproducibility_metadata,
 )
+from apache_buildish_release_tooling.release.verification.inspection.archive_shallow import (
+    build_shallow_archive_analysis,
+)
 from apache_buildish_release_tooling.release.verification.rebuild import (
     ResolvedRebuildProfile,
     canonical_recipe_payload,
@@ -156,6 +159,12 @@ def verify_host_direct_single_file_reproducibility(
                 ),
                 "override": override_payload(resolved_profile),
                 "failure_class": failure_class,
+                "archive_analysis": build_shallow_archive_analysis(
+                    staged_path=artifact_path,
+                    rebuilt_path=build_result.output_paths[0],
+                )
+                if len(build_result.output_paths) == 1
+                else None,
                 "staged_artifact": {
                     "filename": artifact_path.name,
                     "sha512": checksum(artifact_path, "sha512"),
@@ -203,6 +212,14 @@ def verify_host_direct_single_file_reproducibility(
         "override": override_payload(resolved_profile),
         "matches_remote_bytes": matches_remote_bytes,
         "failure_class": failure_class,
+        "archive_analysis": (
+            build_shallow_archive_analysis(
+                staged_path=artifact_path,
+                rebuilt_path=build_result.output_paths[0],
+            )
+            if artifact_path is not None and build_result is not None and len(build_result.output_paths) == 1
+            else None
+        ),
         "evidence": evidence,
         "issues": issues,
     }

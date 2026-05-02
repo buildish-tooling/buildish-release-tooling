@@ -52,6 +52,9 @@ from apache_buildish_release_tooling.release.verification.inspection_bundle impo
     retain_source_artifact_evidence_file,
     write_source_artifact_reproducibility_metadata,
 )
+from apache_buildish_release_tooling.release.verification.inspection.archive_shallow import (
+    build_shallow_archive_analysis,
+)
 from apache_buildish_release_tooling.release.verification.secondary import (
     INVALID_SECONDARY_ARTIFACT_KIND,
     verify_secondary_artifacts,
@@ -1323,6 +1326,16 @@ def _source_artifact_reproducibility_payload(
             "profile_id": profile_id,
             "comparison_mode": "exact-bytes",
             "failure_class": failure_class,
+            "archive_analysis": (
+                build_shallow_archive_analysis(
+                    staged_path=source_artifact_path,
+                    rebuilt_path=rebuilt_source_artifact_path,
+                )
+                if rebuilt_source_artifact_path is not None
+                and source_artifact_path.exists()
+                and rebuilt_source_artifact_path.exists()
+                else None
+            ),
             "staged_artifact": {
                 "filename": source_artifact.filename,
                 "sha512": sha512(source_artifact_path),
@@ -1377,6 +1390,17 @@ def _source_artifact_reproducibility_payload(
             source_artifact_matches_source_commit if rebuilt_source_sha512 is not None else None
         ),
         "failure_class": failure_class,
+        "archive_analysis": (
+            build_shallow_archive_analysis(
+                staged_path=source_artifact_path,
+                rebuilt_path=rebuilt_source_artifact_path,
+            )
+            if source_artifact_path is not None
+            and rebuilt_source_artifact_path is not None
+            and source_artifact_path.exists()
+            and rebuilt_source_artifact_path.exists()
+            else None
+        ),
         "evidence": evidence,
         "issues": reproducibility_issues,
     }

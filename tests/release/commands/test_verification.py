@@ -1003,6 +1003,67 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Archive member-content mismatches", inspect_completed.stderr)
         self.assertIn("bootstrap.txt", inspect_completed.stderr)
 
+    def test_verify_rc_persists_shallow_archive_analysis_for_archive_backed_generic_file(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            archive_generic_file_reproducibility=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        reproducibility = report_payload["secondary_artifact_verifications"][0]["reproducibility"]
+        self.assertEqual(
+            {
+                "classification": "entries-match",
+                "archive_format": "zip",
+                "staged_archive_format": "zip",
+                "rebuilt_archive_format": "zip",
+                "staged_entry_count": 1,
+                "rebuilt_entry_count": 1,
+                "missing_paths": [],
+                "unexpected_paths": [],
+                "metadata_mismatches": [],
+                "content_mismatches": [],
+            },
+            reproducibility["archive_analysis"],
+        )
+        metadata_reference = next(
+            reference
+            for reference in reproducibility["evidence"]
+            if reference["label"] == "comparison-metadata"
+        )
+        metadata_payload = json.loads(
+            (fixture.inspection_bundle_path / metadata_reference["path"]).read_text(encoding="utf-8")
+        )
+        self.assertEqual(reproducibility["archive_analysis"], metadata_payload["archive_analysis"])
+
     def test_inspect_repro_command_reports_saved_source_artifact_drift(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")

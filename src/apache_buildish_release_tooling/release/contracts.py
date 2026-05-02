@@ -564,6 +564,24 @@ class InspectionEvidenceReference(BuildishContractModel):
     path: NonEmptyString
 
 
+ArchiveAnalysisFormat = Literal["tar", "zip", "non-archive"]
+
+
+class ShallowArchiveAnalysisReport(BuildishContractModel):
+    """Durable shallow archive-comparison findings for one retained artifact pair."""
+
+    classification: NonEmptyString
+    archive_format: Literal["tar", "zip"] | None = None
+    staged_archive_format: ArchiveAnalysisFormat
+    rebuilt_archive_format: ArchiveAnalysisFormat
+    staged_entry_count: int | None = Field(default=None, ge=0)
+    rebuilt_entry_count: int | None = Field(default=None, ge=0)
+    missing_paths: list[NonEmptyString] = Field(default_factory=list)
+    unexpected_paths: list[NonEmptyString] = Field(default_factory=list)
+    metadata_mismatches: list[NonEmptyString] = Field(default_factory=list)
+    content_mismatches: list[NonEmptyString] = Field(default_factory=list)
+
+
 class ArtifactReproducibilityCanonicalBuildRecipeReport(BuildishContractModel):
     """Canonical build recipe declared by the verified source tree for one profile."""
 
@@ -633,6 +651,7 @@ class ArtifactReproducibilityReport(BuildishContractModel):
     )
     matches_remote_bytes: bool | None = None
     failure_class: NonEmptyString | None = None
+    archive_analysis: ShallowArchiveAnalysisReport | None = None
     evidence: list[InspectionEvidenceReference] = Field(default_factory=list)
     issues: list[str] = Field(default_factory=list)
 
