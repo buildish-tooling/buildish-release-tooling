@@ -32,7 +32,10 @@ from apache_buildish_release_tooling.release.verification.common import (
     emit_success,
     emit_warning,
 )
-from apache_buildish_release_tooling.release.verification.inspection.shared import evidence_path
+from apache_buildish_release_tooling.release.verification.inspection.shared import (
+    evidence_path,
+    load_inspection_metadata_model,
+)
 
 
 def inspect_oci_image_reproducibility(
@@ -52,8 +55,10 @@ def inspect_oci_image_reproducibility(
     if metadata_path is None:
         emit_warning(progress_reporter, "No comparison metadata was retained for this artifact")
         return
-    metadata = OciImageReproducibilityMetadata.model_validate_json(
-        metadata_path.read_text(encoding="utf-8")
+    metadata = load_inspection_metadata_model(
+        OciImageReproducibilityMetadata,
+        metadata_path,
+        payload_label="OCI image reproducibility metadata",
     )
     emit_detail(progress_reporter, "Metadata", str(metadata_path))
     if metadata.image_ref is not None:

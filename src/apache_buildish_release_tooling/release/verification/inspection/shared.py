@@ -17,12 +17,18 @@
 from __future__ import annotations
 
 import difflib
+import json
+from json import JSONDecodeError
 from pathlib import Path
+from typing import TypeVar
+
+from pydantic import BaseModel, ValidationError
 
 from apache_buildish_release_tooling.release.contracts import InspectionEvidenceReference
 
 _MAX_INLINE_TEXT_DIFF_LINES = 12
 _MAX_INLINE_TEXT_BYTES = 65536
+_ModelT = TypeVar("_ModelT", bound=BaseModel)
 
 
 def evidence_path(
@@ -90,3 +96,23 @@ def text_diff(left: bytes, right: bytes) -> list[str]:
         )
     )
     return diff_lines[:_MAX_INLINE_TEXT_DIFF_LINES]
+
+
+def load_inspection_metadata_model(
+    model_type: type[_ModelT],
+    metadata_path: Path,
+    *,
+    payload_label: str,
+) -> _ModelT:
+    """Load one retained inspection metadata document with a direct fail-closed error."""
+
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except JSONDecodeError as exc:
+        raise ValueError(f"{payload_label} is not valid JSON: {metadata_path}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"{payload_label} is not a JSON object: {metadata_path}")
+    try:
+        return model_type.model_validate(payload)
+    except ValidationError as exc:
+        raise ValueError(f"{payload_label} payload is malformed: {metadata_path}") from exc

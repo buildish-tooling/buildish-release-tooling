@@ -32,7 +32,10 @@ from apache_buildish_release_tooling.release.verification.common import (
     emit_success,
     emit_warning,
 )
-from apache_buildish_release_tooling.release.verification.inspection.shared import evidence_path
+from apache_buildish_release_tooling.release.verification.inspection.shared import (
+    evidence_path,
+    load_inspection_metadata_model,
+)
 
 
 def inspect_maven_repository_reproducibility(
@@ -52,8 +55,10 @@ def inspect_maven_repository_reproducibility(
     if metadata_path is None:
         emit_warning(progress_reporter, "No comparison metadata was retained for this artifact")
         return
-    metadata = MavenRepositoryReproducibilityMetadata.model_validate_json(
-        metadata_path.read_text(encoding="utf-8")
+    metadata = load_inspection_metadata_model(
+        MavenRepositoryReproducibilityMetadata,
+        metadata_path,
+        payload_label="Maven repository reproducibility metadata",
     )
     emit_detail(progress_reporter, "Metadata", str(metadata_path))
     if metadata.repository_dir is not None:

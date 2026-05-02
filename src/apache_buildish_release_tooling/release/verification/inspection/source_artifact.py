@@ -38,6 +38,7 @@ from apache_buildish_release_tooling.release.verification.inspection.archive_sha
 from apache_buildish_release_tooling.release.verification.inspection.shared import (
     evidence_path,
     first_differing_byte,
+    load_inspection_metadata_model,
     text_diff,
 )
 
@@ -59,8 +60,10 @@ def inspect_source_artifact_reproducibility(
     if metadata_path is None:
         emit_warning(progress_reporter, "No comparison metadata was retained for the source artifact")
         return
-    metadata = SourceArtifactReproducibilityMetadata.model_validate_json(
-        metadata_path.read_text(encoding="utf-8")
+    metadata = load_inspection_metadata_model(
+        SourceArtifactReproducibilityMetadata,
+        metadata_path,
+        payload_label="source-artifact reproducibility metadata",
     )
     emit_detail(progress_reporter, "Metadata", str(metadata_path))
     emit_detail(progress_reporter, "Staged SHA512", metadata.staged_artifact.sha512)

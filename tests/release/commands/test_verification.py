@@ -194,6 +194,16 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             "archive_analysis_keys": list(archive_analysis) if isinstance(archive_analysis, dict) else None,
         }
 
+    def _bundle_artifact_metadata_path(self, bundle_root: Path, *, artifact_id: str) -> Path:
+        bundle_manifest = json.loads(
+            (bundle_root / "inspection-bundle.json").read_text(encoding="utf-8")
+        )
+        for artifact in bundle_manifest["artifacts"]:
+            if artifact["artifact_id"] == artifact_id:
+                return bundle_root / artifact["metadata_path"]
+        self.fail(f"bundle artifact metadata not found for {artifact_id}")
+        raise AssertionError("unreachable")
+
     def test_verify_rc_command_reports_progress_for_successful_run(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
@@ -2511,6 +2521,177 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual(1, inspect_completed.returncode)
         self.assertIn(
             "requested inspect-repro artifact ids did not match any retained reproducibility failures: does-not-exist; available: bootstrap-zip",
+            inspect_completed.stderr,
+        )
+
+    def test_inspect_repro_command_rejects_malformed_report_and_bundle_json(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        valid_report_text = fixture.report_json_path.read_text(encoding="utf-8")
+        fixture.report_json_path.write_text("{\n", encoding="utf-8")
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, inspect_completed.returncode)
+        self.assertIn(
+            f"verify-rc report is not valid JSON: {fixture.report_json_path}",
+            inspect_completed.stderr,
+        )
+
+        fixture.report_json_path.write_text(valid_report_text, encoding="utf-8")
+        bundle_manifest_path = fixture.inspection_bundle_path / "inspection-bundle.json"
+        bundle_manifest_path.write_text("{\n", encoding="utf-8")
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, inspect_completed.returncode)
+        self.assertIn(
+            f"inspection bundle manifest is not valid JSON: {bundle_manifest_path}",
+            inspect_completed.stderr,
+        )
+
+    def test_inspect_repro_command_rejects_malformed_comparison_metadata(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        source_fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            drift_source_artifact=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(source_fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(source_fixture.work_dir),
+                "--report-json",
+                str(source_fixture.report_json_path),
+                "--inspection-bundle",
+                str(source_fixture.inspection_bundle_path),
+                source_fixture.manifest_url,
+                source_fixture.keys_url,
+            ],
+            cwd=source_fixture.origin_dir,
+            env=self._fixture_cli_env(source_fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        source_metadata_path = self._bundle_artifact_metadata_path(
+            source_fixture.inspection_bundle_path,
+            artifact_id="source-artifact",
+        )
+        source_metadata_path.write_text("{\n", encoding="utf-8")
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(source_fixture.report_json_path),
+            ],
+            cwd=source_fixture.origin_dir,
+            env=self._fixture_cli_env(source_fixture),
+        )
+
+        self.assertEqual(1, inspect_completed.returncode)
+        self.assertIn(
+            f"source-artifact reproducibility metadata is not valid JSON: {source_metadata_path}",
+            inspect_completed.stderr,
+        )
+
+        secondary_sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, secondary_sandbox_dir)
+        secondary_fixture = self._prepare_verification_fixture(
+            secondary_sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(secondary_fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(secondary_fixture.work_dir),
+                "--report-json",
+                str(secondary_fixture.report_json_path),
+                "--inspection-bundle",
+                str(secondary_fixture.inspection_bundle_path),
+                secondary_fixture.manifest_url,
+                secondary_fixture.keys_url,
+            ],
+            cwd=secondary_fixture.origin_dir,
+            env=self._fixture_cli_env(secondary_fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        secondary_metadata_path = self._bundle_artifact_metadata_path(
+            secondary_fixture.inspection_bundle_path,
+            artifact_id="bootstrap-zip",
+        )
+        secondary_metadata_path.write_text("{\n", encoding="utf-8")
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(secondary_fixture.report_json_path),
+            ],
+            cwd=secondary_fixture.origin_dir,
+            env=self._fixture_cli_env(secondary_fixture),
+        )
+
+        self.assertEqual(1, inspect_completed.returncode)
+        self.assertIn(
+            f"file-like reproducibility metadata is not valid JSON: {secondary_metadata_path}",
             inspect_completed.stderr,
         )
 

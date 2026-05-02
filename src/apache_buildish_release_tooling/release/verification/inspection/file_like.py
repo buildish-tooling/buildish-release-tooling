@@ -42,6 +42,7 @@ from apache_buildish_release_tooling.release.verification.inspection.shared impo
     evidence_path,
     first_differing_byte,
     first_matching_evidence_path,
+    load_inspection_metadata_model,
     text_diff,
 )
 
@@ -65,8 +66,10 @@ def inspect_file_like_reproducibility(
     if metadata_path is None:
         emit_warning(progress_reporter, "No comparison metadata was retained for this artifact")
         return
-    metadata = FileLikeReproducibilityMetadata.model_validate_json(
-        metadata_path.read_text(encoding="utf-8")
+    metadata = load_inspection_metadata_model(
+        FileLikeReproducibilityMetadata,
+        metadata_path,
+        payload_label="file-like reproducibility metadata",
     )
     emit_detail(progress_reporter, "Metadata", str(metadata_path))
     emit_detail(progress_reporter, "Staged SHA512", metadata.staged_artifact.sha512)
