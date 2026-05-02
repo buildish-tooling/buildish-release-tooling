@@ -25,8 +25,8 @@ from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_r
     _RepositoryFile,
 )
 from apache_buildish_release_tooling.release.progress import ProgressReporter
-from apache_buildish_release_tooling.release.verification.secondary.maven_repository import (
-    _compare_maven_repository_trees,
+from apache_buildish_release_tooling.release.verification.secondary.maven_repository_repro import (
+    compare_maven_repository_trees,
 )
 
 
@@ -63,7 +63,7 @@ class MavenRepositoryReproducibilityTest(unittest.TestCase):
             staged_pom_payload = b"<project>stable</project>\n"
             staged_signature_payload = b"signature bytes\n"
             staged_sidecar_payload = (("0" * 128) + "  app-1.0.0.pom\n").encode("utf-8")
-            path_results, issues, matches = _compare_maven_repository_trees(
+            path_results, issues, matches = compare_maven_repository_trees(
                 artifact_id="maven-staging-main",
                 staged_by_path={
                     "org/example/app/1.0.0/app-1.0.0.pom": _RepositoryFile(
