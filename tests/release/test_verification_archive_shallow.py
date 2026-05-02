@@ -180,3 +180,31 @@ class ShallowArchiveAnalysisTest(unittest.TestCase):
             self.assertEqual([], analysis["unexpected_paths"])
             self.assertEqual([], analysis["metadata_mismatches"])
             self.assertEqual([], analysis["content_mismatches"])
+
+    def test_zip_entry_order_drift_is_reported_separately(self) -> None:
+        with TemporaryDirectory() as temporary_directory:
+            temp_dir = Path(temporary_directory)
+            staged_path = temp_dir / "staged.zip"
+            rebuilt_path = temp_dir / "rebuilt.zip"
+            first = ("example/a.txt", b"a\n", (2026, 5, 2, 9, 0, 1), 0o100644)
+            second = ("example/b.txt", b"b\n", (2026, 5, 2, 9, 0, 1), 0o100644)
+            _write_zip_archive(staged_path, members=[first, second])
+            _write_zip_archive(rebuilt_path, members=[second, first])
+
+            analysis = build_shallow_archive_analysis(
+                staged_path=staged_path,
+                rebuilt_path=rebuilt_path,
+            )
+
+            self.assertIsNotNone(analysis)
+            if analysis is None:
+                self.fail("expected archive analysis for zip entry-order drift")
+            self.assertEqual("entry-order-drift", analysis["classification"])
+            self.assertEqual(
+                ["position 1: staged=example/a.txt rebuilt=example/b.txt"],
+                analysis["entry_order_mismatches"],
+            )
+            self.assertEqual([], analysis["missing_paths"])
+            self.assertEqual([], analysis["unexpected_paths"])
+            self.assertEqual([], analysis["metadata_mismatches"])
+            self.assertEqual([], analysis["content_mismatches"])

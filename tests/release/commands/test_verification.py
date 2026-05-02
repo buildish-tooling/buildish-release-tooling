@@ -1050,6 +1050,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 "rebuilt_entry_count": 1,
                 "missing_paths": [],
                 "unexpected_paths": [],
+                "entry_order_mismatches": [],
                 "metadata_mismatches": [],
                 "content_mismatches": [],
             },

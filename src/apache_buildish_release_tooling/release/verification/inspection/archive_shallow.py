@@ -57,6 +57,7 @@ class ArchiveEntry:
 class ShallowArchiveDescription:
     archive_format: _ArchiveFormat
     entries: dict[str, ArchiveEntry]
+    entry_order: list[str]
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,7 @@ class ShallowArchiveComparison:
     classification: str
     missing_paths: list[str]
     unexpected_paths: list[str]
+    entry_order_mismatches: list[str]
     metadata_mismatches: list[str]
     content_mismatches: list[str]
 
@@ -91,6 +93,7 @@ def build_shallow_archive_analysis(
         "rebuilt_entry_count": (len(rebuilt_description.entries) if rebuilt_description is not None else None),
         "missing_paths": [],
         "unexpected_paths": [],
+        "entry_order_mismatches": [],
         "metadata_mismatches": [],
         "content_mismatches": [],
     }
@@ -112,6 +115,7 @@ def build_shallow_archive_analysis(
     payload["classification"] = comparison.classification
     payload["missing_paths"] = comparison.missing_paths
     payload["unexpected_paths"] = comparison.unexpected_paths
+    payload["entry_order_mismatches"] = comparison.entry_order_mismatches
     payload["metadata_mismatches"] = comparison.metadata_mismatches
     payload["content_mismatches"] = comparison.content_mismatches
     return payload
@@ -188,6 +192,11 @@ def inspect_shallow_archive_pair(
     )
     _emit_mismatch_list(
         progress_reporter,
+        heading="Archive entry-order mismatches",
+        mismatches=[str(detail) for detail in analysis["entry_order_mismatches"]],
+    )
+    _emit_mismatch_list(
+        progress_reporter,
         heading="Archive metadata mismatches",
         mismatches=[str(detail) for detail in analysis["metadata_mismatches"]],
     )
@@ -241,8 +250,13 @@ def _compare_archives(
     rebuilt_paths = set(rebuilt.entries)
     missing_paths = sorted(staged_paths - rebuilt_paths)
     unexpected_paths = sorted(rebuilt_paths - staged_paths)
+    entry_order_mismatches: list[str] = []
     metadata_mismatches: list[str] = []
     content_mismatches: list[str] = []
+    if not missing_paths and not unexpected_paths and staged.entry_order != rebuilt.entry_order:
+        entry_order_mismatches.append(
+            _entry_order_mismatch_detail(staged.entry_order, rebuilt.entry_order)
+        )
     for path in sorted(staged_paths & rebuilt_paths):
         staged_entry = staged.entries[path]
         rebuilt_entry = rebuilt.entries[path]
@@ -265,11 +279,18 @@ def _compare_archives(
             metadata_mismatches.append(f"{path}: {', '.join(mismatched_fields)}")
         if staged_entry.content_sha512 != rebuilt_entry.content_sha512:
             content_mismatches.append(path)
-    if not missing_paths and not unexpected_paths and not metadata_mismatches and not content_mismatches:
+    if (
+        not missing_paths
+        and not unexpected_paths
+        and not entry_order_mismatches
+        and not metadata_mismatches
+        and not content_mismatches
+    ):
         return None
     classification = _classify_archive_drift(
         missing_paths=missing_paths,
         unexpected_paths=unexpected_paths,
+        entry_order_mismatches=entry_order_mismatches,
         metadata_mismatches=metadata_mismatches,
         content_mismatches=content_mismatches,
     )
@@ -277,6 +298,7 @@ def _compare_archives(
         classification=classification,
         missing_paths=missing_paths,
         unexpected_paths=unexpected_paths,
+        entry_order_mismatches=entry_order_mismatches,
         metadata_mismatches=metadata_mismatches,
         content_mismatches=content_mismatches,
     )
@@ -286,6 +308,7 @@ def _classify_archive_drift(
     *,
     missing_paths: list[str],
     unexpected_paths: list[str],
+    entry_order_mismatches: list[str],
     metadata_mismatches: list[str],
     content_mismatches: list[str],
 ) -> str:
@@ -293,6 +316,7 @@ def _classify_archive_drift(
         1
         for present in (
             bool(missing_paths or unexpected_paths),
+            bool(entry_order_mismatches),
             bool(metadata_mismatches),
             bool(content_mismatches),
         )
@@ -302,6 +326,8 @@ def _classify_archive_drift(
         return "mixed-entry-drift"
     if missing_paths or unexpected_paths:
         return "entry-set-drift"
+    if entry_order_mismatches:
+        return "entry-order-drift"
     if metadata_mismatches:
         return "entry-metadata-drift"
     return "entry-content-drift"
@@ -322,9 +348,11 @@ def _describe_tar_archive(payload: bytes) -> ShallowArchiveDescription | None:
     try:
         with tarfile.open(fileobj=BytesIO(payload), mode="r:*") as archive:
             entries: dict[str, ArchiveEntry] = {}
+            entry_order: list[str] = []
             for member in archive.getmembers():
                 if member.name in entries:
                     raise ValueError(f"archive member is duplicated: {member.name}")
+                entry_order.append(member.name)
                 content_sha512: str | None = None
                 if member.isfile():
                     member_file = archive.extractfile(member)
@@ -348,16 +376,18 @@ def _describe_tar_archive(payload: bytes) -> ShallowArchiveDescription | None:
                 )
     except tarfile.TarError:
         return None
-    return ShallowArchiveDescription(archive_format="tar", entries=entries)
+    return ShallowArchiveDescription(archive_format="tar", entries=entries, entry_order=entry_order)
 
 
 def _describe_zip_archive(payload: bytes) -> ShallowArchiveDescription | None:
     try:
         with zipfile.ZipFile(BytesIO(payload)) as archive:
             entries: dict[str, ArchiveEntry] = {}
+            entry_order: list[str] = []
             for info in archive.infolist():
                 if info.filename in entries:
                     raise ValueError(f"archive member is duplicated: {info.filename}")
+                entry_order.append(info.filename)
                 content_sha512: str | None = None
                 if not info.is_dir():
                     content_sha512 = hashlib.sha512(archive.read(info)).hexdigest()
@@ -378,7 +408,17 @@ def _describe_zip_archive(payload: bytes) -> ShallowArchiveDescription | None:
                 )
     except zipfile.BadZipFile:
         return None
-    return ShallowArchiveDescription(archive_format="zip", entries=entries)
+    return ShallowArchiveDescription(archive_format="zip", entries=entries, entry_order=entry_order)
+
+
+def _entry_order_mismatch_detail(staged_order: list[str], rebuilt_order: list[str]) -> str:
+    for index, (staged_path, rebuilt_path) in enumerate(
+        zip(staged_order, rebuilt_order, strict=True),
+        start=1,
+    ):
+        if staged_path != rebuilt_path:
+            return f"position {index}: staged={staged_path} rebuilt={rebuilt_path}"
+    return "entry ordering differs"
 
 
 def _tar_entry_type(member: tarfile.TarInfo) -> str:

@@ -579,6 +579,7 @@ class ShallowArchiveAnalysisReport(BuildishContractModel):
     rebuilt_entry_count: int | None = Field(default=None, ge=0)
     missing_paths: list[NonEmptyString] = Field(default_factory=list)
     unexpected_paths: list[NonEmptyString] = Field(default_factory=list)
+    entry_order_mismatches: list[NonEmptyString] = Field(default_factory=list)
     metadata_mismatches: list[NonEmptyString] = Field(default_factory=list)
     content_mismatches: list[NonEmptyString] = Field(default_factory=list)
 
