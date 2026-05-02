@@ -24,6 +24,8 @@ from apache_buildish_release_tooling.release.contracts import (
     GenericFileSecondaryArtifact,
     GithubWorkflowProvenance,
     ManifestTrustRoots,
+    RcVoteManifestReadV1,
+    RcVoteManifestV1,
     ToolingProvenance,
 )
 from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
@@ -232,4 +234,79 @@ class RcVoteManifestTest(unittest.TestCase):
         self.assertEqual(
             "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
             secondary_artifact.uri,
+        )
+        self.assertEqual(
+            manifest,
+            RcVoteManifestV1.model_validate(manifest.model_dump(mode="json", exclude_none=True)),
+        )
+
+    def test_rc_vote_manifest_read_accepts_extended_provenance_fields(self) -> None:
+        payload = {
+            "schema_version": "1",
+            "manifest_type": "rc-vote",
+            "component_id": "buildish-example",
+            "version": "1.2.3",
+            "release_line": "1.2.x",
+            "release_branch": "release/1.2.x",
+            "source_repository_url": "https://github.com/apache/buildish-example",
+            "source_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+            "source_date_epoch": 1714032000,
+            "final_tag": "v1.2.3",
+            "final_tag_mode": "detached-materialization-commit",
+            "provenance": {
+                "created_at": "2026-04-23T10:15:30Z",
+                "tooling": {
+                    "repository": "apache/buildish-release-tooling",
+                    "repository_url": "https://github.com/apache/buildish-release-tooling",
+                    "git_commit_sha": "fedcba9876543210fedcba9876543210fedcba98",
+                    "future_field": "kept-tolerant",
+                },
+                "future_top_level": {
+                    "opaque": True,
+                },
+            },
+            "trust_roots": {
+                "asf_keys": {
+                    "uri": "https://downloads.apache.org/incubator/buildish/KEYS",
+                    "known_length_bytes": 9,
+                    "known_prefix_sha512": "a" * 128,
+                }
+            },
+            "draft_github_release": {
+                "repository": "apache/buildish-example",
+                "tag": "v1.2.3-rc2",
+                "url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc2",
+            },
+            "vote_materials": {
+                "source_artifacts": [
+                    {
+                        "role": "asf-source-release",
+                        "filename": "apache-buildish-example-1.2.3-incubating-src.tar.gz",
+                        "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/apache-buildish-example-1.2.3-incubating-src.tar.gz",
+                        "artifact_origin": "source-commit",
+                        "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                        "checksums": {"sha512": {"value": "b" * 128}},
+                        "signatures": [
+                            {
+                                "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/apache-buildish-example-1.2.3-incubating-src.tar.gz.asc",
+                            }
+                        ],
+                    }
+                ],
+                "secondary_artifacts": [],
+            },
+            "verification": {
+                "staging_svn_url": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/",
+            },
+        }
+
+        manifest = RcVoteManifestReadV1.model_validate(payload)
+
+        self.assertEqual(
+            "https://github.com/apache/buildish-release-tooling",
+            manifest.provenance.tooling.repository_url,
+        )
+        self.assertEqual(
+            "fedcba9876543210fedcba9876543210fedcba98",
+            manifest.provenance.tooling.git_commit_sha,
         )

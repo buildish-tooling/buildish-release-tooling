@@ -16,13 +16,14 @@
 
 from __future__ import annotations
 
-import json
 import re
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Literal
 from urllib.parse import unquote, urljoin, urlparse
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from apache_buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityReport,
@@ -51,6 +52,22 @@ class _SimpleIndexEntry:
     url: str
     hashes: dict[str, str] = field(default_factory=dict)
     source: str = "simple-html"
+
+
+class _ExternalSimpleIndexReadModel(BaseModel):
+    """Typed subset base for external Python simple-index payloads."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class _SimpleIndexJsonFileRead(_ExternalSimpleIndexReadModel):
+    filename: str | None = None
+    url: str | None = None
+    hashes: dict[str, str] | None = None
+
+
+class _SimpleIndexJsonRead(_ExternalSimpleIndexReadModel):
+    files: list[_SimpleIndexJsonFileRead] = Field(default_factory=list)
 
 
 class _SimpleIndexHtmlParser(HTMLParser):
@@ -262,24 +279,21 @@ def _read_simple_index_bytes(project_index_url: str) -> bytes:
 
 
 def _simple_index_json_entries(project_index_url: str, payload_bytes: bytes) -> list[_SimpleIndexEntry]:
-    payload = json.loads(payload_bytes.decode("utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"python-distribution simple index JSON must be an object: {project_index_url}")
-    raw_files = payload.get("files")
-    if not isinstance(raw_files, list):
-        raise ValueError(f"python-distribution simple index JSON must contain a files list: {project_index_url}")
+    try:
+        payload = _SimpleIndexJsonRead.model_validate_json(payload_bytes)
+    except Exception as exc:
+        raise ValueError(
+            f"python-distribution simple index JSON must be an object with a files list: {project_index_url}"
+        ) from exc
     entries: list[_SimpleIndexEntry] = []
-    for raw_file in raw_files:
-        if not isinstance(raw_file, dict):
+    for raw_file in payload.files:
+        filename = raw_file.filename
+        file_url = raw_file.url
+        if filename is None or not filename.strip():
             continue
-        filename = raw_file.get("filename")
-        file_url = raw_file.get("url")
-        if not isinstance(filename, str) or not filename.strip():
+        if file_url is None or not file_url.strip():
             continue
-        if not isinstance(file_url, str) or not file_url.strip():
-            continue
-        raw_hashes = raw_file.get("hashes")
-        hashes = raw_hashes if isinstance(raw_hashes, dict) else {}
+        hashes = raw_file.hashes or {}
         entries.append(
             _SimpleIndexEntry(
                 filename=filename.strip(),

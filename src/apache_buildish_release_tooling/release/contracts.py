@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Literal
 
-from pydantic import Field, StringConstraints, TypeAdapter, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, field_validator, model_validator
 from pydantic.functional_validators import AfterValidator
 
 from apache_buildish_release_tooling.contracts import BuildishContractModel
@@ -327,6 +327,41 @@ class ManifestProvenance(BuildishContractModel):
     github: GithubWorkflowProvenance | None = None
 
 
+class _BuildishTolerantReadModel(BaseModel):
+    """Base model for tolerant read-side subsets with forward-compatible extra fields."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class ToolingProvenanceRead(_BuildishTolerantReadModel):
+    """Tolerant tooling provenance subset accepted by verify-rc readers."""
+
+    repository: str | None = None
+    repository_url: NonEmptyString | None = None
+    git_commit_sha: GitCommitSha | None = None
+    git_ref: str | None = None
+    version: str | None = None
+
+
+class GithubWorkflowProvenanceRead(_BuildishTolerantReadModel):
+    """Tolerant GitHub workflow provenance subset accepted by verify-rc readers."""
+
+    repository: str | None = None
+    workflow: str | None = None
+    workflow_ref: str | None = None
+    run_id: int | None = Field(default=None, ge=0)
+    run_attempt: int | None = Field(default=None, ge=0)
+    run_url: str | None = None
+
+
+class ManifestProvenanceRead(_BuildishTolerantReadModel):
+    """Tolerant top-level provenance block accepted by verify-rc readers."""
+
+    created_at: str | None = None
+    tooling: ToolingProvenanceRead
+    github: GithubWorkflowProvenanceRead | None = None
+
+
 class AsfKeysTrustRoot(BuildishContractModel):
     """Pinned ASF KEYS metadata used as a trust root."""
 
@@ -448,7 +483,7 @@ class RcVoteManifestReadV1(BuildishContractModel):
     rc_tag: NonEmptyString | None = None
     final_tag: NonEmptyString
     final_tag_mode: NonEmptyString
-    provenance: dict[str, Any]
+    provenance: ManifestProvenanceRead
     trust_roots: ManifestTrustRoots
     draft_github_release: DraftGithubRelease
     vote_materials: VoteMaterialsRead

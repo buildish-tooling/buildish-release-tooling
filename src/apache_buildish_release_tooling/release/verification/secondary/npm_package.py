@@ -16,11 +16,12 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 from urllib.parse import quote, unquote, urljoin, urlparse
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from apache_buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityReport,
@@ -67,6 +68,28 @@ class _NpmRegistryMetadataEntry:
     metadata_url: str
     found_via: str
     versions: dict[str, _NpmRegistryVersionEntry]
+
+
+class _ExternalNpmRegistryReadModel(BaseModel):
+    """Typed subset base for external npm registry payloads."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class _NpmRegistryDistRead(_ExternalNpmRegistryReadModel):
+    tarball: str | None = None
+    integrity: str | None = None
+    signatures: list[object] | None = None
+
+
+class _NpmRegistryVersionRead(_ExternalNpmRegistryReadModel):
+    name: str | None = None
+    version: str | None = None
+    dist: _NpmRegistryDistRead | None = None
+
+
+class _NpmRegistryMetadataRead(_ExternalNpmRegistryReadModel):
+    versions: dict[str, _NpmRegistryVersionRead] = Field(default_factory=dict)
 
 
 def verify_npm_package(
@@ -343,48 +366,41 @@ def _npm_registry_package_metadata(
             purpose=f"npm registry metadata URL for {package_name}",
         )
         try:
-            payload = json.loads(_read_npm_registry_bytes(metadata_url).decode("utf-8"))
+            payload = _NpmRegistryMetadataRead.model_validate_json(
+                _read_npm_registry_bytes(metadata_url)
+            )
         except Exception as exc:
             fetch_errors.append(f"{metadata_url}: {exc}")
             continue
-        if not isinstance(payload, dict):
-            raise ValueError(f"npm-package registry metadata must be a JSON object: {metadata_url}")
         return _typed_npm_registry_metadata(payload, metadata_url=metadata_url, found_via=found_via)
     error_summary = "; ".join(fetch_errors) if fetch_errors else registry_url
     raise ValueError(f"npm-package registry metadata could not be fetched for {package_name}: {error_summary}")
 
 
 def _typed_npm_registry_metadata(
-    payload: dict[str, object],
+    payload: _NpmRegistryMetadataRead,
     *,
     metadata_url: str,
     found_via: str,
 ) -> _NpmRegistryMetadataEntry:
-    raw_versions = payload.get("versions")
-    if not isinstance(raw_versions, dict):
-        raise ValueError(f"npm-package registry metadata is missing versions: {metadata_url}")
     versions: dict[str, _NpmRegistryVersionEntry] = {}
-    for raw_version, raw_version_payload in raw_versions.items():
-        if not isinstance(raw_version, str) or not isinstance(raw_version_payload, dict):
+    for raw_version, raw_version_payload in payload.versions.items():
+        name = raw_version_payload.name
+        version = raw_version_payload.version
+        raw_dist = raw_version_payload.dist
+        if name is None or version is None or raw_dist is None:
             continue
-        name = raw_version_payload.get("name")
-        version = raw_version_payload.get("version")
-        raw_dist = raw_version_payload.get("dist")
-        if not isinstance(name, str) or not isinstance(version, str) or not isinstance(raw_dist, dict):
+        tarball = raw_dist.tarball
+        integrity = raw_dist.integrity
+        if tarball is None or not tarball.strip():
             continue
-        tarball = raw_dist.get("tarball")
-        integrity = raw_dist.get("integrity")
-        if not isinstance(tarball, str) or not tarball.strip():
+        if integrity is None or not integrity.strip():
             continue
-        if not isinstance(integrity, str) or not integrity.strip():
-            continue
-        raw_signatures = raw_dist.get("signatures")
+        raw_signatures = raw_dist.signatures
         if raw_signatures is None:
             signatures_count = 0
-        elif isinstance(raw_signatures, list):
-            signatures_count = len(raw_signatures)
         else:
-            raise ValueError(f"npm-package registry signatures must be a list when present: {metadata_url}")
+            signatures_count = len(raw_signatures)
         versions[raw_version] = _NpmRegistryVersionEntry(
             name=name.strip(),
             version=version.strip(),

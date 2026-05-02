@@ -58,6 +58,7 @@ from .npm_package import verify_npm_package
 from .oci_image import verify_oci_image
 from .python_distribution import verify_python_distribution
 from .shared import SecondaryArtifactEntry, safe_path_component, secondary_artifact_entries
+from .shared import MalformedSecondaryArtifactEntry
 
 INVALID_SECONDARY_ARTIFACT_KIND = "_invalid-secondary-artifact-entry"
 
@@ -179,7 +180,7 @@ def verify_secondary_artifacts(
                     inspection_bundle_root=inspection_bundle_root,
                     profile_overrides=profile_overrides,
                 )
-            elif isinstance(artifact_entry, dict):
+            elif isinstance(artifact_entry, MalformedSecondaryArtifactEntry):
                 raise ValueError(_malformed_secondary_artifact_issue(artifact_entry, manifest_url))
             else:
                 raise ValueError(
@@ -199,10 +200,9 @@ def verify_secondary_artifacts(
 def _artifact_label(artifact_entry: SecondaryArtifactEntry, *, index: int) -> str:
     if isinstance(artifact_entry, BaseModel):
         return str(getattr(artifact_entry, "artifact_id", f"secondary-artifact-{index}"))
-    if isinstance(artifact_entry, dict):
-        raw_artifact_id = artifact_entry.get("artifact_id")
-        if isinstance(raw_artifact_id, str) and raw_artifact_id.strip():
-            return raw_artifact_id.strip()
+    if isinstance(artifact_entry, MalformedSecondaryArtifactEntry):
+        if artifact_entry.artifact_id is not None:
+            return artifact_entry.artifact_id
     return f"secondary-artifact-{index}"
 
 
@@ -211,23 +211,26 @@ def _declared_kind(artifact_entry: SecondaryArtifactEntry) -> str | None:
         raw_kind = getattr(artifact_entry, "kind", None)
         if isinstance(raw_kind, str) and raw_kind.strip():
             return raw_kind.strip()
-    if not isinstance(artifact_entry, dict):
-        return None
-    raw_kind = artifact_entry.get("kind")
-    if not isinstance(raw_kind, str) or not raw_kind.strip():
-        return None
-    return raw_kind.strip()
+    if isinstance(artifact_entry, MalformedSecondaryArtifactEntry):
+        return artifact_entry.declared_kind
+    return None
 
 
-def _malformed_secondary_artifact_issue(artifact_entry: dict[str, Any], manifest_url: str) -> str:
-    raw_artifact_id = artifact_entry.get("artifact_id")
-    if not isinstance(raw_artifact_id, str) or not raw_artifact_id.strip():
+def _malformed_secondary_artifact_issue(
+    artifact_entry: MalformedSecondaryArtifactEntry,
+    manifest_url: str,
+) -> str:
+    raw_payload = artifact_entry.raw_payload
+    if not isinstance(raw_payload, dict):
+        return f"manifest secondary artifact entry must be an object: {manifest_url}"
+    raw_artifact_id = artifact_entry.artifact_id
+    if raw_artifact_id is None:
         return f"manifest field artifact_id must be a non-empty string: {manifest_url}"
-    raw_kind = artifact_entry.get("kind")
-    if not isinstance(raw_kind, str) or not raw_kind.strip():
+    raw_kind = artifact_entry.declared_kind
+    if raw_kind is None:
         return f"manifest field kind must be a non-empty string: {manifest_url}"
     try:
-        StrictSecondaryArtifactAdapter.validate_python(artifact_entry)
+        StrictSecondaryArtifactAdapter.validate_python(raw_payload)
     except Exception as exc:
         return str(exc)
     return f"manifest secondary artifact entry is malformed: {manifest_url}"

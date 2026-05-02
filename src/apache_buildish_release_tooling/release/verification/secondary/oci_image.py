@@ -77,15 +77,11 @@ def verify_oci_image(
             _inspected_registry,
             _inspected_repository,
             live_digest,
-            raw_live_platform_digests,
+            live_platform_digests,
         ) = _inspect_image_ref(
             image_ref,
             log_commands=False,
         )
-        live_platform_digests = [
-            OciPlatformDigest.model_validate(entry)
-            for entry in raw_live_platform_digests
-        ]
     except Exception as exc:
         issues.append(str(exc))
     digest_matches_manifest = live_digest == declared_digest if live_digest is not None else False
@@ -230,15 +226,11 @@ def _verify_oci_image_reproducibility(
                 _rebuilt_registry,
                 _rebuilt_repository,
                 rebuilt_digest,
-                raw_rebuilt_platform_digests,
+                rebuilt_platform_digests,
             ) = _inspect_image_ref(
                 image_ref,
                 log_commands=False,
             )
-            rebuilt_platform_digests = [
-                OciPlatformDigest.model_validate(entry)
-                for entry in raw_rebuilt_platform_digests
-            ]
             if comparison_mode == "platform-digest":
                 if rebuilt_digest != declared_digest:
                     failure_class = failure_class or "digest-mismatch"

@@ -18,10 +18,13 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
+
+from pydantic import BaseModel, ConfigDict
+from typing import cast
 
 from apache_buildish_release_tooling.release.contracts import (
     AnySecondaryArtifact,
@@ -50,41 +53,82 @@ class DownloadedInventory:
     """One verified inventory attachment plus its parsed JSON payload."""
 
     path: Path
-    raw_payload: dict[str, Any]
+    raw_payload: dict[str, object]
     report_payload: InventoryVerificationReport
 
 
-SecondaryArtifactEntry = AnySecondaryArtifact | dict[str, Any]
+class _ExternalPayloadReadModel(BaseModel):
+    """Base model for tolerant external JSON fragments used by secondary verifiers."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class _RawVoteMaterialsRead(_ExternalPayloadReadModel):
+    secondary_artifacts: list[object] | None = None
+
+
+class _RawManifestRead(_ExternalPayloadReadModel):
+    vote_materials: _RawVoteMaterialsRead | None = None
+
+
+@dataclass(frozen=True)
+class MalformedSecondaryArtifactEntry:
+    """One malformed secondary-artifact manifest entry preserved for fail-closed reporting."""
+
+    raw_payload: object
+    artifact_id: str | None = None
+    declared_kind: str | None = None
+
+
+SecondaryArtifactEntry = AnySecondaryArtifact | MalformedSecondaryArtifactEntry
 
 
 def secondary_artifact_entries(
-    manifest_payload: RcVoteManifestReadV1 | dict[str, Any],
+    manifest_payload: RcVoteManifestReadV1 | Mapping[str, object],
     *,
     source: str,
 ) -> list[SecondaryArtifactEntry]:
+    secondary_artifacts: list[object] | None
     if isinstance(manifest_payload, RcVoteManifestReadV1):
-        return list(manifest_payload.vote_materials.secondary_artifacts)
-    vote_materials = manifest_payload.get("vote_materials")
-    if not isinstance(vote_materials, dict):
-        raise ValueError(f"manifest is missing vote_materials: {source}")
-    secondary_artifacts = vote_materials.get("secondary_artifacts")
-    if not isinstance(secondary_artifacts, list):
-        raise ValueError(f"manifest secondary_artifacts must be a list: {source}")
+        secondary_artifacts = list(manifest_payload.vote_materials.secondary_artifacts)
+    else:
+        raw_manifest = _RawManifestRead.model_validate(manifest_payload)
+        vote_materials = raw_manifest.vote_materials
+        if vote_materials is None:
+            raise ValueError(f"manifest is missing vote_materials: {source}")
+        secondary_artifacts = vote_materials.secondary_artifacts
+        if secondary_artifacts is None:
+            raise ValueError(f"manifest secondary_artifacts must be a list: {source}")
     entries: list[SecondaryArtifactEntry] = []
     for raw_entry in secondary_artifacts:
+        if isinstance(raw_entry, BaseModel):
+            entries.append(cast(AnySecondaryArtifact, raw_entry))
+            continue
         if isinstance(raw_entry, dict):
             try:
                 entries.append(StrictSecondaryArtifactAdapter.validate_python(raw_entry))
                 continue
             except Exception:
-                entries.append(dict(raw_entry))
+                raw_artifact_id = raw_entry.get("artifact_id")
+                raw_kind = raw_entry.get("kind")
+                entries.append(
+                    MalformedSecondaryArtifactEntry(
+                        raw_payload=dict(raw_entry),
+                        artifact_id=raw_artifact_id.strip()
+                        if isinstance(raw_artifact_id, str) and raw_artifact_id.strip()
+                        else None,
+                        declared_kind=raw_kind.strip()
+                        if isinstance(raw_kind, str) and raw_kind.strip()
+                        else None,
+                    )
+                )
                 continue
-        entries.append(raw_entry)
+        entries.append(MalformedSecondaryArtifactEntry(raw_payload=raw_entry))
     return entries
 
 
 def preferred_checksum_payload(
-    artifact_entry: dict[str, Any],
+    artifact_entry: Mapping[str, object],
     *,
     source: str,
 ) -> tuple[str, str, str | None]:
@@ -96,7 +140,7 @@ def preferred_checksum_payload(
 
 
 def required_checksum_payload(
-    artifact_entry: dict[str, Any],
+    artifact_entry: Mapping[str, object],
     *,
     source: str,
     algorithms: tuple[str, ...],
@@ -129,7 +173,7 @@ def required_checksum_payload(
 
 
 def verified_openpgp_signatures(
-    artifact_entry: dict[str, Any],
+    artifact_entry: Mapping[str, object],
     *,
     manifest_url: str,
     artifact_id: str,
@@ -185,7 +229,7 @@ def verified_openpgp_signatures(
 
 
 def downloaded_inventory(
-    artifact_entry: dict[str, Any],
+    artifact_entry: Mapping[str, object],
     *,
     manifest_url: str,
     artifact_id: str,
@@ -233,7 +277,7 @@ def downloaded_inventory(
     )
 
 
-def required_non_empty_string(payload: dict[str, Any], field_name: str, *, source: str) -> str:
+def required_non_empty_string(payload: Mapping[str, object], field_name: str, *, source: str) -> str:
     value = payload.get(field_name)
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"manifest field {field_name} must be a non-empty string: {source}")
@@ -241,7 +285,7 @@ def required_non_empty_string(payload: dict[str, Any], field_name: str, *, sourc
 
 
 def required_hex_digest(
-    payload: dict[str, Any],
+    payload: Mapping[str, object],
     field_name: str,
     *,
     algorithm: str,

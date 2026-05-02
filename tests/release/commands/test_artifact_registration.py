@@ -14,6 +14,8 @@
 """Artifact-registration command integration tests."""
 
 # ruff: noqa: F403, F405
+from apache_buildish_release_tooling.release.contracts import SecondaryArtifactManifestV1
+
 from tests.release.commands.support import *
 
 
@@ -85,6 +87,11 @@ class ArtifactRegistrationCommandsIntegrationTest(ReleaseCommandsIntegrationTest
         self.assertEqual([], action_manifest["inventory_paths"])
 
         payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        validated_manifest = SecondaryArtifactManifestV1.model_validate(payload)
+        self.assertEqual(
+            artifact_id,
+            validated_manifest.secondary_artifacts[0].artifact_id,
+        )
         self.assertEqual(
             [
                 {
@@ -220,6 +227,8 @@ class ArtifactRegistrationCommandsIntegrationTest(ReleaseCommandsIntegrationTest
         self.assertEqual([], action_manifest["inventory_paths"])
 
         payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        validated_manifest = SecondaryArtifactManifestV1.model_validate(payload)
+        self.assertEqual(artifact_id, validated_manifest.secondary_artifacts[0].artifact_id)
         self.assertEqual(
             [
                 {
@@ -340,6 +349,8 @@ class ArtifactRegistrationCommandsIntegrationTest(ReleaseCommandsIntegrationTest
         expected_manifest_path = expected_bundle_dir / "artifact-manifest.json"
         self.assertEqual(str(expected_manifest_path), completed.stdout.strip())
         payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        validated_manifest = SecondaryArtifactManifestV1.model_validate(payload)
+        self.assertEqual(artifact_id, validated_manifest.secondary_artifacts[0].artifact_id)
         self.assertEqual(
             [
                 {
@@ -428,6 +439,11 @@ class ArtifactRegistrationCommandsIntegrationTest(ReleaseCommandsIntegrationTest
             / "artifact-manifest.json"
         )
         payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        validated_manifest = SecondaryArtifactManifestV1.model_validate(payload)
+        self.assertEqual(
+            "dockerhub-single-platform",
+            validated_manifest.secondary_artifacts[0].artifact_id,
+        )
         self.assertEqual(
             [
                 {
@@ -585,6 +601,8 @@ class ArtifactRegistrationCommandsIntegrationTest(ReleaseCommandsIntegrationTest
         self.assertEqual([], action_manifest["inventory_paths"])
 
         payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        validated_manifest = SecondaryArtifactManifestV1.model_validate(payload)
+        self.assertEqual(artifact_id, validated_manifest.secondary_artifacts[0].artifact_id)
         self.assertEqual(
             [
                 {
@@ -733,6 +751,8 @@ class ArtifactRegistrationCommandsIntegrationTest(ReleaseCommandsIntegrationTest
         self.assertEqual([], action_manifest["inventory_paths"])
 
         payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        validated_manifest = SecondaryArtifactManifestV1.model_validate(payload)
+        self.assertEqual(artifact_id, validated_manifest.secondary_artifacts[0].artifact_id)
         self.assertEqual(
             [
                 {
@@ -817,6 +837,8 @@ class ArtifactRegistrationCommandsIntegrationTest(ReleaseCommandsIntegrationTest
         )
 
         payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        validated_manifest = SecondaryArtifactManifestV1.model_validate(payload)
+        self.assertEqual(artifact_id, validated_manifest.secondary_artifacts[0].artifact_id)
         self.assertEqual(
             [
                 {
@@ -946,6 +968,8 @@ class ArtifactRegistrationCommandsIntegrationTest(ReleaseCommandsIntegrationTest
         self.assertEqual([str(expected_inventory_path)], action_manifest["inventory_paths"])
 
         payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        validated_manifest = SecondaryArtifactManifestV1.model_validate(payload)
+        self.assertEqual(artifact_id, validated_manifest.secondary_artifacts[0].artifact_id)
         self.assertEqual(
             [
                 {

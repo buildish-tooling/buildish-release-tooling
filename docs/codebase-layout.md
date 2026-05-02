@@ -48,11 +48,18 @@ It should not absorb low-level protocol details that belong in a dedicated adapt
 
 - `config.py`: loads `release-config.yaml` and validates secure/non-production target rules
 - `models.py`: pydantic models for component policy and derived command state
+- `contracts.py`: buildish-owned JSON contract models for manifests, reports, and inspection bundles
 - `prepare_rc_state.py`: derives the authoritative RC state from config, Git refs, and version input
 - `release_state.py`: pure version, tag, release-line, and pruning logic
 
 If a behavior is mostly deterministic data derivation and does not need I/O, it should usually
 land in `prepare_rc_state.py` or `release_state.py` instead of in one of the command handlers.
+
+The contract-modeling rule is:
+
+- buildish-owned persisted or boundary data uses pydantic models
+- internal structured helper state uses dataclasses or typed partial-reader models
+- raw `dict[str, Any]` payloads are kept only at explicit external or tolerant-input boundaries, and should stay narrowly isolated
 
 ## External system adapters
 

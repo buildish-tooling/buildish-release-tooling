@@ -16,11 +16,11 @@
 
 from __future__ import annotations
 
-import json
 import re
 from argparse import Namespace
 from pathlib import Path
-from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from apache_buildish_release_tooling.release.artifact_registration.common import (
     common_artifact_metadata,
@@ -38,6 +38,28 @@ from apache_buildish_release_tooling.release.process import (
 )
 
 _DIGEST_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_+.-]*:[0-9a-fA-F]{32,}$")
+
+
+class _ExternalOciReadModel(BaseModel):
+    """Typed subset base for external OCI inspection payloads."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class _OciPlatformRead(_ExternalOciReadModel):
+    os: str | None = None
+    architecture: str | None = None
+    variant: str | None = None
+
+
+class _OciManifestEntryRead(_ExternalOciReadModel):
+    digest: str | None = None
+    platform: _OciPlatformRead | None = None
+
+
+class _OciManifestRead(_ExternalOciReadModel):
+    digest: str | None = None
+    manifests: list[_OciManifestEntryRead] = Field(default_factory=list)
 
 
 def _required_text(raw_value: object | None, *, option_name: str) -> str:
@@ -131,30 +153,25 @@ def _derived_registry_and_repository(image_ref: str) -> tuple[str, str]:
     return "docker.io", repository
 
 
-def _platform_string(platform_payload: dict[str, Any]) -> str | None:
-    os_name = platform_payload.get("os")
-    architecture = platform_payload.get("architecture")
-    if not isinstance(os_name, str) or not os_name or os_name == "unknown":
+def _platform_string(platform_payload: _OciPlatformRead) -> str | None:
+    os_name = platform_payload.os
+    architecture = platform_payload.architecture
+    if os_name is None or not os_name or os_name == "unknown":
         return None
-    if not isinstance(architecture, str) or not architecture or architecture == "unknown":
+    if architecture is None or not architecture or architecture == "unknown":
         return None
-    variant = platform_payload.get("variant")
-    if isinstance(variant, str) and variant:
+    variant = platform_payload.variant
+    if variant:
         return f"{os_name}/{architecture}/{variant}"
     return f"{os_name}/{architecture}"
 
 
-def _derived_platform_digest_entries(manifest_payload: dict[str, Any]) -> list[OciPlatformDigest]:
-    manifest_entries = manifest_payload.get("manifests")
-    if not isinstance(manifest_entries, list):
-        return []
+def _derived_platform_digest_entries(manifest_payload: _OciManifestRead) -> list[OciPlatformDigest]:
     platform_digests: list[OciPlatformDigest] = []
     seen_platforms: set[str] = set()
-    for manifest_entry in manifest_entries:
-        if not isinstance(manifest_entry, dict):
-            continue
-        platform_payload = manifest_entry.get("platform")
-        if not isinstance(platform_payload, dict):
+    for manifest_entry in manifest_payload.manifests:
+        platform_payload = manifest_entry.platform
+        if platform_payload is None:
             continue
         platform = _platform_string(platform_payload)
         if platform is None:
@@ -166,7 +183,7 @@ def _derived_platform_digest_entries(manifest_payload: dict[str, Any]) -> list[O
             OciPlatformDigest(
                 platform=platform,
                 digest=_normalized_digest(
-                    manifest_entry.get("digest"),
+                    manifest_entry.digest,
                     option_name="registry manifest digest",
                 ),
             )
@@ -195,17 +212,13 @@ def _inspect_image_ref(
     except CommandExecutionError as exc:
         raise ValueError(f"oci-image failed to inspect --image-ref {image_ref}: {exc}") from exc
     try:
-        manifest_payload = json.loads(completed.stdout)
-    except json.JSONDecodeError as exc:
+        manifest_payload = _OciManifestRead.model_validate_json(completed.stdout)
+    except Exception as exc:
         raise ValueError(
             f"oci-image docker buildx imagetools inspect returned invalid JSON for --image-ref {image_ref}"
         ) from exc
-    if not isinstance(manifest_payload, dict):
-        raise ValueError(
-            f"oci-image docker buildx imagetools inspect did not return a manifest object for --image-ref {image_ref}"
-        )
     registry, repository = _derived_registry_and_repository(image_ref)
-    digest = _normalized_digest(manifest_payload.get("digest"), option_name="registry manifest digest")
+    digest = _normalized_digest(manifest_payload.digest, option_name="registry manifest digest")
     return registry, repository, digest, _derived_platform_digest_entries(manifest_payload)
 
 
