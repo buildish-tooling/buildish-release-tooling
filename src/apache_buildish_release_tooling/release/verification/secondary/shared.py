@@ -23,7 +23,12 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from apache_buildish_release_tooling.release.contracts import RcVoteManifestReadV1
+from apache_buildish_release_tooling.release.contracts import (
+    AnySecondaryArtifact,
+    InventoryVerificationReport,
+    RcVoteManifestReadV1,
+    StrictSecondaryArtifactAdapter,
+)
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.common import (
@@ -46,14 +51,17 @@ class DownloadedInventory:
 
     path: Path
     raw_payload: dict[str, Any]
-    report_payload: dict[str, Any]
+    report_payload: InventoryVerificationReport
+
+
+SecondaryArtifactEntry = AnySecondaryArtifact | dict[str, Any]
 
 
 def secondary_artifact_entries(
     manifest_payload: RcVoteManifestReadV1 | dict[str, Any],
     *,
     source: str,
-) -> list[Any]:
+) -> list[SecondaryArtifactEntry]:
     if isinstance(manifest_payload, RcVoteManifestReadV1):
         return list(manifest_payload.vote_materials.secondary_artifacts)
     vote_materials = manifest_payload.get("vote_materials")
@@ -62,7 +70,17 @@ def secondary_artifact_entries(
     secondary_artifacts = vote_materials.get("secondary_artifacts")
     if not isinstance(secondary_artifacts, list):
         raise ValueError(f"manifest secondary_artifacts must be a list: {source}")
-    return list(secondary_artifacts)
+    entries: list[SecondaryArtifactEntry] = []
+    for raw_entry in secondary_artifacts:
+        if isinstance(raw_entry, dict):
+            try:
+                entries.append(StrictSecondaryArtifactAdapter.validate_python(raw_entry))
+                continue
+            except Exception:
+                entries.append(dict(raw_entry))
+                continue
+        entries.append(raw_entry)
+    return entries
 
 
 def preferred_checksum_payload(
@@ -207,11 +225,11 @@ def downloaded_inventory(
     return DownloadedInventory(
         path=inventory_path,
         raw_payload=inventory_payload,
-        report_payload={
-            "filename": filename,
-            "uri": inventory_uri,
-            "sha512": actual_inventory_sha512,
-        },
+        report_payload=InventoryVerificationReport(
+            filename=filename,
+            uri=inventory_uri,
+            sha512=actual_inventory_sha512,
+        ),
     )
 
 

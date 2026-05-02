@@ -17,13 +17,19 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from apache_buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityCanonicalRecipeReport,
     ArtifactReproducibilityEffectiveExecutionReport,
+    ArtifactReproducibilityReport,
     ArtifactReproducibilityOverrideReport,
     FileLikeReproducibilityMetadata,
+    GenericFileSecondaryArtifact,
+    GenericFileWithOpenPgpSecondaryArtifact,
+    InspectionEvidenceReference,
+    NpmPackageSecondaryArtifact,
+    PythonDistributionSecondaryArtifact,
     RebuiltOutputSnapshot,
     RetainedArtifactSnapshot,
     ShallowArchiveAnalysisReport,
@@ -46,11 +52,16 @@ from apache_buildish_release_tooling.release.verification.rebuild import (
     run_host_direct_profile,
 )
 
-from .shared import required_non_empty_string
+FileLikeSecondaryArtifact = (
+    GenericFileSecondaryArtifact
+    | GenericFileWithOpenPgpSecondaryArtifact
+    | PythonDistributionSecondaryArtifact
+    | NpmPackageSecondaryArtifact
+)
 
 
 def verify_host_direct_single_file_reproducibility(
-    artifact_entry: dict[str, Any],
+    artifact_entry: FileLikeSecondaryArtifact,
     *,
     manifest_url: str,
     artifact_id: str,
@@ -68,31 +79,26 @@ def verify_host_direct_single_file_reproducibility(
     inspection_bundle_root: Path | None,
     subject_label: str,
     profile_overrides: VerifyRcOverrideConfig | None,
-) -> dict[str, Any]:
+) -> ArtifactReproducibilityReport:
     """Run one host-direct rebuild recipe and compare its single output file against staged bytes."""
 
-    raw_reproducibility = artifact_entry.get("reproducibility")
-    if not isinstance(raw_reproducibility, dict):
-        return {
-            "profile_id": "n/a",
-            "verdict": "failed",
-            "comparison_mode": "exact-bytes",
-            "canonical_recipe": None,
-            "effective_execution": None,
-            "override": {"applied": False},
-            "matches_remote_bytes": None,
-            "failure_class": "missing-profile",
-            "evidence": [],
-            "issues": [
+    reproducibility_selector = artifact_entry.reproducibility
+    if reproducibility_selector is None:
+        return ArtifactReproducibilityReport(
+            profile_id="n/a",
+            verdict="failed",
+            comparison_mode="exact-bytes",
+            failure_class="missing-profile",
+            issues=[
                 f"manifest secondary artifact does not declare a reproducibility profile: {artifact_id}"
             ],
-        }
-    profile_id = required_non_empty_string(raw_reproducibility, "profile_id", source=manifest_url)
+        )
+    profile_id = reproducibility_selector.profile_id
     issues: list[str] = []
     matches_remote_bytes: bool | None = None
     comparison_mode = "exact-bytes"
     failure_class: str | None = None
-    evidence: list[dict[str, str]] = []
+    evidence: list[InspectionEvidenceReference] = []
     resolved_profile: ResolvedRebuildProfile | None = None
     canonical_recipe: ArtifactReproducibilityCanonicalRecipeReport | None = None
     effective_execution: ArtifactReproducibilityEffectiveExecutionReport | None = None
@@ -121,7 +127,7 @@ def verify_host_direct_single_file_reproducibility(
                 profile_overrides=profile_overrides,
             )
             profile = resolved_profile.profile
-            comparison_mode = str(profile.comparison.get("mode", comparison_mode))
+            comparison_mode = profile.comparison.mode
             canonical_recipe = canonical_recipe_payload(resolved_profile)
             override = override_payload(resolved_profile)
         except Exception as exc:
@@ -195,53 +201,46 @@ def verify_host_direct_single_file_reproducibility(
                 issues=issues,
             ),
         )
-        evidence.append({"label": "comparison-metadata", "path": metadata_path})
+        evidence.append(
+            InspectionEvidenceReference(
+                label="comparison-metadata",
+                path=metadata_path,
+            )
+        )
         if issues:
             evidence.append(
-                {
-                    "label": "staged-artifact",
-                    "path": retain_evidence_file(
+                InspectionEvidenceReference(
+                    label="staged-artifact",
+                    path=retain_evidence_file(
                         inspection_bundle_root,
                         artifact_id=artifact_id,
                         label_directory="staged",
                         source_path=artifact_path,
                     ),
-                }
+                )
             )
             for index, built_path in enumerate(build_result.output_paths, start=1):
                 evidence.append(
-                    {
-                        "label": "rebuilt-artifact" if index == 1 else f"rebuilt-artifact-{index}",
-                        "path": retain_evidence_file(
+                    InspectionEvidenceReference(
+                        label="rebuilt-artifact" if index == 1 else f"rebuilt-artifact-{index}",
+                        path=retain_evidence_file(
                             inspection_bundle_root,
                             artifact_id=artifact_id,
                             label_directory=f"rebuilt-{index:02d}",
                             source_path=built_path,
                         ),
-                    }
+                    )
                 )
-    return {
-        "profile_id": profile_id,
-        "verdict": "failed" if issues else "verified",
-        "comparison_mode": comparison_mode,
-        "canonical_recipe": (
-            canonical_recipe.model_dump(mode="json", exclude_none=True)
-            if canonical_recipe is not None
-            else None
-        ),
-        "effective_execution": (
-            effective_execution.model_dump(mode="json", exclude_none=True)
-            if effective_execution is not None
-            else None
-        ),
-        "override": override.model_dump(mode="json", exclude_none=True),
-        "matches_remote_bytes": matches_remote_bytes,
-        "failure_class": failure_class,
-        "archive_analysis": (
-            archive_analysis.model_dump(mode="json", exclude_none=True)
-            if archive_analysis is not None
-            else None
-        ),
-        "evidence": evidence,
-        "issues": issues,
-    }
+    return ArtifactReproducibilityReport(
+        profile_id=profile_id,
+        verdict="failed" if issues else "verified",
+        comparison_mode=comparison_mode,
+        canonical_recipe=canonical_recipe,
+        effective_execution=effective_execution,
+        override=override,
+        matches_remote_bytes=matches_remote_bytes,
+        failure_class=failure_class,
+        archive_analysis=archive_analysis,
+        evidence=evidence,
+        issues=issues,
+    )

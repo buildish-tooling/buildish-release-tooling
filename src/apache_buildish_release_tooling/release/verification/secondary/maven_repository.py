@@ -20,8 +20,9 @@ import hashlib
 import io
 import re
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Literal
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     _RemoteHttpClient,
@@ -35,12 +36,26 @@ from apache_buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityCanonicalRecipeReport,
     ArtifactReproducibilityEffectiveExecutionReport,
     ArtifactReproducibilityOverrideReport,
+    ArtifactReproducibilityReport,
+    InspectionEvidenceReference,
+    InventoryVerificationReport,
+    LiveMavenRepositoryReport,
+    LiveRepositorySignatureVerification,
+    MavenRepositoryInventoryEntry,
+    MavenRepositoryInventoryV1,
     MavenRepositoryPathMode,
     MavenRepositoryPathResultReport,
     MavenRepositoryPathRuleReport,
     MavenRepositoryReproducibilityMetadata,
+    MavenRepositorySecondaryArtifact,
+    MavenRepositoryVerificationReport,
+    SignatureVerificationPayload,
 )
-from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
+from apache_buildish_release_tooling.release.models import (
+    ComponentConfig,
+    VerifyRcMavenRepositoryComparisonConfig,
+    VerifyRcOverrideConfig,
+)
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.verification.common import emit_info, emit_success, update_info
 from apache_buildish_release_tooling.release.verification.common import (
@@ -63,20 +78,19 @@ from apache_buildish_release_tooling.release.verification.rebuild import (
 
 from .shared import (
     downloaded_inventory,
-    required_hex_digest,
-    required_non_empty_string,
 )
 
-_SUPPORTED_MAVEN_REPOSITORY_PATH_MODES = {
-    "exact-bytes",
-    "zip-normalized",
-    "content-only",
-    "remote-only",
-}
 
+@dataclass(frozen=True)
+class _NormalizedZipEntry:
+    """One normalized ZIP member used by Maven reproducibility comparison."""
+
+    is_dir: bool
+    mode: int | None
+    sha512: str | None
 
 def verify_maven_repository(
-    artifact_entry: dict[str, Any],
+    artifact_entry: MavenRepositorySecondaryArtifact,
     *,
     manifest_url: str,
     work_dir: Path,
@@ -89,17 +103,13 @@ def verify_maven_repository(
     build_checks_allowed: bool,
     inspection_bundle_root: Path | None,
     profile_overrides: VerifyRcOverrideConfig | None,
-) -> dict[str, Any]:
-    artifact_id = required_non_empty_string(artifact_entry, "artifact_id", source=manifest_url)
-    staging_repository_id = required_non_empty_string(
-        artifact_entry,
-        "staging_repository_id",
-        source=manifest_url,
-    )
-    base_url = required_non_empty_string(artifact_entry, "base_url", source=manifest_url)
+) -> MavenRepositoryVerificationReport:
+    artifact_id = artifact_entry.artifact_id
+    staging_repository_id = artifact_entry.staging_repository_id
+    base_url = artifact_entry.base_url
     issues: list[str] = []
-    inventory_payload: dict[str, Any] | None = None
-    inventory_report_payload: dict[str, Any] | None = None
+    inventory_payload: MavenRepositoryInventoryV1 | None = None
+    inventory_report_payload: InventoryVerificationReport | None = None
     try:
         validate_fetch_uri(
             base_url,
@@ -112,7 +122,7 @@ def verify_maven_repository(
 
     try:
         fetched_inventory = downloaded_inventory(
-            artifact_entry,
+            artifact_entry.model_dump(mode="json", exclude_none=True),
             manifest_url=manifest_url,
             artifact_id=artifact_id,
             work_dir=work_dir,
@@ -120,7 +130,7 @@ def verify_maven_repository(
         )
         if fetched_inventory is None:
             raise ValueError(f"manifest maven-repository artifact is missing inventory: {artifact_id}")
-        inventory_report_payload = dict(fetched_inventory.report_payload)
+        inventory_report_payload = fetched_inventory.report_payload
         inventory_payload = _validated_maven_inventory_payload(
             fetched_inventory.raw_payload,
             artifact_id=artifact_id,
@@ -136,7 +146,7 @@ def verify_maven_repository(
     if not issues and base_url.startswith(("http://", "https://")):
         remote_http_client = _RemoteHttpClient.for_worker_count(worker_count)
 
-    expected_entries: dict[str, dict[str, Any]] = {}
+    expected_entries: dict[str, MavenRepositoryInventoryEntry] = {}
     total_size_bytes = 0
     signature_verifications: tuple[tuple[str, str, SignatureVerification], ...] = ()
     matches_signed_inventory = False
@@ -157,10 +167,7 @@ def verify_maven_repository(
             }
             staged_repository_files_by_path = dict(files_by_relative_path)
             total_size_bytes = sum(repository_file.size_bytes for repository_file in repository_files)
-            expected_entries = _maven_inventory_entries(
-                inventory_payload,
-                source=manifest_url,
-            )
+            expected_entries = _maven_inventory_entries(inventory_payload)
             emit_info(
                 progress_reporter,
                 f"Checking live repository against signed inventory ({len(expected_entries)} entries)",
@@ -182,10 +189,10 @@ def verify_maven_repository(
             for index, relative_path in enumerate(common_paths, start=1):
                 repository_file = files_by_relative_path[relative_path]
                 expected_entry = expected_entries[relative_path]
-                if repository_file.size_bytes != expected_entry["size_bytes"]:
+                if repository_file.size_bytes != expected_entry.size_bytes:
                     issues.append(
                         "live maven repository file size does not match the signed inventory: "
-                        f"{relative_path} {repository_file.size_bytes} != {expected_entry['size_bytes']}"
+                        f"{relative_path} {repository_file.size_bytes} != {expected_entry.size_bytes}"
                     )
                     content_issues += 1
                 try:
@@ -200,10 +207,10 @@ def verify_maven_repository(
                     issues.append(str(exc))
                     content_issues += 1
                     continue
-                if actual_sha512 != expected_entry["sha512"]:
+                if actual_sha512 != expected_entry.sha512:
                     issues.append(
                         "live maven repository checksum does not match the signed inventory: "
-                        f"{relative_path} {actual_sha512} != {expected_entry['sha512']}"
+                        f"{relative_path} {actual_sha512} != {expected_entry.sha512}"
                     )
                     content_issues += 1
                 update_info(
@@ -225,31 +232,33 @@ def verify_maven_repository(
         if remote_http_client is not None:
             remote_http_client.close()
 
-    inventory_metadata = artifact_entry.get("inventory")
-    if isinstance(inventory_metadata, dict) and inventory_report_payload is not None:
-        entry_count = inventory_metadata.get("entry_count")
-        if isinstance(entry_count, int):
-            inventory_report_payload["entry_count"] = entry_count
-            if expected_entries and entry_count != len(expected_entries):
-                issues.append(
-                    "manifest maven inventory entry_count does not match the signed inventory: "
-                    f"{entry_count} != {len(expected_entries)}"
-                )
-        total_size_metadata = inventory_metadata.get("total_size_bytes")
-        if isinstance(total_size_metadata, int):
-            inventory_report_payload["total_size_bytes"] = total_size_metadata
-            if total_size_bytes and total_size_metadata != total_size_bytes:
-                issues.append(
-                    "manifest maven inventory total_size_bytes does not match the live repository: "
-                    f"{total_size_metadata} != {total_size_bytes}"
-                )
+    inventory_metadata = artifact_entry.inventory
+    if inventory_report_payload is not None:
+        entry_count = inventory_metadata.entry_count
+        total_size_metadata = inventory_metadata.total_size_bytes
+        inventory_report_payload = inventory_report_payload.model_copy(
+            update={
+                "entry_count": entry_count,
+                "total_size_bytes": total_size_metadata,
+            }
+        )
+        if entry_count is not None and expected_entries and entry_count != len(expected_entries):
+            issues.append(
+                "manifest maven inventory entry_count does not match the signed inventory: "
+                f"{entry_count} != {len(expected_entries)}"
+            )
+        if total_size_metadata is not None and total_size_bytes and total_size_metadata != total_size_bytes:
+            issues.append(
+                "manifest maven inventory total_size_bytes does not match the live repository: "
+                f"{total_size_metadata} != {total_size_bytes}"
+            )
     if not issues and expected_entries:
         emit_success(
             progress_reporter,
             f"Verified maven repository inventory: {len(expected_entries)} entries",
         )
-    reproducibility_verification: dict[str, Any] | None = None
-    if build_checks_allowed and artifact_entry.get("reproducibility") is not None:
+    reproducibility_verification: ArtifactReproducibilityReport | None = None
+    if build_checks_allowed and artifact_entry.reproducibility is not None:
         reproducibility_verification = _verify_maven_repository_reproducibility(
             artifact_entry,
             manifest_url=manifest_url,
@@ -269,35 +278,36 @@ def verify_maven_repository(
             progress_reporter=progress_reporter,
             profile_overrides=profile_overrides,
         )
-        issues.extend(str(issue) for issue in reproducibility_verification.get("issues", []))
+        issues.extend(reproducibility_verification.issues)
 
-    return {
-        "artifact_id": artifact_id,
-        "kind": "maven-repository",
-        "verdict": "failed" if issues else "verified",
-        "issues": issues,
-        "staging_repository_id": staging_repository_id,
-        "base_url": base_url,
-        "inventory": inventory_report_payload,
-        "live_repository": {
-            "entry_count": len(expected_entries) if expected_entries else None,
-            "total_size_bytes": total_size_bytes,
-            "matches_signed_inventory": matches_signed_inventory,
-            "signature_verifications": [
-                {
-                    "path": relative_path,
-                    "target_path": target_path,
-                    "signature": signature_payload(signature_verification),
-                }
+    return MavenRepositoryVerificationReport(
+        artifact_id=artifact_id,
+        verdict="failed" if issues else "verified",
+        issues=issues,
+        staging_repository_id=staging_repository_id,
+        base_url=base_url,
+        inventory=inventory_report_payload,
+        live_repository=LiveMavenRepositoryReport(
+            entry_count=len(expected_entries) if expected_entries else None,
+            total_size_bytes=total_size_bytes,
+            matches_signed_inventory=matches_signed_inventory,
+            signature_verifications=[
+                LiveRepositorySignatureVerification(
+                    path=relative_path,
+                    target_path=target_path,
+                    signature=SignatureVerificationPayload.model_validate(
+                        signature_payload(signature_verification)
+                    ),
+                )
                 for relative_path, target_path, signature_verification in signature_verifications
             ],
-        },
-        "reproducibility": reproducibility_verification,
-    }
+        ),
+        reproducibility=reproducibility_verification,
+    )
 
 
 def _verify_maven_repository_reproducibility(
-    artifact_entry: dict[str, Any],
+    artifact_entry: MavenRepositorySecondaryArtifact,
     *,
     manifest_url: str,
     artifact_id: str,
@@ -306,34 +316,29 @@ def _verify_maven_repository_reproducibility(
     project_root: Path | None,
     source_date_epoch: int | None,
     inspection_bundle_root: Path | None,
-    inventory_payload: dict[str, Any] | None,
+    inventory_payload: MavenRepositoryInventoryV1 | None,
     staged_by_path: dict[str, _RepositoryFile],
     staged_cache: dict[str, bytes],
     progress_reporter: ProgressReporter,
     profile_overrides: VerifyRcOverrideConfig | None,
-) -> dict[str, Any]:
-    raw_reproducibility = artifact_entry.get("reproducibility")
-    if not isinstance(raw_reproducibility, dict):
-        return {
-            "profile_id": "n/a",
-            "verdict": "failed",
-            "comparison_mode": "repository-tree",
-            "canonical_recipe": None,
-            "effective_execution": None,
-            "override": {"applied": False},
-            "matches_remote_bytes": None,
-            "failure_class": "missing-profile",
-            "evidence": [],
-            "issues": [
+) -> ArtifactReproducibilityReport:
+    reproducibility_selector = artifact_entry.reproducibility
+    if reproducibility_selector is None:
+        return ArtifactReproducibilityReport(
+            profile_id="n/a",
+            verdict="failed",
+            comparison_mode="repository-tree",
+            failure_class="missing-profile",
+            issues=[
                 f"manifest secondary artifact does not declare a reproducibility profile: {artifact_id}"
             ],
-        }
-    profile_id = required_non_empty_string(raw_reproducibility, "profile_id", source=manifest_url)
+        )
+    profile_id = reproducibility_selector.profile_id
     issues: list[str] = []
     matches_remote_bytes: bool | None = None
     comparison_mode = "repository-tree"
     failure_class: str | None = None
-    evidence: list[dict[str, str]] = []
+    evidence: list[InspectionEvidenceReference] = []
     repository_dir: str | None = None
     require_signatures = False
     path_rules: tuple[MavenRepositoryPathRuleReport, ...] = ()
@@ -369,23 +374,19 @@ def _verify_maven_repository_reproducibility(
                 profile_overrides=profile_overrides,
             )
             profile = resolved_profile.profile
-            comparison_mode = required_non_empty_string(
-                profile.comparison,
-                "mode",
-                source=f"verify_rc profile {profile_id!r}",
-            )
-            if comparison_mode != "repository-tree":
+            if not isinstance(profile.comparison, VerifyRcMavenRepositoryComparisonConfig):
                 raise ValueError(
                     f"verify_rc profile {profile_id!r} must use comparison.mode 'repository-tree' for maven-repository artifacts"
                 )
-            repository_dir = _validated_repository_dir(
-                profile.comparison,
-                source=f"verify_rc profile {profile_id!r}",
-            )
-            require_signatures = bool(profile.comparison.get("require_signatures", False))
-            path_rules = _validated_path_rules(
-                profile.comparison.get("path_rules"),
-                source=f"verify_rc profile {profile_id!r}",
+            comparison_mode = profile.comparison.mode
+            repository_dir = profile.comparison.repository_dir
+            require_signatures = profile.comparison.require_signatures
+            path_rules = tuple(
+                MavenRepositoryPathRuleReport(
+                    pattern=rule.pattern,
+                    mode=rule.mode,
+                )
+                for rule in profile.comparison.path_rules
             )
             canonical_recipe = canonical_recipe_payload(resolved_profile)
             override = override_payload(resolved_profile)
@@ -456,73 +457,24 @@ def _verify_maven_repository_reproducibility(
                 issues=issues,
             ),
         )
-        evidence.append({"label": "comparison-metadata", "path": metadata_path})
-    return {
-        "profile_id": profile_id,
-        "verdict": "failed" if issues else "verified",
-        "comparison_mode": comparison_mode,
-        "canonical_recipe": (
-            canonical_recipe.model_dump(mode="json", exclude_none=True)
-            if canonical_recipe is not None
-            else None
-        ),
-        "effective_execution": (
-            effective_execution.model_dump(mode="json", exclude_none=True)
-            if effective_execution is not None
-            else None
-        ),
-        "override": override.model_dump(mode="json", exclude_none=True),
-        "matches_remote_bytes": matches_remote_bytes,
-        "failure_class": failure_class,
-        "evidence": evidence,
-        "issues": issues,
-    }
-
-
-def _validated_repository_dir(
-    comparison_payload: dict[str, Any],
-    *,
-    source: str,
-) -> str:
-    repository_dir = required_non_empty_string(comparison_payload, "repository_dir", source=source)
-    if Path(repository_dir).is_absolute():
-        raise ValueError(f"verify_rc maven repository_dir must be relative to the project root: {source}")
-    return repository_dir
-
-
-def _validated_path_rules(
-    raw_rules: Any,
-    *,
-    source: str,
-) -> tuple[MavenRepositoryPathRuleReport, ...]:
-    if raw_rules is None:
-        return ()
-    if not isinstance(raw_rules, list):
-        raise ValueError(f"verify_rc maven path_rules must be a list: {source}")
-    rules: list[MavenRepositoryPathRuleReport] = []
-    for index, raw_rule in enumerate(raw_rules, start=1):
-        if not isinstance(raw_rule, dict):
-            raise ValueError(f"verify_rc maven path_rules[{index}] must be an object: {source}")
-        pattern = required_non_empty_string(raw_rule, "pattern", source=source)
-        mode = required_non_empty_string(raw_rule, "mode", source=source)
-        if mode not in _SUPPORTED_MAVEN_REPOSITORY_PATH_MODES:
-            supported_modes = ", ".join(sorted(_SUPPORTED_MAVEN_REPOSITORY_PATH_MODES))
-            raise ValueError(
-                f"verify_rc maven path_rules[{index}] mode must be one of {supported_modes}: {source}"
-            )
-        try:
-            re.compile(pattern)
-        except re.error as exc:
-            raise ValueError(
-                f"verify_rc maven path_rules[{index}] pattern is not a valid regular expression: {pattern}"
-            ) from exc
-        rules.append(
-            MavenRepositoryPathRuleReport(
-                pattern=pattern,
-                mode=cast(MavenRepositoryPathMode, mode),
+        evidence.append(
+            InspectionEvidenceReference(
+                label="comparison-metadata",
+                path=metadata_path,
             )
         )
-    return tuple(rules)
+    return ArtifactReproducibilityReport(
+        profile_id=profile_id,
+        verdict="failed" if issues else "verified",
+        comparison_mode=comparison_mode,
+        canonical_recipe=canonical_recipe,
+        effective_execution=effective_execution,
+        override=override,
+        matches_remote_bytes=matches_remote_bytes,
+        failure_class=failure_class,
+        evidence=evidence,
+        issues=issues,
+    )
 
 
 def _path_mode_for_repository_entry(
@@ -753,11 +705,11 @@ def _compare_zip_payloads(
     for relative_path in sorted(staged_paths):
         staged_entry = staged_entries[relative_path]
         rebuilt_entry = rebuilt_entries[relative_path]
-        if staged_entry["is_dir"] != rebuilt_entry["is_dir"]:
+        if staged_entry.is_dir != rebuilt_entry.is_dir:
             return False, f"archive member type differs: {relative_path}"
-        if compare_permissions and staged_entry["mode"] != rebuilt_entry["mode"]:
+        if compare_permissions and staged_entry.mode != rebuilt_entry.mode:
             return False, f"archive member permissions differ: {relative_path}"
-        if staged_entry["sha512"] != rebuilt_entry["sha512"]:
+        if staged_entry.sha512 != rebuilt_entry.sha512:
             return False, f"archive member contents differ: {relative_path}"
     if compare_permissions:
         return True, "archives matched after zip-normalized comparison"
@@ -768,21 +720,21 @@ def _normalized_zip_entries(
     payload: bytes,
     *,
     compare_permissions: bool,
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, _NormalizedZipEntry]:
     try:
         archive = zipfile.ZipFile(io.BytesIO(payload))
     except zipfile.BadZipFile as exc:
         raise ValueError("comparison requires ZIP-like archives") from exc
-    entries: dict[str, dict[str, Any]] = {}
+    entries: dict[str, _NormalizedZipEntry] = {}
     with archive:
         for info in archive.infolist():
             if info.filename in entries:
                 raise ValueError(f"archive member is duplicated: {info.filename}")
-            entries[info.filename] = {
-                "is_dir": info.is_dir(),
-                "mode": ((info.external_attr >> 16) & 0o777) if compare_permissions else None,
-                "sha512": None if info.is_dir() else hashlib.sha512(archive.read(info)).hexdigest(),
-            }
+            entries[info.filename] = _NormalizedZipEntry(
+                is_dir=info.is_dir(),
+                mode=((info.external_attr >> 16) & 0o777) if compare_permissions else None,
+                sha512=None if info.is_dir() else hashlib.sha512(archive.read(info)).hexdigest(),
+            )
     return entries
 
 
@@ -795,67 +747,39 @@ def _maven_reproducibility_failure_class(
 
 
 def _validated_maven_inventory_payload(
-    inventory_payload: dict[str, Any],
+    inventory_payload: dict[str, object],
     *,
     artifact_id: str,
     staging_repository_id: str,
     base_url: str,
     source: str,
-) -> dict[str, Any]:
-    inventory_type = required_non_empty_string(inventory_payload, "inventory_type", source=source)
-    if inventory_type != "maven-repository":
-        raise ValueError(f"unexpected maven inventory_type: {inventory_type}")
-    if required_non_empty_string(inventory_payload, "artifact_id", source=source) != artifact_id:
+) -> MavenRepositoryInventoryV1:
+    inventory = MavenRepositoryInventoryV1.model_validate(inventory_payload)
+    if inventory.artifact_id != artifact_id:
         raise ValueError("maven inventory artifact_id does not match the manifest secondary artifact")
-    if required_non_empty_string(
-        inventory_payload,
-        "staging_repository_id",
-        source=source,
-    ) != staging_repository_id:
+    if inventory.staging_repository_id != staging_repository_id:
         raise ValueError(
             "maven inventory staging_repository_id does not match the manifest secondary artifact"
         )
-    if required_non_empty_string(inventory_payload, "base_url", source=source) != base_url:
+    if inventory.base_url != base_url:
         raise ValueError("maven inventory base_url does not match the manifest secondary artifact")
-    entries = inventory_payload.get("entries")
-    if not isinstance(entries, list) or not entries:
-        raise ValueError(f"maven inventory entries must be a non-empty list: {source}")
-    return inventory_payload
+    return inventory
 
 
 def _maven_inventory_entries(
-    inventory_payload: dict[str, Any],
-    *,
-    source: str,
-) -> dict[str, dict[str, Any]]:
-    raw_entries = inventory_payload.get("entries")
-    if not isinstance(raw_entries, list):
-        raise ValueError(f"maven inventory entries must be a list: {source}")
-    entries: dict[str, dict[str, Any]] = {}
-    for raw_entry in raw_entries:
-        if not isinstance(raw_entry, dict):
-            raise ValueError(f"maven inventory entries must be objects: {source}")
-        relative_path = required_non_empty_string(raw_entry, "path", source=source)
+    inventory_payload: MavenRepositoryInventoryV1,
+) -> dict[str, MavenRepositoryInventoryEntry]:
+    entries: dict[str, MavenRepositoryInventoryEntry] = {}
+    for entry in inventory_payload.entries:
+        relative_path = entry.path
         if relative_path in entries:
             raise ValueError(f"maven inventory path is duplicated: {relative_path}")
-        size_bytes = raw_entry.get("size_bytes")
-        if not isinstance(size_bytes, int) or size_bytes < 0:
-            raise ValueError(f"maven inventory size_bytes must be a non-negative integer: {relative_path}")
-        sha512_value = required_hex_digest(
-            raw_entry,
-            "sha512",
-            algorithm="sha512",
-            source=source,
-        )
-        entries[relative_path] = {
-            "size_bytes": size_bytes,
-            "sha512": sha512_value,
-        }
+        entries[relative_path] = entry
     return entries
 
 
 def _verified_maven_repository_signatures(
-    files_by_relative_path: dict[str, Any],
+    files_by_relative_path: dict[str, _RepositoryFile],
     *,
     cache: dict[str, bytes],
     remote_http_client: _RemoteHttpClient | None,

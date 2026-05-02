@@ -21,7 +21,18 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from apache_buildish_release_tooling.release.contracts import RcVoteManifestReadV1
+from apache_buildish_release_tooling.release.contracts import (
+    AnySecondaryArtifactVerification,
+    GenericFileSecondaryArtifact,
+    GenericFileWithOpenPgpSecondaryArtifact,
+    InvalidSecondaryArtifactVerificationReport,
+    MavenRepositorySecondaryArtifact,
+    NpmPackageSecondaryArtifact,
+    OciImageSecondaryArtifact,
+    PythonDistributionSecondaryArtifact,
+    RcVoteManifestReadV1,
+    StrictSecondaryArtifactAdapter,
+)
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.verification.common import (
@@ -39,7 +50,7 @@ from .maven_repository import verify_maven_repository
 from .npm_package import verify_npm_package
 from .oci_image import verify_oci_image
 from .python_distribution import verify_python_distribution
-from .shared import required_non_empty_string, safe_path_component, secondary_artifact_entries
+from .shared import SecondaryArtifactEntry, safe_path_component, secondary_artifact_entries
 
 INVALID_SECONDARY_ARTIFACT_KIND = "_invalid-secondary-artifact-entry"
 
@@ -60,7 +71,7 @@ def verify_secondary_artifacts(
     build_checks_allowed: bool,
     inspection_bundle_root: Path | None,
     profile_overrides: VerifyRcOverrideConfig | None,
-) -> list[dict[str, Any]]:
+) -> list[AnySecondaryArtifactVerification]:
     """Verify all supported secondary artifacts declared in the signed vote manifest."""
 
     work_dir.mkdir(parents=True, exist_ok=True)
@@ -70,7 +81,7 @@ def verify_secondary_artifacts(
     if total_artifacts == 0:
         emit_warning(progress_reporter, "No secondary artifacts declared in the signed manifest")
         return []
-    verifications: list[dict[str, Any]] = []
+    verifications: list[AnySecondaryArtifactVerification] = []
     for index, artifact_entry in enumerate(artifact_entries, start=1):
         artifact_label = _artifact_label(artifact_entry, index=index)
         declared_kind = _declared_kind(artifact_entry)
@@ -78,16 +89,10 @@ def verify_secondary_artifacts(
         emit_section(progress_reporter, f"Secondary Artifact {index}/{total_artifacts}: {artifact_label}")
         emit_detail(progress_reporter, "Kind", declared_kind or "n/a")
         try:
-            artifact_payload = _artifact_payload(artifact_entry, manifest_url=manifest_url)
-            required_non_empty_string(
-                artifact_payload,
-                "artifact_id",
-                source=manifest_url,
-            )
-            kind = required_non_empty_string(artifact_payload, "kind", source=manifest_url)
-            if kind == "generic-file":
+            verification: AnySecondaryArtifactVerification
+            if isinstance(artifact_entry, GenericFileSecondaryArtifact):
                 verification = verify_generic_file(
-                    artifact_payload,
+                    artifact_entry,
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
                     verifier=verifier,
@@ -100,9 +105,9 @@ def verify_secondary_artifacts(
                     inspection_bundle_root=inspection_bundle_root,
                     profile_overrides=profile_overrides,
                 )
-            elif kind == "generic-file-with-openpgp":
+            elif isinstance(artifact_entry, GenericFileWithOpenPgpSecondaryArtifact):
                 verification = verify_generic_file(
-                    artifact_payload,
+                    artifact_entry,
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
                     verifier=verifier,
@@ -115,9 +120,9 @@ def verify_secondary_artifacts(
                     inspection_bundle_root=inspection_bundle_root,
                     profile_overrides=profile_overrides,
                 )
-            elif kind == "maven-repository":
+            elif isinstance(artifact_entry, MavenRepositorySecondaryArtifact):
                 verification = verify_maven_repository(
-                    artifact_payload,
+                    artifact_entry,
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
                     verifier=verifier,
@@ -130,9 +135,9 @@ def verify_secondary_artifacts(
                     inspection_bundle_root=inspection_bundle_root,
                     profile_overrides=profile_overrides,
                 )
-            elif kind == "python-distribution":
+            elif isinstance(artifact_entry, PythonDistributionSecondaryArtifact):
                 verification = verify_python_distribution(
-                    artifact_payload,
+                    artifact_entry,
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
                     allow_non_production_release_targets=allow_non_production_release_targets,
@@ -143,9 +148,9 @@ def verify_secondary_artifacts(
                     inspection_bundle_root=inspection_bundle_root,
                     profile_overrides=profile_overrides,
                 )
-            elif kind == "npm-package":
+            elif isinstance(artifact_entry, NpmPackageSecondaryArtifact):
                 verification = verify_npm_package(
-                    artifact_payload,
+                    artifact_entry,
                     manifest_url=manifest_url,
                     work_dir=artifact_work_dir,
                     allow_non_production_release_targets=allow_non_production_release_targets,
@@ -156,10 +161,9 @@ def verify_secondary_artifacts(
                     inspection_bundle_root=inspection_bundle_root,
                     profile_overrides=profile_overrides,
                 )
-            elif kind == "oci-image":
+            elif isinstance(artifact_entry, OciImageSecondaryArtifact):
                 verification = verify_oci_image(
-                    artifact_payload,
-                    manifest_url=manifest_url,
+                    artifact_entry,
                     work_dir=artifact_work_dir,
                     component_config=component_config,
                     project_root=project_root,
@@ -168,26 +172,29 @@ def verify_secondary_artifacts(
                     inspection_bundle_root=inspection_bundle_root,
                     profile_overrides=profile_overrides,
                 )
+            elif isinstance(artifact_entry, dict):
+                raise ValueError(_malformed_secondary_artifact_issue(artifact_entry, manifest_url))
             else:
-                raise ValueError(f"unsupported secondary artifact kind in manifest: {kind}")
+                raise ValueError(
+                    f"unsupported secondary artifact kind in manifest: {declared_kind or 'n/a'}"
+                )
         except Exception as exc:
-            verification = {
-                "artifact_id": artifact_label,
-                "kind": INVALID_SECONDARY_ARTIFACT_KIND,
-                "declared_kind": declared_kind,
-                "verdict": "failed",
-                "issues": [str(exc)],
-            }
-        _emit_secondary_artifact_summary(progress_reporter, verification)
+            verification = InvalidSecondaryArtifactVerificationReport(
+                artifact_id=artifact_label,
+                declared_kind=declared_kind,
+                issues=[str(exc)],
+            )
+        _emit_secondary_artifact_summary(
+            progress_reporter,
+            verification.model_dump(mode="json", exclude_none=True),
+        )
         verifications.append(verification)
     return verifications
 
 
-def _artifact_label(artifact_entry: Any, *, index: int) -> str:
+def _artifact_label(artifact_entry: SecondaryArtifactEntry, *, index: int) -> str:
     if isinstance(artifact_entry, BaseModel):
-        raw_artifact_id = getattr(artifact_entry, "artifact_id", None)
-        if isinstance(raw_artifact_id, str) and raw_artifact_id.strip():
-            return raw_artifact_id.strip()
+        return str(getattr(artifact_entry, "artifact_id", f"secondary-artifact-{index}"))
     if isinstance(artifact_entry, dict):
         raw_artifact_id = artifact_entry.get("artifact_id")
         if isinstance(raw_artifact_id, str) and raw_artifact_id.strip():
@@ -195,7 +202,7 @@ def _artifact_label(artifact_entry: Any, *, index: int) -> str:
     return f"secondary-artifact-{index}"
 
 
-def _declared_kind(artifact_entry: Any) -> str | None:
+def _declared_kind(artifact_entry: SecondaryArtifactEntry) -> str | None:
     if isinstance(artifact_entry, BaseModel):
         raw_kind = getattr(artifact_entry, "kind", None)
         if isinstance(raw_kind, str) and raw_kind.strip():
@@ -208,12 +215,18 @@ def _declared_kind(artifact_entry: Any) -> str | None:
     return raw_kind.strip()
 
 
-def _artifact_payload(artifact_entry: Any, *, manifest_url: str) -> dict[str, Any]:
-    if isinstance(artifact_entry, BaseModel):
-        return artifact_entry.model_dump(mode="json", exclude_none=True)
-    if isinstance(artifact_entry, dict):
-        return dict(artifact_entry)
-    raise ValueError(f"manifest secondary artifact entry must be an object: {manifest_url}")
+def _malformed_secondary_artifact_issue(artifact_entry: dict[str, Any], manifest_url: str) -> str:
+    raw_artifact_id = artifact_entry.get("artifact_id")
+    if not isinstance(raw_artifact_id, str) or not raw_artifact_id.strip():
+        return f"manifest field artifact_id must be a non-empty string: {manifest_url}"
+    raw_kind = artifact_entry.get("kind")
+    if not isinstance(raw_kind, str) or not raw_kind.strip():
+        return f"manifest field kind must be a non-empty string: {manifest_url}"
+    try:
+        StrictSecondaryArtifactAdapter.validate_python(artifact_entry)
+    except Exception as exc:
+        return str(exc)
+    return f"manifest secondary artifact entry is malformed: {manifest_url}"
 
 
 def _emit_secondary_artifact_summary(

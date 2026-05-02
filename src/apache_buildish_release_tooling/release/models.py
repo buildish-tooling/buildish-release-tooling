@@ -188,6 +188,61 @@ class VerifyRcBuildOverrideConfig(BuildishContractModel):
         return self
 
 
+class VerifyRcExactBytesComparisonConfig(BuildishContractModel):
+    """Exact-byte comparison policy for source and file-like reproducibility profiles."""
+
+    mode: Literal["exact-bytes"] = "exact-bytes"
+
+
+class VerifyRcMavenPathRuleConfig(BuildishContractModel):
+    """One regex-based per-path comparison override inside a Maven repository profile."""
+
+    pattern: str
+    mode: Literal["exact-bytes", "zip-normalized", "content-only", "remote-only"]
+
+    @field_validator("pattern")
+    @classmethod
+    def _validate_pattern(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("verify_rc maven path_rules pattern must not be empty")
+        return normalized
+
+
+class VerifyRcMavenRepositoryComparisonConfig(BuildishContractModel):
+    """Repository-tree comparison policy for Maven repository reproducibility profiles."""
+
+    mode: Literal["repository-tree"] = "repository-tree"
+    repository_dir: str
+    require_signatures: bool = False
+    path_rules: list[VerifyRcMavenPathRuleConfig] = Field(default_factory=list)
+
+    @field_validator("repository_dir")
+    @classmethod
+    def _validate_repository_dir(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("verify_rc maven repository_dir must not be empty")
+        if Path(normalized).is_absolute():
+            raise ValueError("verify_rc maven repository_dir must be relative to the project root")
+        return normalized
+
+
+class VerifyRcOciImageComparisonConfig(BuildishContractModel):
+    """Digest-based OCI image comparison policy for image reproducibility profiles."""
+
+    mode: Literal["platform-digest", "provenance-only"]
+    image_ref: str
+
+    @field_validator("image_ref")
+    @classmethod
+    def _validate_image_ref(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("verify_rc oci image_ref must not be empty")
+        return normalized
+
+
 class VerifyRcProfileOverrideConfig(BuildishContractModel):
     """Local non-canonical override for one canonical reproducibility profile."""
 
@@ -207,15 +262,31 @@ class VerifyRcProfileConfig(BuildishContractModel):
         "python-distribution",
     ]
     build: VerifyRcBuildConfig
-    comparison: dict[str, Any]
+    comparison: (
+        VerifyRcExactBytesComparisonConfig
+        | VerifyRcMavenRepositoryComparisonConfig
+        | VerifyRcOciImageComparisonConfig
+    )
 
-    @field_validator("comparison", mode="after")
-    @classmethod
-    def _validate_comparison(cls, value: dict[str, Any]) -> dict[str, Any]:
-        mode = value.get("mode")
-        if not isinstance(mode, str) or not mode.strip():
-            raise ValueError("verify_rc profile comparison must declare a non-empty mode")
-        return value
+    @model_validator(mode="after")
+    def _validate_comparison_for_kind(self) -> VerifyRcProfileConfig:
+        if self.kind == "maven-repository":
+            if not isinstance(self.comparison, VerifyRcMavenRepositoryComparisonConfig):
+                raise ValueError(
+                    "verify_rc maven-repository profiles must use comparison.mode 'repository-tree'"
+                )
+            return self
+        if self.kind == "oci-image":
+            if not isinstance(self.comparison, VerifyRcOciImageComparisonConfig):
+                raise ValueError(
+                    "verify_rc oci-image profiles must use comparison.mode 'platform-digest' or 'provenance-only'"
+                )
+            return self
+        if not isinstance(self.comparison, VerifyRcExactBytesComparisonConfig):
+            raise ValueError(
+                "verify_rc source-artifact, generic-file, python-distribution, and npm-package profiles must use comparison.mode 'exact-bytes'"
+            )
+        return self
 
 
 class VerifyRcConfig(BuildishContractModel):

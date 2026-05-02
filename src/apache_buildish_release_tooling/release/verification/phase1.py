@@ -24,6 +24,7 @@ from typing import Any, Literal
 from pydantic import ValidationError
 
 from apache_buildish_release_tooling.release.contracts import (
+    AnySecondaryArtifactVerification,
     ArtifactReproducibilityEffectiveBuildExecutionReport,
     ArtifactReproducibilityEffectiveExecutionReport,
     ArtifactReproducibilityOverrideReport,
@@ -151,7 +152,7 @@ def verify_rc_phase1(
     source_artifact_matches_source_commit = False
     rebuilt_source_artifact_path: Path | None = None
     source_artifact_reproducibility: dict[str, Any] | None = None
-    secondary_artifact_verifications: list[dict[str, Any]] = []
+    secondary_artifact_verifications: list[AnySecondaryArtifactVerification] = []
     reproducibility_decision = ReproducibilityModeDecision(
         requested_mode=requested_mode,
         effective_mode="integrity-only",
@@ -527,15 +528,15 @@ def verify_rc_phase1(
             profile_overrides=profile_overrides,
         )
         build_checks_attempted = any(
-            verification.get("reproducibility") is not None
+            getattr(verification, "reproducibility", None) is not None
             for verification in secondary_artifact_verifications
         )
         for verification in secondary_artifact_verifications:
-            for issue in verification.get("issues", []):
+            for issue in verification.issues:
                 failures.append(
                     VerificationFailure(
                         scope="secondary-artifact",
-                        subject=str(verification["artifact_id"]),
+                        subject=str(verification.artifact_id),
                         message=str(issue),
                     )
                 )
@@ -630,20 +631,16 @@ def _phase1_result(
     rebuilt_source_sha512: str | None,
     source_artifact_matches_source_commit: bool,
     source_artifact_reproducibility: dict[str, Any] | None,
-    secondary_artifact_verifications: list[dict[str, Any]],
+    secondary_artifact_verifications: list[AnySecondaryArtifactVerification],
     reproducibility_decision: ReproducibilityModeDecision,
     build_checks_attempted: bool,
 ) -> VerifyRcPhase1Result:
     verdict = "verified" if not failures else "failed"
     manifest_issues = _failure_messages(failures, scope="vote-manifest")
     source_artifact_issues = _failure_messages(failures, scope="source-artifact")
-    validated_secondary_artifact_verifications = [
-        SecondaryArtifactVerificationAdapter.validate_python(verification)
-        for verification in secondary_artifact_verifications
-    ]
     secondary_artifact_verification_payloads = [
-        verification.model_dump(mode="json")
-        for verification in validated_secondary_artifact_verifications
+        SecondaryArtifactVerificationAdapter.validate_python(verification).model_dump(mode="json")
+        for verification in secondary_artifact_verifications
     ]
     report_payload = VerifyRcReportV1.model_validate(
         {

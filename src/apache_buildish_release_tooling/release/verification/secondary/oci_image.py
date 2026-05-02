@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Literal
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.oci_image import (
     _inspect_image_ref,
@@ -26,10 +26,19 @@ from apache_buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityCanonicalRecipeReport,
     ArtifactReproducibilityEffectiveExecutionReport,
     ArtifactReproducibilityOverrideReport,
+    ArtifactReproducibilityReport,
+    InspectionEvidenceReference,
     OciImageReproducibilityMetadata,
+    OciImageSecondaryArtifact,
+    OciImageVerificationReport,
+    OciInspectionReport,
     OciPlatformDigest,
 )
-from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
+from apache_buildish_release_tooling.release.models import (
+    ComponentConfig,
+    VerifyRcOciImageComparisonConfig,
+    VerifyRcOverrideConfig,
+)
 from apache_buildish_release_tooling.release.verification.inspection_bundle import (
     write_reproducibility_metadata,
 )
@@ -42,13 +51,10 @@ from apache_buildish_release_tooling.release.verification.rebuild import (
     run_host_direct_profile,
 )
 
-from .shared import required_non_empty_string
-
 
 def verify_oci_image(
-    artifact_entry: dict[str, Any],
+    artifact_entry: OciImageSecondaryArtifact,
     *,
-    manifest_url: str,
     work_dir: Path,
     component_config: ComponentConfig | None,
     project_root: Path | None,
@@ -56,12 +62,12 @@ def verify_oci_image(
     build_checks_allowed: bool,
     inspection_bundle_root: Path | None,
     profile_overrides: VerifyRcOverrideConfig | None,
-) -> dict[str, Any]:
-    artifact_id = required_non_empty_string(artifact_entry, "artifact_id", source=manifest_url)
-    registry = required_non_empty_string(artifact_entry, "registry", source=manifest_url)
-    repository = required_non_empty_string(artifact_entry, "repository", source=manifest_url)
-    declared_digest = required_non_empty_string(artifact_entry, "digest", source=manifest_url).lower()
-    uri = required_non_empty_string(artifact_entry, "uri", source=manifest_url)
+) -> OciImageVerificationReport:
+    artifact_id = artifact_entry.artifact_id
+    registry = artifact_entry.registry
+    repository = artifact_entry.repository
+    declared_digest = artifact_entry.digest
+    uri = artifact_entry.uri
     image_ref = f"{registry}/{repository}@{declared_digest}"
     issues: list[str] = []
     live_digest: str | None = None
@@ -88,12 +94,8 @@ def verify_oci_image(
             "oci-image digest does not match the signed manifest: "
             f"{live_digest} != {declared_digest}"
         )
+    expected_platform_digests = list(artifact_entry.platform_digests or [])
     platform_digests_match: bool | None = None
-    try:
-        expected_platform_digests = _platform_digests_from_manifest(artifact_entry, source=manifest_url)
-    except Exception as exc:
-        issues.append(str(exc))
-        expected_platform_digests = []
     if expected_platform_digests and live_digest is not None:
         expected_by_platform = {
             entry.platform: entry.digest
@@ -109,11 +111,10 @@ def verify_oci_image(
                 "oci-image platform digests do not match the signed manifest: "
                 f"{live_by_platform} != {expected_by_platform}"
             )
-    reproducibility_verification: dict[str, Any] | None = None
-    if build_checks_allowed and artifact_entry.get("reproducibility") is not None:
+    reproducibility_verification: ArtifactReproducibilityReport | None = None
+    if build_checks_allowed and artifact_entry.reproducibility is not None:
         reproducibility_verification = _verify_oci_image_reproducibility(
             artifact_entry,
-            manifest_url=manifest_url,
             artifact_id=artifact_id,
             declared_digest=declared_digest,
             expected_platform_digests=expected_platform_digests,
@@ -124,30 +125,28 @@ def verify_oci_image(
             work_dir=work_dir / "reproducibility",
             profile_overrides=profile_overrides,
         )
-        issues.extend(str(issue) for issue in reproducibility_verification.get("issues", []))
-    return {
-        "artifact_id": artifact_id,
-        "kind": "oci-image",
-        "verdict": "failed" if issues else "verified",
-        "issues": issues,
-        "uri": uri,
-        "registry": registry,
-        "repository": repository,
-        "digest": declared_digest,
-        "inspection": {
-            "image_ref": image_ref,
-            "digest_matches_manifest": digest_matches_manifest,
-            "platform_digests_match": platform_digests_match,
-            "platform_digests": live_platform_digests,
-        },
-        "reproducibility": reproducibility_verification,
-    }
+        issues.extend(reproducibility_verification.issues)
+    return OciImageVerificationReport(
+        artifact_id=artifact_id,
+        verdict="failed" if issues else "verified",
+        issues=issues,
+        uri=uri,
+        registry=registry,
+        repository=repository,
+        digest=declared_digest,
+        inspection=OciInspectionReport(
+            image_ref=image_ref,
+            digest_matches_manifest=digest_matches_manifest,
+            platform_digests_match=platform_digests_match,
+            platform_digests=live_platform_digests,
+        ),
+        reproducibility=reproducibility_verification,
+    )
 
 
 def _verify_oci_image_reproducibility(
-    artifact_entry: dict[str, Any],
+    artifact_entry: OciImageSecondaryArtifact,
     *,
-    manifest_url: str,
     artifact_id: str,
     declared_digest: str,
     expected_platform_digests: list[OciPlatformDigest],
@@ -157,29 +156,24 @@ def _verify_oci_image_reproducibility(
     inspection_bundle_root: Path | None,
     work_dir: Path,
     profile_overrides: VerifyRcOverrideConfig | None,
-) -> dict[str, Any]:
-    raw_reproducibility = artifact_entry.get("reproducibility")
-    if not isinstance(raw_reproducibility, dict):
-        return {
-            "profile_id": "n/a",
-            "verdict": "failed",
-            "comparison_mode": "platform-digest",
-            "canonical_recipe": None,
-            "effective_execution": None,
-            "override": {"applied": False},
-            "matches_remote_bytes": None,
-            "failure_class": "missing-profile",
-            "evidence": [],
-            "issues": [
+) -> ArtifactReproducibilityReport:
+    reproducibility_selector = artifact_entry.reproducibility
+    if reproducibility_selector is None:
+        return ArtifactReproducibilityReport(
+            profile_id="n/a",
+            verdict="failed",
+            comparison_mode="platform-digest",
+            failure_class="missing-profile",
+            issues=[
                 f"manifest secondary artifact does not declare a reproducibility profile: {artifact_id}"
             ],
-        }
-    profile_id = required_non_empty_string(raw_reproducibility, "profile_id", source=manifest_url)
+        )
+    profile_id = reproducibility_selector.profile_id
     issues: list[str] = []
     matches_remote_bytes: bool | None = None
     comparison_mode: Literal["platform-digest", "provenance-only"] = "platform-digest"
     failure_class: str | None = None
-    evidence: list[dict[str, str]] = []
+    evidence: list[InspectionEvidenceReference] = []
     image_ref: str | None = None
     rebuilt_digest: str | None = None
     rebuilt_platform_digests: list[OciPlatformDigest] = []
@@ -208,24 +202,12 @@ def _verify_oci_image_reproducibility(
                 profile_overrides=profile_overrides,
             )
             profile = resolved_profile.profile
-            raw_comparison_mode = required_non_empty_string(
-                profile.comparison,
-                "mode",
-                source=f"verify_rc profile {profile_id!r}",
-            )
-            if raw_comparison_mode not in {"platform-digest", "provenance-only"}:
+            if not isinstance(profile.comparison, VerifyRcOciImageComparisonConfig):
                 raise ValueError(
                     f"verify_rc profile {profile_id!r} must use comparison.mode 'platform-digest' or 'provenance-only' for oci-image artifacts"
                 )
-            comparison_mode = cast(
-                Literal["platform-digest", "provenance-only"],
-                raw_comparison_mode,
-            )
-            image_ref = required_non_empty_string(
-                profile.comparison,
-                "image_ref",
-                source=f"verify_rc profile {profile_id!r}",
-            )
+            comparison_mode = profile.comparison.mode
+            image_ref = profile.comparison.image_ref
             canonical_recipe = canonical_recipe_payload(resolved_profile)
             override = override_payload(resolved_profile)
         except Exception as exc:
@@ -306,48 +288,21 @@ def _verify_oci_image_reproducibility(
                 issues=issues,
             ),
         )
-        evidence.append({"label": "comparison-metadata", "path": metadata_path})
-    return {
-        "profile_id": profile_id,
-        "verdict": "failed" if issues else "verified",
-        "comparison_mode": comparison_mode,
-        "canonical_recipe": (
-            canonical_recipe.model_dump(mode="json", exclude_none=True)
-            if canonical_recipe is not None
-            else None
-        ),
-        "effective_execution": (
-            effective_execution.model_dump(mode="json", exclude_none=True)
-            if effective_execution is not None
-            else None
-        ),
-        "override": override.model_dump(mode="json", exclude_none=True),
-        "matches_remote_bytes": matches_remote_bytes,
-        "failure_class": failure_class,
-        "evidence": evidence,
-        "issues": issues,
-    }
-
-
-def _platform_digests_from_manifest(
-    artifact_entry: dict[str, Any],
-    *,
-    source: str,
-) -> list[OciPlatformDigest]:
-    raw_entries = artifact_entry.get("platform_digests")
-    if raw_entries is None:
-        return []
-    if not isinstance(raw_entries, list):
-        raise ValueError(f"oci-image platform_digests must be a list: {source}")
-    entries: list[OciPlatformDigest] = []
-    seen_platforms: set[str] = set()
-    for raw_entry in raw_entries:
-        if not isinstance(raw_entry, dict):
-            raise ValueError(f"oci-image platform_digests entries must be objects: {source}")
-        platform = required_non_empty_string(raw_entry, "platform", source=source)
-        if platform in seen_platforms:
-            raise ValueError(f"oci-image platform declared more than once in manifest: {platform}")
-        seen_platforms.add(platform)
-        digest_value = required_non_empty_string(raw_entry, "digest", source=source).lower()
-        entries.append(OciPlatformDigest(platform=platform, digest=digest_value))
-    return entries
+        evidence.append(
+            InspectionEvidenceReference(
+                label="comparison-metadata",
+                path=metadata_path,
+            )
+        )
+    return ArtifactReproducibilityReport(
+        profile_id=profile_id,
+        verdict="failed" if issues else "verified",
+        comparison_mode=comparison_mode,
+        canonical_recipe=canonical_recipe,
+        effective_execution=effective_execution,
+        override=override,
+        matches_remote_bytes=matches_remote_bytes,
+        failure_class=failure_class,
+        evidence=evidence,
+        issues=issues,
+    )

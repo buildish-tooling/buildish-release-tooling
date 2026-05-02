@@ -17,8 +17,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Literal
 
+from apache_buildish_release_tooling.release.contracts import (
+    ArtifactReproducibilityReport,
+    ChecksumVerificationReport,
+    GenericFileSecondaryArtifact,
+    GenericFileVerificationReport,
+    GenericFileWithOpenPgpSecondaryArtifact,
+    SignatureVerificationPayload,
+)
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
@@ -31,15 +39,13 @@ from apache_buildish_release_tooling.release.verification.common import (
 )
 
 from .file_reproducibility import verify_host_direct_single_file_reproducibility
-from .shared import (
-    downloaded_inventory,
-    preferred_checksum_payload,
-    required_non_empty_string,
-)
+from .shared import downloaded_inventory
+
+GenericFileArtifact = GenericFileSecondaryArtifact | GenericFileWithOpenPgpSecondaryArtifact
 
 
 def verify_generic_file(
-    artifact_entry: dict[str, Any],
+    artifact_entry: GenericFileArtifact,
     *,
     manifest_url: str,
     work_dir: Path,
@@ -52,22 +58,19 @@ def verify_generic_file(
     build_checks_allowed: bool,
     inspection_bundle_root: Path | None,
     profile_overrides: VerifyRcOverrideConfig | None,
-) -> dict[str, Any]:
-    artifact_id = required_non_empty_string(artifact_entry, "artifact_id", source=manifest_url)
-    kind = required_non_empty_string(artifact_entry, "kind", source=manifest_url)
-    if kind not in {"generic-file", "generic-file-with-openpgp"}:
-        raise ValueError(f"unexpected generic-file verification kind: {kind}")
-    typed_kind = cast(Literal["generic-file", "generic-file-with-openpgp"], kind)
-    filename = required_non_empty_string(artifact_entry, "filename", source=manifest_url)
-    artifact_uri = required_non_empty_string(artifact_entry, "uri", source=manifest_url)
+) -> GenericFileVerificationReport:
+    artifact_id = artifact_entry.artifact_id
+    filename = artifact_entry.filename
+    artifact_uri = artifact_entry.uri
+    typed_kind = artifact_entry.kind
     issues: list[str] = []
     actual_checksum: str | None = None
-    checksum_algorithm: str | None = None
-    checksum_value: str | None = None
-    checksum_uri: str | None = None
+    checksum_algorithm: Literal["sha512"] = "sha512"
+    checksum_value = artifact_entry.checksums.sha512.value
+    checksum_uri = artifact_entry.checksums.sha512.uri
     checksum_matches_manifest = False
     checksum_sidecar_verified = False
-    reproducibility_verification: dict[str, Any] | None = None
+    reproducibility_verification: ArtifactReproducibilityReport | None = None
     work_dir.mkdir(parents=True, exist_ok=True)
     artifact_path: Path | None = None
     try:
@@ -82,15 +85,7 @@ def verify_generic_file(
     except Exception as exc:
         issues.append(str(exc))
 
-    try:
-        checksum_algorithm, checksum_value, checksum_uri = preferred_checksum_payload(
-            artifact_entry,
-            source=manifest_url,
-        )
-    except Exception as exc:
-        issues.append(str(exc))
-
-    if artifact_path is not None and checksum_algorithm is not None and checksum_value is not None:
+    if artifact_path is not None:
         actual_checksum = checksum(artifact_path, checksum_algorithm)
         if actual_checksum != checksum_value:
             issues.append(
@@ -100,11 +95,7 @@ def verify_generic_file(
         else:
             checksum_matches_manifest = True
 
-    if (
-        artifact_path is not None
-        and checksum_algorithm is not None
-        and checksum_uri is not None
-    ):
+    if artifact_path is not None and checksum_uri is not None:
         try:
             validate_fetch_uri(
                 checksum_uri,
@@ -127,7 +118,6 @@ def verify_generic_file(
     if artifact_path is not None:
         signature_verifications, signature_issues = _signature_verifications_with_issues(
             artifact_entry,
-            manifest_url=manifest_url,
             artifact_id=artifact_id,
             artifact_path=artifact_path,
             work_dir=work_dir,
@@ -140,7 +130,7 @@ def verify_generic_file(
     inventory_verification = None
     try:
         inventory_verification = downloaded_inventory(
-            artifact_entry,
+            artifact_entry.model_dump(mode="json", exclude_none=True),
             manifest_url=manifest_url,
             artifact_id=artifact_id,
             work_dir=work_dir,
@@ -149,7 +139,7 @@ def verify_generic_file(
     except Exception as exc:
         issues.append(str(exc))
 
-    if build_checks_allowed and artifact_entry.get("reproducibility") is not None:
+    if build_checks_allowed and artifact_entry.reproducibility is not None:
         reproducibility_verification = _generic_file_reproducibility(
             artifact_entry,
             manifest_url=manifest_url,
@@ -163,32 +153,32 @@ def verify_generic_file(
             inspection_bundle_root=inspection_bundle_root,
             profile_overrides=profile_overrides,
         )
-        issues.extend(reproducibility_verification.get("issues", []))
+        issues.extend(reproducibility_verification.issues)
 
-    verification: dict[str, Any] = {
-        "artifact_id": artifact_id,
-        "kind": typed_kind,
-        "verdict": "failed" if issues else "verified",
-        "issues": issues,
-        "filename": filename,
-        "uri": artifact_uri,
-        "checksum": {
-            "algorithm": checksum_algorithm,
-            "value": actual_checksum,
-            "matches_manifest": checksum_matches_manifest,
-            "sidecar_verified": checksum_sidecar_verified,
-        },
-        "signatures": [signature_payload(signature) for signature in signature_verifications],
-    }
-    if inventory_verification is not None:
-        verification["inventory"] = inventory_verification.report_payload
-    if reproducibility_verification is not None:
-        verification["reproducibility"] = reproducibility_verification
-    return verification
+    return GenericFileVerificationReport(
+        artifact_id=artifact_id,
+        kind=typed_kind,
+        verdict="failed" if issues else "verified",
+        issues=issues,
+        filename=filename,
+        uri=artifact_uri,
+        checksum=ChecksumVerificationReport(
+            algorithm=checksum_algorithm,
+            value=actual_checksum,
+            matches_manifest=checksum_matches_manifest,
+            sidecar_verified=checksum_sidecar_verified,
+        ),
+        signatures=[
+            SignatureVerificationPayload.model_validate(signature_payload(signature))
+            for signature in signature_verifications
+        ],
+        inventory=inventory_verification.report_payload if inventory_verification is not None else None,
+        reproducibility=reproducibility_verification,
+    )
 
 
 def _generic_file_reproducibility(
-    artifact_entry: dict[str, Any],
+    artifact_entry: GenericFileArtifact,
     *,
     manifest_url: str,
     artifact_id: str,
@@ -200,7 +190,7 @@ def _generic_file_reproducibility(
     source_date_epoch: int | None,
     inspection_bundle_root: Path | None,
     profile_overrides: VerifyRcOverrideConfig | None,
-) -> dict[str, Any]:
+) -> ArtifactReproducibilityReport:
     return verify_host_direct_single_file_reproducibility(
         artifact_entry,
         manifest_url=manifest_url,
@@ -218,9 +208,8 @@ def _generic_file_reproducibility(
 
 
 def _signature_verifications_with_issues(
-    artifact_entry: dict[str, Any],
+    artifact_entry: GenericFileArtifact,
     *,
-    manifest_url: str,
     artifact_id: str,
     artifact_path: Path,
     work_dir: Path,
@@ -228,40 +217,12 @@ def _signature_verifications_with_issues(
     allow_non_production_release_targets: bool,
     require_signature: bool,
 ) -> tuple[tuple[SignatureVerification, ...], list[str]]:
-    raw_signatures = artifact_entry.get("signatures")
-    if raw_signatures is None:
-        if require_signature:
-            return (), [f"manifest secondary artifact is missing signatures: {manifest_url}"]
-        return (), []
-    if not isinstance(raw_signatures, list):
-        return (), [f"manifest secondary artifact signatures must be a list: {manifest_url}"]
     issues: list[str] = []
     verifications: list[SignatureVerification] = []
     valid_signature_count = 0
-    for index, signature_payload_entry in enumerate(raw_signatures, start=1):
-        if not isinstance(signature_payload_entry, dict):
-            issues.append(f"manifest secondary artifact signatures must be objects: {manifest_url}")
-            continue
+    for index, signature_reference in enumerate(artifact_entry.signatures, start=1):
         try:
-            signature_type = required_non_empty_string(
-                signature_payload_entry,
-                "type",
-                source=manifest_url,
-            )
-        except Exception as exc:
-            issues.append(str(exc))
-            continue
-        if signature_type != "openpgp-detached-ascii-armored":
-            issues.append(
-                f"unsupported secondary artifact signature type for {artifact_id}: {signature_type}"
-            )
-            continue
-        try:
-            signature_uri = required_non_empty_string(
-                signature_payload_entry,
-                "uri",
-                source=manifest_url,
-            )
+            signature_uri = signature_reference.uri
             validate_fetch_uri(
                 signature_uri,
                 allow_non_production_release_targets=allow_non_production_release_targets,

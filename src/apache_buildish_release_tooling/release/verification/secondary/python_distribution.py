@@ -18,11 +18,19 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any
+from typing import Literal
 from urllib.parse import unquote, urljoin, urlparse
 
+from apache_buildish_release_tooling.release.contracts import (
+    ArtifactReproducibilityReport,
+    ChecksumVerificationReport,
+    PythonDistributionSecondaryArtifact,
+    PythonDistributionVerificationReport,
+    PythonIndexResolutionReport,
+)
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
@@ -32,7 +40,17 @@ from apache_buildish_release_tooling.release.verification.common import (
 )
 
 from .file_reproducibility import verify_host_direct_single_file_reproducibility
-from .shared import required_checksum_payload, required_non_empty_string, url_without_fragment
+from .shared import url_without_fragment
+
+
+@dataclass(frozen=True)
+class _SimpleIndexEntry:
+    """One stable simple-index file entry used by the verifier."""
+
+    filename: str
+    url: str
+    hashes: dict[str, str] = field(default_factory=dict)
+    source: str = "simple-html"
 
 
 class _SimpleIndexHtmlParser(HTMLParser):
@@ -40,19 +58,18 @@ class _SimpleIndexHtmlParser(HTMLParser):
 
     def __init__(self) -> None:
         super().__init__()
-        self.links: list[dict[str, Any]] = []
+        self.links: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag != "a":
             return
         href = dict(attrs).get("href")
-        if not href:
-            return
-        self.links.append({"href": href})
+        if href:
+            self.links.append(href)
 
 
 def verify_python_distribution(
-    artifact_entry: dict[str, Any],
+    artifact_entry: PythonDistributionSecondaryArtifact,
     *,
     manifest_url: str,
     work_dir: Path,
@@ -63,30 +80,24 @@ def verify_python_distribution(
     build_checks_allowed: bool,
     inspection_bundle_root: Path | None,
     profile_overrides: VerifyRcOverrideConfig | None,
-) -> dict[str, Any]:
-    artifact_id = required_non_empty_string(artifact_entry, "artifact_id", source=manifest_url)
-    filename = required_non_empty_string(artifact_entry, "filename", source=manifest_url)
-    artifact_uri = required_non_empty_string(artifact_entry, "uri", source=manifest_url)
-    index_url = required_non_empty_string(artifact_entry, "index_url", source=manifest_url)
-    project_name = required_non_empty_string(artifact_entry, "project_name", source=manifest_url)
-    version = required_non_empty_string(artifact_entry, "version", source=manifest_url)
+) -> PythonDistributionVerificationReport:
+    artifact_id = artifact_entry.artifact_id
+    filename = artifact_entry.filename
+    artifact_uri = artifact_entry.uri
+    index_url = artifact_entry.index_url
+    project_name = artifact_entry.project_name
+    version = artifact_entry.version
     issues: list[str] = []
     if version not in filename:
         issues.append(
             "python-distribution filename does not contain the declared version: "
             f"{filename} vs {version}"
         )
-    authenticity = artifact_entry.get("authenticity")
+    authenticity = artifact_entry.authenticity
     if authenticity is not None:
-        try:
-            scheme = required_non_empty_string(authenticity, "scheme", source=manifest_url)
-            if scheme != "pypi-attestation":
-                raise ValueError(f"unsupported python-distribution authenticity scheme: {scheme}")
-            raise ValueError(
-                "python-distribution pypi-attestation verification is not implemented; omit authenticity metadata for now"
-            )
-        except Exception as exc:
-            issues.append(str(exc))
+        issues.append(
+            "python-distribution pypi-attestation verification is not implemented; omit authenticity metadata for now"
+        )
 
     work_dir.mkdir(parents=True, exist_ok=True)
     artifact_path: Path | None = None
@@ -102,21 +113,12 @@ def verify_python_distribution(
     except Exception as exc:
         issues.append(str(exc))
 
-    checksum_algorithm: str | None = None
-    checksum_value: str | None = None
-    checksum_uri: str | None = None
+    checksum_algorithm: Literal["sha256"] = "sha256"
+    checksum_value = artifact_entry.checksums.sha256.value
+    checksum_uri = artifact_entry.checksums.sha256.uri
     actual_checksum: str | None = None
     checksum_matches_manifest = False
-    try:
-        checksum_algorithm, checksum_value, checksum_uri = required_checksum_payload(
-            artifact_entry,
-            source=manifest_url,
-            algorithms=("sha256",),
-        )
-    except Exception as exc:
-        issues.append(str(exc))
-
-    if artifact_path is not None and checksum_algorithm is not None and checksum_value is not None:
+    if artifact_path is not None:
         actual_checksum = checksum(artifact_path, checksum_algorithm)
         if actual_checksum != checksum_value:
             issues.append(
@@ -127,7 +129,7 @@ def verify_python_distribution(
             checksum_matches_manifest = True
 
     checksum_sidecar_verified = False
-    if artifact_path is not None and checksum_uri is not None and checksum_algorithm is not None:
+    if artifact_path is not None and checksum_uri is not None:
         try:
             validate_fetch_uri(
                 checksum_uri,
@@ -150,7 +152,7 @@ def verify_python_distribution(
     resolved_url: str | None = None
     found_via: str | None = None
     sha256_matches_index: bool | None = None
-    reproducibility_verification: dict[str, Any] | None = None
+    reproducibility_verification: ArtifactReproducibilityReport | None = None
     try:
         validate_fetch_uri(
             project_index_url,
@@ -159,7 +161,7 @@ def verify_python_distribution(
         )
         project_index_entries = _simple_index_entries(project_index_url)
         matching_entry = next(
-            (candidate for candidate in project_index_entries if candidate["filename"] == filename),
+            (candidate for candidate in project_index_entries if candidate.filename == filename),
             None,
         )
         if matching_entry is None:
@@ -167,20 +169,16 @@ def verify_python_distribution(
                 "python-distribution file is not present in the declared simple index: "
                 f"{project_index_url} -> {filename}"
             )
-        resolved_url = url_without_fragment(matching_entry["url"])
-        found_via = matching_entry["source"]
+        resolved_url = url_without_fragment(matching_entry.url)
+        found_via = matching_entry.source
         if resolved_url != url_without_fragment(artifact_uri):
             issues.append(
                 "python-distribution URI does not match the declared simple index entry: "
                 f"{resolved_url} != {url_without_fragment(artifact_uri)}"
             )
-        index_sha256 = matching_entry["hashes"].get("sha256")
+        index_sha256 = matching_entry.hashes.get("sha256")
         sha256_matches_index = index_sha256 is None or index_sha256 == checksum_value
-        if (
-            index_sha256 is not None
-            and checksum_value is not None
-            and index_sha256 != checksum_value
-        ):
+        if index_sha256 is not None and index_sha256 != checksum_value:
             issues.append(
                 "python-distribution sha256 does not match the declared simple index entry: "
                 f"{index_sha256} != {checksum_value}"
@@ -188,7 +186,7 @@ def verify_python_distribution(
     except Exception as exc:
         issues.append(str(exc))
 
-    if build_checks_allowed and artifact_entry.get("reproducibility") is not None:
+    if build_checks_allowed and artifact_entry.reproducibility is not None:
         reproducibility_verification = verify_host_direct_single_file_reproducibility(
             artifact_entry,
             manifest_url=manifest_url,
@@ -203,34 +201,31 @@ def verify_python_distribution(
             subject_label="python-distribution",
             profile_overrides=profile_overrides,
         )
-        issues.extend(reproducibility_verification.get("issues", []))
+        issues.extend(reproducibility_verification.issues)
 
-    verification = {
-        "artifact_id": artifact_id,
-        "kind": "python-distribution",
-        "verdict": "failed" if issues else "verified",
-        "issues": issues,
-        "filename": filename,
-        "uri": artifact_uri,
-        "index_url": index_url,
-        "project_name": project_name,
-        "version": version,
-        "checksum": {
-            "algorithm": checksum_algorithm,
-            "value": actual_checksum,
-            "matches_manifest": checksum_matches_manifest,
-            "sidecar_verified": checksum_sidecar_verified,
-        },
-        "index_resolution": {
-            "project_index_url": project_index_url,
-            "resolved_url": resolved_url,
-            "found_via": found_via,
-            "sha256_matches_index": sha256_matches_index,
-        },
-    }
-    if reproducibility_verification is not None:
-        verification["reproducibility"] = reproducibility_verification
-    return verification
+    return PythonDistributionVerificationReport(
+        artifact_id=artifact_id,
+        verdict="failed" if issues else "verified",
+        issues=issues,
+        filename=filename,
+        uri=artifact_uri,
+        index_url=index_url,
+        project_name=project_name,
+        version=version,
+        checksum=ChecksumVerificationReport(
+            algorithm=checksum_algorithm,
+            value=actual_checksum,
+            matches_manifest=checksum_matches_manifest,
+            sidecar_verified=checksum_sidecar_verified,
+        ),
+        index_resolution=PythonIndexResolutionReport(
+            project_index_url=project_index_url,
+            resolved_url=resolved_url,
+            found_via=found_via,
+            sha256_matches_index=sha256_matches_index,
+        ),
+        reproducibility=reproducibility_verification,
+    )
 
 
 def _simple_index_project_url(index_url: str, project_name: str) -> str:
@@ -244,7 +239,7 @@ def _normalized_python_project_name(project_name: str) -> str:
     return re.sub(r"[-_.]+", "-", project_name).lower()
 
 
-def _simple_index_entries(project_index_url: str) -> list[dict[str, Any]]:
+def _simple_index_entries(project_index_url: str) -> list[_SimpleIndexEntry]:
     payload_bytes = _read_simple_index_bytes(project_index_url)
     stripped = payload_bytes.lstrip()
     if stripped.startswith(b"{"):
@@ -266,14 +261,14 @@ def _read_simple_index_bytes(project_index_url: str) -> bytes:
     return read_uri_bytes(project_index_url)
 
 
-def _simple_index_json_entries(project_index_url: str, payload_bytes: bytes) -> list[dict[str, Any]]:
+def _simple_index_json_entries(project_index_url: str, payload_bytes: bytes) -> list[_SimpleIndexEntry]:
     payload = json.loads(payload_bytes.decode("utf-8"))
     if not isinstance(payload, dict):
         raise ValueError(f"python-distribution simple index JSON must be an object: {project_index_url}")
     raw_files = payload.get("files")
     if not isinstance(raw_files, list):
         raise ValueError(f"python-distribution simple index JSON must contain a files list: {project_index_url}")
-    entries: list[dict[str, Any]] = []
+    entries: list[_SimpleIndexEntry] = []
     for raw_file in raw_files:
         if not isinstance(raw_file, dict):
             continue
@@ -283,36 +278,40 @@ def _simple_index_json_entries(project_index_url: str, payload_bytes: bytes) -> 
             continue
         if not isinstance(file_url, str) or not file_url.strip():
             continue
-        hashes = raw_file.get("hashes")
+        raw_hashes = raw_file.get("hashes")
+        hashes = raw_hashes if isinstance(raw_hashes, dict) else {}
         entries.append(
-            {
-                "filename": filename.strip(),
-                "url": urljoin(project_index_url, file_url.strip()),
-                "hashes": dict(hashes) if isinstance(hashes, dict) else {},
-                "source": "simple-json",
-            }
+            _SimpleIndexEntry(
+                filename=filename.strip(),
+                url=urljoin(project_index_url, file_url.strip()),
+                hashes={
+                    key.lower(): value.lower()
+                    for key, value in hashes.items()
+                    if isinstance(key, str) and isinstance(value, str)
+                },
+                source="simple-json",
+            )
         )
     return entries
 
 
-def _simple_index_html_entries(project_index_url: str, payload_bytes: bytes) -> list[dict[str, Any]]:
+def _simple_index_html_entries(project_index_url: str, payload_bytes: bytes) -> list[_SimpleIndexEntry]:
     parser = _SimpleIndexHtmlParser()
     parser.feed(payload_bytes.decode("utf-8"))
-    entries: list[dict[str, Any]] = []
-    for link in parser.links:
-        href = link["href"]
+    entries: list[_SimpleIndexEntry] = []
+    for href in parser.links:
         resolved_url = urljoin(project_index_url, href)
         parsed_url = urlparse(resolved_url)
         filename = Path(parsed_url.path).name
         if not filename:
             continue
         entries.append(
-            {
-                "filename": filename,
-                "url": resolved_url,
-                "hashes": _hashes_from_fragment(parsed_url.fragment),
-                "source": "simple-html",
-            }
+            _SimpleIndexEntry(
+                filename=filename,
+                url=resolved_url,
+                hashes=_hashes_from_fragment(parsed_url.fragment),
+                source="simple-html",
+            )
         )
     return entries
 
