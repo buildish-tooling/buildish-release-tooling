@@ -39,6 +39,28 @@ Thank you for considering a contribution to Apache Buildish.
 
 This keeps manifest, report, and verifier code easier to reason about and makes typos less likely to turn into runtime bugs.
 
+## Verification contract changes
+
+The verifier now has supported machine-readable contracts:
+
+- `verify-rc` report JSON schema version `1`
+- inspection-bundle schema version `1`
+- `inspect-repro --json` schema version `1`
+
+When changing those contracts:
+
+- additive fields within schema version `1` are fine when existing meanings stay intact
+- incompatible field-shape or field-meaning changes require a new explicit schema version
+- do not silently repurpose existing fields
+- update `docs/verification-contracts.md` in the same change
+- update golden-shape tests for the affected report or bundle outputs
+
+Verification output must also keep this invariant:
+
+- environment variable names may be reported
+- environment variable values must not be reported in reports, bundles, transcripts, or
+  `inspect-repro` JSON output
+
 ## Security issues
 
 Do **not** open a public issue for a suspected security vulnerability. Instead, report it to [security@apache.org](mailto:security@apache.org).
