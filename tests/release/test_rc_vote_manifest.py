@@ -263,6 +263,107 @@ class RcVoteManifestTest(unittest.TestCase):
             list(manifest.model_dump(mode="json", exclude_none=True)),
         )
 
+    def test_rc_vote_manifest_read_accepts_partial_optional_nested_blocks(self) -> None:
+        manifest = RcVoteManifestReadV1.model_validate(
+            {
+                "schema_version": "1",
+                "manifest_type": "rc-vote",
+                "component_id": "buildish-example",
+                "version": "1.2.3",
+                "release_line": "1.2",
+                "release_branch": "release-1.2",
+                "source_repository_url": "https://github.com/apache/buildish-example.git",
+                "source_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                "source_date_epoch": "1714032000",
+                "final_tag": "v1.2.3",
+                "final_tag_mode": "reuse-existing",
+                "provenance": {
+                    "created_at": "2026-05-02T12:00:00Z",
+                    "tooling": {
+                        "repository_url": "https://github.com/apache/buildish-release-tooling",
+                    },
+                },
+                "trust_roots": {
+                    "asf_keys": {
+                        "uri": "https://downloads.apache.org/incubator/buildish/KEYS",
+                        "known_length_bytes": 4096,
+                        "known_prefix_sha512": "a" * 128,
+                    }
+                },
+                "draft_github_release": {
+                    "repository": "apache/buildish-example",
+                    "tag": "v1.2.3-rc0",
+                    "url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+                },
+                "vote_materials": {
+                    "source_artifacts": [
+                        {
+                            "role": "asf-source-release",
+                            "filename": "apache-buildish-example-1.2.3-incubating-src.tar.gz",
+                            "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/apache-buildish-example-1.2.3-incubating-src.tar.gz",
+                            "artifact_origin": "source-commit",
+                            "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                            "checksums": {"sha512": {"value": "b" * 128}},
+                            "signatures": [
+                                {
+                                    "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/apache-buildish-example-1.2.3-incubating-src.tar.gz.asc",
+                                }
+                            ],
+                        }
+                    ]
+                },
+                "verification": {
+                    "staging_svn_url": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/",
+                },
+            }
+        )
+
+        self.assertEqual(1714032000, manifest.source_date_epoch)
+        self.assertIsNone(manifest.rc_tag)
+        self.assertIsNone(manifest.provenance.github)
+        self.assertIsNone(manifest.provenance.tooling.git_commit_sha)
+        self.assertEqual([], manifest.vote_materials.secondary_artifacts)
+        self.assertIsNone(manifest.verification.authoritative_manifest)
+        self.assertIsNone(manifest.materialized_commit_sha)
+
+    def test_rc_vote_manifest_read_rejects_missing_required_nested_blocks(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Field required"):
+            RcVoteManifestReadV1.model_validate(
+                {
+                    "schema_version": "1",
+                    "manifest_type": "rc-vote",
+                    "component_id": "buildish-example",
+                    "version": "1.2.3",
+                    "release_line": "1.2",
+                    "release_branch": "release-1.2",
+                    "source_repository_url": "https://github.com/apache/buildish-example.git",
+                    "source_commit_sha": "0123456789abcdef0123456789abcdef01234567",
+                    "source_date_epoch": 1714032000,
+                    "final_tag": "v1.2.3",
+                    "final_tag_mode": "reuse-existing",
+                    "provenance": {
+                        "created_at": "2026-05-02T12:00:00Z",
+                    },
+                    "trust_roots": {
+                        "asf_keys": {
+                            "uri": "https://downloads.apache.org/incubator/buildish/KEYS",
+                            "known_length_bytes": 4096,
+                            "known_prefix_sha512": "a" * 128,
+                        }
+                    },
+                    "draft_github_release": {
+                        "repository": "apache/buildish-example",
+                        "tag": "v1.2.3-rc0",
+                        "url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+                    },
+                    "vote_materials": {
+                        "source_artifacts": [],
+                    },
+                    "verification": {
+                        "staging_svn_url": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/",
+                    },
+                }
+            )
     def test_rc_vote_manifest_read_accepts_extended_nested_fields(self) -> None:
         payload = {
             "schema_version": "1",
