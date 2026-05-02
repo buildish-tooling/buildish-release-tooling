@@ -845,6 +845,148 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
                 }
                 self.assertEqual(case.expected, observed_shapes)
 
+    def test_verify_rc_report_contract_for_successful_full_multi_artifact_run(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            include_python_distribution=True,
+            include_python_distribution_reproducibility=True,
+            include_npm_package=True,
+            include_npm_package_reproducibility=True,
+            include_maven_repository=True,
+            include_maven_repository_reproducibility=True,
+            include_oci_image=True,
+            include_oci_image_reproducibility=True,
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        self.assertEqual("verified", report_payload["verdict"])
+        self.assertEqual(5, len(report_payload["secondary_artifact_verifications"]))
+        bundle_manifest = json.loads(
+            (fixture.inspection_bundle_path / "inspection-bundle.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            [
+                "source-artifact/reproducibility/metadata.json",
+                "secondary-artifacts/bootstrap-zip/reproducibility/metadata.json",
+                "secondary-artifacts/maven-staging-main/reproducibility/metadata.json",
+                "secondary-artifacts/pypi-wheel/reproducibility/metadata.json",
+                "secondary-artifacts/npm-package-main/reproducibility/metadata.json",
+                "secondary-artifacts/ghcr-main-image/reproducibility/metadata.json",
+            ],
+            [artifact["metadata_path"] for artifact in bundle_manifest["artifacts"]],
+        )
+        secondary_by_id = {
+            verification["artifact_id"]: verification
+            for verification in report_payload["secondary_artifact_verifications"]
+        }
+        self.assertEqual("verified", secondary_by_id["bootstrap-zip"]["reproducibility"]["verdict"])
+        self.assertEqual("verified", secondary_by_id["pypi-wheel"]["reproducibility"]["verdict"])
+        self.assertEqual("verified", secondary_by_id["npm-package-main"]["reproducibility"]["verdict"])
+        self.assertEqual("verified", secondary_by_id["maven-staging-main"]["reproducibility"]["verdict"])
+        self.assertEqual("verified", secondary_by_id["ghcr-main-image"]["reproducibility"]["verdict"])
+
+    def test_verify_rc_report_contract_for_override_run_bundle_metadata(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+        )
+        override_path = sandbox_dir / "repro-overrides.yaml"
+        override_path.write_text(
+            "\n".join(
+                [
+                    "verify_rc:",
+                    "  profile_overrides:",
+                    "    bootstrap-zip:",
+                    "      build:",
+                    "        command:",
+                    "          - sh",
+                    "          - buildish-release-tooling/rebuild-bootstrap-local.sh",
+                    "        env:",
+                    "          LOCAL_ONLY_FLAG: \"1\"",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                "--repro-override-file",
+                str(override_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        reproducibility = report_payload["secondary_artifact_verifications"][0]["reproducibility"]
+        self.assertEqual(True, reproducibility["override"]["applied"])
+        self.assertEqual(
+            ["LOCAL_ONLY_FLAG"],
+            reproducibility["override"]["build"]["env_keys"],
+        )
+        metadata_reference = next(
+            reference
+            for reference in reproducibility["evidence"]
+            if reference["label"] == "comparison-metadata"
+        )
+        metadata_payload = json.loads(
+            (fixture.inspection_bundle_path / metadata_reference["path"]).read_text(encoding="utf-8")
+        )
+        self.assertEqual(reproducibility["override"], metadata_payload["override"])
+        self.assertEqual(
+            ["LOCAL_ONLY_FLAG"],
+            metadata_payload["override"]["build"]["env_keys"],
+        )
+
     def test_verify_rc_command_verifies_manifest_source_and_rc_tag_binding(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
@@ -1913,6 +2055,74 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual(
             ["source-artifact", "generic-file", "maven-repository", "oci-image"],
             [target["kind"] for target in payload["targets"]],
+        )
+
+    def test_inspect_repro_json_contract_for_selected_targets(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            drift_source_artifact=True,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+            include_maven_repository=True,
+            include_maven_repository_reproducibility=True,
+            drift_maven_repository_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                "--json",
+                "--artifact-id",
+                "source-artifact",
+                "--artifact-id",
+                "maven-staging-main",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        payload = json.loads(inspect_completed.stdout)
+        self.assertEqual(
+            ["source-artifact", "maven-staging-main"],
+            payload["selected_artifact_ids"],
+        )
+        self.assertEqual(2, payload["summary"]["failure_count"])
+        self.assertEqual(
+            ["source-artifact", "maven-staging-main"],
+            [target["artifact_id"] for target in payload["targets"]],
+        )
+        self.assertEqual(
+            ["byte-mismatch", "path-comparison-failed"],
+            [target["failure_class"] for target in payload["targets"]],
         )
 
     def test_inspect_repro_command_can_filter_to_selected_artifact_ids(self) -> None:
