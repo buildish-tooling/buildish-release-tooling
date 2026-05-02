@@ -400,7 +400,8 @@ verify_rc:
 
 - reads one saved `verify-rc` JSON report plus its inspection bundle
 - explains failed reproducibility checks without rerunning remote verification
-- surfaces the selected `profile_id`, recipe-source classification, structured override details, retained evidence files, and kind-specific drift details
+- starts with a grouped failure summary, including source-vs-secondary counts, failure kinds, and failure classes
+- surfaces the selected `profile_id`, recipe-source classification, structured override details, retained evidence labels, and kind-specific drift details
 - keeps archive-aware inspection limited to the top-level downloadable artifact under verification, such as the source tarball, wheel, sdist, or npm package tarball
 - keeps built-in archive-aware inspection shallow and artifact-oriented, focusing on entry path, size, mtime, mode bits, ownership fields, file type, symlink target, and direct entry-content equality for those top-level members
 - does not recursively unpack nested archives or embedded payloads by default; it is intended as a focused verifier aid, not a general-purpose `diffoscope` clone
@@ -416,12 +417,48 @@ Typical operator flow:
 2. If `verify-rc` reports one or more reproducibility failures, keep the generated JSON report and
    inspection bundle together.
 3. Run `inspect-repro <report_json>` against that saved report.
-4. Start with the failure summary and retained evidence paths, then use the kind-specific output:
+4. Start with the grouped failure summary and the retained evidence labels shown for each artifact, then use the kind-specific output:
    - source artifact: staged vs rebuilt source archive drift
    - Python / npm / generic file: retained artifact drift, shallow top-level archive drift when
      the artifact format is tar/zip-based
    - Maven / OCI: kind-specific path, digest, and metadata drift summaries
 5. Use optional external tools only as escalation when the built-in diagnosis is insufficient.
+
+Typical transcript shape:
+
+```text
+buildish-release-tooling inspect-repro build/verify-rc-report-example-v1.2.3-rc0.json
+Inspect Repro
+=============
+  Report JSON: build/verify-rc-report-example-v1.2.3-rc0.json
+  Inspection bundle: build/verify-rc-report-example-v1.2.3-rc0.bundle
+
+Summary
+-------
+  Reproducibility failures: 2
+  Source artifact failures: 1
+  Secondary artifact failures: 1
+  Failure kinds: generic-file=1, source-artifact=1
+  Failure classes: byte-mismatch=2
+
+Source Artifact 1/2
+-------------------
+  Recipe source: verifier-internal
+  Failure class: byte-mismatch
+  Retained evidence: comparison-metadata, staged-artifact, rebuilt-artifact
+  ...
+
+Artifact 2/2: bootstrap-zip
+---------------------------
+  Recipe source: canonical-profile
+  Failure class: byte-mismatch
+  Retained evidence: comparison-metadata, staged-artifact, rebuilt-artifact
+  ...
+
+Outcome
+-------
+✓ Inspected 2 saved reproducibility failure(s)
+```
 
 ### `prepare-rc`
 

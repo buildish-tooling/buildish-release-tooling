@@ -1404,7 +1404,8 @@ Responsibilities of `verify-rc`:
 Responsibilities of `inspect-repro`:
 
 - read `report.json` and the associated inspection bundle
-- summarize failure classes first
+- summarize failure counts, kinds, and failure classes first
+- surface the retained evidence labels for each failing artifact before drilling into deeper analysis
 - run archive-aware or file-aware analyzers against the saved evidence
 - keep archive-aware analysis limited to the top-level downloadable artifact under verification, for example the staged source tarball, wheel, sdist, or npm package tarball
 - keep the built-in archive-aware analysis shallow and artifact-oriented, focusing on top-level archive-entry facts such as member path, size, mtime, mode bits, ownership fields, file type, symlink target, and direct member-content equality for those top-level entries
@@ -1449,8 +1450,8 @@ Recommended operator workflow:
    reproducibility execution details and the inspection bundle can retain curated evidence.
 3. If `verify-rc` reports reproducibility failures, keep the JSON report and inspection bundle
    together and run `buildish-release-tooling inspect-repro <report-json>`.
-4. Let `inspect-repro` summarize the failure classes and retained evidence first, then drill into
-   the kind-specific diagnostics:
+4. Let `inspect-repro` summarize failure counts, kinds, failure classes, and retained evidence
+   first, then drill into the kind-specific diagnostics:
    - source artifact: staged vs rebuilt source archive drift
    - generic file / Python / npm: retained artifact drift plus shallow top-level tar/zip drift
      where applicable
