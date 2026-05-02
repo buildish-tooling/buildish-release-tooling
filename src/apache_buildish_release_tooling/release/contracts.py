@@ -421,6 +421,49 @@ class SourceArtifactContractRead(SourceArtifactContract):
     model_config = ConfigDict(extra="allow")
 
 
+class SecondaryArtifactChecksumPayloadRead(_BuildishTolerantReadModel):
+    """Tolerant checksum payload used while reading secondary artifacts."""
+
+    value: str | None = None
+    uri: str | None = None
+
+
+class SecondaryArtifactChecksumsRead(_BuildishTolerantReadModel):
+    """Tolerant checksum block accepted by verify-rc secondary-artifact readers."""
+
+    sha256: SecondaryArtifactChecksumPayloadRead | None = None
+    sha512: SecondaryArtifactChecksumPayloadRead | None = None
+
+
+class SecondaryArtifactSignatureReferenceRead(_BuildishTolerantReadModel):
+    """Tolerant detached-signature reference accepted by verify-rc readers."""
+
+    type: str | None = None
+    uri: str | None = None
+
+
+class SecondaryArtifactInventoryRead(_BuildishTolerantReadModel):
+    """Tolerant supplemental inventory reference accepted by verify-rc readers."""
+
+    filename: str | None = None
+    sha512: str | None = None
+    uri: str | None = None
+    entry_count: int | None = None
+    total_size_bytes: int | None = None
+
+
+class SecondaryArtifactEnvelopeRead(_BuildishTolerantReadModel):
+    """Tolerant secondary-artifact envelope used before strict kind validation."""
+
+    artifact_id: str | None = None
+    kind: str | None = None
+    filename: str | None = None
+    uri: str | None = None
+    checksums: SecondaryArtifactChecksumsRead | None = None
+    signatures: list[SecondaryArtifactSignatureReferenceRead] | None = None
+    inventory: SecondaryArtifactInventoryRead | None = None
+
+
 class VoteMaterialsStrict(BuildishContractModel):
     """Strict vote-materials block for authored and emitted manifests."""
 
@@ -440,7 +483,9 @@ class VoteMaterialsRead(BuildishContractModel):
     model_config = ConfigDict(extra="allow")
 
     source_artifacts: list[SourceArtifactContractRead]
-    secondary_artifacts: list[AnySecondaryArtifact | dict[str, object]] = Field(default_factory=list)
+    secondary_artifacts: list[AnySecondaryArtifact | SecondaryArtifactEnvelopeRead] = Field(
+        default_factory=list
+    )
 
     @model_validator(mode="after")
     def validate_single_source_artifact(self) -> VoteMaterialsRead:

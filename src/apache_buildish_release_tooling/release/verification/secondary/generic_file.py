@@ -129,7 +129,7 @@ def verify_generic_file(
     inventory_verification = None
     try:
         inventory_verification = downloaded_inventory(
-            artifact_entry.model_dump(mode="json", exclude_none=True),
+            artifact_entry,
             manifest_url=manifest_url,
             artifact_id=artifact_id,
             work_dir=work_dir,

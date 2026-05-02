@@ -122,7 +122,7 @@ def verify_maven_repository(
 
     try:
         fetched_inventory = downloaded_inventory(
-            artifact_entry.model_dump(mode="json", exclude_none=True),
+            artifact_entry,
             manifest_url=manifest_url,
             artifact_id=artifact_id,
             work_dir=work_dir,

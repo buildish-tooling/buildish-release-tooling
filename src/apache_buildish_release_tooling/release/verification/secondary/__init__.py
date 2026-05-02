@@ -38,6 +38,7 @@ from apache_buildish_release_tooling.release.contracts import (
     PythonDistributionVerificationReport,
     PythonDistributionSecondaryArtifact,
     RcVoteManifestReadV1,
+    SecondaryArtifactEnvelopeRead,
     StrictSecondaryArtifactAdapter,
 )
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
@@ -221,7 +222,11 @@ def _malformed_secondary_artifact_issue(
     manifest_url: str,
 ) -> str:
     raw_payload = artifact_entry.raw_payload
-    if not isinstance(raw_payload, dict):
+    if isinstance(raw_payload, SecondaryArtifactEnvelopeRead):
+        serialized_payload = raw_payload.model_dump(mode="json", exclude_none=True)
+    elif isinstance(raw_payload, dict):
+        serialized_payload = raw_payload
+    else:
         return f"manifest secondary artifact entry must be an object: {manifest_url}"
     raw_artifact_id = artifact_entry.artifact_id
     if raw_artifact_id is None:
@@ -230,7 +235,7 @@ def _malformed_secondary_artifact_issue(
     if raw_kind is None:
         return f"manifest field kind must be a non-empty string: {manifest_url}"
     try:
-        StrictSecondaryArtifactAdapter.validate_python(raw_payload)
+        StrictSecondaryArtifactAdapter.validate_python(serialized_payload)
     except Exception as exc:
         return str(exc)
     return f"manifest secondary artifact entry is malformed: {manifest_url}"

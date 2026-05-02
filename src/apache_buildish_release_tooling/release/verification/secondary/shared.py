@@ -20,7 +20,6 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict
@@ -29,6 +28,14 @@ from apache_buildish_release_tooling.release.contracts import (
     AnySecondaryArtifact,
     InventoryVerificationReport,
     RcVoteManifestReadV1,
+    SecondaryArtifactChecksumsRead,
+    SecondaryArtifactEnvelopeRead,
+    SecondaryArtifactInventoryRead,
+    SecondaryArtifactSignatureReferenceRead,
+    Sha256Checksums,
+    Sha512Checksums,
+    SignatureReference,
+    SupplementalInventoryReference,
     StrictSecondaryArtifactAdapter,
 )
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
@@ -63,7 +70,7 @@ class _ExternalPayloadReadModel(BaseModel):
 
 
 class _RawVoteMaterialsRead(_ExternalPayloadReadModel):
-    secondary_artifacts: list[object] | None = None
+    secondary_artifacts: list[AnySecondaryArtifact | SecondaryArtifactEnvelopeRead] | None = None
 
 
 class _RawManifestRead(_ExternalPayloadReadModel):
@@ -89,7 +96,7 @@ class _RawInventoryRead(_ExternalPayloadReadModel):
 class MalformedSecondaryArtifactEntry:
     """One malformed secondary-artifact manifest entry preserved for fail-closed reporting."""
 
-    raw_payload: object
+    raw_payload: SecondaryArtifactEnvelopeRead | object
     artifact_id: str | None = None
     declared_kind: str | None = None
 
@@ -102,7 +109,7 @@ def secondary_artifact_entries(
     *,
     source: str,
 ) -> list[SecondaryArtifactEntry]:
-    secondary_artifacts: list[object] | None
+    secondary_artifacts: list[AnySecondaryArtifact | SecondaryArtifactEnvelopeRead] | None
     if isinstance(manifest_payload, RcVoteManifestReadV1):
         secondary_artifacts = list(manifest_payload.vote_materials.secondary_artifacts)
     else:
@@ -115,34 +122,34 @@ def secondary_artifact_entries(
             raise ValueError(f"manifest secondary_artifacts must be a list: {source}")
     entries: list[SecondaryArtifactEntry] = []
     for raw_entry in secondary_artifacts:
-        if isinstance(raw_entry, BaseModel):
-            entries.append(cast(AnySecondaryArtifact, raw_entry))
-            continue
-        if isinstance(raw_entry, Mapping):
+        if isinstance(raw_entry, SecondaryArtifactEnvelopeRead):
             try:
-                entries.append(StrictSecondaryArtifactAdapter.validate_python(raw_entry))
+                entries.append(
+                    StrictSecondaryArtifactAdapter.validate_python(
+                        raw_entry.model_dump(mode="json", exclude_none=True)
+                    )
+                )
                 continue
             except Exception:
-                raw_artifact_id = raw_entry.get("artifact_id")
-                raw_kind = raw_entry.get("kind")
                 entries.append(
                     MalformedSecondaryArtifactEntry(
-                        raw_payload=dict(raw_entry),
-                        artifact_id=raw_artifact_id.strip()
-                        if isinstance(raw_artifact_id, str) and raw_artifact_id.strip()
+                        raw_payload=raw_entry,
+                        artifact_id=raw_entry.artifact_id.strip()
+                        if isinstance(raw_entry.artifact_id, str) and raw_entry.artifact_id.strip()
                         else None,
-                        declared_kind=raw_kind.strip()
-                        if isinstance(raw_kind, str) and raw_kind.strip()
+                        declared_kind=raw_entry.kind.strip()
+                        if isinstance(raw_entry.kind, str) and raw_entry.kind.strip()
                         else None,
                     )
                 )
                 continue
-        entries.append(MalformedSecondaryArtifactEntry(raw_payload=raw_entry))
+        if isinstance(raw_entry, BaseModel):
+            entries.append(raw_entry)
     return entries
 
 
 def preferred_checksum_payload(
-    artifact_entry: Mapping[str, object],
+    artifact_entry: AnySecondaryArtifact | SecondaryArtifactEnvelopeRead,
     *,
     source: str,
 ) -> tuple[str, str, str | None]:
@@ -154,25 +161,24 @@ def preferred_checksum_payload(
 
 
 def required_checksum_payload(
-    artifact_entry: Mapping[str, object],
+    artifact_entry: AnySecondaryArtifact | SecondaryArtifactEnvelopeRead,
     *,
     source: str,
     algorithms: tuple[str, ...],
 ) -> tuple[str, str, str | None]:
-    checksums = artifact_entry.get("checksums")
-    if not isinstance(checksums, dict):
+    checksums = _checksums_payload(artifact_entry)
+    if checksums is None:
         raise ValueError(f"manifest secondary artifact is missing checksums: {source}")
     for algorithm in algorithms:
-        checksum_payload = checksums.get(algorithm)
-        if not isinstance(checksum_payload, dict):
+        checksum_payload = getattr(checksums, algorithm, None)
+        if checksum_payload is None:
             continue
         checksum_value = required_hex_digest(
-            checksum_payload,
-            "value",
+            checksum_payload.value,
             algorithm=algorithm,
             source=source,
         )
-        checksum_uri = checksum_payload.get("uri")
+        checksum_uri = checksum_payload.uri
         if checksum_uri is not None:
             if not isinstance(checksum_uri, str) or not checksum_uri.strip():
                 raise ValueError(
@@ -187,7 +193,7 @@ def required_checksum_payload(
 
 
 def verified_openpgp_signatures(
-    artifact_entry: Mapping[str, object],
+    artifact_entry: AnySecondaryArtifact | SecondaryArtifactEnvelopeRead,
     *,
     manifest_url: str,
     artifact_id: str,
@@ -197,20 +203,16 @@ def verified_openpgp_signatures(
     allow_non_production_release_targets: bool,
     require_signature: bool,
 ) -> tuple[SignatureVerification, ...]:
-    raw_signatures = artifact_entry.get("signatures")
+    raw_signatures = _signature_references(artifact_entry)
     if raw_signatures is None:
         if require_signature:
             raise ValueError(f"manifest secondary artifact is missing signatures: {manifest_url}")
         return ()
-    if not isinstance(raw_signatures, list):
-        raise ValueError(f"manifest secondary artifact signatures must be a list: {manifest_url}")
     signature_uris: list[str] = []
     for signature_payload_entry in raw_signatures:
-        if not isinstance(signature_payload_entry, dict):
-            raise ValueError(f"manifest secondary artifact signatures must be objects: {manifest_url}")
         signature_type = required_non_empty_string(
-            signature_payload_entry,
-            "type",
+            signature_payload_entry.type,
+            field_name="type",
             source=manifest_url,
         )
         if signature_type != "openpgp-detached-ascii-armored":
@@ -218,7 +220,11 @@ def verified_openpgp_signatures(
                 f"unsupported secondary artifact signature type for {artifact_id}: {signature_type}"
             )
         signature_uris.append(
-            required_non_empty_string(signature_payload_entry, "uri", source=manifest_url)
+            required_non_empty_string(
+                signature_payload_entry.uri,
+                field_name="uri",
+                source=manifest_url,
+            )
         )
     if require_signature and not signature_uris:
         raise ValueError(
@@ -243,23 +249,20 @@ def verified_openpgp_signatures(
 
 
 def downloaded_inventory(
-    artifact_entry: Mapping[str, object],
+    artifact_entry: AnySecondaryArtifact | SecondaryArtifactEnvelopeRead,
     *,
     manifest_url: str,
     artifact_id: str,
     work_dir: Path,
     allow_non_production_release_targets: bool,
 ) -> DownloadedInventory | None:
-    raw_inventory = artifact_entry.get("inventory")
+    raw_inventory = _inventory_reference(artifact_entry)
     if raw_inventory is None:
         return None
-    if not isinstance(raw_inventory, dict):
-        raise ValueError(f"manifest secondary artifact inventory must be an object: {manifest_url}")
-    filename = required_non_empty_string(raw_inventory, "filename", source=manifest_url)
-    inventory_uri = required_non_empty_string(raw_inventory, "uri", source=manifest_url)
+    filename = required_non_empty_string(raw_inventory.filename, field_name="filename", source=manifest_url)
+    inventory_uri = required_non_empty_string(raw_inventory.uri, field_name="uri", source=manifest_url)
     inventory_sha512 = required_hex_digest(
-        raw_inventory,
-        "sha512",
+        raw_inventory.sha512,
         algorithm="sha512",
         source=manifest_url,
     )
@@ -291,27 +294,58 @@ def downloaded_inventory(
     )
 
 
-def required_non_empty_string(payload: Mapping[str, object], field_name: str, *, source: str) -> str:
-    value = payload.get(field_name)
+def _checksums_payload(
+    artifact_entry: AnySecondaryArtifact | SecondaryArtifactEnvelopeRead,
+) -> Sha512Checksums | Sha256Checksums | SecondaryArtifactChecksumsRead | None:
+    raw_checksums = getattr(artifact_entry, "checksums", None)
+    if isinstance(
+        raw_checksums,
+        Sha512Checksums | Sha256Checksums | SecondaryArtifactChecksumsRead,
+    ):
+        return raw_checksums
+    return None
+
+
+def _signature_references(
+    artifact_entry: AnySecondaryArtifact | SecondaryArtifactEnvelopeRead,
+) -> list[SignatureReference] | list[SecondaryArtifactSignatureReferenceRead] | None:
+    raw_signatures = getattr(artifact_entry, "signatures", None)
+    if isinstance(raw_signatures, list):
+        return raw_signatures
+    return None
+
+
+def _inventory_reference(
+    artifact_entry: AnySecondaryArtifact | SecondaryArtifactEnvelopeRead,
+) -> SupplementalInventoryReference | SecondaryArtifactInventoryRead | None:
+    raw_inventory = getattr(artifact_entry, "inventory", None)
+    if isinstance(raw_inventory, SupplementalInventoryReference | SecondaryArtifactInventoryRead):
+        return raw_inventory
+    return None
+
+
+def required_non_empty_string(value: object, *, field_name: str, source: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"manifest field {field_name} must be a non-empty string: {source}")
     return value.strip()
 
 
 def required_hex_digest(
-    payload: Mapping[str, object],
-    field_name: str,
+    value: object,
     *,
     algorithm: str,
     source: str,
 ) -> str:
-    value = required_non_empty_string(payload, field_name, source=source).lower()
+    normalized = required_non_empty_string(value, field_name=algorithm, source=source).lower()
     expected_length = CHECKSUM_LENGTHS[algorithm]
-    if len(value) != expected_length or any(character not in "0123456789abcdef" for character in value):
+    if (
+        len(normalized) != expected_length
+        or any(character not in "0123456789abcdef" for character in normalized)
+    ):
         raise ValueError(
             f"manifest secondary artifact {algorithm} must be a {expected_length}-character hex digest: {source}"
         )
-    return value
+    return normalized
 
 
 def safe_path_component(value: str) -> str:
