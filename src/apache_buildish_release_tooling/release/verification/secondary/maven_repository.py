@@ -76,6 +76,7 @@ from apache_buildish_release_tooling.release.verification.rebuild import (
 )
 
 from .shared import (
+    _RawInventoryRead,
     downloaded_inventory,
 )
 
@@ -744,14 +745,16 @@ def _maven_reproducibility_failure_class(
 
 
 def _validated_maven_inventory_payload(
-    inventory_payload: dict[str, object],
+    inventory_payload: _RawInventoryRead,
     *,
     artifact_id: str,
     staging_repository_id: str,
     base_url: str,
     source: str,
 ) -> MavenRepositoryInventoryV1:
-    inventory = MavenRepositoryInventoryV1.model_validate(inventory_payload)
+    inventory = MavenRepositoryInventoryV1.model_validate(
+        inventory_payload.model_dump(mode="json", exclude_none=True)
+    )
     if inventory.artifact_id != artifact_id:
         raise ValueError("maven inventory artifact_id does not match the manifest secondary artifact")
     if inventory.staging_repository_id != staging_repository_id:

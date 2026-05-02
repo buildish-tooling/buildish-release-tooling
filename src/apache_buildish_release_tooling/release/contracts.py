@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, field_validator, model_validator
 from pydantic.functional_validators import AfterValidator
@@ -376,12 +376,30 @@ class ManifestTrustRoots(BuildishContractModel):
     asf_keys: AsfKeysTrustRoot
 
 
+class AsfKeysTrustRootRead(AsfKeysTrustRoot):
+    """Tolerant ASF KEYS trust-root subset accepted by verify-rc readers."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class ManifestTrustRootsRead(_BuildishTolerantReadModel):
+    """Tolerant trust-root block accepted by verify-rc readers."""
+
+    asf_keys: AsfKeysTrustRootRead
+
+
 class DraftGithubRelease(BuildishContractModel):
     """Convenience pointer to the matching draft GitHub Release."""
 
     repository: NonEmptyString
     tag: NonEmptyString
     url: NonEmptyString
+
+
+class DraftGithubReleaseRead(DraftGithubRelease):
+    """Tolerant draft-release pointer accepted by verify-rc readers."""
+
+    model_config = ConfigDict(extra="allow")
 
 
 class SourceArtifactContract(BuildishContractModel):
@@ -395,6 +413,12 @@ class SourceArtifactContract(BuildishContractModel):
     reproducibility: ReproducibilitySelector | None = None
     checksums: Sha512Checksums
     signatures: list[SignatureReference] = Field(min_length=1)
+
+
+class SourceArtifactContractRead(SourceArtifactContract):
+    """Tolerant source-artifact contract accepted by verify-rc readers."""
+
+    model_config = ConfigDict(extra="allow")
 
 
 class VoteMaterialsStrict(BuildishContractModel):
@@ -413,8 +437,10 @@ class VoteMaterialsStrict(BuildishContractModel):
 class VoteMaterialsRead(BuildishContractModel):
     """Tolerant vote-materials block used by verify-rc readers."""
 
-    source_artifacts: list[SourceArtifactContract]
-    secondary_artifacts: list[AnySecondaryArtifact | dict[str, Any]] = Field(default_factory=list)
+    model_config = ConfigDict(extra="allow")
+
+    source_artifacts: list[SourceArtifactContractRead]
+    secondary_artifacts: list[AnySecondaryArtifact | dict[str, object]] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_single_source_artifact(self) -> VoteMaterialsRead:
@@ -431,6 +457,12 @@ class AuthoritativeManifestReference(BuildishContractModel):
     signatures: list[SignatureReference] = Field(min_length=1)
 
 
+class AuthoritativeManifestReferenceRead(AuthoritativeManifestReference):
+    """Tolerant authoritative-manifest reference accepted by verify-rc readers."""
+
+    model_config = ConfigDict(extra="allow")
+
+
 class ManifestVerificationMetadataStrict(BuildishContractModel):
     """Strict verification metadata emitted by finalize-rc-vote-materials."""
 
@@ -438,11 +470,11 @@ class ManifestVerificationMetadataStrict(BuildishContractModel):
     authoritative_manifest: AuthoritativeManifestReference
 
 
-class ManifestVerificationMetadataRead(BuildishContractModel):
+class ManifestVerificationMetadataRead(_BuildishTolerantReadModel):
     """Tolerant verification metadata accepted by verify-rc."""
 
     staging_svn_url: NonEmptyString
-    authoritative_manifest: AuthoritativeManifestReference | None = None
+    authoritative_manifest: AuthoritativeManifestReferenceRead | None = None
 
 
 class RcVoteManifestV1(BuildishContractModel):
@@ -468,7 +500,7 @@ class RcVoteManifestV1(BuildishContractModel):
     materialized_commit_sha: GitCommitSha | None = None
 
 
-class RcVoteManifestReadV1(BuildishContractModel):
+class RcVoteManifestReadV1(_BuildishTolerantReadModel):
     """Tolerant RC vote-manifest reader used by verify-rc."""
 
     schema_version: SchemaVersionV1 = "1"
@@ -484,8 +516,8 @@ class RcVoteManifestReadV1(BuildishContractModel):
     final_tag: NonEmptyString
     final_tag_mode: NonEmptyString
     provenance: ManifestProvenanceRead
-    trust_roots: ManifestTrustRoots
-    draft_github_release: DraftGithubRelease
+    trust_roots: ManifestTrustRootsRead
+    draft_github_release: DraftGithubReleaseRead
     vote_materials: VoteMaterialsRead
     verification: ManifestVerificationMetadataRead
     materialized_commit_sha: GitCommitSha | None = None

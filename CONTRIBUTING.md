@@ -31,6 +31,14 @@ Thank you for considering a contribution to Apache Buildish.
 - Add or update tests and documentation when applicable.
 - Keep commit messages and pull request text readable for future project history.
 
+## Modeling and JSON handling
+
+- Buildish-owned persisted or boundary data should use pydantic models.
+- Internal structured helper state should use dataclasses or typed partial-reader models.
+- Raw `dict[str, Any]` payloads should stay isolated to explicit external or tolerant-input boundaries.
+
+This keeps manifest, report, and verifier code easier to reason about and makes typos less likely to turn into runtime bugs.
+
 ## Security issues
 
 Do **not** open a public issue for a suspected security vulnerability. Instead, report it to [security@apache.org](mailto:security@apache.org).

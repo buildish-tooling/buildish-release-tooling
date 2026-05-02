@@ -22,6 +22,23 @@ from tests.release.commands.support import *
 class ArtifactRegistrationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
     """Artifact-registration command integration tests."""
 
+    def _assert_secondary_artifact_entry_shape(
+        self,
+        payload: dict[str, object],
+        *,
+        expected_entry_keys: list[str],
+    ) -> None:
+        self.assertEqual(["secondary_artifacts"], list(payload))
+        entries = payload["secondary_artifacts"]
+        self.assertIsInstance(entries, list)
+        if not isinstance(entries, list) or len(entries) != 1:
+            self.fail("expected exactly one secondary artifact entry")
+        entry = entries[0]
+        self.assertIsInstance(entry, dict)
+        if not isinstance(entry, dict):
+            self.fail("secondary artifact entry must be a JSON object")
+        self.assertEqual(expected_entry_keys, list(entry))
+
     def test_record_artifact_generic_file_command_writes_registration_bundle(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
@@ -87,6 +104,21 @@ class ArtifactRegistrationCommandsIntegrationTest(ReleaseCommandsIntegrationTest
         self.assertEqual([], action_manifest["inventory_paths"])
 
         payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        self._assert_secondary_artifact_entry_shape(
+            payload,
+            expected_entry_keys=[
+                "artifact_id",
+                "kind",
+                "role",
+                "artifact_origin",
+                "git_commit_sha",
+                "reproducibility",
+                "filename",
+                "uri",
+                "checksums",
+                "signatures",
+            ],
+        )
         validated_manifest = SecondaryArtifactManifestV1.model_validate(payload)
         self.assertEqual(
             artifact_id,
@@ -227,6 +259,21 @@ class ArtifactRegistrationCommandsIntegrationTest(ReleaseCommandsIntegrationTest
         self.assertEqual([], action_manifest["inventory_paths"])
 
         payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        self._assert_secondary_artifact_entry_shape(
+            payload,
+            expected_entry_keys=[
+                "artifact_id",
+                "kind",
+                "role",
+                "artifact_origin",
+                "git_commit_sha",
+                "uri",
+                "registry",
+                "repository",
+                "digest",
+                "platform_digests",
+            ],
+        )
         validated_manifest = SecondaryArtifactManifestV1.model_validate(payload)
         self.assertEqual(artifact_id, validated_manifest.secondary_artifacts[0].artifact_id)
         self.assertEqual(
@@ -349,6 +396,21 @@ class ArtifactRegistrationCommandsIntegrationTest(ReleaseCommandsIntegrationTest
         expected_manifest_path = expected_bundle_dir / "artifact-manifest.json"
         self.assertEqual(str(expected_manifest_path), completed.stdout.strip())
         payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        self._assert_secondary_artifact_entry_shape(
+            payload,
+            expected_entry_keys=[
+                "artifact_id",
+                "kind",
+                "role",
+                "artifact_origin",
+                "git_commit_sha",
+                "uri",
+                "registry",
+                "repository",
+                "digest",
+                "platform_digests",
+            ],
+        )
         validated_manifest = SecondaryArtifactManifestV1.model_validate(payload)
         self.assertEqual(artifact_id, validated_manifest.secondary_artifacts[0].artifact_id)
         self.assertEqual(
@@ -439,6 +501,17 @@ class ArtifactRegistrationCommandsIntegrationTest(ReleaseCommandsIntegrationTest
             / "artifact-manifest.json"
         )
         payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        self._assert_secondary_artifact_entry_shape(
+            payload,
+            expected_entry_keys=[
+                "artifact_id",
+                "kind",
+                "uri",
+                "registry",
+                "repository",
+                "digest",
+            ],
+        )
         validated_manifest = SecondaryArtifactManifestV1.model_validate(payload)
         self.assertEqual(
             "dockerhub-single-platform",
@@ -601,6 +674,23 @@ class ArtifactRegistrationCommandsIntegrationTest(ReleaseCommandsIntegrationTest
         self.assertEqual([], action_manifest["inventory_paths"])
 
         payload = json.loads(expected_manifest_path.read_text(encoding="utf-8"))
+        self._assert_secondary_artifact_entry_shape(
+            payload,
+            expected_entry_keys=[
+                "artifact_id",
+                "kind",
+                "role",
+                "artifact_origin",
+                "git_commit_sha",
+                "filename",
+                "uri",
+                "index_url",
+                "project_name",
+                "version",
+                "checksums",
+                "authenticity",
+            ],
+        )
         validated_manifest = SecondaryArtifactManifestV1.model_validate(payload)
         self.assertEqual(artifact_id, validated_manifest.secondary_artifacts[0].artifact_id)
         self.assertEqual(

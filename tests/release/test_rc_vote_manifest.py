@@ -239,8 +239,31 @@ class RcVoteManifestTest(unittest.TestCase):
             manifest,
             RcVoteManifestV1.model_validate(manifest.model_dump(mode="json", exclude_none=True)),
         )
+        self.assertEqual(
+            [
+                "schema_version",
+                "manifest_type",
+                "component_id",
+                "version",
+                "release_line",
+                "release_branch",
+                "source_repository_url",
+                "source_commit_sha",
+                "source_date_epoch",
+                "rc_tag",
+                "final_tag",
+                "final_tag_mode",
+                "provenance",
+                "trust_roots",
+                "draft_github_release",
+                "vote_materials",
+                "verification",
+                "materialized_commit_sha",
+            ],
+            list(manifest.model_dump(mode="json", exclude_none=True)),
+        )
 
-    def test_rc_vote_manifest_read_accepts_extended_provenance_fields(self) -> None:
+    def test_rc_vote_manifest_read_accepts_extended_nested_fields(self) -> None:
         payload = {
             "schema_version": "1",
             "manifest_type": "rc-vote",
@@ -270,12 +293,14 @@ class RcVoteManifestTest(unittest.TestCase):
                     "uri": "https://downloads.apache.org/incubator/buildish/KEYS",
                     "known_length_bytes": 9,
                     "known_prefix_sha512": "a" * 128,
+                    "future_field": "kept-tolerant",
                 }
             },
             "draft_github_release": {
                 "repository": "apache/buildish-example",
                 "tag": "v1.2.3-rc2",
                 "url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc2",
+                "future_field": "kept-tolerant",
             },
             "vote_materials": {
                 "source_artifacts": [
@@ -291,12 +316,30 @@ class RcVoteManifestTest(unittest.TestCase):
                                 "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/apache-buildish-example-1.2.3-incubating-src.tar.gz.asc",
                             }
                         ],
+                        "future_field": "kept-tolerant",
                     }
                 ],
                 "secondary_artifacts": [],
+                "future_field": "kept-tolerant",
             },
             "verification": {
                 "staging_svn_url": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/",
+                "authoritative_manifest": {
+                    "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/rc-vote-manifest.json",
+                    "checksum_uris": {
+                        "sha512": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/rc-vote-manifest.json.sha512",
+                    },
+                    "signatures": [
+                        {
+                            "uri": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/rc-vote-manifest.json.asc",
+                        }
+                    ],
+                    "future_field": "kept-tolerant",
+                },
+                "future_field": "kept-tolerant",
+            },
+            "future_top_level": {
+                "opaque": True,
             },
         }
 
@@ -309,4 +352,23 @@ class RcVoteManifestTest(unittest.TestCase):
         self.assertEqual(
             "fedcba9876543210fedcba9876543210fedcba98",
             manifest.provenance.tooling.git_commit_sha,
+        )
+        self.assertEqual(
+            "https://downloads.apache.org/incubator/buildish/KEYS",
+            manifest.trust_roots.asf_keys.uri,
+        )
+        self.assertEqual(
+            "v1.2.3-rc2",
+            manifest.draft_github_release.tag,
+        )
+        self.assertEqual(
+            "apache-buildish-example-1.2.3-incubating-src.tar.gz",
+            manifest.vote_materials.source_artifacts[0].filename,
+        )
+        self.assertIsNotNone(manifest.verification.authoritative_manifest)
+        if manifest.verification.authoritative_manifest is None:
+            self.fail("authoritative manifest reference missing")
+        self.assertEqual(
+            "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/rc-vote-manifest.json",
+            manifest.verification.authoritative_manifest.uri,
         )

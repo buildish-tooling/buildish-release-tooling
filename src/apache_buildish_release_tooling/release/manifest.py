@@ -19,14 +19,13 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel
 
 
 def write_manifest(
     path: Path,
-    entries: Mapping[str, Any] | BaseModel,
+    entries: Mapping[str, object] | BaseModel,
     *,
     exclude_none: bool = False,
 ) -> None:

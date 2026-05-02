@@ -16,15 +16,14 @@
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict
-from typing import cast
 
 from apache_buildish_release_tooling.release.contracts import (
     AnySecondaryArtifact,
@@ -53,7 +52,7 @@ class DownloadedInventory:
     """One verified inventory attachment plus its parsed JSON payload."""
 
     path: Path
-    raw_payload: dict[str, object]
+    raw_payload: _RawInventoryRead
     report_payload: InventoryVerificationReport
 
 
@@ -69,6 +68,21 @@ class _RawVoteMaterialsRead(_ExternalPayloadReadModel):
 
 class _RawManifestRead(_ExternalPayloadReadModel):
     vote_materials: _RawVoteMaterialsRead | None = None
+
+
+class _RawInventoryEntryRead(_ExternalPayloadReadModel):
+    path: str | None = None
+    size_bytes: int | None = None
+    sha512: str | None = None
+
+
+class _RawInventoryRead(_ExternalPayloadReadModel):
+    schema_version: str | None = None
+    inventory_type: str | None = None
+    artifact_id: str | None = None
+    staging_repository_id: str | None = None
+    base_url: str | None = None
+    entries: list[_RawInventoryEntryRead] | None = None
 
 
 @dataclass(frozen=True)
@@ -104,7 +118,7 @@ def secondary_artifact_entries(
         if isinstance(raw_entry, BaseModel):
             entries.append(cast(AnySecondaryArtifact, raw_entry))
             continue
-        if isinstance(raw_entry, dict):
+        if isinstance(raw_entry, Mapping):
             try:
                 entries.append(StrictSecondaryArtifactAdapter.validate_python(raw_entry))
                 continue
@@ -263,9 +277,9 @@ def downloaded_inventory(
             "secondary artifact inventory checksum does not match the signed manifest: "
             f"{artifact_id} {actual_inventory_sha512} != {inventory_sha512}"
         )
-    inventory_payload = json.loads(inventory_path.read_text(encoding="utf-8"))
-    if not isinstance(inventory_payload, dict):
-        raise ValueError(f"secondary artifact inventory must be a JSON object: {inventory_path}")
+    inventory_payload = _RawInventoryRead.model_validate_json(
+        inventory_path.read_text(encoding="utf-8")
+    )
     return DownloadedInventory(
         path=inventory_path,
         raw_payload=inventory_payload,

@@ -17,23 +17,60 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from pathlib import Path
+
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from apache_buildish_release_tooling.release.process import run_logged_command
 
 
-def _check_runs(payload: dict[str, object]) -> list[dict[str, object]]:
-    raw_check_runs = payload.get("check_runs")
-    if not isinstance(raw_check_runs, list):
-        return []
-    return [check_run for check_run in raw_check_runs if isinstance(check_run, dict)]
+class _ExternalGithubReadModel(BaseModel):
+    """Tolerant GitHub API subset reader used by check-gate helpers."""
+
+    model_config = ConfigDict(extra="allow")
 
 
-def _statuses(payload: dict[str, object]) -> list[dict[str, object]]:
-    raw_statuses = payload.get("statuses")
-    if not isinstance(raw_statuses, list):
+class _CheckRunRead(_ExternalGithubReadModel):
+    name: str | None = None
+    status: str | None = None
+    conclusion: str | None = None
+
+
+class _StatusRead(_ExternalGithubReadModel):
+    context: str | None = None
+    state: str | None = None
+
+
+class _CheckRunsPayloadRead(_ExternalGithubReadModel):
+    check_runs: list[_CheckRunRead] | None = None
+
+
+class _StatusesPayloadRead(_ExternalGithubReadModel):
+    statuses: list[_StatusRead] | None = None
+
+
+def _check_runs(payload: Mapping[str, object]) -> list[_CheckRunRead]:
+    try:
+        parsed = _CheckRunsPayloadRead.model_validate(payload)
+    except ValidationError:
         return []
-    return [status for status in raw_statuses if isinstance(status, dict)]
+    return list(parsed.check_runs or [])
+
+
+def _statuses(payload: Mapping[str, object]) -> list[_StatusRead]:
+    try:
+        parsed = _StatusesPayloadRead.model_validate(payload)
+    except ValidationError:
+        return []
+    return list(parsed.statuses or [])
+
+
+def _json_object_output(stdout: str, *, source: str) -> dict[str, object]:
+    payload = json.loads(stdout)
+    if not isinstance(payload, dict):
+        raise ValueError(f"{source} did not return a JSON object payload")
+    return payload
 
 
 def resolve_repository_slug(repo_path: Path) -> str:
@@ -65,7 +102,7 @@ def fetch_check_runs_json(repository_slug: str, ref: str) -> dict[str, object]:
             f"repos/{repository_slug}/commits/{ref}/check-runs?per_page=100",
         ]
     )
-    return json.loads(completed.stdout)
+    return _json_object_output(completed.stdout, source="GitHub check-runs API")
 
 
 def fetch_statuses_json(repository_slug: str, ref: str) -> dict[str, object]:
@@ -80,30 +117,30 @@ def fetch_statuses_json(repository_slug: str, ref: str) -> dict[str, object]:
             f"repos/{repository_slug}/commits/{ref}/status",
         ]
     )
-    return json.loads(completed.stdout)
+    return _json_object_output(completed.stdout, source="GitHub statuses API")
 
 
-def _invalid_check_runs_report(check_runs_payload: dict[str, object]) -> list[str]:
+def _invalid_check_runs_report(check_runs_payload: Mapping[str, object]) -> list[str]:
     reports: list[str] = []
     for check_run in _check_runs(check_runs_payload):
-        status = check_run.get("status")
-        conclusion = check_run.get("conclusion")
+        status = check_run.status
+        conclusion = check_run.conclusion
         if status != "completed" or conclusion not in {"success", "skipped"}:
             reports.append(
-                f"{check_run.get('name')}\tstatus={status}\tconclusion={conclusion or 'null'}"
+                f"{check_run.name}\tstatus={status}\tconclusion={conclusion or 'null'}"
             )
     return reports
 
 
-def _invalid_statuses_report(status_payload: dict[str, object]) -> list[str]:
+def _invalid_statuses_report(status_payload: Mapping[str, object]) -> list[str]:
     reports: list[str] = []
     for status in _statuses(status_payload):
-        if status.get("state") != "success":
-            reports.append(f"{status.get('context')}\tstate={status.get('state')}")
+        if status.state != "success":
+            reports.append(f"{status.context}\tstate={status.state}")
     return reports
 
 
-def total_count(check_runs_payload: dict[str, object], statuses_payload: dict[str, object]) -> int:
+def total_count(check_runs_payload: Mapping[str, object], statuses_payload: Mapping[str, object]) -> int:
     """Count check runs and legacy status contexts in two API payloads."""
 
     check_run_count = len(_check_runs(check_runs_payload))
@@ -112,8 +149,8 @@ def total_count(check_runs_payload: dict[str, object], statuses_payload: dict[st
 
 
 def assert_ref_ready(
-    check_runs_payload: dict[str, object],
-    statuses_payload: dict[str, object],
+    check_runs_payload: Mapping[str, object],
+    statuses_payload: Mapping[str, object],
     require_at_least_one_check: bool,
 ) -> int:
     """Enforce the Buildish source-ref readiness policy for GitHub checks."""

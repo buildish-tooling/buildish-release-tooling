@@ -27,7 +27,6 @@ from collections.abc import Iterator
 from collections.abc import Mapping
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
 
 from apache_buildish_release_tooling.release.asf_svn import AsfSvnClient
 from apache_buildish_release_tooling.release.config import (
@@ -94,7 +93,7 @@ def _artifact_output_dir(component_id: str) -> Path:
     return Path.cwd() / "build" / "release-artifacts" / component_id
 
 
-def _append_github_outputs(entries: Mapping[str, Any]) -> None:
+def _append_github_outputs(entries: Mapping[str, object]) -> None:
     """Append one or more step outputs when running inside GitHub Actions."""
 
     output_path_text = os.environ.get("GITHUB_OUTPUT", "").strip()

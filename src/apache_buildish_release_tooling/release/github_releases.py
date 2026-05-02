@@ -17,10 +17,41 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from pydantic import BaseModel, ConfigDict, ValidationError
+
 from apache_buildish_release_tooling.release.process import run_logged_command
+
+
+class _ExternalGithubReadModel(BaseModel):
+    """Tolerant GitHub Release API subset reader."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class _GitHubReleaseAssetRead(_ExternalGithubReadModel):
+    id: int | None = None
+    name: str | None = None
+
+
+class _GitHubReleaseRead(_ExternalGithubReadModel):
+    id: int | None = None
+    draft: bool | None = None
+    tag_name: str | None = None
+    name: str | None = None
+    body: str | None = None
+    html_url: str | None = None
+    url: str | None = None
+    assets: list[_GitHubReleaseAssetRead] | None = None
+
+
+def _release_read_view(release: Mapping[str, object]) -> _GitHubReleaseRead | None:
+    try:
+        return _GitHubReleaseRead.model_validate(release)
+    except ValidationError:
+        return None
 
 
 def list_releases(repository_slug: str) -> list[dict[str, object]]:
@@ -38,11 +69,19 @@ def list_releases(repository_slug: str) -> list[dict[str, object]]:
     payload = json.loads(completed.stdout)
     if not isinstance(payload, list):
         return []
-    return [release for release in payload if isinstance(release, dict)]
+    releases: list[dict[str, object]] = []
+    for release in payload:
+        if not isinstance(release, dict):
+            continue
+        parsed = _release_read_view(release)
+        if parsed is None:
+            continue
+        releases.append(parsed.model_dump(mode="python", exclude_none=True))
+    return releases
 
 
 def matching_draft_release_ids(
-    releases: Sequence[dict[str, object]],
+    releases: Sequence[Mapping[str, object]],
     *,
     tag_names: Sequence[str],
     release_name: str,
@@ -52,64 +91,52 @@ def matching_draft_release_ids(
     matching_ids: list[int] = []
     tag_name_set = set(tag_names)
     for release in releases:
-        if release.get("draft") is not True:
+        parsed = _release_read_view(release)
+        if parsed is None or parsed.draft is not True:
             continue
-        release_id = release.get("id")
-        if not isinstance(release_id, int):
+        release_id = parsed.id
+        if release_id is None:
             continue
-        release_tag = release.get("tag_name")
-        release_title = release.get("name")
-        if (
-            isinstance(release_tag, str)
-            and release_tag in tag_name_set
-            or isinstance(release_title, str)
-            and release_title == release_name
-        ):
+        if parsed.tag_name in tag_name_set or parsed.name == release_name:
             matching_ids.append(release_id)
     return matching_ids
 
 
 def release_by_tag(
-    releases: Sequence[dict[str, object]],
+    releases: Sequence[Mapping[str, object]],
     *,
     tag_name: str,
 ) -> dict[str, object]:
     """Return the unique GitHub Release matching one exact tag name."""
 
-    matches = [
-        release
-        for release in releases
-        if isinstance(release.get("tag_name"), str) and release.get("tag_name") == tag_name
-    ]
+    matches: list[Mapping[str, object]] = []
+    for release in releases:
+        parsed = _release_read_view(release)
+        if parsed is not None and parsed.tag_name == tag_name:
+            matches.append(release)
     if not matches:
         raise ValueError(f"no GitHub Release exists for tag {tag_name}")
     if len(matches) != 1:
         raise ValueError(f"expected exactly one GitHub Release for tag {tag_name}, found {len(matches)}")
-    return matches[0]
+    return dict(matches[0])
 
 
 def release_asset_ids_by_names(
-    release_payload: dict[str, object],
+    release_payload: Mapping[str, object],
     *,
     asset_names: Sequence[str],
 ) -> dict[str, int]:
     """Return matching GitHub Release asset identifiers keyed by asset basename."""
 
-    assets_payload = release_payload.get("assets")
-    if not isinstance(assets_payload, list):
+    parsed_release = _release_read_view(release_payload)
+    if parsed_release is None or parsed_release.assets is None:
         return {}
     requested_names = set(asset_names)
     matching_assets: dict[str, int] = {}
-    for asset_payload in assets_payload:
-        if not isinstance(asset_payload, dict):
-            continue
-        asset_id = asset_payload.get("id")
-        asset_name = asset_payload.get("name")
-        if (
-            isinstance(asset_id, int)
-            and isinstance(asset_name, str)
-            and asset_name in requested_names
-        ):
+    for asset_payload in parsed_release.assets:
+        asset_id = asset_payload.id
+        asset_name = asset_payload.name
+        if asset_id is not None and asset_name in requested_names:
             matching_assets[asset_name] = asset_id
     return matching_assets
 

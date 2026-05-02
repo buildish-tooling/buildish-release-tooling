@@ -18,7 +18,31 @@ from __future__ import annotations
 
 import json
 
+from pydantic import BaseModel, ConfigDict, ValidationError
+
 from apache_buildish_release_tooling.release.process import run_logged_command
+
+
+class _ExternalGithubReadModel(BaseModel):
+    """Tolerant GitHub Git API subset reader."""
+
+    model_config = ConfigDict(extra="allow")
+
+
+class _GitHubGitObjectRead(_ExternalGithubReadModel):
+    sha: str | None = None
+    ref: str | None = None
+
+
+def _json_object_output(stdout: str, *, source: str) -> dict[str, object]:
+    payload = json.loads(stdout)
+    if not isinstance(payload, dict):
+        raise ValueError(f"{source} did not return an object payload")
+    try:
+        parsed = _GitHubGitObjectRead.model_validate(payload)
+    except ValidationError as exc:
+        raise ValueError(f"{source} returned an invalid payload") from exc
+    return parsed.model_dump(mode="python", exclude_none=True)
 
 
 def create_annotated_tag_object(
@@ -51,10 +75,7 @@ def create_annotated_tag_object(
             }
         ),
     )
-    payload = json.loads(completed.stdout)
-    if not isinstance(payload, dict):
-        raise ValueError("GitHub tag-object creation did not return an object payload")
-    return payload
+    return _json_object_output(completed.stdout, source="GitHub tag-object creation")
 
 
 def create_ref(
@@ -84,10 +105,7 @@ def create_ref(
             }
         ),
     )
-    payload = json.loads(completed.stdout)
-    if not isinstance(payload, dict):
-        raise ValueError("GitHub ref creation did not return an object payload")
-    return payload
+    return _json_object_output(completed.stdout, source="GitHub ref creation")
 
 
 def update_ref(
@@ -118,7 +136,4 @@ def update_ref(
             }
         ),
     )
-    payload = json.loads(completed.stdout)
-    if not isinstance(payload, dict):
-        raise ValueError("GitHub ref update did not return an object payload")
-    return payload
+    return _json_object_output(completed.stdout, source="GitHub ref update")

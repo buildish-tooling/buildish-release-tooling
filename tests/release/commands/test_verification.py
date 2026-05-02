@@ -349,6 +349,29 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         )
         self.assertNotIn("Override fields:", completed.stderr)
         report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        self.assertEqual(
+            [
+                "schema_version",
+                "report_type",
+                "component_id",
+                "version",
+                "rc_tag",
+                "source_commit_sha",
+                "source_date_epoch",
+                "source_repository_url",
+                "manifest_url",
+                "keys_url",
+                "verdict",
+                "work_dir",
+                "failures",
+                "manifest_verification",
+                "source_artifact_verification",
+                "reproducibility_execution",
+                "inspection_bundle",
+                "secondary_artifact_verifications",
+            ],
+            list(report_payload),
+        )
         self.assertEqual("full", report_payload["reproducibility_execution"]["requested_mode"])
         self.assertEqual("full", report_payload["reproducibility_execution"]["effective_mode"])
         self.assertTrue(report_payload["reproducibility_execution"]["build_checks_attempted"])
@@ -357,6 +380,22 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             report_payload["inspection_bundle"]["relative_path_from_report"],
         )
         source_reproducibility = report_payload["source_artifact_verification"]["reproducibility"]
+        self.assertEqual(
+            [
+                "profile_id",
+                "verdict",
+                "comparison_mode",
+                "canonical_recipe",
+                "effective_execution",
+                "override",
+                "matches_remote_bytes",
+                "failure_class",
+                "archive_analysis",
+                "evidence",
+                "issues",
+            ],
+            list(source_reproducibility),
+        )
         self.assertEqual("verified", source_reproducibility["verdict"])
         self.assertEqual("source-artifact-from-git", source_reproducibility["profile_id"])
         self.assertEqual("exact-bytes", source_reproducibility["comparison_mode"])
@@ -371,6 +410,22 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         )
         secondary_verification = report_payload["secondary_artifact_verifications"][0]
         reproducibility = secondary_verification["reproducibility"]
+        self.assertEqual(
+            [
+                "profile_id",
+                "verdict",
+                "comparison_mode",
+                "canonical_recipe",
+                "effective_execution",
+                "override",
+                "matches_remote_bytes",
+                "failure_class",
+                "archive_analysis",
+                "evidence",
+                "issues",
+            ],
+            list(reproducibility),
+        )
         self.assertEqual("verified", secondary_verification["reproducibility"]["verdict"])
         self.assertEqual("bootstrap-zip", reproducibility["profile_id"])
         self.assertEqual(False, reproducibility["override"]["applied"])

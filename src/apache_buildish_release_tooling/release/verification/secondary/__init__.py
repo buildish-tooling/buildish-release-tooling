@@ -16,8 +16,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
 
 from pydantic import BaseModel
 
@@ -66,7 +66,7 @@ __all__ = ["INVALID_SECONDARY_ARTIFACT_KIND", "verify_secondary_artifacts"]
 
 
 def verify_secondary_artifacts(
-    manifest_payload: RcVoteManifestReadV1 | dict[str, Any],
+    manifest_payload: RcVoteManifestReadV1 | Mapping[str, object],
     *,
     manifest_url: str,
     work_dir: Path,
