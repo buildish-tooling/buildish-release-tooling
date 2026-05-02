@@ -170,7 +170,12 @@ def run_inspect_repro(args: Namespace) -> None:
         prefix="",
         is_tty=sys.stderr.isatty(),
     )
-    inspect_repro_report(Path(args.report_json), progress_reporter=progress_reporter)
+    inspect_repro_report(
+        Path(args.report_json),
+        progress_reporter=progress_reporter,
+        artifact_ids=tuple(getattr(args, "artifact_ids", [])),
+        summary_only=bool(getattr(args, "summary_only", False)),
+    )
 
 
 def _optional_component_config(args: Namespace) -> ComponentConfig | None:

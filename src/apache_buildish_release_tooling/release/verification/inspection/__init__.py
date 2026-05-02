@@ -67,7 +67,13 @@ class ReproducibilityFailureInspectionTarget:
     verification: AnySecondaryArtifactVerification | SourceArtifactVerificationSection
 
 
-def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReporter) -> None:
+def inspect_repro_report(
+    report_path: Path,
+    *,
+    progress_reporter: ProgressReporter,
+    artifact_ids: tuple[str, ...] = (),
+    summary_only: bool = False,
+) -> None:
     """Read one saved verify-rc report and inspect any retained reproducibility evidence."""
 
     report = VerifyRcReportV1.model_validate_json(report_path.read_text(encoding="utf-8"))
@@ -94,14 +100,32 @@ def inspect_repro_report(report_path: Path, *, progress_reporter: ProgressReport
         str(report.reproducibility_execution.build_checks_attempted),
     )
     targets = _failing_reproducibility_targets(report)
-    total_failure_count = len(targets)
-    if total_failure_count == 0:
+    if not targets:
         emit_success(
             progress_reporter,
             "No reproducibility failures recorded in the verify-rc report",
         )
         return
+    if artifact_ids:
+        requested_ids = tuple(dict.fromkeys(artifact_ids))
+        targets = _renumber_reproducibility_targets(
+            _filtered_reproducibility_targets(targets, artifact_ids=requested_ids)
+        )
+        emit_detail(progress_reporter, "Selected artifact ids", ", ".join(requested_ids))
+    total_failure_count = len(targets)
     _emit_failure_summary(progress_reporter, targets=targets)
+    _emit_failure_target_list(progress_reporter, targets=targets)
+    if summary_only:
+        emit_info(
+            progress_reporter,
+            "Summary-only mode requested; skipping per-artifact inspection",
+        )
+        emit_section(progress_reporter, "Outcome")
+        emit_success(
+            progress_reporter,
+            f"Summarized {total_failure_count} saved reproducibility failure(s)",
+        )
+        return
     emit_info(
         progress_reporter,
         f"Inspecting {total_failure_count} reproducibility failure(s) from the saved bundle",
@@ -207,23 +231,7 @@ def _failing_reproducibility_targets(
                 verification=verification,
             )
         )
-    total_failure_count = len(targets)
-    normalized_targets: list[ReproducibilityFailureInspectionTarget] = []
-    for index, target in enumerate(targets, start=1):
-        normalized_targets.append(
-            ReproducibilityFailureInspectionTarget(
-                section_label=(
-                    f"Source Artifact {index}/{total_failure_count}"
-                    if target.kind == "source-artifact"
-                    else f"Artifact {index}/{total_failure_count}: {target.artifact_id}"
-                ),
-                kind=target.kind,
-                artifact_id=target.artifact_id,
-                reproducibility=target.reproducibility,
-                verification=target.verification,
-            )
-        )
-    return normalized_targets
+    return _renumber_reproducibility_targets(targets)
 
 
 def _emit_failure_summary(
@@ -248,6 +256,58 @@ def _emit_failure_summary(
             [target.reproducibility.failure_class or "unspecified" for target in targets]
         ),
     )
+
+
+def _emit_failure_target_list(
+    progress_reporter: ProgressReporter,
+    *,
+    targets: list[ReproducibilityFailureInspectionTarget],
+) -> None:
+    for target in targets:
+        failure_class = target.reproducibility.failure_class or "unspecified"
+        emit_detail(
+            progress_reporter,
+            "Failure target",
+            f"{target.artifact_id} [{target.kind}] {failure_class}",
+        )
+
+
+def _filtered_reproducibility_targets(
+    targets: list[ReproducibilityFailureInspectionTarget],
+    *,
+    artifact_ids: tuple[str, ...],
+) -> list[ReproducibilityFailureInspectionTarget]:
+    allowed_ids = set(artifact_ids)
+    filtered_targets = [target for target in targets if target.artifact_id in allowed_ids]
+    if filtered_targets:
+        return filtered_targets
+    available_ids = ", ".join(sorted(target.artifact_id for target in targets))
+    raise ValueError(
+        "requested inspect-repro artifact ids did not match any retained reproducibility failures: "
+        f"{', '.join(artifact_ids)}; available: {available_ids or 'none'}"
+    )
+
+
+def _renumber_reproducibility_targets(
+    targets: list[ReproducibilityFailureInspectionTarget],
+) -> list[ReproducibilityFailureInspectionTarget]:
+    total_failure_count = len(targets)
+    normalized_targets: list[ReproducibilityFailureInspectionTarget] = []
+    for index, target in enumerate(targets, start=1):
+        normalized_targets.append(
+            ReproducibilityFailureInspectionTarget(
+                section_label=(
+                    f"Source Artifact {index}/{total_failure_count}"
+                    if target.kind == "source-artifact"
+                    else f"Artifact {index}/{total_failure_count}: {target.artifact_id}"
+                ),
+                kind=target.kind,
+                artifact_id=target.artifact_id,
+                reproducibility=target.reproducibility,
+                verification=target.verification,
+            )
+        )
+    return normalized_targets
 
 
 def _emit_reproducibility_header(

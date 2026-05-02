@@ -89,6 +89,11 @@ def inspect_maven_repository_reproducibility(
         return
     emit_detail(progress_reporter, "Failed by mode", _failed_mode_summary(failed_results))
     emit_detail(progress_reporter, "Failed by category", _failed_category_summary(failed_results))
+    emit_detail(
+        progress_reporter,
+        "Failed by repository directory",
+        _failed_directory_summary(failed_results),
+    )
     diagnosis = _failure_diagnosis(failed_results)
     if diagnosis is not None:
         emit_info(progress_reporter, diagnosis)
@@ -106,16 +111,11 @@ def inspect_maven_repository_reproducibility(
             _category_summary_label(category),
             str(len(category_results)),
         )
-        for path_result in category_results[:4]:
+        for path_result in category_results:
             emit_detail(
                 progress_reporter,
                 _category_path_label(category),
                 _path_failure_summary(path_result),
-            )
-        if len(category_results) > 4:
-            emit_info(
-                progress_reporter,
-                f"... plus {len(category_results) - 4} additional {_category_summary_label(category).lower()}",
             )
 
 
@@ -133,6 +133,14 @@ def _failed_category_summary(failed_results: list[MavenRepositoryPathResultRepor
         category = _failure_category(path_result)
         counts[category] = counts.get(category, 0) + 1
     return ", ".join(f"{category}={counts[category]}" for category in sorted(counts))
+
+
+def _failed_directory_summary(failed_results: list[MavenRepositoryPathResultReport]) -> str:
+    counts: dict[str, int] = {}
+    for path_result in failed_results:
+        directory = str(Path(path_result.path).parent)
+        counts[directory] = counts.get(directory, 0) + 1
+    return ", ".join(f"{directory}={counts[directory]}" for directory in sorted(counts))
 
 
 def _group_failed_results_by_category(

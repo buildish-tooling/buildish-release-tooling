@@ -684,6 +684,21 @@ def _register_verification_commands(subparsers: Subparsers) -> None:
             "and respects NO_COLOR, CLICOLOR=0, CLICOLOR_FORCE=1, and TERM=dumb."
         ),
     )
+    inspect_repro.add_argument(
+        "--artifact-id",
+        dest="artifact_ids",
+        action="append",
+        default=[],
+        help=(
+            "Inspect only the selected reproducibility failure artifact_id entries. "
+            "Repeat for multiple artifacts. Use source-artifact for the source artifact."
+        ),
+    )
+    inspect_repro.add_argument(
+        "--summary-only",
+        action="store_true",
+        help="Only print the saved failure summary and selected targets; skip per-artifact deep analysis.",
+    )
     inspect_repro.add_argument("report_json")
 
 

@@ -100,7 +100,12 @@ def inspect_oci_image_reproducibility(
             emit_detail(progress_reporter, "Changed platform count", str(len(changed_platforms)))
             emit_detail(progress_reporter, "Missing platform count", str(len(missing_platforms)))
             emit_detail(progress_reporter, "Unexpected platform count", str(len(unexpected_platforms)))
-            for platform in changed_platforms[:8]:
+            emit_detail(
+                progress_reporter,
+                "Platform drift summary",
+                f"changed={len(changed_platforms)} missing={len(missing_platforms)} unexpected={len(unexpected_platforms)}",
+            )
+            for platform in changed_platforms:
                 emit_detail(
                     progress_reporter,
                     "Changed platform",

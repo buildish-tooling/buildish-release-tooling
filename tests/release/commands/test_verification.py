@@ -1018,6 +1018,164 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Outcome", inspect_completed.stderr)
         self.assertIn("Inspected 1 saved reproducibility failure(s)", inspect_completed.stderr)
 
+    def test_inspect_repro_command_can_filter_to_selected_artifact_ids(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            drift_source_artifact=True,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                "--artifact-id",
+                "bootstrap-zip",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn("Selected artifact ids: bootstrap-zip", inspect_completed.stderr)
+        self.assertIn("Reproducibility failures: 1", inspect_completed.stderr)
+        self.assertIn("Failure target: bootstrap-zip [generic-file] byte-mismatch", inspect_completed.stderr)
+        self.assertNotIn("Source Artifact 1/1", inspect_completed.stderr)
+        self.assertIn("Artifact 1/1: bootstrap-zip", inspect_completed.stderr)
+
+    def test_inspect_repro_command_summary_only_skips_per_artifact_analysis(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            drift_source_artifact=True,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                "--summary-only",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertIn("Reproducibility failures: 2", inspect_completed.stderr)
+        self.assertIn("Failure target: source-artifact [source-artifact] byte-mismatch", inspect_completed.stderr)
+        self.assertIn("Failure target: bootstrap-zip [generic-file] byte-mismatch", inspect_completed.stderr)
+        self.assertIn("Summary-only mode requested; skipping per-artifact inspection", inspect_completed.stderr)
+        self.assertIn("Summarized 2 saved reproducibility failure(s)", inspect_completed.stderr)
+        self.assertNotIn("Unified text diff", inspect_completed.stderr)
+        self.assertNotIn("Artifact 1/2:", inspect_completed.stderr)
+
+    def test_inspect_repro_command_rejects_unknown_selected_artifact_ids(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                "--artifact-id",
+                "does-not-exist",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, inspect_completed.returncode)
+        self.assertIn(
+            "requested inspect-repro artifact ids did not match any retained reproducibility failures: does-not-exist; available: bootstrap-zip",
+            inspect_completed.stderr,
+        )
+
     def test_inspect_repro_command_reports_shallow_archive_drift_for_generic_file(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
@@ -2611,6 +2769,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertIn("Failed comparable paths: 1", inspect_completed.stderr)
         self.assertIn("Failed by mode: exact-bytes=1", inspect_completed.stderr)
         self.assertIn("Failed by category: metadata-text=1", inspect_completed.stderr)
+        self.assertIn("Failed by repository directory: org/example/app/1.0.0=1", inspect_completed.stderr)
         self.assertIn("Likely descriptor/text drift", inspect_completed.stderr)
         self.assertIn("Failed metadata/text paths: 1", inspect_completed.stderr)
         self.assertIn(
@@ -2904,6 +3063,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         self.assertIn("Platform digests differ from the signed manifest", inspect_completed.stderr)
         self.assertIn("Changed platform count: 1", inspect_completed.stderr)
+        self.assertIn("Platform drift summary: changed=1 missing=0 unexpected=0", inspect_completed.stderr)
         self.assertIn("Drift classification: top-level-and-platform-payload", inspect_completed.stderr)
         self.assertIn("Changed platform: linux/arm64", inspect_completed.stderr)
         self.assertIn("Platform payload drift is present", inspect_completed.stderr)
