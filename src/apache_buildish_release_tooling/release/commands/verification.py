@@ -46,6 +46,10 @@ from apache_buildish_release_tooling.release.verification.common import (
     emit_title,
 )
 from apache_buildish_release_tooling.release.verification.inspect_repro import inspect_repro_report
+from apache_buildish_release_tooling.release.verification.inspection_bundle import (
+    INSPECTION_BUNDLE_MANIFEST_FILENAME,
+    write_inspection_bundle_manifest,
+)
 from apache_buildish_release_tooling.release.verification.rebuild import (
     prompt_for_candidate_code_execution,
     validate_rebuild_profile_overrides,
@@ -108,6 +112,11 @@ def run_verify_rc(args: Namespace) -> None:
             report_json_path=report_json_path,
             inspection_bundle_path=finalized_inspection_bundle_path,
         )
+        if finalized_inspection_bundle_path is not None:
+            write_inspection_bundle_manifest(
+                finalized_inspection_bundle_path,
+                report_payload=report_payload,
+            )
         write_manifest(report_json_path, report_payload)
         report_md_path.parent.mkdir(parents=True, exist_ok=True)
         report_md_path.write_text(report_markdown, encoding="utf-8")
@@ -304,11 +313,15 @@ def _finalized_report_outputs(
         update={
             "inspection_bundle": InspectionBundleSection(
                 relative_path_from_report=relative_bundle_path,
+                bundle_schema_version="1",
+                manifest_relative_path=INSPECTION_BUNDLE_MANIFEST_FILENAME,
             )
         }
     )
     report_markdown = (
         f"{result.report_markdown}\n\n### Inspection Bundle\n\n"
         f"- Relative path from report: `{relative_bundle_path}`\n"
+        f"- Bundle schema version: `1`\n"
+        f"- Bundle manifest: `{INSPECTION_BUNDLE_MANIFEST_FILENAME}`\n"
     )
     return report_payload, report_markdown

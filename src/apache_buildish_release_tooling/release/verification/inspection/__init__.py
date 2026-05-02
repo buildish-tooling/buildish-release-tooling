@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 from typing import cast
 
@@ -24,6 +25,7 @@ from apache_buildish_release_tooling.release.contracts import (
     AnySecondaryArtifactVerification,
     ArtifactReproducibilityReport,
     GenericFileVerificationReport,
+    InspectionBundleManifestV1,
     SourceArtifactVerificationSection,
     VerifyRcReportV1,
 )
@@ -76,7 +78,7 @@ def inspect_repro_report(
 ) -> None:
     """Read one saved verify-rc report and inspect any retained reproducibility evidence."""
 
-    report = VerifyRcReportV1.model_validate_json(report_path.read_text(encoding="utf-8"))
+    report = _load_supported_verify_rc_report(report_path)
     inspection_bundle = report.inspection_bundle
     if inspection_bundle is None:
         raise ValueError(
@@ -87,9 +89,15 @@ def inspect_repro_report(
         raise ValueError(
             f"inspection bundle referenced by verify-rc report does not exist: {bundle_root}"
         )
+    bundle_manifest = _load_supported_bundle_manifest(
+        bundle_root=bundle_root,
+        report=report,
+    )
     emit_title(progress_reporter, "Inspect Repro")
     emit_detail(progress_reporter, "Report JSON", str(report_path))
     emit_detail(progress_reporter, "Inspection bundle", str(bundle_root))
+    if bundle_manifest is not None:
+        emit_detail(progress_reporter, "Bundle schema version", bundle_manifest.schema_version)
     emit_section(progress_reporter, "Summary")
     emit_detail(progress_reporter, "Component", report.component_id or "n/a")
     emit_detail(progress_reporter, "RC tag", report.rc_tag or "n/a")
@@ -196,6 +204,60 @@ def inspect_repro_report(
         progress_reporter,
         f"Inspected {total_failure_count} saved reproducibility failure(s)",
     )
+
+
+def _load_supported_verify_rc_report(report_path: Path) -> VerifyRcReportV1:
+    raw_payload = json.loads(report_path.read_text(encoding="utf-8"))
+    schema_version = raw_payload.get("schema_version")
+    if schema_version != "1":
+        raise ValueError(
+            f"unsupported verify-rc report schema version: {schema_version!r}; supported: 1"
+        )
+    return VerifyRcReportV1.model_validate(raw_payload)
+
+
+def _load_supported_bundle_manifest(
+    *,
+    bundle_root: Path,
+    report: VerifyRcReportV1,
+) -> InspectionBundleManifestV1 | None:
+    inspection_bundle = report.inspection_bundle
+    if inspection_bundle is None:
+        raise ValueError("verify-rc report does not reference an inspection bundle")
+    manifest_relative_path = inspection_bundle.manifest_relative_path
+    bundle_schema_version = inspection_bundle.bundle_schema_version
+    if manifest_relative_path is None and bundle_schema_version is None:
+        return None
+    if manifest_relative_path is None or bundle_schema_version is None:
+        raise ValueError(
+            "inspection bundle contract fields are incomplete; expected both "
+            "inspection_bundle.bundle_schema_version and inspection_bundle.manifest_relative_path"
+        )
+    if bundle_schema_version != "1":
+        raise ValueError(
+            f"unsupported inspection bundle schema version: {bundle_schema_version!r}; supported: 1"
+        )
+    manifest_path = bundle_root / manifest_relative_path
+    if not manifest_path.exists():
+        raise ValueError(f"inspection bundle manifest does not exist: {manifest_path}")
+    raw_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if raw_payload.get("schema_version") != "1":
+        raise ValueError(
+            "unsupported inspection bundle manifest schema version: "
+            f"{raw_payload.get('schema_version')!r}; supported: 1"
+        )
+    manifest = InspectionBundleManifestV1.model_validate(raw_payload)
+    if manifest.report_schema_version != report.schema_version:
+        raise ValueError(
+            "inspection bundle manifest report schema version does not match the verify-rc report: "
+            f"{manifest.report_schema_version!r} != {report.schema_version!r}"
+        )
+    if manifest.report_type != report.report_type:
+        raise ValueError(
+            "inspection bundle manifest report_type does not match the verify-rc report: "
+            f"{manifest.report_type!r} != {report.report_type!r}"
+        )
+    return manifest
 
 
 def _failing_reproducibility_targets(

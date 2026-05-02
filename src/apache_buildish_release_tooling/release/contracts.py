@@ -999,6 +999,29 @@ class InspectionBundleSection(BuildishContractModel):
     """Location of the curated reproducibility-inspection bundle for one verify-rc run."""
 
     relative_path_from_report: NonEmptyString
+    bundle_schema_version: SchemaVersionV1 | None = None
+    manifest_relative_path: NonEmptyString | None = None
+
+
+class InspectionBundleArtifactEntry(BuildishContractModel):
+    """One artifact-specific metadata document retained inside an inspection bundle."""
+
+    artifact_id: NonEmptyString
+    kind: NonEmptyString
+    metadata_path: NonEmptyString
+
+
+class InspectionBundleManifestV1(BuildishContractModel):
+    """Top-level contract manifest for one curated verify-rc inspection bundle."""
+
+    schema_version: SchemaVersionV1 = "1"
+    bundle_type: Literal["verify-rc-inspection"] = "verify-rc-inspection"
+    report_type: Literal["verify-rc"] = "verify-rc"
+    report_schema_version: SchemaVersionV1 = "1"
+    component_id: str | None = None
+    version: str | None = None
+    rc_tag: str | None = None
+    artifacts: list[InspectionBundleArtifactEntry] = Field(default_factory=list)
 
 
 class VerifyRcReportV1(BuildishContractModel):
@@ -1037,6 +1060,8 @@ __all__ = [
     "GithubWorkflowProvenance",
     "InvalidSecondaryArtifactVerificationReport",
     "InspectionBundleSection",
+    "InspectionBundleArtifactEntry",
+    "InspectionBundleManifestV1",
     "InspectionEvidenceReference",
     "MavenRepositoryPathResultReport",
     "MavenRepositoryReproducibilityMetadata",

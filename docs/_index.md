@@ -347,6 +347,11 @@ Summaries are intended for:
 - writes a machine-readable JSON report and a Markdown report
 - writes a combined transcript and low-level command log
 - in `--mode full`, runs configured local reproducibility checks and writes a curated inspection bundle suitable for `inspect-repro`
+- emits report schema version `1` and, when an inspection bundle is present, bundle schema version `1`
+- treats the `verify-rc` report JSON and the inspection bundle layout as supported machine-readable contract
+  from this revision onward
+- keeps `inspect-repro` backward-tolerant for older pre-contract bundles that only recorded
+  `inspection_bundle.relative_path_from_report`
 - supports `--repro-override-file <path>` for explicit human local rebuild overrides
 - treats any run with `--repro-override-file` as non-canonical and records that in the
   reproducibility report structure under:
@@ -357,8 +362,11 @@ Summaries are intended for:
   - `effective_execution`
 - environment reporting intentionally records variable names only, never values, so reports and
   inspection bundles do not expose secrets or machine-local credentials
-- the detailed JSON field layout for the `verify-rc` report is still internal early-development
-  schema and is not yet covered by a backward-compatibility promise
+- the current supported machine-readable contract is:
+  - `schema_version: "1"` for the `verify-rc` report JSON
+  - `inspection_bundle.bundle_schema_version: "1"` plus the bundle manifest `inspection-bundle.json`
+- future incompatible changes should use a new explicit schema version rather than silently mutating
+  the current one
 - CI and release workflow runs should not use `--repro-override-file`; that flag exists for human local investigation when the canonical repo-maintained recipe is too narrow for one machine
 
 Example canonical verification run:
@@ -399,6 +407,7 @@ verify_rc:
 ### `inspect-repro`
 
 - reads one saved `verify-rc` JSON report plus its inspection bundle
+- validates the supported report and bundle schema versions before inspecting retained evidence
 - explains failed reproducibility checks without rerunning remote verification
 - starts with a grouped failure summary, including source-vs-secondary counts, failure kinds, and failure classes
 - surfaces the selected `profile_id`, recipe-source classification, structured override details, retained evidence labels, and kind-specific drift details

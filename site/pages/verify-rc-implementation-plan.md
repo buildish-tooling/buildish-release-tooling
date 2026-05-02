@@ -1555,9 +1555,19 @@ The verifier should emit:
 - a human-readable markdown report
 - a non-zero exit code on required-check failure
 
-For now, the JSON report schema should still be treated as internal early-development structure.
-The tooling should write it consistently for the matched `verify-rc` / `inspect-repro` revision, but
-it does not need a backward-compatibility promise yet across active development revisions.
+The machine-readable report and the curated inspection bundle should be treated as supported
+contracts once this verifier path is published for real use.
+
+Concretely:
+
+- the `verify-rc` report should carry an explicit `schema_version`
+- the `inspection_bundle` section should carry an explicit bundle schema version plus a bundle-manifest path
+- the inspection bundle itself should carry a top-level manifest such as `inspection-bundle.json`
+- future incompatible changes should advance those explicit schema versions instead of silently mutating the layout
+- `inspect-repro` should validate the supported report and bundle schema versions before reading deeper retained evidence
+
+It is still reasonable for `inspect-repro` to tolerate older pre-contract reports that only carry
+`inspection_bundle.relative_path_from_report`, but that legacy tolerance should be treated as a compatibility shim rather than the primary long-term contract.
 
 When reproducibility checks are attempted, `verify-rc` should also emit a curated inspection bundle suitable for later use by `inspect-repro`.
 
@@ -1593,7 +1603,7 @@ The machine-readable report should also record run-level metadata such as:
 - `finished_at`
 - `mode`
 - `build_network_policy`
-- `report_format_version`
+- `schema_version`
 
 For reproducibility failures, the machine-readable report should also record:
 
@@ -1606,6 +1616,13 @@ For reproducibility failures, the machine-readable report should also record:
 - whether optional deep-analysis tools were available or used
 
 The report should be sufficient for later inspection tooling to work without rerunning verification, assuming the inspection bundle is still present.
+
+The inspection bundle should also have a minimal top-level manifest that records:
+
+- its own `schema_version`
+- the corresponding `report_type` and `report_schema_version`
+- component/version/RC identifiers when known
+- an index of retained artifact metadata documents inside the bundle
 
 This makes the tool useful both for humans and for CI.
 

@@ -379,6 +379,46 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             os.path.relpath(fixture.inspection_bundle_path, start=fixture.report_json_path.parent),
             report_payload["inspection_bundle"]["relative_path_from_report"],
         )
+        self.assertEqual("1", report_payload["inspection_bundle"]["bundle_schema_version"])
+        self.assertEqual(
+            "inspection-bundle.json",
+            report_payload["inspection_bundle"]["manifest_relative_path"],
+        )
+        bundle_manifest = json.loads(
+            (fixture.inspection_bundle_path / "inspection-bundle.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            [
+                "schema_version",
+                "bundle_type",
+                "report_type",
+                "report_schema_version",
+                "component_id",
+                "version",
+                "rc_tag",
+                "artifacts",
+            ],
+            list(bundle_manifest),
+        )
+        self.assertEqual("1", bundle_manifest["schema_version"])
+        self.assertEqual("verify-rc-inspection", bundle_manifest["bundle_type"])
+        self.assertEqual("verify-rc", bundle_manifest["report_type"])
+        self.assertEqual("1", bundle_manifest["report_schema_version"])
+        self.assertEqual(
+            [
+                {
+                    "artifact_id": "source-artifact",
+                    "kind": "source-artifact",
+                    "metadata_path": "source-artifact/reproducibility/metadata.json",
+                },
+                {
+                    "artifact_id": "bootstrap-zip",
+                    "kind": "generic-file",
+                    "metadata_path": "secondary-artifacts/bootstrap-zip/reproducibility/metadata.json",
+                },
+            ],
+            bundle_manifest["artifacts"],
+        )
         source_reproducibility = report_payload["source_artifact_verification"]["reproducibility"]
         self.assertEqual(
             [
@@ -1480,6 +1520,133 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.assertNotIn("Canonical build command:", inspect_completed.stderr)
         self.assertIn("Build command: sh buildish-release-tooling/rebuild-bootstrap.sh", inspect_completed.stderr)
         self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
+
+    def test_inspect_repro_command_tolerates_legacy_bundle_contract_fields(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        del report_payload["inspection_bundle"]["bundle_schema_version"]
+        del report_payload["inspection_bundle"]["manifest_relative_path"]
+        fixture.report_json_path.write_text(json.dumps(report_payload, indent=2) + "\n", encoding="utf-8")
+
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
+        self.assertNotIn("Bundle schema version:", inspect_completed.stderr)
+        self.assertIn("Retained staged and rebuilt artifact copies differ", inspect_completed.stderr)
+
+    def test_inspect_repro_command_rejects_unsupported_report_and_bundle_schema_versions(self) -> None:
+        if not command_available("gpg"):
+            self.skipTest("gpg is required for verify-rc integration coverage")
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        fixture = self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind="generic-file",
+            include_generic_file_reproducibility=True,
+            drift_generic_file_reproducibility=True,
+        )
+        verify_completed = run_cli(
+            [
+                "verify-rc",
+                "--component-config",
+                str(fixture.config_path),
+                "--allow-non-production-release-targets",
+                "--mode",
+                "full",
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+                "--inspection-bundle",
+                str(fixture.inspection_bundle_path),
+                fixture.manifest_url,
+                fixture.keys_url,
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, verify_completed.returncode)
+        report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
+        report_payload["schema_version"] = "99"
+        fixture.report_json_path.write_text(json.dumps(report_payload, indent=2) + "\n", encoding="utf-8")
+
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, inspect_completed.returncode)
+        self.assertIn(
+            "unsupported verify-rc report schema version: '99'; supported: 1",
+            inspect_completed.stderr,
+        )
+
+        report_payload["schema_version"] = "1"
+        fixture.report_json_path.write_text(json.dumps(report_payload, indent=2) + "\n", encoding="utf-8")
+        bundle_manifest_path = fixture.inspection_bundle_path / "inspection-bundle.json"
+        bundle_manifest = json.loads(bundle_manifest_path.read_text(encoding="utf-8"))
+        bundle_manifest["schema_version"] = "99"
+        bundle_manifest_path.write_text(json.dumps(bundle_manifest, indent=2) + "\n", encoding="utf-8")
+
+        inspect_completed = run_cli(
+            [
+                "inspect-repro",
+                str(fixture.report_json_path),
+            ],
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+
+        self.assertEqual(1, inspect_completed.returncode)
+        self.assertIn(
+            "unsupported inspection bundle manifest schema version: '99'; supported: 1",
+            inspect_completed.stderr,
+        )
 
     def test_inspect_repro_command_tolerates_missing_effective_execution(self) -> None:
         if not command_available("gpg"):

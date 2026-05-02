@@ -23,9 +23,16 @@ import re
 
 from pydantic import BaseModel
 
+from apache_buildish_release_tooling.release.contracts import (
+    ArtifactReproducibilityReport,
+    InspectionBundleArtifactEntry,
+    InspectionBundleManifestV1,
+    VerifyRcReportV1,
+)
 from apache_buildish_release_tooling.release.manifest import write_manifest
 
 _SAFE_PATH_COMPONENT_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
+INSPECTION_BUNDLE_MANIFEST_FILENAME = "inspection-bundle.json"
 
 
 def safe_path_component(value: str) -> str:
@@ -105,3 +112,60 @@ def retain_source_artifact_evidence_file(
     target_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source_path, target_path)
     return str(target_path.relative_to(bundle_root))
+
+
+def write_inspection_bundle_manifest(
+    bundle_root: Path,
+    *,
+    report_payload: VerifyRcReportV1,
+) -> str:
+    """Write the top-level inspection-bundle contract manifest."""
+
+    manifest_path = bundle_root / INSPECTION_BUNDLE_MANIFEST_FILENAME
+    bundle_manifest = InspectionBundleManifestV1(
+        report_schema_version=report_payload.schema_version,
+        component_id=report_payload.component_id,
+        version=report_payload.version,
+        rc_tag=report_payload.rc_tag,
+        artifacts=_bundle_artifact_entries(report_payload),
+    )
+    write_manifest(manifest_path, bundle_manifest)
+    return str(manifest_path.relative_to(bundle_root))
+
+
+def _bundle_artifact_entries(report_payload: VerifyRcReportV1) -> list[InspectionBundleArtifactEntry]:
+    entries: list[InspectionBundleArtifactEntry] = []
+    source_reproducibility = report_payload.source_artifact_verification.reproducibility
+    source_metadata_path = _comparison_metadata_path(source_reproducibility)
+    if source_metadata_path is not None:
+        entries.append(
+            InspectionBundleArtifactEntry(
+                artifact_id="source-artifact",
+                kind="source-artifact",
+                metadata_path=source_metadata_path,
+            )
+        )
+    for verification in report_payload.secondary_artifact_verifications:
+        reproducibility = getattr(verification, "reproducibility", None)
+        metadata_path = _comparison_metadata_path(reproducibility)
+        if metadata_path is None:
+            continue
+        entries.append(
+            InspectionBundleArtifactEntry(
+                artifact_id=verification.artifact_id,
+                kind=verification.kind,
+                metadata_path=metadata_path,
+            )
+        )
+    return entries
+
+
+def _comparison_metadata_path(
+    reproducibility: ArtifactReproducibilityReport | None,
+) -> str | None:
+    if reproducibility is None:
+        return None
+    for evidence in reproducibility.evidence:
+        if evidence.label == "comparison-metadata":
+            return evidence.path
+    return None
