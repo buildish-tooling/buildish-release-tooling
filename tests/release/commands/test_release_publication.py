@@ -20,13 +20,42 @@ from tests.release.commands.support import *
 class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
     """Release publication command integration tests."""
 
+    _baseline_root: Path
+    _origin_template: Path
+    _svn_repo_template: Path
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._baseline_root = create_build_test_sandbox()
+        cls._origin_template = init_git_origin_repo(cls._baseline_root, dir_name="origin-template")
+        cls._svn_repo_template, _repo_url = init_svn_repo(cls._baseline_root, dir_name="svnrepo-template")
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cleanup_sandbox(cls._baseline_root)
+        super().tearDownClass()
+
+    def _create_git_sandbox(self) -> tuple[Path, Path, Path]:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        origin_dir = copy_test_tree(self._origin_template, sandbox_dir / "origin")
+        clone_dir = clone_git_origin(origin_dir, sandbox_dir / "clone")
+        return sandbox_dir, origin_dir, clone_dir
+
+    def _create_git_svn_sandbox(self) -> tuple[Path, Path, Path, Path, str, Path]:
+        sandbox_dir, origin_dir, clone_dir = self._create_git_sandbox()
+        repo_dir = copy_test_tree(self._svn_repo_template, sandbox_dir / "svnrepo")
+        working_copy_dir = sandbox_dir / "svnwc"
+        repo_url = checkout_svn_repo(repo_dir, working_copy_dir)
+        return sandbox_dir, origin_dir, clone_dir, repo_dir, repo_url, working_copy_dir
+
     def test_release_version_command_infers_release_line_and_pruning_from_svn(self) -> None:
         if not command_available("svnadmin") or not command_available("svn"):
             self.skipTest("svnadmin and svn are required for the SVN integration test")
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
-        _repo_dir, repo_url, _working_copy_dir = init_svn_repo_and_checkout(sandbox_dir)
+        sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, _working_copy_dir = (
+            self._create_git_svn_sandbox()
+        )
         config_path = sandbox_dir / "component.yaml"
         manifest_path = sandbox_dir / "release-version.json"
         client = AsfSvnClient()
@@ -88,9 +117,7 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertEqual(["1.2.1", "1.2.2"], manifest["archive_versions"])
 
     def test_sync_draft_github_release_command_recreates_matching_draft_release(self) -> None:
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
+        sandbox_dir, origin_dir, clone_dir = self._create_git_sandbox()
         config_path = sandbox_dir / "component.yaml"
         manifest_path = sandbox_dir / "sync-draft-github-release.json"
         git_create_branch(origin_dir, "release/1.x")
@@ -194,10 +221,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
     def test_publish_source_release_svn_command_promotes_latest_rc_directory(self) -> None:
         if not command_available("svnadmin") or not command_available("svn"):
             self.skipTest("svnadmin and svn are required for the SVN integration test")
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
-        _repo_dir, repo_url, working_copy_dir = init_svn_repo_and_checkout(sandbox_dir)
+        sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, working_copy_dir = (
+            self._create_git_svn_sandbox()
+        )
         config_path = sandbox_dir / "component.yaml"
         manifest_path = sandbox_dir / "publish-source-release-svn.json"
         client = AsfSvnClient()
@@ -297,10 +323,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
     def test_publish_source_release_svn_command_rejects_missing_required_source_files(self) -> None:
         if not command_available("svnadmin") or not command_available("svn"):
             self.skipTest("svnadmin and svn are required for the SVN integration test")
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
-        _repo_dir, repo_url, _working_copy_dir = init_svn_repo_and_checkout(sandbox_dir)
+        sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, _working_copy_dir = (
+            self._create_git_svn_sandbox()
+        )
         config_path = sandbox_dir / "component.yaml"
         manifest_path = sandbox_dir / "publish-source-release-svn.json"
         client = AsfSvnClient()
@@ -363,10 +388,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
     def test_publish_source_release_svn_command_rejects_staged_artifact_drift_from_vote_manifest(self) -> None:
         if not command_available("svnadmin") or not command_available("svn"):
             self.skipTest("svnadmin and svn are required for the SVN integration test")
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
-        _repo_dir, repo_url, working_copy_dir = init_svn_repo_and_checkout(sandbox_dir)
+        sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, working_copy_dir = (
+            self._create_git_svn_sandbox()
+        )
         config_path = sandbox_dir / "component.yaml"
         manifest_path = sandbox_dir / "publish-source-release-svn.json"
         client = AsfSvnClient()
@@ -461,10 +485,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
     def test_publish_source_release_svn_command_rejects_rc_drift(self) -> None:
         if not command_available("svnadmin") or not command_available("svn"):
             self.skipTest("svnadmin and svn are required for the SVN integration test")
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
-        _repo_dir, repo_url, _working_copy_dir = init_svn_repo_and_checkout(sandbox_dir)
+        sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, _working_copy_dir = (
+            self._create_git_svn_sandbox()
+        )
         config_path = sandbox_dir / "component.yaml"
         manifest_path = sandbox_dir / "publish-source-release-svn.json"
         client = AsfSvnClient()
@@ -531,10 +554,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
     def test_prune_older_line_releases_command_deletes_specific_line_versions(self) -> None:
         if not command_available("svnadmin") or not command_available("svn"):
             self.skipTest("svnadmin and svn are required for the SVN integration test")
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
-        _repo_dir, repo_url, _working_copy_dir = init_svn_repo_and_checkout(sandbox_dir)
+        sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, _working_copy_dir = (
+            self._create_git_svn_sandbox()
+        )
         config_path = sandbox_dir / "component.yaml"
         manifest_path = sandbox_dir / "prune-older-line-releases.json"
         client = AsfSvnClient()
@@ -596,9 +618,7 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertEqual(["1.2.3/", "1.3.0/"], client.list_entries(release_base_url))
 
     def test_create_final_tag_command_creates_remote_annotated_tag(self) -> None:
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
+        sandbox_dir, origin_dir, clone_dir = self._create_git_sandbox()
         config_path = sandbox_dir / "component.yaml"
         manifest_path = sandbox_dir / "create-final-tag.json"
         git_create_branch(origin_dir, "release/1.x")
@@ -663,9 +683,7 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertEqual("tag-object-sha", create_ref_request["sha"])
 
     def test_sync_draft_github_release_reuses_same_rc_without_deleting_assets(self) -> None:
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
+        sandbox_dir, origin_dir, clone_dir = self._create_git_sandbox()
         config_path = sandbox_dir / "component.yaml"
         manifest_path = sandbox_dir / "sync-draft-github-release.json"
         git_create_branch(origin_dir, "release/1.x")
@@ -729,9 +747,7 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertFalse((gh_state_dir / "create-release-request.json").exists())
 
     def test_sync_draft_github_release_retags_legacy_final_tag_release(self) -> None:
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
+        sandbox_dir, origin_dir, clone_dir = self._create_git_sandbox()
         config_path = sandbox_dir / "component.yaml"
         manifest_path = sandbox_dir / "sync-draft-github-release.json"
         git_create_branch(origin_dir, "release/1.x")
@@ -803,9 +819,7 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertEqual(expected_commit, update_request["target_commitish"])
 
     def test_sync_draft_github_release_rejects_higher_existing_rc(self) -> None:
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
+        sandbox_dir, origin_dir, clone_dir = self._create_git_sandbox()
         config_path = sandbox_dir / "component.yaml"
         manifest_path = sandbox_dir / "sync-draft-github-release.json"
         git_create_branch(origin_dir, "release/1.x")
@@ -856,9 +870,7 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertIn("higher RC", completed.stderr)
 
     def test_finalize_draft_github_release_command_publishes_existing_draft(self) -> None:
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
+        sandbox_dir, origin_dir, clone_dir = self._create_git_sandbox()
         config_path = sandbox_dir / "component.yaml"
         manifest_path = sandbox_dir / "finalize-draft-github-release.json"
         git_create_branch(origin_dir, "release/1.x")

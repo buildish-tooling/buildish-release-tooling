@@ -20,15 +20,82 @@ from tests.release.commands.support import *
 class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
     """RC vote-material command integration tests."""
 
-    def test_finalize_rc_vote_materials_command_stages_manifest_and_mirrors_it(self) -> None:
+    _baseline_root: Path
+    _origin_template: Path
+    _svn_repo_template: Path
+    _public_key: str
+    _secret_key: str
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
         if not command_available("gpg"):
-            self.skipTest("gpg is required for RC vote-manifest signing")
+            raise unittest.SkipTest("gpg is required for RC vote-manifest signing")
         if not command_available("svnadmin") or not command_available("svn"):
-            self.skipTest("svnadmin and svn are required for the SVN integration test")
+            raise unittest.SkipTest("svnadmin and svn are required for the SVN integration test")
+        cls._baseline_root = create_build_test_sandbox()
+        cls._origin_template = init_git_origin_repo(cls._baseline_root, dir_name="origin-template")
+        cls._svn_repo_template, _repo_url = init_svn_repo(cls._baseline_root, dir_name="svnrepo-template")
+        gpg_home = cls._baseline_root / "gpg-source"
+        gpg_home.mkdir(parents=True, exist_ok=True)
+        gpg_home.chmod(0o700)
+        run_quiet(
+            [
+                "gpg",
+                "--batch",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                "",
+                "--quick-gen-key",
+                "Release Tooling Tests <release-tooling-tests@example.invalid>",
+                "ed25519",
+                "sign",
+                "1d",
+            ],
+            env={**os.environ, "GNUPGHOME": str(gpg_home)},
+            check=True,
+        )
+        cls._public_key = run_quiet(
+            [
+                "gpg",
+                "--armor",
+                "--export",
+                "Release Tooling Tests <release-tooling-tests@example.invalid>",
+            ],
+            env={**os.environ, "GNUPGHOME": str(gpg_home)},
+            check=True,
+        ).stdout
+        cls._secret_key = run_quiet(
+            [
+                "gpg",
+                "--armor",
+                "--export-secret-keys",
+                "Release Tooling Tests <release-tooling-tests@example.invalid>",
+            ],
+            env={**os.environ, "GNUPGHOME": str(gpg_home)},
+            check=True,
+        ).stdout
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cleanup_sandbox(cls._baseline_root)
+        super().tearDownClass()
+
+    def _create_vote_materials_sandbox(self) -> tuple[Path, Path, Path, Path, str, Path]:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
-        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
-        _repo_dir, repo_url, working_copy_dir = init_svn_repo_and_checkout(sandbox_dir)
+        origin_dir = copy_test_tree(self._origin_template, sandbox_dir / "origin")
+        clone_dir = clone_git_origin(origin_dir, sandbox_dir / "clone")
+        repo_dir = copy_test_tree(self._svn_repo_template, sandbox_dir / "svnrepo")
+        working_copy_dir = sandbox_dir / "svnwc"
+        repo_url = checkout_svn_repo(repo_dir, working_copy_dir)
+        return sandbox_dir, origin_dir, clone_dir, repo_dir, repo_url, working_copy_dir
+
+    def test_finalize_rc_vote_materials_command_stages_manifest_and_mirrors_it(self) -> None:
+        sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, working_copy_dir = (
+            self._create_vote_materials_sandbox()
+        )
         config_path = sandbox_dir / "component.yaml"
         source_manifest_path = sandbox_dir / "build-source-rc.json"
         rc_tag_manifest_path = sandbox_dir / "create-rc-materialization-tag.json"
@@ -40,9 +107,6 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         dev_base_url = f"{repo_url}/dist/dev/incubator/buildish/{component_id}"
         release_base_url = f"{repo_url}/dist/release/incubator/buildish/{component_id}"
         keys_path = working_copy_dir / "dist" / "release" / "incubator" / "buildish" / "KEYS"
-        source_home = sandbox_dir / "gpg-source"
-        source_home.mkdir(parents=True, exist_ok=True)
-        source_home.chmod(0o700)
 
         git_create_branch(origin_dir, "release/1.x")
         git_create_branch(origin_dir, "release/1.2.x")
@@ -86,44 +150,8 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         client.mkdir_url(dev_base_url, "create dev component path")
         client.mkdir_url(release_base_url, "create release component path")
 
-        run_quiet(
-            [
-                "gpg",
-                "--batch",
-                "--pinentry-mode",
-                "loopback",
-                "--passphrase",
-                "",
-                "--quick-gen-key",
-                "Release Tooling Tests <release-tooling-tests@example.invalid>",
-                "ed25519",
-                "sign",
-                "1d",
-            ],
-            env={**os.environ, "GNUPGHOME": str(source_home)},
-            check=True,
-        )
-        public_key = run_quiet(
-            [
-                "gpg",
-                "--armor",
-                "--export",
-                "Release Tooling Tests <release-tooling-tests@example.invalid>",
-            ],
-            env={**os.environ, "GNUPGHOME": str(source_home)},
-            check=True,
-        ).stdout
-        secret_key = run_quiet(
-            [
-                "gpg",
-                "--armor",
-                "--export-secret-keys",
-                "Release Tooling Tests <release-tooling-tests@example.invalid>",
-            ],
-            env={**os.environ, "GNUPGHOME": str(source_home)},
-            check=True,
-        ).stdout
-        keys_path.write_text(public_key, encoding="utf-8")
+        secret_key = self._secret_key
+        keys_path.write_text(self._public_key, encoding="utf-8")
         run_quiet(["svn", "add", str(keys_path)], check=True)
         run_quiet(["svn", "commit", "-m", "add KEYS", str(working_copy_dir)], check=True)
         bootstrap_asset_path = sandbox_dir / "buildish-example-bootstrap.zip"
@@ -332,14 +360,9 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         self.assertIn(f"{release_base_url.rsplit('/', 1)[0]}/KEYS", summary_text)
 
     def test_finalize_rc_vote_materials_command_stages_maven_repository_inventory(self) -> None:
-        if not command_available("gpg"):
-            self.skipTest("gpg is required for RC vote-manifest signing")
-        if not command_available("svnadmin") or not command_available("svn"):
-            self.skipTest("svnadmin and svn are required for the SVN integration test")
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
-        _repo_dir, repo_url, working_copy_dir = init_svn_repo_and_checkout(sandbox_dir)
+        sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, working_copy_dir = (
+            self._create_vote_materials_sandbox()
+        )
         config_path = sandbox_dir / "component.yaml"
         source_manifest_path = sandbox_dir / "build-source-rc.json"
         rc_tag_manifest_path = sandbox_dir / "create-rc-materialization-tag.json"
@@ -351,9 +374,6 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         dev_base_url = f"{repo_url}/dist/dev/incubator/buildish/{component_id}"
         release_base_url = f"{repo_url}/dist/release/incubator/buildish/{component_id}"
         keys_path = working_copy_dir / "dist" / "release" / "incubator" / "buildish" / "KEYS"
-        source_home = sandbox_dir / "gpg-source"
-        source_home.mkdir(parents=True, exist_ok=True)
-        source_home.chmod(0o700)
         staging_repository_id = "orgapacheexample-1234"
         repository_root = sandbox_dir / staging_repository_id
         _write_test_maven_repository(repository_root)
@@ -385,44 +405,8 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         client.mkdir_url(dev_base_url, "create dev component path")
         client.mkdir_url(release_base_url, "create release component path")
 
-        run_quiet(
-            [
-                "gpg",
-                "--batch",
-                "--pinentry-mode",
-                "loopback",
-                "--passphrase",
-                "",
-                "--quick-gen-key",
-                "Release Tooling Tests <release-tooling-tests@example.invalid>",
-                "ed25519",
-                "sign",
-                "1d",
-            ],
-            env={**os.environ, "GNUPGHOME": str(source_home)},
-            check=True,
-        )
-        public_key = run_quiet(
-            [
-                "gpg",
-                "--armor",
-                "--export",
-                "Release Tooling Tests <release-tooling-tests@example.invalid>",
-            ],
-            env={**os.environ, "GNUPGHOME": str(source_home)},
-            check=True,
-        ).stdout
-        secret_key = run_quiet(
-            [
-                "gpg",
-                "--armor",
-                "--export-secret-keys",
-                "Release Tooling Tests <release-tooling-tests@example.invalid>",
-            ],
-            env={**os.environ, "GNUPGHOME": str(source_home)},
-            check=True,
-        ).stdout
-        keys_path.write_text(public_key, encoding="utf-8")
+        secret_key = self._secret_key
+        keys_path.write_text(self._public_key, encoding="utf-8")
         run_quiet(["svn", "add", str(keys_path)], check=True)
         run_quiet(["svn", "commit", "-m", "add KEYS", str(working_copy_dir)], check=True)
 
@@ -577,14 +561,9 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         self.assertIn(str(local_inventory_path), uploaded_paths)
 
     def test_finalize_rc_vote_materials_rejects_staged_source_artifact_drift(self) -> None:
-        if not command_available("gpg"):
-            self.skipTest("gpg is required for RC vote-manifest signing")
-        if not command_available("svnadmin") or not command_available("svn"):
-            self.skipTest("svnadmin and svn are required for the SVN integration test")
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
-        _repo_dir, repo_url, working_copy_dir = init_svn_repo_and_checkout(sandbox_dir)
+        sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, working_copy_dir = (
+            self._create_vote_materials_sandbox()
+        )
         config_path = sandbox_dir / "component.yaml"
         source_manifest_path = sandbox_dir / "build-source-rc.json"
         rc_tag_manifest_path = sandbox_dir / "create-rc-materialization-tag.json"
@@ -594,9 +573,6 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         dev_base_url = f"{repo_url}/dist/dev/incubator/buildish/{component_id}"
         release_base_url = f"{repo_url}/dist/release/incubator/buildish/{component_id}"
         keys_path = working_copy_dir / "dist" / "release" / "incubator" / "buildish" / "KEYS"
-        source_home = sandbox_dir / "gpg-source"
-        source_home.mkdir(parents=True, exist_ok=True)
-        source_home.chmod(0o700)
 
         git_create_branch(origin_dir, "release/1.x")
         git_create_branch(origin_dir, "release/1.2.x")
@@ -610,44 +586,8 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         client.mkdir_url(dev_base_url, "create dev component path")
         client.mkdir_url(release_base_url, "create release component path")
 
-        run_quiet(
-            [
-                "gpg",
-                "--batch",
-                "--pinentry-mode",
-                "loopback",
-                "--passphrase",
-                "",
-                "--quick-gen-key",
-                "Release Tooling Tests <release-tooling-tests@example.invalid>",
-                "ed25519",
-                "sign",
-                "1d",
-            ],
-            env={**os.environ, "GNUPGHOME": str(source_home)},
-            check=True,
-        )
-        public_key = run_quiet(
-            [
-                "gpg",
-                "--armor",
-                "--export",
-                "Release Tooling Tests <release-tooling-tests@example.invalid>",
-            ],
-            env={**os.environ, "GNUPGHOME": str(source_home)},
-            check=True,
-        ).stdout
-        secret_key = run_quiet(
-            [
-                "gpg",
-                "--armor",
-                "--export-secret-keys",
-                "Release Tooling Tests <release-tooling-tests@example.invalid>",
-            ],
-            env={**os.environ, "GNUPGHOME": str(source_home)},
-            check=True,
-        ).stdout
-        keys_path.write_text(public_key, encoding="utf-8")
+        secret_key = self._secret_key
+        keys_path.write_text(self._public_key, encoding="utf-8")
         run_quiet(["svn", "add", str(keys_path)], check=True)
         run_quiet(["svn", "commit", "-m", "add KEYS", str(working_copy_dir)], check=True)
 

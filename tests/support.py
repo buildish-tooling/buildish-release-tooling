@@ -112,11 +112,17 @@ def cleanup_sandbox(path: Path) -> None:
     shutil.rmtree(path, ignore_errors=True)
 
 
-def init_git_origin_and_clone(sandbox_dir: Path) -> tuple[Path, Path]:
-    """Create a disposable Git origin/clone pair for integration tests."""
+def copy_test_tree(source_path: Path, destination_path: Path) -> Path:
+    """Copy one prepared test fixture tree into a fresh destination path."""
 
-    origin_dir = sandbox_dir / "origin"
-    clone_dir = sandbox_dir / "clone"
+    shutil.copytree(source_path, destination_path)
+    return destination_path
+
+
+def init_git_origin_repo(sandbox_dir: Path, *, dir_name: str = "origin") -> Path:
+    """Create one disposable Git repository with the standard initial commit."""
+
+    origin_dir = sandbox_dir / dir_name
     run_quiet(["git", "init", "--initial-branch=main", str(origin_dir)], check=True)
     run_quiet(
         ["git", "-C", str(origin_dir), "config", "user.name", "Release Tooling Tests"], check=True
@@ -135,6 +141,12 @@ def init_git_origin_and_clone(sandbox_dir: Path) -> tuple[Path, Path]:
     (origin_dir / "README.txt").write_text("root\n", encoding="utf-8")
     run_quiet(["git", "-C", str(origin_dir), "add", "README.txt"], check=True)
     run_quiet(["git", "-C", str(origin_dir), "commit", "-m", "initial commit"], check=True)
+    return origin_dir
+
+
+def clone_git_origin(origin_dir: Path, clone_dir: Path) -> Path:
+    """Clone one disposable Git origin and configure the clone identity."""
+
     run_quiet(["git", "clone", str(origin_dir), str(clone_dir)], check=True)
     run_quiet(
         ["git", "-C", str(clone_dir), "config", "user.name", "Release Tooling Tests"], check=True
@@ -150,6 +162,14 @@ def init_git_origin_and_clone(sandbox_dir: Path) -> tuple[Path, Path]:
         ],
         check=True,
     )
+    return clone_dir
+
+
+def init_git_origin_and_clone(sandbox_dir: Path) -> tuple[Path, Path]:
+    """Create a disposable Git origin/clone pair for integration tests."""
+
+    origin_dir = init_git_origin_repo(sandbox_dir)
+    clone_dir = clone_git_origin(origin_dir, sandbox_dir / "clone")
     return origin_dir, clone_dir
 
 
@@ -216,11 +236,10 @@ def git_rev_parse(repo_dir: Path, ref: str) -> str:
     ).stdout.strip()
 
 
-def init_svn_repo_and_checkout(sandbox_dir: Path) -> tuple[Path, str, Path]:
-    """Create a detached local SVN repository and a checked-out working copy."""
+def init_svn_repo(sandbox_dir: Path, *, dir_name: str = "svnrepo") -> tuple[Path, str]:
+    """Create one detached local SVN repository with the standard dist layout."""
 
-    repo_dir = sandbox_dir / "svnrepo"
-    working_copy_dir = sandbox_dir / "svnwc"
+    repo_dir = sandbox_dir / dir_name
     repo_url = f"file://{repo_dir}"
     run_quiet(["svnadmin", "create", str(repo_dir)], check=True)
     for path in (
@@ -233,7 +252,23 @@ def init_svn_repo_and_checkout(sandbox_dir: Path) -> tuple[Path, str, Path]:
         "dist/release/incubator/buildish",
     ):
         run_quiet(["svn", "mkdir", "-m", f"create {path}", f"{repo_url}/{path}"], check=True)
+    return repo_dir, repo_url
+
+
+def checkout_svn_repo(repo_dir: Path, working_copy_dir: Path) -> str:
+    """Check out one local SVN repository into a fresh working copy directory."""
+
+    repo_url = f"file://{repo_dir}"
     run_quiet(["svn", "checkout", repo_url, str(working_copy_dir)], check=True)
+    return repo_url
+
+
+def init_svn_repo_and_checkout(sandbox_dir: Path) -> tuple[Path, str, Path]:
+    """Create a detached local SVN repository and a checked-out working copy."""
+
+    repo_dir, repo_url = init_svn_repo(sandbox_dir)
+    working_copy_dir = sandbox_dir / "svnwc"
+    checkout_svn_repo(repo_dir, working_copy_dir)
     return repo_dir, repo_url, working_copy_dir
 
 

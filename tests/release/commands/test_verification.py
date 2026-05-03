@@ -22,6 +22,7 @@ from dataclasses import dataclass
 import io
 import tarfile
 from typing import cast
+import unittest
 import zipfile
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
@@ -44,12 +45,13 @@ from tests.release.commands.support import (
     cleanup_sandbox,
     cli_env,
     command_available,
+    copy_test_tree,
     create_build_test_sandbox,
     create_fake_docker_launcher,
     git_create_annotated_tag,
     git_rev_parse,
     hashlib,
-    init_git_origin_and_clone,
+    init_git_origin_repo,
     json,
     os,
     run_quiet,
@@ -86,6 +88,27 @@ class BundleMetadataShapeCase:
     expected: dict[str, dict[str, object]]
 
 
+@dataclass(frozen=True)
+class VerificationOriginTemplateKey:
+    """Cache key for reusable origin repositories with reproducibility helper scripts."""
+
+    include_generic_file_reproducibility: bool = False
+    drift_generic_file_reproducibility: bool = False
+    archive_generic_file_reproducibility: bool = False
+    include_python_distribution_reproducibility: bool = False
+    drift_python_distribution_reproducibility: bool = False
+    archive_python_distribution_reproducibility: bool = False
+    include_npm_package_reproducibility: bool = False
+    drift_npm_package_reproducibility: bool = False
+    archive_npm_package_reproducibility: bool = False
+    include_maven_repository_reproducibility: bool = False
+    drift_maven_repository_reproducibility: bool = False
+    include_unrelated_local_maven_repository_files: bool = False
+    include_oci_image_reproducibility: bool = False
+    drift_oci_image_reproducibility: bool = False
+    drift_oci_image_reproducibility_platform: bool = False
+
+
 def _write_zip_archive(
     archive_path: Path,
     *,
@@ -120,6 +143,391 @@ def _write_tgz_archive(
 
 class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
     """End-to-end coverage for the Phase 1a verify-rc command."""
+
+    _baseline_root: Path
+    _origin_template: Path
+    _gpg_home_template: Path
+    _origin_templates: dict[VerificationOriginTemplateKey, Path]
+    _public_key: str
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        if not command_available("gpg"):
+            raise unittest.SkipTest("gpg is required for verify-rc integration coverage")
+        cls._baseline_root = create_build_test_sandbox()
+        cls._origin_template = init_git_origin_repo(cls._baseline_root, dir_name="origin-template")
+        cls._origin_templates = {}
+        gpg_home = cls._baseline_root / "gpg-home-template"
+        gpg_home.mkdir(parents=True, exist_ok=True)
+        gpg_home.chmod(0o700)
+        run_quiet(
+            [
+                "gpg",
+                "--batch",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                "",
+                "--quick-gen-key",
+                "Release Tooling Tests <release-tooling-tests@example.invalid>",
+                "ed25519",
+                "sign",
+                "1d",
+            ],
+            env={**os.environ, "GNUPGHOME": str(gpg_home)},
+            check=True,
+        )
+        cls._public_key = run_quiet(
+            [
+                "gpg",
+                "--armor",
+                "--export",
+                "Release Tooling Tests <release-tooling-tests@example.invalid>",
+            ],
+            env={**os.environ, "GNUPGHOME": str(gpg_home)},
+            check=True,
+        ).stdout
+        run_quiet(
+            ["gpgconf", "--kill", "all"],
+            env={**os.environ, "GNUPGHOME": str(gpg_home)},
+            check=True,
+        )
+        for stale_path in gpg_home.glob("S.gpg-agent*"):
+            stale_path.unlink(missing_ok=True)
+        cls._gpg_home_template = gpg_home
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cleanup_sandbox(cls._baseline_root)
+        super().tearDownClass()
+
+    @classmethod
+    def _origin_template_for(
+        cls,
+        key: VerificationOriginTemplateKey,
+    ) -> Path:
+        if not any(key.__dict__.values()):
+            return cls._origin_template
+        cached = cls._origin_templates.get(key)
+        if cached is not None:
+            return cached
+
+        template_index = len(cls._origin_templates) + 1
+        template_path = copy_test_tree(
+            cls._origin_template,
+            cls._baseline_root / f"origin-template-{template_index:02d}",
+        )
+        cls._materialize_origin_template(template_path, key)
+        cls._origin_templates[key] = template_path
+        return template_path
+
+    @classmethod
+    def _materialize_origin_template(
+        cls,
+        origin_dir: Path,
+        key: VerificationOriginTemplateKey,
+    ) -> None:
+        if key.include_generic_file_reproducibility:
+            rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-bootstrap.sh"
+            rebuild_script.parent.mkdir(parents=True, exist_ok=True)
+            if key.archive_generic_file_reproducibility:
+                rebuild_script.write_text(
+                    "\n".join(
+                        [
+                            "#!/usr/bin/env sh",
+                            "set -eu",
+                            "mkdir -p dist",
+                            "python - <<'PY'",
+                            "from pathlib import Path",
+                            "import zipfile",
+                            "archive_path = Path('dist/buildish-example-bootstrap.zip')",
+                            "payload = b'bootstrap zip bytes\\n'",
+                            (
+                                "payload = b'bootstrap zip drift\\n'"
+                                if key.drift_generic_file_reproducibility
+                                else "payload = payload"
+                            ),
+                            "with zipfile.ZipFile(archive_path, mode='w', compression=zipfile.ZIP_DEFLATED) as archive:",
+                            "    info = zipfile.ZipInfo('bootstrap.txt', date_time=(2026, 4, 30, 12, 0, 1))",
+                            "    info.compress_type = zipfile.ZIP_DEFLATED",
+                            "    info.external_attr = 0o100644 << 16",
+                            "    archive.writestr(info, payload)",
+                            "PY",
+                            "",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+            else:
+                rebuild_script.write_text(
+                    "\n".join(
+                        [
+                            "#!/usr/bin/env sh",
+                            "set -eu",
+                            "mkdir -p dist",
+                            (
+                                "printf 'bootstrap zip bytes\\n' > dist/buildish-example-bootstrap.zip"
+                                if not key.drift_generic_file_reproducibility
+                                else "printf 'bootstrap zip drift\\n' > dist/buildish-example-bootstrap.zip"
+                            ),
+                            "",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+            rebuild_script.chmod(0o755)
+            local_override_script = (
+                origin_dir / "buildish-release-tooling" / "rebuild-bootstrap-local.sh"
+            )
+            local_override_script.write_text(
+                rebuild_script.read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            local_override_script.chmod(0o755)
+            run_quiet(
+                [
+                    "git",
+                    "-C",
+                    str(origin_dir),
+                    "add",
+                    "buildish-release-tooling/rebuild-bootstrap.sh",
+                    "buildish-release-tooling/rebuild-bootstrap-local.sh",
+                ],
+                check=True,
+            )
+            run_quiet(
+                ["git", "-C", str(origin_dir), "commit", "-m", "add bootstrap rebuild script"],
+                check=True,
+            )
+
+        if key.include_python_distribution_reproducibility:
+            rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-wheel.sh"
+            rebuild_script.parent.mkdir(parents=True, exist_ok=True)
+            if key.archive_python_distribution_reproducibility:
+                rebuild_script.write_text(
+                    "\n".join(
+                        [
+                            "#!/usr/bin/env sh",
+                            "set -eu",
+                            "mkdir -p dist",
+                            "python - <<'PY'",
+                            "from pathlib import Path",
+                            "import zipfile",
+                            "archive_path = Path('dist/example-1.2.3-py3-none-any.whl')",
+                            "payload = b'wheel payload\\n'",
+                            (
+                                "payload = b'wheel payload drift\\n'"
+                                if key.drift_python_distribution_reproducibility
+                                else "payload = payload"
+                            ),
+                            "with zipfile.ZipFile(archive_path, mode='w', compression=zipfile.ZIP_DEFLATED) as archive:",
+                            "    info = zipfile.ZipInfo('example/__init__.py', date_time=(2026, 4, 30, 12, 0, 1))",
+                            "    info.compress_type = zipfile.ZIP_DEFLATED",
+                            "    info.external_attr = 0o100644 << 16",
+                            "    archive.writestr(info, payload)",
+                            "PY",
+                            "",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+            else:
+                rebuild_script.write_text(
+                    "\n".join(
+                        [
+                            "#!/usr/bin/env sh",
+                            "set -eu",
+                            "mkdir -p dist",
+                            (
+                                "printf 'wheel payload\\n' > dist/example-1.2.3-py3-none-any.whl"
+                                if not key.drift_python_distribution_reproducibility
+                                else "printf 'wheel payload drift\\n' > dist/example-1.2.3-py3-none-any.whl"
+                            ),
+                            "",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+            rebuild_script.chmod(0o755)
+            run_quiet(
+                ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-wheel.sh"],
+                check=True,
+            )
+            run_quiet(
+                ["git", "-C", str(origin_dir), "commit", "-m", "add wheel rebuild script"],
+                check=True,
+            )
+
+        if key.include_npm_package_reproducibility:
+            rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-npm-package.sh"
+            rebuild_script.parent.mkdir(parents=True, exist_ok=True)
+            if key.archive_npm_package_reproducibility:
+                rebuild_script.write_text(
+                    "\n".join(
+                        [
+                            "#!/usr/bin/env sh",
+                            "set -eu",
+                            "mkdir -p dist",
+                            "python - <<'PY'",
+                            "from io import BytesIO",
+                            "from pathlib import Path",
+                            "import tarfile",
+                            "archive_path = Path('dist/buildish-example-1.2.3.tgz')",
+                            "payload = b'npm package payload\\n'",
+                            (
+                                "payload = b'npm package payload drift\\n'"
+                                if key.drift_npm_package_reproducibility
+                                else "payload = payload"
+                            ),
+                            "with tarfile.open(archive_path, mode='w:gz') as archive:",
+                            "    info = tarfile.TarInfo('package/package.json')",
+                            "    info.size = len(payload)",
+                            "    info.mtime = 1714435201",
+                            "    info.mode = 0o644",
+                            "    archive.addfile(info, BytesIO(payload))",
+                            "PY",
+                            "",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+            else:
+                rebuild_script.write_text(
+                    "\n".join(
+                        [
+                            "#!/usr/bin/env sh",
+                            "set -eu",
+                            "mkdir -p dist",
+                            (
+                                "printf 'npm package payload\\n' > dist/buildish-example-1.2.3.tgz"
+                                if not key.drift_npm_package_reproducibility
+                                else "printf 'npm package payload drift\\n' > dist/buildish-example-1.2.3.tgz"
+                            ),
+                            "",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+            rebuild_script.chmod(0o755)
+            run_quiet(
+                ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-npm-package.sh"],
+                check=True,
+            )
+            run_quiet(
+                ["git", "-C", str(origin_dir), "commit", "-m", "add npm rebuild script"],
+                check=True,
+            )
+
+        if key.include_maven_repository_reproducibility:
+            rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-maven-staging.sh"
+            rebuild_script.parent.mkdir(parents=True, exist_ok=True)
+            rebuild_script.write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env sh",
+                        "set -eu",
+                        "repo_root=.buildish-out/m2repo/org/example/app/1.0.0",
+                        "mkdir -p \"$repo_root\"",
+                        "python - <<'PY'",
+                        "from pathlib import Path",
+                        "import zipfile",
+                        "repo_root = Path('.buildish-out/m2repo/org/example/app/1.0.0')",
+                        "jar_path = repo_root / 'app-1.0.0.jar'",
+                        "with zipfile.ZipFile(jar_path, mode='w', compression=zipfile.ZIP_DEFLATED) as archive:",
+                        "    info = zipfile.ZipInfo('app.txt', date_time=(2026, 4, 30, 12, 0, 2))",
+                        "    info.compress_type = zipfile.ZIP_DEFLATED",
+                        "    archive.writestr(info, b'jar payload\\n')",
+                        "PY",
+                        (
+                            "printf '<project>drift</project>\\n' > \"$repo_root/app-1.0.0.pom\""
+                            if key.drift_maven_repository_reproducibility
+                            else "printf '<project>stable</project>\\n' > \"$repo_root/app-1.0.0.pom\""
+                        ),
+                        (
+                            "\n".join(
+                                [
+                                    "extra_root=.buildish-out/m2repo/com/example/dependency/2.0.0",
+                                    "mkdir -p \"$extra_root\"",
+                                    "printf 'dependency bytes\\n' > \"$extra_root/dependency-2.0.0.jar\"",
+                                ]
+                            )
+                            if key.include_unrelated_local_maven_repository_files
+                            else ""
+                        ),
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            rebuild_script.chmod(0o755)
+            run_quiet(
+                ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-maven-staging.sh"],
+                check=True,
+            )
+            run_quiet(
+                ["git", "-C", str(origin_dir), "commit", "-m", "add maven rebuild script"],
+                check=True,
+            )
+
+        if key.include_oci_image_reproducibility:
+            rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-oci-image.sh"
+            rebuild_script.parent.mkdir(parents=True, exist_ok=True)
+            rebuilt_top_level_digest = "sha256:" + (
+                (
+                    "e5"
+                    if key.drift_oci_image_reproducibility
+                    or key.drift_oci_image_reproducibility_platform
+                    else "d4"
+                )
+                * 32
+            )
+            rebuilt_amd64_digest = "sha256:" + ("a1" * 32)
+            rebuilt_arm64_digest = "sha256:" + (
+                ("c3" if key.drift_oci_image_reproducibility_platform else "b2") * 32
+            )
+            rebuild_script.write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env sh",
+                        "set -eu",
+                        "mkdir -p .buildish-out",
+                        "printf 'rebuilt\\n' > .buildish-out/oci-image-rebuilt.marker",
+                        "cat > \"$FAKE_DOCKER_STATE_DIR/imagetools-inspect-response.json\" <<'JSON'",
+                        json.dumps(
+                            {
+                                "schemaVersion": 2,
+                                "mediaType": "application/vnd.oci.image.index.v1+json",
+                                "digest": rebuilt_top_level_digest,
+                                "manifests": [
+                                    {
+                                        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                                        "digest": rebuilt_amd64_digest,
+                                        "platform": {"architecture": "amd64", "os": "linux"},
+                                    },
+                                    {
+                                        "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                                        "digest": rebuilt_arm64_digest,
+                                        "platform": {"architecture": "arm64", "os": "linux"},
+                                    },
+                                ],
+                            }
+                        ),
+                        "JSON",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            rebuild_script.chmod(0o755)
+            run_quiet(
+                ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-oci-image.sh"],
+                check=True,
+            )
+            run_quiet(
+                ["git", "-C", str(origin_dir), "commit", "-m", "add oci rebuild script"],
+                check=True,
+            )
 
     @staticmethod
     def _repro_shape(payload: dict[str, object] | None) -> dict[str, object] | None:
@@ -204,16 +612,110 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.fail(f"bundle artifact metadata not found for {artifact_id}")
         raise AssertionError("unreachable")
 
+    def _prepare_generic_file_fixture(
+        self,
+        sandbox_dir: Path,
+        *,
+        kind: str = "generic-file",
+        include_reproducibility: bool = False,
+        drift_reproducibility: bool = False,
+        archive_reproducibility: bool = False,
+        mismatched_digest: bool = False,
+        include_second_shared_profile: bool = False,
+        extra_verify_rc_profile_lines: tuple[str, ...] = (),
+    ) -> VerificationFixture:
+        return self._prepare_verification_fixture(
+            sandbox_dir,
+            secondary_kind=kind,
+            include_generic_file_reproducibility=include_reproducibility,
+            drift_generic_file_reproducibility=drift_reproducibility,
+            archive_generic_file_reproducibility=archive_reproducibility,
+            mismatched_secondary_digest=mismatched_digest,
+            include_second_generic_file_shared_profile=include_second_shared_profile,
+            extra_verify_rc_profile_lines=extra_verify_rc_profile_lines,
+        )
+
+    def _prepare_python_distribution_fixture(
+        self,
+        sandbox_dir: Path,
+        *,
+        include_reproducibility: bool = False,
+        drift_reproducibility: bool = False,
+        archive_reproducibility: bool = False,
+        missing_index_entry: bool = False,
+    ) -> VerificationFixture:
+        return self._prepare_verification_fixture(
+            sandbox_dir,
+            include_python_distribution=True,
+            include_python_distribution_reproducibility=include_reproducibility,
+            drift_python_distribution_reproducibility=drift_reproducibility,
+            archive_python_distribution_reproducibility=archive_reproducibility,
+            missing_python_index_entry=missing_index_entry,
+        )
+
+    def _prepare_npm_package_fixture(
+        self,
+        sandbox_dir: Path,
+        *,
+        include_reproducibility: bool = False,
+        drift_reproducibility: bool = False,
+        archive_reproducibility: bool = False,
+        drift_registry_integrity: bool = False,
+    ) -> VerificationFixture:
+        return self._prepare_verification_fixture(
+            sandbox_dir,
+            include_npm_package=True,
+            include_npm_package_reproducibility=include_reproducibility,
+            drift_npm_package_reproducibility=drift_reproducibility,
+            archive_npm_package_reproducibility=archive_reproducibility,
+            drift_npm_registry_integrity=drift_registry_integrity,
+        )
+
+    def _prepare_maven_repository_fixture(
+        self,
+        sandbox_dir: Path,
+        *,
+        include_reproducibility: bool = False,
+        drift_repository: bool = False,
+        drift_reproducibility: bool = False,
+        include_unrelated_local_repo_files: bool = False,
+        omit_sidecar_path_rules: bool = False,
+    ) -> VerificationFixture:
+        return self._prepare_verification_fixture(
+            sandbox_dir,
+            include_maven_repository=True,
+            drift_maven_repository=drift_repository,
+            include_maven_repository_reproducibility=include_reproducibility,
+            drift_maven_repository_reproducibility=drift_reproducibility,
+            include_unrelated_local_maven_repository_files=include_unrelated_local_repo_files,
+            omit_maven_repository_sidecar_path_rules=omit_sidecar_path_rules,
+        )
+
+    def _prepare_oci_image_fixture(
+        self,
+        sandbox_dir: Path,
+        *,
+        include_reproducibility: bool = False,
+        drift_registry_image: bool = False,
+        drift_reproducibility: bool = False,
+        drift_reproducibility_platform: bool = False,
+    ) -> VerificationFixture:
+        return self._prepare_verification_fixture(
+            sandbox_dir,
+            include_oci_image=True,
+            drift_oci_image=drift_registry_image,
+            include_oci_image_reproducibility=include_reproducibility,
+            drift_oci_image_reproducibility=drift_reproducibility,
+            drift_oci_image_reproducibility_platform=drift_reproducibility_platform,
+        )
+
     def test_verify_rc_command_reports_progress_for_successful_run(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
-            sandbox_dir,
-            include_maven_repository=True,
-        )
+        fixture = self._prepare_maven_repository_fixture(sandbox_dir)
         completed = run_cli(
             [
                 "verify-rc",
@@ -418,10 +920,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             mixed_failure_shape["secondary_repro"],
         )
 
-        full_repro_fixture = self._prepare_verification_fixture(
+        full_repro_fixture = self._prepare_generic_file_fixture(
             sandbox_dir / "full-repro",
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
+            include_reproducibility=True,
         )
         full_repro_completed = run_cli(
             [
@@ -481,10 +982,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             full_secondary_repro["bootstrap-zip"],
         )
 
-        override_fixture = self._prepare_verification_fixture(
+        override_fixture = self._prepare_generic_file_fixture(
             sandbox_dir / "override",
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
+            include_reproducibility=True,
         )
         override_path = sandbox_dir / "override" / "repro-overrides.yaml"
         override_path.write_text(
@@ -564,10 +1064,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
-            sandbox_dir,
-            include_maven_repository=True,
-        )
+        fixture = self._prepare_maven_repository_fixture(sandbox_dir)
         completed = run_cli(
             [
                 "verify-rc",
@@ -605,10 +1102,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         cases = (
             BundleMetadataShapeCase(
                 name="source-and-generic",
-                build_fixture=lambda case_dir: self._prepare_verification_fixture(
+                build_fixture=lambda case_dir: self._prepare_generic_file_fixture(
                     case_dir,
-                    secondary_kind="generic-file",
-                    include_generic_file_reproducibility=True,
+                    include_reproducibility=True,
                 ),
                 expected={
                     "source-artifact/reproducibility/metadata.json": {
@@ -673,10 +1169,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             ),
             BundleMetadataShapeCase(
                 name="python",
-                build_fixture=lambda case_dir: self._prepare_verification_fixture(
+                build_fixture=lambda case_dir: self._prepare_python_distribution_fixture(
                     case_dir,
-                    include_python_distribution=True,
-                    include_python_distribution_reproducibility=True,
+                    include_reproducibility=True,
                 ),
                 expected={
                     "secondary-artifacts/pypi-wheel/reproducibility/metadata.json": {
@@ -708,10 +1203,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             ),
             BundleMetadataShapeCase(
                 name="npm",
-                build_fixture=lambda case_dir: self._prepare_verification_fixture(
+                build_fixture=lambda case_dir: self._prepare_npm_package_fixture(
                     case_dir,
-                    include_npm_package=True,
-                    include_npm_package_reproducibility=True,
+                    include_reproducibility=True,
                 ),
                 expected={
                     "secondary-artifacts/npm-package-main/reproducibility/metadata.json": {
@@ -743,10 +1237,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             ),
             BundleMetadataShapeCase(
                 name="maven",
-                build_fixture=lambda case_dir: self._prepare_verification_fixture(
+                build_fixture=lambda case_dir: self._prepare_maven_repository_fixture(
                     case_dir,
-                    include_maven_repository=True,
-                    include_maven_repository_reproducibility=True,
+                    include_reproducibility=True,
                 ),
                 expected={
                     "secondary-artifacts/maven-staging-main/reproducibility/metadata.json": {
@@ -782,10 +1275,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             ),
             BundleMetadataShapeCase(
                 name="oci",
-                build_fixture=lambda case_dir: self._prepare_verification_fixture(
+                build_fixture=lambda case_dir: self._prepare_oci_image_fixture(
                     case_dir,
-                    include_oci_image=True,
-                    include_oci_image_reproducibility=True,
+                    include_reproducibility=True,
                 ),
                 expected={
                     "secondary-artifacts/ghcr-main-image/reproducibility/metadata.json": {
@@ -929,10 +1421,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
+            include_reproducibility=True,
         )
         override_path = sandbox_dir / "repro-overrides.yaml"
         override_path.write_text(
@@ -1093,10 +1584,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
+            include_reproducibility=True,
         )
         completed = run_cli(
             [
@@ -1309,10 +1799,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
+            include_reproducibility=True,
         )
         override_path = sandbox_dir / "repro-overrides.yaml"
         override_path.write_text(
@@ -1386,11 +1875,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
         )
         override_path = sandbox_dir / "repro-overrides.yaml"
         redaction_probe_value = "probe-value-123"
@@ -1539,11 +2027,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            include_second_generic_file_shared_profile=True,
+            include_reproducibility=True,
+            include_second_shared_profile=True,
         )
         override_path = sandbox_dir / "repro-overrides.yaml"
         override_path.write_text(
@@ -1742,11 +2229,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
         )
         completed = run_cli(
             [
@@ -1797,11 +2283,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
         )
         verify_completed = run_cli(
             [
@@ -1872,11 +2357,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
         )
         verify_completed = run_cli(
             [
@@ -2479,11 +2963,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
         )
         verify_completed = run_cli(
             [
@@ -2530,11 +3013,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
         )
         verify_completed = run_cli(
             [
@@ -2701,12 +3183,11 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
-            archive_generic_file_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
+            archive_reproducibility=True,
         )
         verify_completed = run_cli(
             [
@@ -2952,11 +3433,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
         )
         verify_completed = run_cli(
             [
@@ -3006,11 +3486,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
         )
         verify_completed = run_cli(
             [
@@ -3058,11 +3537,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
         )
         verify_completed = run_cli(
             [
@@ -3133,11 +3611,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
         )
         verify_completed = run_cli(
             [
@@ -3188,11 +3665,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
         )
         override_path = sandbox_dir / "repro-overrides.yaml"
         override_path.write_text(
@@ -3261,11 +3737,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
         )
         override_path = sandbox_dir / "repro-overrides.yaml"
         override_path.write_text(
@@ -3332,10 +3807,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            mismatched_secondary_digest=True,
+            mismatched_digest=True,
         )
         completed = run_cli(
             [
@@ -3412,10 +3886,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_generic_file_fixture(
             sandbox_dir,
-            secondary_kind="generic-file",
-            mismatched_secondary_digest=True,
+            mismatched_digest=True,
         )
         completed = run_cli(
             [
@@ -3687,10 +4160,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
-            sandbox_dir,
-            include_maven_repository=True,
-        )
+        fixture = self._prepare_maven_repository_fixture(sandbox_dir)
         completed = run_cli(
             [
                 "verify-rc",
@@ -3866,10 +4336,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
-            sandbox_dir,
-            include_maven_repository=True,
-        )
+        fixture = self._prepare_maven_repository_fixture(sandbox_dir)
         completed = run_cli(
             [
                 "verify-rc",
@@ -3898,10 +4365,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
-            sandbox_dir,
-            include_python_distribution=True,
-        )
+        fixture = self._prepare_python_distribution_fixture(sandbox_dir)
         completed = run_cli(
             [
                 "verify-rc",
@@ -3930,10 +4394,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_python_distribution_fixture(
             sandbox_dir,
-            include_python_distribution=True,
-            missing_python_index_entry=True,
+            missing_index_entry=True,
         )
         completed = run_cli(
             [
@@ -3957,10 +4420,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_python_distribution_fixture(
             sandbox_dir,
-            include_python_distribution=True,
-            include_python_distribution_reproducibility=True,
+            include_reproducibility=True,
         )
         completed = run_cli(
             [
@@ -3997,12 +4459,11 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_python_distribution_fixture(
             sandbox_dir,
-            include_python_distribution=True,
-            include_python_distribution_reproducibility=True,
-            drift_python_distribution_reproducibility=True,
-            archive_python_distribution_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
+            archive_reproducibility=True,
         )
         completed = run_cli(
             [
@@ -4042,12 +4503,11 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_python_distribution_fixture(
             sandbox_dir,
-            include_python_distribution=True,
-            include_python_distribution_reproducibility=True,
-            drift_python_distribution_reproducibility=True,
-            archive_python_distribution_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
+            archive_reproducibility=True,
         )
         verify_completed = run_cli(
             [
@@ -4106,10 +4566,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
-            sandbox_dir,
-            include_npm_package=True,
-        )
+        fixture = self._prepare_npm_package_fixture(sandbox_dir)
         completed = run_cli(
             [
                 "verify-rc",
@@ -4138,10 +4595,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_npm_package_fixture(
             sandbox_dir,
-            include_npm_package=True,
-            drift_npm_registry_integrity=True,
+            drift_registry_integrity=True,
         )
         completed = run_cli(
             [
@@ -4165,10 +4621,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_npm_package_fixture(
             sandbox_dir,
-            include_npm_package=True,
-            include_npm_package_reproducibility=True,
+            include_reproducibility=True,
         )
         completed = run_cli(
             [
@@ -4208,12 +4663,11 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_npm_package_fixture(
             sandbox_dir,
-            include_npm_package=True,
-            include_npm_package_reproducibility=True,
-            drift_npm_package_reproducibility=True,
-            archive_npm_package_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
+            archive_reproducibility=True,
         )
         completed = run_cli(
             [
@@ -4253,12 +4707,11 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_npm_package_fixture(
             sandbox_dir,
-            include_npm_package=True,
-            include_npm_package_reproducibility=True,
-            drift_npm_package_reproducibility=True,
-            archive_npm_package_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
+            archive_reproducibility=True,
         )
         verify_completed = run_cli(
             [
@@ -4319,10 +4772,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_maven_repository_fixture(
             sandbox_dir,
-            include_maven_repository=True,
-            drift_maven_repository=True,
+            drift_repository=True,
         )
         completed = run_cli(
             [
@@ -4348,10 +4800,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_maven_repository_fixture(
             sandbox_dir,
-            include_maven_repository=True,
-            include_maven_repository_reproducibility=True,
+            include_reproducibility=True,
         )
         completed = run_cli(
             [
@@ -4426,12 +4877,11 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_maven_repository_fixture(
             sandbox_dir,
-            include_maven_repository=True,
-            include_maven_repository_reproducibility=True,
-            include_unrelated_local_maven_repository_files=True,
-            omit_maven_repository_sidecar_path_rules=True,
+            include_reproducibility=True,
+            include_unrelated_local_repo_files=True,
+            omit_sidecar_path_rules=True,
         )
         completed = run_cli(
             [
@@ -4463,11 +4913,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_maven_repository_fixture(
             sandbox_dir,
-            include_maven_repository=True,
-            include_maven_repository_reproducibility=True,
-            drift_maven_repository_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
         )
         completed = run_cli(
             [
@@ -4521,11 +4970,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_maven_repository_fixture(
             sandbox_dir,
-            include_maven_repository=True,
-            include_maven_repository_reproducibility=True,
-            drift_maven_repository_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
         )
         verify_completed = run_cli(
             [
@@ -4630,10 +5078,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
-            sandbox_dir,
-            include_oci_image=True,
-        )
+        fixture = self._prepare_oci_image_fixture(sandbox_dir)
         completed = run_cli(
             [
                 "verify-rc",
@@ -4662,10 +5107,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_oci_image_fixture(
             sandbox_dir,
-            include_oci_image=True,
-            drift_oci_image=True,
+            drift_registry_image=True,
         )
         completed = run_cli(
             [
@@ -4689,10 +5133,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_oci_image_fixture(
             sandbox_dir,
-            include_oci_image=True,
-            include_oci_image_reproducibility=True,
+            include_reproducibility=True,
         )
         completed = run_cli(
             [
@@ -4757,11 +5200,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_oci_image_fixture(
             sandbox_dir,
-            include_oci_image=True,
-            include_oci_image_reproducibility=True,
-            drift_oci_image_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
         )
         completed = run_cli(
             [
@@ -4801,11 +5243,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_oci_image_fixture(
             sandbox_dir,
-            include_oci_image=True,
-            include_oci_image_reproducibility=True,
-            drift_oci_image_reproducibility=True,
+            include_reproducibility=True,
+            drift_reproducibility=True,
         )
         verify_completed = run_cli(
             [
@@ -4850,11 +5291,10 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
+        fixture = self._prepare_oci_image_fixture(
             sandbox_dir,
-            include_oci_image=True,
-            include_oci_image_reproducibility=True,
-            drift_oci_image_reproducibility_platform=True,
+            include_reproducibility=True,
+            drift_reproducibility_platform=True,
         )
         verify_completed = run_cli(
             [
@@ -4953,7 +5393,27 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         include_second_generic_file_shared_profile: bool = False,
         extra_verify_rc_profile_lines: tuple[str, ...] = (),
     ) -> VerificationFixture:
-        origin_dir, _clone_dir = init_git_origin_and_clone(sandbox_dir)
+        origin_template_key = VerificationOriginTemplateKey(
+            include_generic_file_reproducibility=include_generic_file_reproducibility,
+            drift_generic_file_reproducibility=drift_generic_file_reproducibility,
+            archive_generic_file_reproducibility=archive_generic_file_reproducibility,
+            include_python_distribution_reproducibility=include_python_distribution_reproducibility,
+            drift_python_distribution_reproducibility=drift_python_distribution_reproducibility,
+            archive_python_distribution_reproducibility=archive_python_distribution_reproducibility,
+            include_npm_package_reproducibility=include_npm_package_reproducibility,
+            drift_npm_package_reproducibility=drift_npm_package_reproducibility,
+            archive_npm_package_reproducibility=archive_npm_package_reproducibility,
+            include_maven_repository_reproducibility=include_maven_repository_reproducibility,
+            drift_maven_repository_reproducibility=drift_maven_repository_reproducibility,
+            include_unrelated_local_maven_repository_files=include_unrelated_local_maven_repository_files,
+            include_oci_image_reproducibility=include_oci_image_reproducibility,
+            drift_oci_image_reproducibility=drift_oci_image_reproducibility,
+            drift_oci_image_reproducibility_platform=drift_oci_image_reproducibility_platform,
+        )
+        origin_dir = copy_test_tree(
+            self._origin_template_for(origin_template_key),
+            sandbox_dir / "origin",
+        )
         component_id = "buildish-example"
         version = "1.2.3"
         rc_tag = "v1.2.3-rc0"
@@ -4979,7 +5439,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         gpg_home = sandbox_dir / "gpg-home"
         extra_env: dict[str, str] = {}
         prepend_dirs: tuple[Path, ...] = ()
-        gpg_home.mkdir(parents=True, exist_ok=True)
+        copy_test_tree(self._gpg_home_template, gpg_home)
         gpg_home.chmod(0o700)
         effective_gpg_home = _effective_home(gpg_home)
         verify_rc_line_list: list[str] = []
@@ -5091,293 +5551,6 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             verify_rc_lines=verify_rc_lines,
         )
 
-        if include_generic_file_reproducibility:
-            rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-bootstrap.sh"
-            rebuild_script.parent.mkdir(parents=True, exist_ok=True)
-            if archive_generic_file_reproducibility:
-                rebuild_script.write_text(
-                    "\n".join(
-                        [
-                            "#!/usr/bin/env sh",
-                            "set -eu",
-                            "mkdir -p dist",
-                            "python - <<'PY'",
-                            "from pathlib import Path",
-                            "import zipfile",
-                            "archive_path = Path('dist/buildish-example-bootstrap.zip')",
-                            "payload = b'bootstrap zip bytes\\n'",
-                            (
-                                "payload = b'bootstrap zip drift\\n'"
-                                if drift_generic_file_reproducibility
-                                else "payload = payload"
-                            ),
-                            "with zipfile.ZipFile(archive_path, mode='w', compression=zipfile.ZIP_DEFLATED) as archive:",
-                            "    info = zipfile.ZipInfo('bootstrap.txt', date_time=(2026, 4, 30, 12, 0, 1))",
-                            "    info.compress_type = zipfile.ZIP_DEFLATED",
-                            "    info.external_attr = 0o100644 << 16",
-                            "    archive.writestr(info, payload)",
-                            "PY",
-                            "",
-                        ]
-                    ),
-                    encoding="utf-8",
-                )
-            else:
-                rebuild_script.write_text(
-                    "\n".join(
-                        [
-                            "#!/usr/bin/env sh",
-                            "set -eu",
-                            "mkdir -p dist",
-                            (
-                                "printf 'bootstrap zip bytes\\n' > dist/buildish-example-bootstrap.zip"
-                                if not drift_generic_file_reproducibility
-                                else "printf 'bootstrap zip drift\\n' > dist/buildish-example-bootstrap.zip"
-                            ),
-                            "",
-                        ]
-                    ),
-                    encoding="utf-8",
-                )
-            rebuild_script.chmod(0o755)
-            local_override_script = origin_dir / "buildish-release-tooling" / "rebuild-bootstrap-local.sh"
-            local_override_script.write_text(rebuild_script.read_text(encoding="utf-8"), encoding="utf-8")
-            local_override_script.chmod(0o755)
-            run_quiet(
-                [
-                    "git",
-                    "-C",
-                    str(origin_dir),
-                    "add",
-                    "buildish-release-tooling/rebuild-bootstrap.sh",
-                    "buildish-release-tooling/rebuild-bootstrap-local.sh",
-                ],
-                check=True,
-            )
-            run_quiet(
-                ["git", "-C", str(origin_dir), "commit", "-m", "add bootstrap rebuild script"],
-                check=True,
-            )
-        if include_python_distribution_reproducibility:
-            rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-wheel.sh"
-            rebuild_script.parent.mkdir(parents=True, exist_ok=True)
-            if archive_python_distribution_reproducibility:
-                rebuild_script.write_text(
-                    "\n".join(
-                        [
-                            "#!/usr/bin/env sh",
-                            "set -eu",
-                            "mkdir -p dist",
-                            "python - <<'PY'",
-                            "from pathlib import Path",
-                            "import zipfile",
-                            "archive_path = Path('dist/example-1.2.3-py3-none-any.whl')",
-                            "payload = b'wheel payload\\n'",
-                            (
-                                "payload = b'wheel payload drift\\n'"
-                                if drift_python_distribution_reproducibility
-                                else "payload = payload"
-                            ),
-                            "with zipfile.ZipFile(archive_path, mode='w', compression=zipfile.ZIP_DEFLATED) as archive:",
-                            "    info = zipfile.ZipInfo('example/__init__.py', date_time=(2026, 4, 30, 12, 0, 1))",
-                            "    info.compress_type = zipfile.ZIP_DEFLATED",
-                            "    info.external_attr = 0o100644 << 16",
-                            "    archive.writestr(info, payload)",
-                            "PY",
-                            "",
-                        ]
-                    ),
-                    encoding="utf-8",
-                )
-            else:
-                rebuild_script.write_text(
-                    "\n".join(
-                        [
-                            "#!/usr/bin/env sh",
-                            "set -eu",
-                            "mkdir -p dist",
-                            (
-                                "printf 'wheel payload\\n' > dist/example-1.2.3-py3-none-any.whl"
-                                if not drift_python_distribution_reproducibility
-                                else "printf 'wheel payload drift\\n' > dist/example-1.2.3-py3-none-any.whl"
-                            ),
-                            "",
-                        ]
-                    ),
-                    encoding="utf-8",
-                )
-            rebuild_script.chmod(0o755)
-            run_quiet(
-                ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-wheel.sh"],
-                check=True,
-            )
-            run_quiet(
-                ["git", "-C", str(origin_dir), "commit", "-m", "add wheel rebuild script"],
-                check=True,
-            )
-        if include_npm_package_reproducibility:
-            rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-npm-package.sh"
-            rebuild_script.parent.mkdir(parents=True, exist_ok=True)
-            if archive_npm_package_reproducibility:
-                rebuild_script.write_text(
-                    "\n".join(
-                        [
-                            "#!/usr/bin/env sh",
-                            "set -eu",
-                            "mkdir -p dist",
-                            "python - <<'PY'",
-                            "from io import BytesIO",
-                            "from pathlib import Path",
-                            "import tarfile",
-                            "archive_path = Path('dist/buildish-example-1.2.3.tgz')",
-                            "payload = b'npm package payload\\n'",
-                            (
-                                "payload = b'npm package payload drift\\n'"
-                                if drift_npm_package_reproducibility
-                                else "payload = payload"
-                            ),
-                            "with tarfile.open(archive_path, mode='w:gz') as archive:",
-                            "    info = tarfile.TarInfo('package/package.json')",
-                            "    info.size = len(payload)",
-                            "    info.mtime = 1714435201",
-                            "    info.mode = 0o644",
-                            "    archive.addfile(info, BytesIO(payload))",
-                            "PY",
-                            "",
-                        ]
-                    ),
-                    encoding="utf-8",
-                )
-            else:
-                rebuild_script.write_text(
-                    "\n".join(
-                        [
-                            "#!/usr/bin/env sh",
-                            "set -eu",
-                            "mkdir -p dist",
-                            (
-                                "printf 'npm package payload\\n' > dist/buildish-example-1.2.3.tgz"
-                                if not drift_npm_package_reproducibility
-                                else "printf 'npm package payload drift\\n' > dist/buildish-example-1.2.3.tgz"
-                            ),
-                            "",
-                        ]
-                    ),
-                    encoding="utf-8",
-                )
-            rebuild_script.chmod(0o755)
-            run_quiet(
-                ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-npm-package.sh"],
-                check=True,
-            )
-            run_quiet(
-                ["git", "-C", str(origin_dir), "commit", "-m", "add npm rebuild script"],
-                check=True,
-            )
-        if include_maven_repository_reproducibility:
-            rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-maven-staging.sh"
-            rebuild_script.parent.mkdir(parents=True, exist_ok=True)
-            rebuild_script.write_text(
-                "\n".join(
-                    [
-                        "#!/usr/bin/env sh",
-                        "set -eu",
-                        "repo_root=.buildish-out/m2repo/org/example/app/1.0.0",
-                        "mkdir -p \"$repo_root\"",
-                        "python - <<'PY'",
-                        "from pathlib import Path",
-                        "import zipfile",
-                        "repo_root = Path('.buildish-out/m2repo/org/example/app/1.0.0')",
-                        "jar_path = repo_root / 'app-1.0.0.jar'",
-                        "with zipfile.ZipFile(jar_path, mode='w', compression=zipfile.ZIP_DEFLATED) as archive:",
-                        "    info = zipfile.ZipInfo('app.txt', date_time=(2026, 4, 30, 12, 0, 2))",
-                        "    info.compress_type = zipfile.ZIP_DEFLATED",
-                        "    archive.writestr(info, b'jar payload\\n')",
-                        "PY",
-                        (
-                            "printf '<project>drift</project>\\n' > \"$repo_root/app-1.0.0.pom\""
-                            if drift_maven_repository_reproducibility
-                            else "printf '<project>stable</project>\\n' > \"$repo_root/app-1.0.0.pom\""
-                        ),
-                        (
-                            "\n".join(
-                                [
-                                    "extra_root=.buildish-out/m2repo/com/example/dependency/2.0.0",
-                                    "mkdir -p \"$extra_root\"",
-                                    "printf 'dependency bytes\\n' > \"$extra_root/dependency-2.0.0.jar\"",
-                                ]
-                            )
-                            if include_unrelated_local_maven_repository_files
-                            else ""
-                        ),
-                        "",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            rebuild_script.chmod(0o755)
-            run_quiet(
-                ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-maven-staging.sh"],
-                check=True,
-            )
-            run_quiet(
-                ["git", "-C", str(origin_dir), "commit", "-m", "add maven rebuild script"],
-                check=True,
-            )
-        if include_oci_image_reproducibility:
-            rebuild_script = origin_dir / "buildish-release-tooling" / "rebuild-oci-image.sh"
-            rebuild_script.parent.mkdir(parents=True, exist_ok=True)
-            rebuilt_top_level_digest = "sha256:" + (
-                ("e5" if drift_oci_image_reproducibility or drift_oci_image_reproducibility_platform else "d4")
-                * 32
-            )
-            rebuilt_amd64_digest = "sha256:" + ("a1" * 32)
-            rebuilt_arm64_digest = "sha256:" + (
-                ("c3" if drift_oci_image_reproducibility_platform else "b2") * 32
-            )
-            rebuild_script.write_text(
-                "\n".join(
-                    [
-                        "#!/usr/bin/env sh",
-                        "set -eu",
-                        "mkdir -p .buildish-out",
-                        "printf 'rebuilt\\n' > .buildish-out/oci-image-rebuilt.marker",
-                        "cat > \"$FAKE_DOCKER_STATE_DIR/imagetools-inspect-response.json\" <<'JSON'",
-                        json.dumps(
-                            {
-                                "schemaVersion": 2,
-                                "mediaType": "application/vnd.oci.image.index.v1+json",
-                                "digest": rebuilt_top_level_digest,
-                                "manifests": [
-                                    {
-                                        "mediaType": "application/vnd.oci.image.manifest.v1+json",
-                                        "digest": rebuilt_amd64_digest,
-                                        "platform": {"architecture": "amd64", "os": "linux"},
-                                    },
-                                    {
-                                        "mediaType": "application/vnd.oci.image.manifest.v1+json",
-                                        "digest": rebuilt_arm64_digest,
-                                        "platform": {"architecture": "arm64", "os": "linux"},
-                                    },
-                                ],
-                            }
-                        ),
-                        "JSON",
-                        "",
-                    ]
-                ),
-                encoding="utf-8",
-            )
-            rebuild_script.chmod(0o755)
-            run_quiet(
-                ["git", "-C", str(origin_dir), "add", "buildish-release-tooling/rebuild-oci-image.sh"],
-                check=True,
-            )
-            run_quiet(
-                ["git", "-C", str(origin_dir), "commit", "-m", "add oci rebuild script"],
-                check=True,
-            )
-
         source_commit_sha = git_rev_parse(origin_dir, "HEAD")
         git_create_annotated_tag(origin_dir, rc_tag)
         if mismatched_source_commit_sha:
@@ -5400,36 +5573,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             ).stdout.strip()
         )
 
-        run_quiet(
-            [
-                "gpg",
-                "--batch",
-                "--pinentry-mode",
-                "loopback",
-                "--passphrase",
-                "",
-                "--quick-gen-key",
-                "Release Tooling Tests <release-tooling-tests@example.invalid>",
-                "ed25519",
-                "sign",
-                "1d",
-            ],
-            env={**os.environ, "GNUPGHOME": str(effective_gpg_home)},
-            check=True,
-        )
-        keys_path.write_text(
-            run_quiet(
-                [
-                    "gpg",
-                    "--armor",
-                    "--export",
-                    "Release Tooling Tests <release-tooling-tests@example.invalid>",
-                ],
-                env={**os.environ, "GNUPGHOME": str(effective_gpg_home)},
-                check=True,
-            ).stdout,
-            encoding="utf-8",
-        )
+        keys_path.write_text(self._public_key, encoding="utf-8")
 
         stage_dir.mkdir(parents=True, exist_ok=True)
         source_artifact_name = f"apache-{component_id}-{version}-incubating-src.tar.gz"
