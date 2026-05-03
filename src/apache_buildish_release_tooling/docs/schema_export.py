@@ -48,7 +48,6 @@ _GENERATED_COMMENT = (
     "Generated from the Buildish Release Tooling Pydantic models. "
     "Do not edit by hand; regenerate with `make schemas`."
 )
-_CAMEL_TO_KEBAB_PATTERN = re.compile(r"(?<!^)(?=[A-Z])")
 _EXPORT_PACKAGE_NAMES = (
     "apache_buildish_release_tooling.release",
     "apache_buildish_release_tooling.harness",
@@ -78,14 +77,6 @@ def _model_schema(model: type[DocumentedContractModel]) -> SchemaBuilder:
         return model.model_json_schema(by_alias=True)
 
     return build
-
-
-def _schema_filename_for_model(model: type[DocumentedContractModel]) -> str:
-    return f"{_kebab_case(model.__name__)}.schema.json"
-
-
-def _kebab_case(value: str) -> str:
-    return _CAMEL_TO_KEBAB_PATTERN.sub("-", value).replace("_", "-").lower()
 
 
 def _first_sentence(value: str) -> str:
@@ -143,7 +134,7 @@ def _schema_export_from_model(model: type[DocumentedContractModel]) -> SchemaExp
     specification = _required_schema_export_spec(model)
     documentation = _documentation_for_export(model, specification)
     return SchemaExport(
-        filename=_schema_filename_for_model(model),
+        filename=specification.filename,
         title=f"Buildish Release Tooling {model.__name__}",
         schema_builder=_model_schema(model),
         description=specification.description or _docstring_for_model(model),
@@ -190,7 +181,7 @@ def _iter_export_models() -> tuple[type[DocumentedContractModel], ...]:
         sorted(
             discovered.values(),
             key=lambda model: (
-                _schema_filename_for_model(model),
+                _required_schema_export_spec(model).filename,
                 model.__module__,
                 model.__name__,
             ),

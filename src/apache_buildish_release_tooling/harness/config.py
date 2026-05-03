@@ -221,12 +221,14 @@ def _default_repository_path(repository_id: str) -> Path:
 
 
 ReleaseHarnessConfig.schema_export = SchemaExportSpecification(
+    filename="release-harness-config.schema.json",
     audience="internal",
     stability="stable",
     file_path="harness/release-harness.yaml",
     summary="Committed harness configuration contract for local repository bindings and optional overrides.",
 )
 ResolvedReleaseHarnessConfigJson.schema_export = SchemaExportSpecification(
+    filename="resolved-release-harness-config-json.schema.json",
     audience="internal",
     stability="stable",
     summary="Machine-readable JSON payload for one resolved harness configuration.",

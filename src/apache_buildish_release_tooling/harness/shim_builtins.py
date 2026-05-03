@@ -159,6 +159,7 @@ def builtin_gh_mutated_repositories(state: HarnessShimState) -> list[Path]:
 
 
 HarnessBuiltinGhRefMutationPayload.schema_export = SchemaExportSpecification(
+    filename="harness-builtin-gh-ref-mutation-payload.schema.json",
     audience="internal",
     stability="stable",
     summary="Harness shim builtin payload describing a synthetic GitHub ref mutation request.",

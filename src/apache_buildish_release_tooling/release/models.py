@@ -405,25 +405,30 @@ class CommandContext(RuntimeDerivedModel):
 
 
 VerifyRcOverrideFileConfig.schema_export = SchemaExportSpecification(
+    filename="verify-rc-override-file-config.schema.json",
     audience="internal",
     stability="stable",
     summary="Local non-canonical verify-rc reproducibility override file passed through `--repro-override-file`.",
 )
 ComponentConfig.schema_export = SchemaExportSpecification(
+    filename="component-config.schema.json",
     file_path="release-config.yaml",
     summary="Component-authored `release-config.yaml` contract for release policy and target integration settings.",
 )
 PrepareRcState.schema_export = SchemaExportSpecification(
+    filename="prepare-rc-state.schema.json",
     audience="internal",
     stability="stable",
     summary="Resolved prepare-rc state persisted between release workflow steps.",
 )
 ReleaseVersionState.schema_export = SchemaExportSpecification(
+    filename="release-version-state.schema.json",
     audience="internal",
     stability="stable",
     summary="Resolved release-version state persisted across final release workflow steps.",
 )
 CommandContext.schema_export = SchemaExportSpecification(
+    filename="command-context.schema.json",
     audience="internal",
     stability="stable",
     summary="Runtime command context built from CLI arguments and validated component configuration.",

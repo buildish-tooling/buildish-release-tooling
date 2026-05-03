@@ -360,27 +360,32 @@ def ordered_job_ids(jobs: Sequence[JobScenario]) -> list[str]:
 
 
 HarnessShimState.schema_export = SchemaExportSpecification(
+    filename="harness-shim-state.schema.json",
     audience="internal",
     stability="stable",
     summary="Persisted subprocess-facing harness shim state used by intercepted tool wrappers.",
 )
 HarnessScenario.schema_export = SchemaExportSpecification(
+    filename="harness-scenario.schema.json",
     audience="internal",
     stability="stable",
     file_path="harness/scenarios/*.yaml",
     summary="Harness scenario contract for synthetic or `act`-backed release-workflow integration tests.",
 )
 HarnessCommandTraceEntry.schema_export = SchemaExportSpecification(
+    filename="harness-command-trace-entry.schema.json",
     audience="internal",
     stability="stable",
     summary="Structured command-trace record emitted by the harness shim for one intercepted invocation.",
 )
 HarnessRunResultJson.schema_export = SchemaExportSpecification(
+    filename="harness-run-result-json.schema.json",
     audience="internal",
     stability="stable",
     summary="Machine-readable JSON result for one harness scenario run.",
 )
 HarnessSequenceRunResultJson.schema_export = SchemaExportSpecification(
+    filename="harness-sequence-run-result-json.schema.json",
     audience="internal",
     stability="stable",
     summary="Machine-readable JSON result for a multi-scenario harness sequence run.",

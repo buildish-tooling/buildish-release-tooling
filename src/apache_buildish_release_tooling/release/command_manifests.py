@@ -330,7 +330,11 @@ class AttachGithubReleaseAssetsManifest(CommandActionManifest):
     gpg_fingerprint: str = Field(description="OpenPGP fingerprint of the signing key Buildish used or verified.")
 
 
-def _assign_command_manifest_export(model: type[CommandActionManifest]) -> None:
+def _assign_command_manifest_export(
+    model: type[CommandActionManifest],
+    *,
+    filename: str,
+) -> None:
     action_field = model.model_fields.get("action")
     action_name = (
         action_field.default
@@ -358,6 +362,7 @@ def _assign_command_manifest_export(model: type[CommandActionManifest]) -> None:
             "This command manifest is internal Buildish workflow I/O and is not a supported external API."
         ).strip()
     model.schema_export = SchemaExportSpecification(
+        filename=filename,
         audience="internal",
         stability="unstable",
         summary=summary,
@@ -366,30 +371,34 @@ def _assign_command_manifest_export(model: type[CommandActionManifest]) -> None:
     )
 
 
-for _command_manifest_model in (
-    CommandActionManifest,
-    CreateReleaseBranchManifest,
-    PrepareRcManifest,
-    CleanupDevSvnRcsManifest,
-    CreateSourceArtifactManifest,
-    BuildSourceRcManifest,
-    MaterializeRcGitContentManifest,
-    CreateRcMaterializationTagManifest,
-    RecordArtifactManifest,
-    FinalizeRcVoteMaterialsManifest,
-    PublishAtrCandidateManifest,
-    ReportAtrChecksManifest,
-    SyncDraftGithubReleaseManifest,
-    PublishSourceReleaseSvnManifest,
-    PruneOlderLineReleasesManifest,
-    CreateFinalTagManifest,
-    FinalizeDraftGithubReleaseManifest,
-    ReleaseVersionManifest,
-    UpdateMovingTagsManifest,
-    UpdateMovingImageAliasesManifest,
-    PublishDockerhubMovingTagsManifest,
-    AttachGithubReleaseAssetsManifest,
+for _command_manifest_model, _command_manifest_filename in (
+    (CommandActionManifest, "command-action-manifest.schema.json"),
+    (CreateReleaseBranchManifest, "create-release-branch-manifest.schema.json"),
+    (PrepareRcManifest, "prepare-rc-manifest.schema.json"),
+    (CleanupDevSvnRcsManifest, "cleanup-dev-svn-rcs-manifest.schema.json"),
+    (CreateSourceArtifactManifest, "create-source-artifact-manifest.schema.json"),
+    (BuildSourceRcManifest, "build-source-rc-manifest.schema.json"),
+    (MaterializeRcGitContentManifest, "materialize-rc-git-content-manifest.schema.json"),
+    (CreateRcMaterializationTagManifest, "create-rc-materialization-tag-manifest.schema.json"),
+    (RecordArtifactManifest, "record-artifact-manifest.schema.json"),
+    (FinalizeRcVoteMaterialsManifest, "finalize-rc-vote-materials-manifest.schema.json"),
+    (PublishAtrCandidateManifest, "publish-atr-candidate-manifest.schema.json"),
+    (ReportAtrChecksManifest, "report-atr-checks-manifest.schema.json"),
+    (SyncDraftGithubReleaseManifest, "sync-draft-github-release-manifest.schema.json"),
+    (PublishSourceReleaseSvnManifest, "publish-source-release-svn-manifest.schema.json"),
+    (PruneOlderLineReleasesManifest, "prune-older-line-releases-manifest.schema.json"),
+    (CreateFinalTagManifest, "create-final-tag-manifest.schema.json"),
+    (FinalizeDraftGithubReleaseManifest, "finalize-draft-github-release-manifest.schema.json"),
+    (ReleaseVersionManifest, "release-version-manifest.schema.json"),
+    (UpdateMovingTagsManifest, "update-moving-tags-manifest.schema.json"),
+    (UpdateMovingImageAliasesManifest, "update-moving-image-aliases-manifest.schema.json"),
+    (PublishDockerhubMovingTagsManifest, "publish-dockerhub-moving-tags-manifest.schema.json"),
+    (AttachGithubReleaseAssetsManifest, "attach-github-release-assets-manifest.schema.json"),
 ):
-    _assign_command_manifest_export(_command_manifest_model)
+    _assign_command_manifest_export(
+        _command_manifest_model,
+        filename=_command_manifest_filename,
+    )
 
 del _command_manifest_model
+del _command_manifest_filename

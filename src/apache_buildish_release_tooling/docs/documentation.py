@@ -97,6 +97,7 @@ class SchemaExample:
 class SchemaExportSpecification:
     """Export metadata attached to one checked-in Buildish schema root."""
 
+    filename: str
     audience: SchemaAudience = "supported"
     stability: SchemaStability = "stable"
     file_path: str | None = None
