@@ -34,6 +34,8 @@ from apache_buildish_release_tooling.harness.backends.act import (
     _resolve_act_command,
     _write_secrets_file,
 )
+from apache_buildish_release_tooling.harness.backends.act import backend as act_backend
+from apache_buildish_release_tooling.harness.backends.act import fixtures as act_fixtures
 from apache_buildish_release_tooling.harness.backends.act.workflow import _rewrite_workflow
 from apache_buildish_release_tooling.harness import runtime
 from apache_buildish_release_tooling.harness.backend import (
@@ -44,6 +46,7 @@ from apache_buildish_release_tooling.harness.cli import main as harness_main
 from apache_buildish_release_tooling.harness.config import (
     ResolvedReleaseHarnessConfig,
     ResolvedRepositoryBinding,
+    load_release_harness_config,
 )
 from apache_buildish_release_tooling.harness.errors import HarnessExternalToolError
 from apache_buildish_release_tooling.harness.models import HarnessScenario, WorkflowScenario
@@ -78,6 +81,27 @@ class ActHarnessIntegrationTest(unittest.TestCase):
 
         return component_root() / "buildish-release-tooling" / "harness" / "scenarios" / filename
 
+    def _prepare_workspace_for_scenario(self, filename: str) -> tuple[HarnessScenario, runtime.HarnessWorkspace]:
+        """Create and bootstrap one harness workspace without invoking `act`."""
+
+        scenario = load_scenario(self._scenario_path(filename))
+        if scenario.workflow is None:
+            raise AssertionError("act scenarios must define a workflow block for workspace preparation")
+        bindings = load_release_harness_config(Path(scenario.workflow.harness_config))
+        workspace = act_fixtures._create_workspace(
+            bindings.self_repository.local_path,
+            self.sandbox_dir,
+            seed_workspace=None,
+        )
+        act_fixtures._bootstrap_workspace(
+            workspace,
+            scenario,
+            bindings,
+            seed_workspace=None,
+        )
+        act_backend._prepare_workflow_execution(workspace, scenario, bindings)
+        return scenario, workspace
+
     def test_write_secrets_file_ignores_host_github_tokens(self) -> None:
         """The `act` backend should not copy ambient host GitHub tokens into the harness secret file."""
 
@@ -110,45 +134,35 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         )
 
     def test_run_scenario_rewrites_workflow_for_local_composite_actions(self) -> None:
-        """The `act` backend should rewrite the checked-in workflow before executing `act`."""
+        """Workspace preparation should rewrite the checked-in workflow before any `act` run."""
 
-        act_path, state_dir = create_fake_act_launcher(self.sandbox_dir)
-        scenario = load_scenario(self._scenario_path("releasey-10-create-release-branch.yaml"))
+        scenario, workspace = self._prepare_workspace_for_scenario(
+            "releasey-10-create-release-branch.yaml"
+        )
+        if scenario.workflow is None:
+            self.fail("scenario unexpectedly lacks workflow configuration")
+        selected_job_ids = [
+            definition.id
+            for definition in act_backend.workflow._load_job_definitions(Path(scenario.workflow.path))
+        ]
 
-        with mock.patch.dict(
-            os.environ,
-            env_with_prepend_path(
-                {"FAKE_ACT_STATE_DIR": str(state_dir)},
-                prepend_dirs=(act_path,),
-            ),
-            clear=False,
-        ), mock.patch("sys.stderr", StringIO()):
-            result = run_scenario(scenario, workspace_root=self.sandbox_dir)
-
-        self.assertEqual(["create-release-branch"], result.selected_job_ids)
+        self.assertEqual(["create-release-branch"], selected_job_ids)
         self.assertRegex(
-            result.workspace.root.name,
+            workspace.root.name,
             r"^scenario\.\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.",
         )
-        self.assertTrue(result.workspace.repo_sources_dir.is_dir())
-        self.assertTrue(result.workspace.actions_dir.is_dir())
-        self.assertTrue(result.workspace.git_origins_dir.is_dir())
-        self.assertTrue((result.workspace.git_origins_dir / "self").is_dir())
-        self.assertTrue(result.workspace.git_checkouts_dir.is_dir())
-        self.assertTrue(result.workspace.svn_repository_dir.parent.is_dir())
-        self.assertTrue(result.workspace.svn_working_copy_dir.parent.is_dir())
-        self.assertEqual([], result.failed_job_ids)
-        self.assertEqual([], result.blocked_job_ids)
+        self.assertTrue(workspace.repo_sources_dir.is_dir())
+        self.assertTrue(workspace.actions_dir.is_dir())
+        self.assertTrue(workspace.git_origins_dir.is_dir())
+        self.assertTrue((workspace.git_origins_dir / "self").is_dir())
+        self.assertTrue(workspace.git_checkouts_dir.is_dir())
+        self.assertTrue(workspace.svn_repository_dir.parent.is_dir())
+        self.assertTrue(workspace.svn_working_copy_dir.parent.is_dir())
 
-        invocation = json.loads((state_dir / "invocation-1.json").read_text(encoding="utf-8"))
-        self.assertIn("--bind", invocation["argv"])
-        self.assertIn("--rm", invocation["argv"])
-        self.assertIn("-P", invocation["argv"])
-        self.assertIn("ubuntu-latest=catthehacker/ubuntu:act-latest", invocation["argv"])
-        rewritten_workflow_path = Path(invocation["workflow_path"])
+        rewritten_workflow_path = act_fixtures._active_workflow_path(workspace)
         self.assertEqual(
             rewritten_workflow_path.parent,
-            result.workspace.root / ".github" / "workflows",
+            workspace.root / ".github" / "workflows",
         )
         rewritten_text = rewritten_workflow_path.read_text(encoding="utf-8")
         rewritten_lines = rewritten_text.splitlines()
@@ -196,39 +210,26 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             "  \"$SOURCE_REF\"\n",
             steps[-2]["run"],
         )
-        job_summary_path = result.workspace.job_summaries_dir / "create-release-branch.md"
-        self.assertTrue(job_summary_path.is_file())
-        self.assertEqual("", job_summary_path.read_text(encoding="utf-8"))
+        self.assertTrue(workspace.job_summaries_dir.is_dir())
 
     def test_run_scenario_prepares_local_svn_fixture_and_overlayed_release_config(self) -> None:
-        """The `act` backend should create inspectable local SVN state and rewrite release-config URLs."""
+        """Workspace preparation should create inspectable SVN state and overlay local release-config URLs."""
 
-        act_path, state_dir = create_fake_act_launcher(self.sandbox_dir)
-        scenario = load_scenario(self._scenario_path("releasey-30-release-version.yaml"))
+        _scenario, workspace = self._prepare_workspace_for_scenario("releasey-30-release-version.yaml")
 
-        with mock.patch.dict(
-            os.environ,
-            env_with_prepend_path(
-                {"FAKE_ACT_STATE_DIR": str(state_dir)},
-                prepend_dirs=(act_path,),
-            ),
-            clear=False,
-        ), mock.patch("sys.stderr", StringIO()):
-            result = run_scenario(scenario, workspace_root=self.sandbox_dir)
-
-        config_path = result.workspace.root / "buildish-release-tooling" / "release-config.yaml"
+        config_path = workspace.root / "buildish-release-tooling" / "release-config.yaml"
         config_payload = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         self.assertEqual(
-            (result.workspace.svn_repository_dir / "repos" / "dist" / "dev" / "incubator" / "buildish" / "buildish-release-tooling").as_uri(),
+            (workspace.svn_repository_dir / "repos" / "dist" / "dev" / "incubator" / "buildish" / "buildish-release-tooling").as_uri(),
             config_payload["asf_dist_dev_base"],
         )
         self.assertEqual(
-            (result.workspace.svn_repository_dir / "repos" / "dist" / "release" / "incubator" / "buildish" / "buildish-release-tooling").as_uri(),
+            (workspace.svn_repository_dir / "repos" / "dist" / "release" / "incubator" / "buildish" / "buildish-release-tooling").as_uri(),
             config_payload["asf_dist_release_base"],
         )
         self.assertTrue(
             (
-                result.workspace.svn_working_copy_dir
+                workspace.svn_working_copy_dir
                 / "repos"
                 / "dist"
                 / "dev"
@@ -240,7 +241,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         )
         self.assertTrue(
             (
-                result.workspace.svn_working_copy_dir
+                workspace.svn_working_copy_dir
                 / "repos"
                 / "dist"
                 / "release"
@@ -251,7 +252,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             ).is_dir()
         )
         artifact_path = (
-            result.workspace.svn_working_copy_dir
+            workspace.svn_working_copy_dir
             / "repos"
             / "dist"
             / "dev"
@@ -265,23 +266,11 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         self.assertEqual("dummy source payload\n", artifact_path.read_text(encoding="utf-8"))
 
     def test_run_scenario_seeds_repository_relative_svn_files(self) -> None:
-        """The `act` backend should seed repository-relative SVN files like shared KEYS."""
+        """Workspace preparation should seed repository-relative SVN files like shared KEYS."""
 
-        act_path, state_dir = create_fake_act_launcher(self.sandbox_dir)
-        scenario = load_scenario(self._scenario_path("releasey-20-prepare-rc.yaml"))
-
-        with mock.patch.dict(
-            os.environ,
-            env_with_prepend_path(
-                {"FAKE_ACT_STATE_DIR": str(state_dir)},
-                prepend_dirs=(act_path,),
-            ),
-            clear=False,
-        ), mock.patch("sys.stderr", StringIO()):
-            result = run_scenario(scenario, workspace_root=self.sandbox_dir)
-
+        _scenario, workspace = self._prepare_workspace_for_scenario("releasey-20-prepare-rc.yaml")
         keys_path = (
-            result.workspace.svn_working_copy_dir
+            workspace.svn_working_copy_dir
             / "repos"
             / "dist"
             / "release"

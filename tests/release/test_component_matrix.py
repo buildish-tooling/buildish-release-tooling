@@ -25,9 +25,12 @@ from pathlib import Path
 from apache_buildish_release_tooling.release.asf_svn import AsfSvnClient
 
 from tests.support import (
+    checkout_svn_repo,
     cli_env,
     cleanup_sandbox,
+    clone_git_origin,
     command_available,
+    copy_test_tree,
     create_build_test_sandbox,
     create_fake_gh_launcher,
     dispatcher_env,
@@ -37,8 +40,8 @@ from tests.support import (
     git_create_annotated_tag,
     git_create_branch,
     git_rev_parse,
-    init_git_origin_and_clone,
-    init_svn_repo_and_checkout,
+    init_git_origin_repo,
+    init_svn_repo,
     read_json,
     run_cli,
     set_github_origin_url,
@@ -114,11 +117,60 @@ COMPONENT_CASES = (
 class ComponentMatrixIntegrationTest(unittest.TestCase):
     """Verify checked-in component-policy fixtures through the shared tooling."""
 
+    _baseline_root: Path
+    _origin_templates: dict[tuple[str, tuple[str, ...]], Path]
+    _svn_repo_template_path: Path | None
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls._baseline_root = create_build_test_sandbox()
+        cls._origin_templates = {}
+        cls._svn_repo_template_path = None
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cleanup_sandbox(cls._baseline_root)
+        super().tearDownClass()
+
     @staticmethod
     def _bash_executable() -> str:
         """Return the absolute bash executable used for wrapper smoke tests."""
 
         return shutil.which("bash") or "/bin/bash"
+
+    @classmethod
+    def _origin_template_for_case(
+        cls,
+        case: ComponentCase,
+        *,
+        tags: tuple[str, ...],
+    ) -> Path:
+        """Return one reusable tagged Git origin template for a component fixture case."""
+
+        cache_key = (case.component_id, tags)
+        cached_template = cls._origin_templates.get(cache_key)
+        if cached_template is not None:
+            return cached_template
+        family_root = cls._baseline_root / f"{case.component_id}-{'-'.join(tags) if tags else 'untagged'}"
+        origin_dir = init_git_origin_repo(family_root, dir_name="origin-template")
+        git_create_branch(origin_dir, "release/1.x")
+        git_create_branch(origin_dir, "release/1.2.x")
+        for tag_name in tags:
+            git_create_annotated_tag(origin_dir, tag_name)
+        cls._origin_templates[cache_key] = origin_dir
+        return origin_dir
+
+    @classmethod
+    def _svn_repo_template(cls) -> Path:
+        """Return one reusable empty SVN repository template for release-version cases."""
+
+        if cls._svn_repo_template_path is None:
+            cls._svn_repo_template_path, _repo_url = init_svn_repo(
+                cls._baseline_root,
+                dir_name="svnrepo-template",
+            )
+        return cls._svn_repo_template_path
 
     def _prepare_clone(
         self,
@@ -128,11 +180,11 @@ class ComponentMatrixIntegrationTest(unittest.TestCase):
     ) -> tuple[Path, Path]:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
-        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
-        git_create_branch(origin_dir, "release/1.x")
-        git_create_branch(origin_dir, "release/1.2.x")
-        for tag_name in tags:
-            git_create_annotated_tag(origin_dir, tag_name)
+        origin_dir = copy_test_tree(
+            self._origin_template_for_case(case, tags=tags),
+            sandbox_dir / "origin",
+        )
+        clone_dir = clone_git_origin(origin_dir, sandbox_dir / "clone")
         fetch_git_origin_refs(clone_dir)
         return sandbox_dir, clone_dir
 
@@ -170,7 +222,9 @@ class ComponentMatrixIntegrationTest(unittest.TestCase):
         for case in COMPONENT_CASES:
             with self.subTest(component=case.component_id):
                 sandbox_dir, clone_dir = self._prepare_clone(case, tags=case.release_version_tags)
-                _repo_dir, repo_url, _working_copy_dir = init_svn_repo_and_checkout(sandbox_dir)
+                repo_dir = copy_test_tree(self._svn_repo_template(), sandbox_dir / "svnrepo")
+                working_copy_dir = sandbox_dir / "svnwc"
+                repo_url = checkout_svn_repo(repo_dir, working_copy_dir)
                 config_path = write_fixture_component_config(
                     case.component_id,
                     sandbox_dir / f"{case.component_id}-release-config.yaml",

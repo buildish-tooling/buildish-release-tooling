@@ -25,6 +25,8 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
     _svn_repo_template: Path
     _public_key: str
     _secret_key: str
+    _finalize_origin_template: Path
+    _finalize_svn_repo_template: Path
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -76,6 +78,8 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             env={**os.environ, "GNUPGHOME": str(gpg_home)},
             check=True,
         ).stdout
+        cls._finalize_origin_template = cls._build_finalize_origin_template()
+        cls._finalize_svn_repo_template = cls._build_finalize_svn_repo_template()
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -92,13 +96,63 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         repo_url = checkout_svn_repo(repo_dir, working_copy_dir)
         return sandbox_dir, origin_dir, clone_dir, repo_dir, repo_url, working_copy_dir
 
+    @classmethod
+    def _build_finalize_origin_template(cls) -> Path:
+        """Build one reusable Git origin template for finalize-RC vote-material scenarios."""
+
+        origin_dir = init_git_origin_repo(cls._baseline_root / "finalize-rc-family", dir_name="origin-template")
+        git_create_branch(origin_dir, "release/1.x")
+        git_create_branch(origin_dir, "release/1.2.x")
+        git_create_annotated_tag(origin_dir, "v1.2.3-rc0")
+        return origin_dir
+
+    @classmethod
+    def _build_finalize_svn_repo_template(cls) -> Path:
+        """Build one reusable SVN repository template with staged RC source artifacts and KEYS."""
+
+        family_root = cls._baseline_root / "finalize-rc-family"
+        repo_dir, repo_url = init_svn_repo(family_root, dir_name="svnrepo-template")
+        working_copy_dir = family_root / "svnwc-template"
+        checkout_svn_repo(repo_dir, working_copy_dir)
+        client = AsfSvnClient()
+        component_id = "buildish-example"
+        dev_base_url = f"{repo_url}/dist/dev/incubator/buildish/{component_id}"
+        release_base_url = f"{repo_url}/dist/release/incubator/buildish/{component_id}"
+        keys_path = working_copy_dir / "dist" / "release" / "incubator" / "buildish" / "KEYS"
+        client.mkdir_url(dev_base_url, "create dev component path")
+        client.mkdir_url(release_base_url, "create release component path")
+        keys_path.write_text(cls._public_key, encoding="utf-8")
+        run_quiet(["svn", "add", str(keys_path)], check=True)
+        run_quiet(["svn", "commit", "-m", "add KEYS", str(working_copy_dir)], check=True)
+        cls._stage_source_release_files(
+            family_root,
+            working_copy_dir,
+            component_id=component_id,
+            version="1.2.3",
+            rc_number=0,
+        )
+        return repo_dir
+
+    def _create_finalize_vote_materials_sandbox(
+        self,
+    ) -> tuple[Path, Path, Path, Path, str, Path]:
+        """Create one disposable sandbox from the cached finalize-RC staging family."""
+
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        origin_dir = copy_test_tree(self._finalize_origin_template, sandbox_dir / "origin")
+        clone_dir = clone_git_origin(origin_dir, sandbox_dir / "clone")
+        fetch_git_origin_refs(clone_dir)
+        repo_dir = copy_test_tree(self._finalize_svn_repo_template, sandbox_dir / "svnrepo")
+        working_copy_dir = sandbox_dir / "svnwc"
+        repo_url = checkout_svn_repo(repo_dir, working_copy_dir)
+        return sandbox_dir, origin_dir, clone_dir, repo_dir, repo_url, working_copy_dir
+
     def test_finalize_rc_vote_materials_command_stages_manifest_and_mirrors_it(self) -> None:
         sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, working_copy_dir = (
-            self._create_vote_materials_sandbox()
+            self._create_finalize_vote_materials_sandbox()
         )
         config_path = sandbox_dir / "component.yaml"
-        source_manifest_path = sandbox_dir / "build-source-rc.json"
-        rc_tag_manifest_path = sandbox_dir / "create-rc-materialization-tag.json"
         record_artifact_manifest_path = sandbox_dir / "record-artifact.json"
         record_artifact_outputs_path = sandbox_dir / "record-artifact.outputs"
         finalize_manifest_path = sandbox_dir / "finalize-rc-vote-materials.json"
@@ -106,11 +160,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         component_id = "buildish-example"
         dev_base_url = f"{repo_url}/dist/dev/incubator/buildish/{component_id}"
         release_base_url = f"{repo_url}/dist/release/incubator/buildish/{component_id}"
-        keys_path = working_copy_dir / "dist" / "release" / "incubator" / "buildish" / "KEYS"
 
-        git_create_branch(origin_dir, "release/1.x")
-        git_create_branch(origin_dir, "release/1.2.x")
-        fetch_git_origin_refs(clone_dir)
         expected_source_date_epoch = int(
             run_quiet(
                 [
@@ -147,13 +197,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
                 "        mode: exact-bytes",
             ),
         )
-        client.mkdir_url(dev_base_url, "create dev component path")
-        client.mkdir_url(release_base_url, "create release component path")
-
         secret_key = self._secret_key
-        keys_path.write_text(self._public_key, encoding="utf-8")
-        run_quiet(["svn", "add", str(keys_path)], check=True)
-        run_quiet(["svn", "commit", "-m", "add KEYS", str(working_copy_dir)], check=True)
         bootstrap_asset_path = sandbox_dir / "buildish-example-bootstrap.zip"
         bootstrap_asset_path.write_bytes(b"bootstrap payload\n")
         expected_secondary_commit = git_rev_parse(
@@ -193,38 +237,6 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         secondary_manifest_path = Path(
             _read_simple_github_outputs(record_artifact_outputs_path)["artifact_manifest_path"]
         )
-
-        completed = run_cli(
-            [
-                "build-source-rc",
-                "--component-config",
-                str(config_path),
-                "--allow-non-production-release-targets",
-                "--rc-tag",
-                "v1.2.3-rc0",
-                "1.2.3",
-            ],
-            cwd=clone_dir,
-            env=cli_env(
-                source_manifest_path,
-                extra_env={"BUILDISH_GPG_PRIVATE_KEY": secret_key},
-            ),
-        )
-        self.assertEqual(0, completed.returncode, msg=completed.stderr)
-        completed = run_cli(
-            [
-                "create-rc-materialization-tag",
-                "--component-config",
-                str(config_path),
-                "--allow-non-production-release-targets",
-                "--rc-tag",
-                "v1.2.3-rc0",
-                "1.2.3",
-            ],
-            cwd=clone_dir,
-            env=cli_env(rc_tag_manifest_path),
-        )
-        self.assertEqual(0, completed.returncode, msg=completed.stderr)
 
         set_github_origin_url(clone_dir, "apache/buildish-example")
         gh_path, gh_state_dir = create_fake_gh_launcher(
@@ -361,11 +373,9 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
 
     def test_finalize_rc_vote_materials_command_stages_maven_repository_inventory(self) -> None:
         sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, working_copy_dir = (
-            self._create_vote_materials_sandbox()
+            self._create_finalize_vote_materials_sandbox()
         )
         config_path = sandbox_dir / "component.yaml"
-        source_manifest_path = sandbox_dir / "build-source-rc.json"
-        rc_tag_manifest_path = sandbox_dir / "create-rc-materialization-tag.json"
         record_artifact_manifest_path = sandbox_dir / "record-artifact.json"
         record_artifact_outputs_path = sandbox_dir / "record-artifact.outputs"
         finalize_manifest_path = sandbox_dir / "finalize-rc-vote-materials.json"
@@ -373,15 +383,11 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         component_id = "buildish-example"
         dev_base_url = f"{repo_url}/dist/dev/incubator/buildish/{component_id}"
         release_base_url = f"{repo_url}/dist/release/incubator/buildish/{component_id}"
-        keys_path = working_copy_dir / "dist" / "release" / "incubator" / "buildish" / "KEYS"
         staging_repository_id = "orgapacheexample-1234"
         repository_root = sandbox_dir / staging_repository_id
         _write_test_maven_repository(repository_root)
         base_url = f"{repository_root.as_uri()}/"
 
-        git_create_branch(origin_dir, "release/1.x")
-        git_create_branch(origin_dir, "release/1.2.x")
-        fetch_git_origin_refs(clone_dir)
         expected_source_date_epoch = int(
             run_quiet(
                 [
@@ -402,13 +408,8 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             dev_base_url=dev_base_url,
             release_base_url=release_base_url,
         )
-        client.mkdir_url(dev_base_url, "create dev component path")
-        client.mkdir_url(release_base_url, "create release component path")
 
         secret_key = self._secret_key
-        keys_path.write_text(self._public_key, encoding="utf-8")
-        run_quiet(["svn", "add", str(keys_path)], check=True)
-        run_quiet(["svn", "commit", "-m", "add KEYS", str(working_copy_dir)], check=True)
 
         completed = run_cli(
             [
@@ -440,38 +441,6 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             _read_simple_github_outputs(record_artifact_outputs_path)["artifact_manifest_path"]
         )
         local_inventory_path = secondary_manifest_path.parent / "maven-staging-main-inventory.json"
-
-        completed = run_cli(
-            [
-                "build-source-rc",
-                "--component-config",
-                str(config_path),
-                "--allow-non-production-release-targets",
-                "--rc-tag",
-                "v1.2.3-rc0",
-                "1.2.3",
-            ],
-            cwd=clone_dir,
-            env=cli_env(
-                source_manifest_path,
-                extra_env={"BUILDISH_GPG_PRIVATE_KEY": secret_key},
-            ),
-        )
-        self.assertEqual(0, completed.returncode, msg=completed.stderr)
-        completed = run_cli(
-            [
-                "create-rc-materialization-tag",
-                "--component-config",
-                str(config_path),
-                "--allow-non-production-release-targets",
-                "--rc-tag",
-                "v1.2.3-rc0",
-                "1.2.3",
-            ],
-            cwd=clone_dir,
-            env=cli_env(rc_tag_manifest_path),
-        )
-        self.assertEqual(0, completed.returncode, msg=completed.stderr)
 
         set_github_origin_url(clone_dir, "apache/buildish-example")
         gh_path, gh_state_dir = create_fake_gh_launcher(
@@ -562,66 +531,22 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
 
     def test_finalize_rc_vote_materials_rejects_staged_source_artifact_drift(self) -> None:
         sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, working_copy_dir = (
-            self._create_vote_materials_sandbox()
+            self._create_finalize_vote_materials_sandbox()
         )
         config_path = sandbox_dir / "component.yaml"
-        source_manifest_path = sandbox_dir / "build-source-rc.json"
-        rc_tag_manifest_path = sandbox_dir / "create-rc-materialization-tag.json"
         finalize_manifest_path = sandbox_dir / "finalize-rc-vote-materials.json"
-        client = AsfSvnClient()
         component_id = "buildish-example"
         dev_base_url = f"{repo_url}/dist/dev/incubator/buildish/{component_id}"
         release_base_url = f"{repo_url}/dist/release/incubator/buildish/{component_id}"
-        keys_path = working_copy_dir / "dist" / "release" / "incubator" / "buildish" / "KEYS"
 
-        git_create_branch(origin_dir, "release/1.x")
-        git_create_branch(origin_dir, "release/1.2.x")
-        fetch_git_origin_refs(clone_dir)
         self._write_component_config(
             config_path,
             component_id=component_id,
             dev_base_url=dev_base_url,
             release_base_url=release_base_url,
         )
-        client.mkdir_url(dev_base_url, "create dev component path")
-        client.mkdir_url(release_base_url, "create release component path")
 
         secret_key = self._secret_key
-        keys_path.write_text(self._public_key, encoding="utf-8")
-        run_quiet(["svn", "add", str(keys_path)], check=True)
-        run_quiet(["svn", "commit", "-m", "add KEYS", str(working_copy_dir)], check=True)
-
-        completed = run_cli(
-            [
-                "build-source-rc",
-                "--component-config",
-                str(config_path),
-                "--allow-non-production-release-targets",
-                "--rc-tag",
-                "v1.2.3-rc0",
-                "1.2.3",
-            ],
-            cwd=clone_dir,
-            env=cli_env(
-                source_manifest_path,
-                extra_env={"BUILDISH_GPG_PRIVATE_KEY": secret_key},
-            ),
-        )
-        self.assertEqual(0, completed.returncode, msg=completed.stderr)
-        completed = run_cli(
-            [
-                "create-rc-materialization-tag",
-                "--component-config",
-                str(config_path),
-                "--allow-non-production-release-targets",
-                "--rc-tag",
-                "v1.2.3-rc0",
-                "1.2.3",
-            ],
-            cwd=clone_dir,
-            env=cli_env(rc_tag_manifest_path),
-        )
-        self.assertEqual(0, completed.returncode, msg=completed.stderr)
 
         run_quiet(["svn", "update", str(working_copy_dir)], check=True)
         drifted_artifact = (

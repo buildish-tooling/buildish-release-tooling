@@ -986,16 +986,14 @@ def read_json(path: Path) -> dict[str, object]:
 class _TestCliStream(io.StringIO):
     """Small text stream used to emulate stdin/stdout/stderr for in-process CLI tests."""
 
+    encoding: str = "utf-8"
+
     def __init__(self, initial_value: str = "", *, isatty: bool) -> None:
         super().__init__(initial_value)
         self._isatty = isatty
 
     def isatty(self) -> bool:
         return self._isatty
-
-    @property
-    def encoding(self) -> str:
-        return "utf-8"
 
 
 def run_cli_subprocess(
