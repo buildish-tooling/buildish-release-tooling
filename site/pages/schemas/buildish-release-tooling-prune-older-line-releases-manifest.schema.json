@@ -1,0 +1,63 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/buildish-release-tooling-prune-older-line-releases-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after pruning older same-line releases from dist/release. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "prune-older-line-releases",
+      "default": "prune-older-line-releases",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "pruned_versions": {
+      "description": "Older release versions that Buildish removed from the active release line while pruning prior dist/release artifacts.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Pruned Versions",
+      "type": "array"
+    },
+    "release_base_url": {
+      "description": "Base ASF dist/release URL associated with the related publication action.",
+      "minLength": 1,
+      "title": "Release Base Url",
+      "type": "string"
+    },
+    "release_line": {
+      "description": "Maintenance-line identifier used to group related versions, branches, and moving tags.",
+      "minLength": 1,
+      "title": "Release Line",
+      "type": "string"
+    },
+    "version": {
+      "description": "Release version string without a leading `v` prefix.",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "release_line",
+    "pruned_versions",
+    "release_base_url"
+  ],
+  "title": "Buildish Release Tooling PruneOlderLineReleasesManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `prune-older-line-releases`."
+  }
+}

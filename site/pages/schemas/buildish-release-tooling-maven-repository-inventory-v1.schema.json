@@ -1,0 +1,99 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "MavenRepositoryInventoryEntry": {
+      "additionalProperties": false,
+      "description": "One file entry in a signed Maven repository inventory.",
+      "properties": {
+        "path": {
+          "description": "Filesystem path, relative artifact path, or retained evidence path associated with the related record.",
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha512": {
+          "description": "SHA-512 checksum payload associated with the related artifact.",
+          "title": "Sha512",
+          "type": "string"
+        },
+        "size_bytes": {
+          "description": "Byte size recorded for the related artifact, retained snapshot, or inventory entry.",
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "size_bytes",
+        "sha512"
+      ],
+      "title": "MavenRepositoryInventoryEntry",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    }
+  },
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/buildish-release-tooling-maven-repository-inventory-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "A signed Maven repository inventory attachment.",
+  "properties": {
+    "artifact_id": {
+      "description": "Stable identifier for one source, secondary, or emitted artifact within Buildish release tooling.",
+      "minLength": 1,
+      "title": "Artifact Id",
+      "type": "string"
+    },
+    "base_url": {
+      "description": "Base URL used to discover or publish the related artifact or service resource.",
+      "minLength": 1,
+      "title": "Base Url",
+      "type": "string"
+    },
+    "entries": {
+      "description": "Typed entries recorded in the related manifest, inventory, or report payload.",
+      "items": {
+        "$ref": "#/$defs/MavenRepositoryInventoryEntry"
+      },
+      "minItems": 1,
+      "title": "Entries",
+      "type": "array"
+    },
+    "inventory_type": {
+      "const": "maven-repository",
+      "default": "maven-repository",
+      "description": "Stable manifest discriminator for the signed Maven repository inventory file.",
+      "title": "Inventory Type",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "description": "Schema version of the enclosing Buildish JSON or YAML contract.",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "staging_repository_id": {
+      "description": "Repository identifier of the staged Maven repository under verification.",
+      "minLength": 1,
+      "title": "Staging Repository Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "artifact_id",
+    "staging_repository_id",
+    "base_url",
+    "entries"
+  ],
+  "title": "Buildish Release Tooling MavenRepositoryInventoryV1",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Signed Maven repository inventory contract emitted for staged Maven repository verification."
+  }
+}

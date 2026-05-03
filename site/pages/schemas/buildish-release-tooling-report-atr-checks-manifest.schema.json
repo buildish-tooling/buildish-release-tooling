@@ -1,0 +1,141 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/buildish-release-tooling-report-atr-checks-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after summarizing ATR checks for one candidate revision. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "report-atr-checks",
+      "default": "report-atr-checks",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "atr_base_url": {
+      "description": "Base ATR service URL that Buildish used for the related candidate upload or status query.",
+      "minLength": 1,
+      "title": "Atr Base Url",
+      "type": "string"
+    },
+    "atr_committee": {
+      "description": "ASF committee slug that Buildish reported to ATR for the related release candidate.",
+      "minLength": 1,
+      "title": "Atr Committee",
+      "type": "string"
+    },
+    "atr_exception_count": {
+      "description": "Number of ATR checks that ended in an exception state for the related candidate or report.",
+      "minLength": 1,
+      "title": "Atr Exception Count",
+      "type": "string"
+    },
+    "atr_failure_count": {
+      "description": "Number of ATR checks that reported a failing outcome for the related candidate or report.",
+      "minLength": 1,
+      "title": "Atr Failure Count",
+      "type": "string"
+    },
+    "atr_latest_revision": {
+      "description": "Most recent ATR candidate revision known to Buildish when it emitted the related manifest or report.",
+      "title": "Atr Latest Revision",
+      "type": "string"
+    },
+    "atr_phase": {
+      "description": "ATR publication phase that Buildish targeted or reported for the related candidate.",
+      "minLength": 1,
+      "title": "Atr Phase",
+      "type": "string"
+    },
+    "atr_project": {
+      "description": "ATR project or product-line identifier that Buildish reported for the related release candidate.",
+      "minLength": 1,
+      "title": "Atr Project",
+      "type": "string"
+    },
+    "atr_reported_revision": {
+      "description": "ATR candidate revision that Buildish specifically reported in the related checks summary.",
+      "title": "Atr Reported Revision",
+      "type": "string"
+    },
+    "atr_success_count": {
+      "description": "Number of ATR checks that reported success for the related candidate or report.",
+      "minLength": 1,
+      "title": "Atr Success Count",
+      "type": "string"
+    },
+    "atr_total_checks": {
+      "description": "Total number of ATR checks observed for the related candidate revision.",
+      "minLength": 1,
+      "title": "Atr Total Checks",
+      "type": "string"
+    },
+    "atr_warning_count": {
+      "description": "Number of ATR checks that reported warnings for the related candidate or report.",
+      "minLength": 1,
+      "title": "Atr Warning Count",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "rc_tag": {
+      "description": "Exact RC Git tag, including the leading `v` prefix and `-rcN` suffix.",
+      "minLength": 1,
+      "title": "Rc Tag",
+      "type": "string"
+    },
+    "strict_checking": {
+      "description": "Whether the related check or reporting step should fail the command when warnings or failures are present.",
+      "enum": [
+        "true",
+        "false"
+      ],
+      "title": "Strict Checking",
+      "type": "string"
+    },
+    "version": {
+      "description": "Release version string without a leading `v` prefix.",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    },
+    "would_block_release": {
+      "description": "Whether the related check result would block release publication under the requested strictness policy.",
+      "enum": [
+        "true",
+        "false"
+      ],
+      "title": "Would Block Release",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "rc_tag",
+    "atr_base_url",
+    "atr_committee",
+    "atr_project",
+    "atr_phase",
+    "atr_latest_revision",
+    "atr_reported_revision",
+    "atr_total_checks",
+    "atr_failure_count",
+    "atr_exception_count",
+    "atr_warning_count",
+    "atr_success_count",
+    "strict_checking",
+    "would_block_release"
+  ],
+  "title": "Buildish Release Tooling ReportAtrChecksManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `report-atr-checks`."
+  }
+}

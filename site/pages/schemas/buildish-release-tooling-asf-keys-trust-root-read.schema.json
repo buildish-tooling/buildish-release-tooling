@@ -1,0 +1,38 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/buildish-release-tooling-asf-keys-trust-root-read.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Tolerant ASF KEYS trust-root subset accepted by verify-rc readers.",
+  "properties": {
+    "known_length_bytes": {
+      "description": "Expected byte length of the pinned ASF KEYS file when Buildish establishes the trust root.",
+      "minimum": 0,
+      "title": "Known Length Bytes",
+      "type": "integer"
+    },
+    "known_prefix_sha512": {
+      "description": "Pinned SHA-512 digest prefix that Buildish expects the ASF KEYS file to start with.",
+      "title": "Known Prefix Sha512",
+      "type": "string"
+    },
+    "uri": {
+      "description": "Canonical artifact or signature URI recorded in a Buildish manifest or verification report.",
+      "minLength": 1,
+      "title": "Uri",
+      "type": "string"
+    }
+  },
+  "required": [
+    "uri",
+    "known_length_bytes",
+    "known_prefix_sha512"
+  ],
+  "title": "Buildish Release Tooling AsfKeysTrustRootRead",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Tolerant read model for ASF KEYS trust-root references carried through vote-materials loading."
+  }
+}

@@ -29,6 +29,7 @@ This page defines the supported external contract for `buildish-release-tooling`
 The pages below describe the current source tree for maintainers. They are intentionally
 descriptive, not contractual.
 
+- [Reference](reference/)
 - [Codebase Layout](codebase-layout.md)
 - [Release-legal maintenance](release-legal.md)
 - [Test Suite Layout](test-suite.md)

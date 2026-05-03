@@ -1,0 +1,2252 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "ArtifactReproducibilityBuildOverrideReport": {
+      "additionalProperties": false,
+      "description": "Sparse local override delta applied to one canonical build recipe.",
+      "properties": {
+        "command": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Literal argv list that Buildish executed or recommends for the related step.",
+          "title": "Command"
+        },
+        "env_keys": {
+          "description": "Environment variable names referenced by the related recipe or override without exposing their values.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Env Keys",
+          "type": "array"
+        },
+        "output_globs": {
+          "anyOf": [
+            {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Repository-root-relative glob patterns that identify expected outputs of the related build recipe.",
+          "title": "Output Globs"
+        },
+        "working_directory": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Repository-root-relative working directory that Buildish recorded in the related canonical recipe, effective execution, or local override block.",
+          "title": "Working Directory"
+        }
+      },
+      "title": "ArtifactReproducibilityBuildOverrideReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ArtifactReproducibilityCanonicalBuildRecipeReport": {
+      "additionalProperties": false,
+      "description": "Canonical build recipe declared by the verified source tree for one profile.",
+      "properties": {
+        "command": {
+          "description": "Literal argv list that Buildish executed or recommends for the related step.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Command",
+          "type": "array"
+        },
+        "env_keys": {
+          "description": "Environment variable names referenced by the related recipe or override without exposing their values.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Env Keys",
+          "type": "array"
+        },
+        "output_globs": {
+          "description": "Repository-root-relative glob patterns that identify expected outputs of the related build recipe.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Output Globs",
+          "type": "array"
+        },
+        "working_directory": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Repository-root-relative working directory that Buildish recorded in the related canonical recipe, effective execution, or local override block.",
+          "title": "Working Directory"
+        }
+      },
+      "title": "ArtifactReproducibilityCanonicalBuildRecipeReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ArtifactReproducibilityCanonicalRecipeReport": {
+      "additionalProperties": false,
+      "description": "Canonical repo-defined recipe for one reproducibility profile.",
+      "properties": {
+        "build": {
+          "$ref": "#/$defs/ArtifactReproducibilityCanonicalBuildRecipeReport",
+          "description": "Nested build recipe or effective build execution block for one reproducibility contract."
+        }
+      },
+      "required": [
+        "build"
+      ],
+      "title": "ArtifactReproducibilityCanonicalRecipeReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ArtifactReproducibilityEffectiveBuildExecutionReport": {
+      "additionalProperties": false,
+      "description": "Observed build invocation details for one executed reproducibility profile.",
+      "properties": {
+        "command": {
+          "description": "Literal argv list that Buildish executed or recommends for the related step.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Command",
+          "type": "array"
+        },
+        "injected_environment_keys": {
+          "description": "Environment variable names that Buildish injected into the effective rebuild subprocess.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Injected Environment Keys",
+          "type": "array"
+        },
+        "output_paths": {
+          "description": "Concrete output paths that Buildish observed from the effective rebuild execution.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Output Paths",
+          "type": "array"
+        },
+        "working_directory": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Repository-root-relative working directory that Buildish recorded in the related canonical recipe, effective execution, or local override block.",
+          "title": "Working Directory"
+        }
+      },
+      "title": "ArtifactReproducibilityEffectiveBuildExecutionReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ArtifactReproducibilityEffectiveExecutionReport": {
+      "additionalProperties": false,
+      "description": "Effective execution details for one reproducibility run.",
+      "properties": {
+        "backend": {
+          "const": "host-direct",
+          "default": "host-direct",
+          "description": "Execution backend name that performed the related Buildish action or reproducibility run.",
+          "title": "Backend",
+          "type": "string"
+        },
+        "build": {
+          "$ref": "#/$defs/ArtifactReproducibilityEffectiveBuildExecutionReport",
+          "description": "Nested build recipe or effective build execution block for one reproducibility contract."
+        }
+      },
+      "required": [
+        "build"
+      ],
+      "title": "ArtifactReproducibilityEffectiveExecutionReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ArtifactReproducibilityOverrideReport": {
+      "additionalProperties": false,
+      "description": "Structured local override metadata for one reproducibility run.",
+      "properties": {
+        "applied": {
+          "default": false,
+          "description": "Whether the related local override block was applied to the effective rebuild execution.",
+          "title": "Applied",
+          "type": "boolean"
+        },
+        "build": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactReproducibilityBuildOverrideReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Nested build recipe or effective build execution block for one reproducibility contract."
+        }
+      },
+      "title": "ArtifactReproducibilityOverrideReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ArtifactReproducibilityReport": {
+      "additionalProperties": false,
+      "description": "Observed local rebuild comparison results for one artifact.",
+      "properties": {
+        "archive_analysis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ShallowArchiveAnalysisReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Shallow top-level archive comparison details retained for reproducibility inspection."
+        },
+        "canonical_recipe": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactReproducibilityCanonicalRecipeReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Canonical rebuild recipe resolved from the verified source tree or other authoritative Buildish configuration."
+        },
+        "comparison_mode": {
+          "description": "Declared reproducibility comparison mode used for the related artifact or profile.",
+          "minLength": 1,
+          "title": "Comparison Mode",
+          "type": "string"
+        },
+        "effective_execution": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactReproducibilityEffectiveExecutionReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Effective build execution details that Buildish actually ran after applying local overrides or runtime defaults."
+        },
+        "evidence": {
+          "description": "Inspection-bundle evidence references retained for one reproducibility result.",
+          "items": {
+            "$ref": "#/$defs/InspectionEvidenceReference"
+          },
+          "title": "Evidence",
+          "type": "array"
+        },
+        "failure_class": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Structured failure classification that summarizes the main reason why verification or reproducibility failed.",
+          "title": "Failure Class"
+        },
+        "issues": {
+          "description": "Collected human-readable issues observed for the related verification, inspection, or reproducibility subject.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "matches_remote_bytes": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the rebuilt artifact bytes matched the staged or signed remote bytes exactly.",
+          "title": "Matches Remote Bytes"
+        },
+        "override": {
+          "$ref": "#/$defs/ArtifactReproducibilityOverrideReport",
+          "description": "Explicit local reproducibility override details applied on top of the canonical recipe."
+        },
+        "profile_id": {
+          "description": "Reproducibility profile identifier selected for the related artifact or source verification.",
+          "minLength": 1,
+          "title": "Profile Id",
+          "type": "string"
+        },
+        "verdict": {
+          "description": "Structured verification or reproducibility verdict for the related subject.",
+          "enum": [
+            "verified",
+            "failed"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "profile_id",
+        "verdict",
+        "comparison_mode"
+      ],
+      "title": "ArtifactReproducibilityReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ChecksumVerificationReport": {
+      "additionalProperties": false,
+      "description": "Observed checksum verification results for one downloaded artifact.",
+      "properties": {
+        "algorithm": {
+          "anyOf": [
+            {
+              "enum": [
+                "sha256",
+                "sha512"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Checksum or digest algorithm name that Buildish used for the related verification or report entry.",
+          "title": "Algorithm"
+        },
+        "matches_manifest": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the observed checksum or digest matched the value declared in the authoritative manifest or inventory.",
+          "title": "Matches Manifest"
+        },
+        "sidecar_verified": {
+          "default": false,
+          "description": "Whether the detached checksum sidecar associated with this report entry was fetched and verified successfully.",
+          "title": "Sidecar Verified",
+          "type": "boolean"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Declared checksum or digest value recorded in the related payload.",
+          "title": "Value"
+        }
+      },
+      "title": "ChecksumVerificationReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "GenericFileVerificationReport": {
+      "additionalProperties": false,
+      "description": "Verification report for one generic secondary file.",
+      "properties": {
+        "artifact_id": {
+          "description": "Stable identifier for one source, secondary, or emitted artifact within Buildish release tooling.",
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "checksum": {
+          "$ref": "#/$defs/ChecksumVerificationReport",
+          "description": "Checksum verification details for one downloaded or rebuilt artifact."
+        },
+        "filename": {
+          "description": "Artifact filename as seen in staging, manifests, or retained evidence.",
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        },
+        "inventory": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InventoryVerificationReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Signed inventory or supplemental staging metadata associated with the related artifact."
+        },
+        "issues": {
+          "description": "Collected human-readable issues observed for the related verification, inspection, or reproducibility subject.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "kind": {
+          "description": "Declared artifact or report kind discriminator.",
+          "enum": [
+            "generic-file",
+            "generic-file-with-openpgp"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "reproducibility": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactReproducibilityReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Reproducibility policy or result block associated with the related source or secondary artifact."
+        },
+        "signatures": {
+          "description": "Declared detached signature references associated with the related artifact or manifest.",
+          "items": {
+            "$ref": "#/$defs/SignatureVerificationPayload"
+          },
+          "title": "Signatures",
+          "type": "array"
+        },
+        "uri": {
+          "description": "Canonical artifact or signature URI recorded in a Buildish manifest or verification report.",
+          "minLength": 1,
+          "title": "Uri",
+          "type": "string"
+        },
+        "verdict": {
+          "description": "Structured verification or reproducibility verdict for the related subject.",
+          "enum": [
+            "verified",
+            "failed"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "kind",
+        "verdict",
+        "filename",
+        "uri",
+        "checksum"
+      ],
+      "title": "GenericFileVerificationReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "InspectionBundleSection": {
+      "additionalProperties": false,
+      "description": "Location of the curated reproducibility-inspection bundle for one verify-rc run.",
+      "properties": {
+        "bundle_schema_version": {
+          "anyOf": [
+            {
+              "const": "1",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Supported schema version of the retained inspection-bundle manifest that inspect-repro consumed.",
+          "title": "Bundle Schema Version"
+        },
+        "manifest_relative_path": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Bundle-relative path to the top-level inspection bundle manifest file.",
+          "title": "Manifest Relative Path"
+        },
+        "relative_path_from_report": {
+          "description": "Path from the verify-rc report directory to the retained inspection bundle directory.",
+          "minLength": 1,
+          "title": "Relative Path From Report",
+          "type": "string"
+        }
+      },
+      "required": [
+        "relative_path_from_report"
+      ],
+      "title": "InspectionBundleSection",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "InspectionEvidenceReference": {
+      "additionalProperties": false,
+      "description": "One retained evidence file inside the verify-rc inspection bundle.",
+      "properties": {
+        "label": {
+          "description": "Human-readable label used to name one evidence file or report section.",
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "path": {
+          "description": "Filesystem path, relative artifact path, or retained evidence path associated with the related record.",
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "path"
+      ],
+      "title": "InspectionEvidenceReference",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "IntegrityVerificationReport": {
+      "additionalProperties": false,
+      "description": "Observed integrity verification results for one npm package.",
+      "properties": {
+        "algorithm": {
+          "anyOf": [
+            {
+              "enum": [
+                "sha256",
+                "sha512"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Checksum or digest algorithm name that Buildish used for the related verification or report entry.",
+          "title": "Algorithm"
+        },
+        "matches_downloaded_bytes": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the checksum or integrity value matched the bytes that Buildish actually downloaded.",
+          "title": "Matches Downloaded Bytes"
+        },
+        "matches_manifest_checksum": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the resolved checksum value matched the checksum declared in the signed manifest.",
+          "title": "Matches Manifest Checksum"
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Declared checksum or digest value recorded in the related payload.",
+          "title": "Value"
+        }
+      },
+      "title": "IntegrityVerificationReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "InvalidSecondaryArtifactVerificationReport": {
+      "additionalProperties": false,
+      "description": "Failure record used when one secondary artifact entry is malformed.",
+      "properties": {
+        "artifact_id": {
+          "description": "Stable identifier for one source, secondary, or emitted artifact within Buildish release tooling.",
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "declared_kind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Artifact kind string declared by the malformed secondary-artifact entry that verify-rc could not process normally.",
+          "title": "Declared Kind"
+        },
+        "issues": {
+          "description": "Collected human-readable issues observed for the related verification, inspection, or reproducibility subject.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "kind": {
+          "const": "_invalid-secondary-artifact-entry",
+          "default": "_invalid-secondary-artifact-entry",
+          "description": "Declared artifact or report kind discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "verdict": {
+          "const": "failed",
+          "default": "failed",
+          "description": "Structured verification or reproducibility verdict for the related subject.",
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id"
+      ],
+      "title": "InvalidSecondaryArtifactVerificationReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "InventoryVerificationReport": {
+      "additionalProperties": false,
+      "description": "Verification results for one downloaded inventory attachment.",
+      "properties": {
+        "entry_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of entries recorded in the related inventory, repository snapshot, or artifact collection.",
+          "title": "Entry Count"
+        },
+        "filename": {
+          "description": "Artifact filename as seen in staging, manifests, or retained evidence.",
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        },
+        "sha512": {
+          "description": "SHA-512 checksum payload associated with the related artifact.",
+          "title": "Sha512",
+          "type": "string"
+        },
+        "total_size_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Total size, in bytes, recorded for the related artifact collection or inventory.",
+          "title": "Total Size Bytes"
+        },
+        "uri": {
+          "description": "Canonical artifact or signature URI recorded in a Buildish manifest or verification report.",
+          "minLength": 1,
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "filename",
+        "uri",
+        "sha512"
+      ],
+      "title": "InventoryVerificationReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "LiveMavenRepositoryReport": {
+      "additionalProperties": false,
+      "description": "Observed live-repository comparison results for a Maven staging repository.",
+      "properties": {
+        "entry_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of entries recorded in the related inventory, repository snapshot, or artifact collection.",
+          "title": "Entry Count"
+        },
+        "matches_signed_inventory": {
+          "description": "Whether the live staged Maven repository contents matched the signed inventory metadata.",
+          "title": "Matches Signed Inventory",
+          "type": "boolean"
+        },
+        "signature_verifications": {
+          "description": "Detached-signature verification results collected for live Maven repository sidecars.",
+          "items": {
+            "$ref": "#/$defs/LiveRepositorySignatureVerification"
+          },
+          "title": "Signature Verifications",
+          "type": "array"
+        },
+        "total_size_bytes": {
+          "description": "Total size, in bytes, recorded for the related artifact collection or inventory.",
+          "minimum": 0,
+          "title": "Total Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_size_bytes",
+        "matches_signed_inventory"
+      ],
+      "title": "LiveMavenRepositoryReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "LiveRepositorySignatureVerification": {
+      "additionalProperties": false,
+      "description": "One detached signature verified in the live Maven repository.",
+      "properties": {
+        "path": {
+          "description": "Filesystem path, relative artifact path, or retained evidence path associated with the related record.",
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "signature": {
+          "$ref": "#/$defs/SignatureVerificationPayload",
+          "description": "Signature verification details for the related artifact or manifest."
+        },
+        "target_path": {
+          "description": "Target path that the related detached signature or copy operation refers to.",
+          "minLength": 1,
+          "title": "Target Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "target_path",
+        "signature"
+      ],
+      "title": "LiveRepositorySignatureVerification",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ManifestVerificationSection": {
+      "additionalProperties": false,
+      "description": "Manifest-authenticity and tag-binding section of the verify-rc report.",
+      "properties": {
+        "issues": {
+          "description": "Collected human-readable issues observed for the related verification, inspection, or reproducibility subject.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "keys_url_matches_component_config": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the manifest's KEYS URL matched the current component configuration.",
+          "title": "Keys Url Matches Component Config"
+        },
+        "keys_url_matches_manifest": {
+          "description": "Whether the verified KEYS URL matched the authoritative manifest's own recorded KEYS URL.",
+          "title": "Keys Url Matches Manifest",
+          "type": "boolean"
+        },
+        "rc_tag_matches_source_commit_sha": {
+          "description": "Whether the RC tag resolved to the same commit SHA that the manifest recorded as the authoritative source commit.",
+          "title": "Rc Tag Matches Source Commit Sha",
+          "type": "boolean"
+        },
+        "rc_tag_target_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Git commit SHA that the RC tag resolved to during verification or publication.",
+          "title": "Rc Tag Target Commit"
+        },
+        "sha512": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "SHA-512 checksum payload associated with the related artifact.",
+          "title": "Sha512"
+        },
+        "signature": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SignatureVerificationPayload"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Signature verification details for the related artifact or manifest."
+        },
+        "verdict": {
+          "description": "Structured verification or reproducibility verdict for the related subject.",
+          "enum": [
+            "verified",
+            "failed"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "keys_url_matches_manifest",
+        "rc_tag_matches_source_commit_sha"
+      ],
+      "title": "ManifestVerificationSection",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "MavenRepositoryVerificationReport": {
+      "additionalProperties": false,
+      "description": "Verification report for one staged Maven repository.",
+      "properties": {
+        "artifact_id": {
+          "description": "Stable identifier for one source, secondary, or emitted artifact within Buildish release tooling.",
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "base_url": {
+          "description": "Base URL used to discover or publish the related artifact or service resource.",
+          "minLength": 1,
+          "title": "Base Url",
+          "type": "string"
+        },
+        "inventory": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InventoryVerificationReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Signed inventory or supplemental staging metadata associated with the related artifact."
+        },
+        "issues": {
+          "description": "Collected human-readable issues observed for the related verification, inspection, or reproducibility subject.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "kind": {
+          "const": "maven-repository",
+          "default": "maven-repository",
+          "description": "Declared artifact or report kind discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "live_repository": {
+          "$ref": "#/$defs/LiveMavenRepositoryReport",
+          "description": "Live staged Maven repository verification details collected alongside the signed inventory checks."
+        },
+        "reproducibility": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactReproducibilityReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Reproducibility policy or result block associated with the related source or secondary artifact."
+        },
+        "staging_repository_id": {
+          "description": "Repository identifier of the staged Maven repository under verification.",
+          "minLength": 1,
+          "title": "Staging Repository Id",
+          "type": "string"
+        },
+        "verdict": {
+          "description": "Structured verification or reproducibility verdict for the related subject.",
+          "enum": [
+            "verified",
+            "failed"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "verdict",
+        "staging_repository_id",
+        "base_url",
+        "live_repository"
+      ],
+      "title": "MavenRepositoryVerificationReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "NpmPackageVerificationReport": {
+      "additionalProperties": false,
+      "description": "Verification report for one npm package.",
+      "properties": {
+        "artifact_id": {
+          "description": "Stable identifier for one source, secondary, or emitted artifact within Buildish release tooling.",
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "checksum": {
+          "$ref": "#/$defs/ChecksumVerificationReport",
+          "description": "Checksum verification details for one downloaded or rebuilt artifact."
+        },
+        "filename": {
+          "description": "Artifact filename as seen in staging, manifests, or retained evidence.",
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        },
+        "integrity": {
+          "$ref": "#/$defs/IntegrityVerificationReport",
+          "description": "Integrity verification details derived from registry metadata or sidecar checksums."
+        },
+        "issues": {
+          "description": "Collected human-readable issues observed for the related verification, inspection, or reproducibility subject.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "kind": {
+          "const": "npm-package",
+          "default": "npm-package",
+          "description": "Declared artifact or report kind discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "package_name": {
+          "description": "Normalized npm package name associated with the related package artifact or registry lookup.",
+          "minLength": 1,
+          "title": "Package Name",
+          "type": "string"
+        },
+        "registry_resolution": {
+          "$ref": "#/$defs/NpmRegistryResolutionReport",
+          "description": "Registry-resolution details collected while verifying the related npm package tarball."
+        },
+        "registry_url": {
+          "description": "Registry metadata URL used for npm package verification.",
+          "minLength": 1,
+          "title": "Registry Url",
+          "type": "string"
+        },
+        "reproducibility": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactReproducibilityReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Reproducibility policy or result block associated with the related source or secondary artifact."
+        },
+        "uri": {
+          "description": "Canonical artifact or signature URI recorded in a Buildish manifest or verification report.",
+          "minLength": 1,
+          "title": "Uri",
+          "type": "string"
+        },
+        "verdict": {
+          "description": "Structured verification or reproducibility verdict for the related subject.",
+          "enum": [
+            "verified",
+            "failed"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        },
+        "version": {
+          "description": "Release version string without a leading `v` prefix.",
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "verdict",
+        "filename",
+        "uri",
+        "registry_url",
+        "package_name",
+        "version",
+        "integrity",
+        "checksum",
+        "registry_resolution"
+      ],
+      "title": "NpmPackageVerificationReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "NpmRegistryResolutionReport": {
+      "additionalProperties": false,
+      "description": "Resolution details for one npm registry lookup.",
+      "properties": {
+        "found_via": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Short note describing how the related package URL or artifact metadata was discovered during verification.",
+          "title": "Found Via"
+        },
+        "integrity_matches_manifest": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the integrity string or digest resolved from the registry matched the value declared in the signed manifest.",
+          "title": "Integrity Matches Manifest"
+        },
+        "metadata_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Registry metadata URL that Buildish fetched while resolving npm package verification data.",
+          "title": "Metadata Url"
+        },
+        "signatures_count": {
+          "description": "Number of signature records or provenance signatures that the registry metadata exposed for the related npm package artifact.",
+          "minimum": 0,
+          "title": "Signatures Count",
+          "type": "integer"
+        },
+        "tarball_url_matches_manifest": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the tarball URL resolved from the npm registry metadata matched the URL declared in the signed manifest.",
+          "title": "Tarball Url Matches Manifest"
+        }
+      },
+      "required": [
+        "signatures_count"
+      ],
+      "title": "NpmRegistryResolutionReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "OciImageVerificationReport": {
+      "additionalProperties": false,
+      "description": "Verification report for one OCI image.",
+      "properties": {
+        "artifact_id": {
+          "description": "Stable identifier for one source, secondary, or emitted artifact within Buildish release tooling.",
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "digest": {
+          "description": "OCI content digest or similar immutable digest string for the related artifact.",
+          "title": "Digest",
+          "type": "string"
+        },
+        "inspection": {
+          "$ref": "#/$defs/OciInspectionReport",
+          "description": "Live inspection result block for the related artifact or platform resource."
+        },
+        "issues": {
+          "description": "Collected human-readable issues observed for the related verification, inspection, or reproducibility subject.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "kind": {
+          "const": "oci-image",
+          "default": "oci-image",
+          "description": "Declared artifact or report kind discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "registry": {
+          "description": "Container registry host or namespace that serves the related OCI image.",
+          "minLength": 1,
+          "title": "Registry",
+          "type": "string"
+        },
+        "repository": {
+          "description": "Repository identifier or repository name associated with the related provenance or external-auth record.",
+          "minLength": 1,
+          "title": "Repository",
+          "type": "string"
+        },
+        "reproducibility": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactReproducibilityReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Reproducibility policy or result block associated with the related source or secondary artifact."
+        },
+        "uri": {
+          "description": "Canonical artifact or signature URI recorded in a Buildish manifest or verification report.",
+          "minLength": 1,
+          "title": "Uri",
+          "type": "string"
+        },
+        "verdict": {
+          "description": "Structured verification or reproducibility verdict for the related subject.",
+          "enum": [
+            "verified",
+            "failed"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "verdict",
+        "uri",
+        "registry",
+        "repository",
+        "digest",
+        "inspection"
+      ],
+      "title": "OciImageVerificationReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "OciInspectionReport": {
+      "additionalProperties": false,
+      "description": "Observed registry inspection results for one OCI image.",
+      "properties": {
+        "digest_matches_manifest": {
+          "description": "Whether the inspected OCI image digest matched the digest declared in the signed manifest.",
+          "title": "Digest Matches Manifest",
+          "type": "boolean"
+        },
+        "image_ref": {
+          "description": "Fully qualified OCI image reference used for inspection or local rebuild comparison.",
+          "minLength": 1,
+          "title": "Image Ref",
+          "type": "string"
+        },
+        "platform_digests": {
+          "description": "Per-platform OCI digests declared or observed for a multi-platform image.",
+          "items": {
+            "$ref": "#/$defs/OciPlatformDigest"
+          },
+          "title": "Platform Digests",
+          "type": "array"
+        },
+        "platform_digests_match": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether all inspected OCI platform digests matched the platform digests declared in the signed manifest.",
+          "title": "Platform Digests Match"
+        }
+      },
+      "required": [
+        "image_ref",
+        "digest_matches_manifest"
+      ],
+      "title": "OciInspectionReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "OciPlatformDigest": {
+      "additionalProperties": false,
+      "description": "One platform-specific digest declared for an OCI image.",
+      "properties": {
+        "digest": {
+          "description": "OCI content digest or similar immutable digest string for the related artifact.",
+          "title": "Digest",
+          "type": "string"
+        },
+        "platform": {
+          "description": "OCI platform identifier in `os/arch[/variant]` form.",
+          "minLength": 1,
+          "title": "Platform",
+          "type": "string"
+        }
+      },
+      "required": [
+        "platform",
+        "digest"
+      ],
+      "title": "OciPlatformDigest",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "PythonDistributionVerificationReport": {
+      "additionalProperties": false,
+      "description": "Verification report for one Python distribution.",
+      "properties": {
+        "artifact_id": {
+          "description": "Stable identifier for one source, secondary, or emitted artifact within Buildish release tooling.",
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "checksum": {
+          "$ref": "#/$defs/ChecksumVerificationReport",
+          "description": "Checksum verification details for one downloaded or rebuilt artifact."
+        },
+        "filename": {
+          "description": "Artifact filename as seen in staging, manifests, or retained evidence.",
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        },
+        "index_resolution": {
+          "$ref": "#/$defs/PythonIndexResolutionReport",
+          "description": "Python package-index resolution details collected while locating the staged distribution artifact."
+        },
+        "index_url": {
+          "description": "Base Python simple-index URL that Buildish used for package verification.",
+          "minLength": 1,
+          "title": "Index Url",
+          "type": "string"
+        },
+        "issues": {
+          "description": "Collected human-readable issues observed for the related verification, inspection, or reproducibility subject.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "kind": {
+          "const": "python-distribution",
+          "default": "python-distribution",
+          "description": "Declared artifact or report kind discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "project_name": {
+          "description": "Python package project name associated with the related distribution artifact.",
+          "minLength": 1,
+          "title": "Project Name",
+          "type": "string"
+        },
+        "reproducibility": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactReproducibilityReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Reproducibility policy or result block associated with the related source or secondary artifact."
+        },
+        "uri": {
+          "description": "Canonical artifact or signature URI recorded in a Buildish manifest or verification report.",
+          "minLength": 1,
+          "title": "Uri",
+          "type": "string"
+        },
+        "verdict": {
+          "description": "Structured verification or reproducibility verdict for the related subject.",
+          "enum": [
+            "verified",
+            "failed"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        },
+        "version": {
+          "description": "Release version string without a leading `v` prefix.",
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "verdict",
+        "filename",
+        "uri",
+        "index_url",
+        "project_name",
+        "version",
+        "checksum",
+        "index_resolution"
+      ],
+      "title": "PythonDistributionVerificationReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "PythonIndexResolutionReport": {
+      "additionalProperties": false,
+      "description": "Resolution details for one Python simple-index lookup.",
+      "properties": {
+        "found_via": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Short note describing how the related package URL or artifact metadata was discovered during verification.",
+          "title": "Found Via"
+        },
+        "project_index_url": {
+          "description": "Resolved Python simple-index page URL that Buildish used to discover the expected distribution artifact.",
+          "minLength": 1,
+          "title": "Project Index Url",
+          "type": "string"
+        },
+        "resolved_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Resolved direct distribution or tarball URL that Buildish selected from the related package index.",
+          "title": "Resolved Url"
+        },
+        "sha256_matches_index": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the distribution hash from the Python simple index matched the digest declared in the signed manifest.",
+          "title": "Sha256 Matches Index"
+        }
+      },
+      "required": [
+        "project_index_url"
+      ],
+      "title": "PythonIndexResolutionReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ReproducibilityExecutionSection": {
+      "additionalProperties": false,
+      "description": "Run-level policy and execution summary for build-based reproducibility checks.",
+      "properties": {
+        "build_checks_attempted": {
+          "description": "Whether the command attempted local reproducibility or rebuild checks during this run.",
+          "title": "Build Checks Attempted",
+          "type": "boolean"
+        },
+        "effective_mode": {
+          "description": "Verify mode that Buildish actually executed after evaluating prompts, runtime policy, and caller intent.",
+          "enum": [
+            "integrity-only",
+            "full"
+          ],
+          "title": "Effective Mode",
+          "type": "string"
+        },
+        "execution_backend": {
+          "default": "none",
+          "description": "Execution backend that verify-rc used for the recorded reproducibility run.",
+          "enum": [
+            "none",
+            "host-direct"
+          ],
+          "title": "Execution Backend",
+          "type": "string"
+        },
+        "inherits_host_home": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the reproducibility execution inherited the caller's existing `HOME` rather than using an isolated home directory.",
+          "title": "Inherits Host Home"
+        },
+        "prompt_confirmed": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Whether the caller confirmed a prompt before Buildish escalated from integrity-only verification to full local rebuild checks.",
+          "title": "Prompt Confirmed"
+        },
+        "prompt_used": {
+          "default": false,
+          "description": "Whether Buildish prompted before enabling the recorded reproducibility execution mode.",
+          "title": "Prompt Used",
+          "type": "boolean"
+        },
+        "requested_mode": {
+          "description": "Verify-rc mode explicitly requested by the caller.",
+          "enum": [
+            "auto",
+            "integrity-only",
+            "full"
+          ],
+          "title": "Requested Mode",
+          "type": "string"
+        },
+        "skipped_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Reason why Buildish skipped local rebuild execution after evaluating the requested verify mode and runtime constraints.",
+          "title": "Skipped Reason"
+        }
+      },
+      "required": [
+        "requested_mode",
+        "effective_mode",
+        "build_checks_attempted"
+      ],
+      "title": "ReproducibilityExecutionSection",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ShallowArchiveAnalysisReport": {
+      "additionalProperties": false,
+      "description": "Durable shallow archive-comparison findings for one retained artifact pair.",
+      "properties": {
+        "archive_format": {
+          "anyOf": [
+            {
+              "enum": [
+                "tar",
+                "zip"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Detected top-level archive format of the compared artifact when shallow archive inspection succeeded.",
+          "title": "Archive Format"
+        },
+        "classification": {
+          "description": "High-level shallow-comparison classification that summarizes the most important archive drift pattern Buildish observed.",
+          "minLength": 1,
+          "title": "Classification",
+          "type": "string"
+        },
+        "content_mismatches": {
+          "description": "Archive member paths whose direct top-level content bytes differed between the staged and rebuilt artifacts during shallow comparison.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Content Mismatches",
+          "type": "array"
+        },
+        "entry_order_mismatches": {
+          "description": "Archive-entry ordering differences detected between the staged and rebuilt artifacts during shallow comparison.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Entry Order Mismatches",
+          "type": "array"
+        },
+        "metadata_mismatches": {
+          "description": "Archive-entry metadata differences, such as timestamps, modes, owners, or file-type drift, found during shallow comparison.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Metadata Mismatches",
+          "type": "array"
+        },
+        "missing_paths": {
+          "description": "Archive or repository paths that were present in the staged artifact but missing from the rebuilt artifact.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Missing Paths",
+          "type": "array"
+        },
+        "raw_bytes_equal": {
+          "description": "Whether raw staged and rebuilt bytes matched before any archive-aware normalization.",
+          "title": "Raw Bytes Equal",
+          "type": "boolean"
+        },
+        "rebuilt_archive_format": {
+          "description": "Detected top-level archive format of the rebuilt artifact retained for shallow archive inspection.",
+          "enum": [
+            "tar",
+            "zip",
+            "non-archive"
+          ],
+          "title": "Rebuilt Archive Format",
+          "type": "string"
+        },
+        "rebuilt_entry_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of top-level archive entries found in the rebuilt artifact during shallow inspection.",
+          "title": "Rebuilt Entry Count"
+        },
+        "staged_archive_format": {
+          "description": "Detected top-level archive format of the staged artifact retained for shallow archive inspection.",
+          "enum": [
+            "tar",
+            "zip",
+            "non-archive"
+          ],
+          "title": "Staged Archive Format",
+          "type": "string"
+        },
+        "staged_entry_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Number of top-level archive entries found in the staged artifact during shallow inspection.",
+          "title": "Staged Entry Count"
+        },
+        "unexpected_paths": {
+          "description": "Archive or repository paths that were present only in the rebuilt artifact and not in the staged artifact.",
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Unexpected Paths",
+          "type": "array"
+        }
+      },
+      "required": [
+        "classification",
+        "raw_bytes_equal",
+        "staged_archive_format",
+        "rebuilt_archive_format"
+      ],
+      "title": "ShallowArchiveAnalysisReport",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "SignatureVerificationPayload": {
+      "additionalProperties": false,
+      "description": "Serialized detached-signature verification details.",
+      "properties": {
+        "key_algorithm": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Public-key algorithm reported for the signing key that verified the related detached signature.",
+          "title": "Key Algorithm"
+        },
+        "key_size_bits": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Public-key size, in bits, reported for the signing key that verified the related detached signature.",
+          "title": "Key Size Bits"
+        },
+        "signer_fingerprint": {
+          "description": "OpenPGP fingerprint of the key that verified the related detached signature.",
+          "minLength": 1,
+          "title": "Signer Fingerprint",
+          "type": "string"
+        },
+        "signer_user_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Primary user id string reported by GnuPG for the key that verified the related detached signature.",
+          "title": "Signer User Id"
+        },
+        "trust_label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Human-readable GnuPG trust label returned by signature verification.",
+          "title": "Trust Label"
+        }
+      },
+      "required": [
+        "signer_fingerprint"
+      ],
+      "title": "SignatureVerificationPayload",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "SourceArtifactVerificationSection": {
+      "additionalProperties": false,
+      "description": "Source-artifact verification section of the verify-rc report.",
+      "properties": {
+        "filename": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Artifact filename as seen in staging, manifests, or retained evidence.",
+          "title": "Filename"
+        },
+        "issues": {
+          "description": "Collected human-readable issues observed for the related verification, inspection, or reproducibility subject.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Issues",
+          "type": "array"
+        },
+        "matches_source_commit_sha": {
+          "description": "Whether the rebuilt source artifact bytes matched the source commit selected by the authoritative manifest.",
+          "title": "Matches Source Commit Sha",
+          "type": "boolean"
+        },
+        "rebuilt_sha512": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "SHA-512 digest computed from the rebuilt source or secondary artifact bytes.",
+          "title": "Rebuilt Sha512"
+        },
+        "reproducibility": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactReproducibilityReport"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Reproducibility policy or result block associated with the related source or secondary artifact."
+        },
+        "sha512": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "SHA-512 checksum payload associated with the related artifact.",
+          "title": "Sha512"
+        },
+        "sha512_sidecar_verified": {
+          "description": "Whether the staged source-artifact `.sha512` sidecar was fetched and verified successfully.",
+          "title": "Sha512 Sidecar Verified",
+          "type": "boolean"
+        },
+        "signature": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SignatureVerificationPayload"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Signature verification details for the related artifact or manifest."
+        },
+        "uri": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Canonical artifact or signature URI recorded in a Buildish manifest or verification report.",
+          "title": "Uri"
+        },
+        "verdict": {
+          "description": "Structured verification or reproducibility verdict for the related subject.",
+          "enum": [
+            "verified",
+            "failed"
+          ],
+          "title": "Verdict",
+          "type": "string"
+        }
+      },
+      "required": [
+        "verdict",
+        "sha512_sidecar_verified",
+        "matches_source_commit_sha"
+      ],
+      "title": "SourceArtifactVerificationSection",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "VerificationFailurePayload": {
+      "additionalProperties": false,
+      "description": "One collected verification failure.",
+      "properties": {
+        "message": {
+          "description": "Human-readable message body associated with the related verification failure, harness tag object, or fixture definition.",
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "scope": {
+          "description": "Machine-readable scope label that identifies which verification surface produced the related failure record.",
+          "minLength": 1,
+          "title": "Scope",
+          "type": "string"
+        },
+        "subject": {
+          "description": "Human-facing verification failure subject that identifies what failed.",
+          "minLength": 1,
+          "title": "Subject",
+          "type": "string"
+        }
+      },
+      "required": [
+        "scope",
+        "subject",
+        "message"
+      ],
+      "title": "VerificationFailurePayload",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    }
+  },
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/buildish-release-tooling-verify-rc-report-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Machine-readable Phase 1a RC verification report.",
+  "properties": {
+    "component_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Stable component identifier used across Buildish manifests, reports, and release-state records.",
+      "title": "Component Id"
+    },
+    "failures": {
+      "description": "Collected verification failures that caused the enclosing report verdict to fail.",
+      "items": {
+        "$ref": "#/$defs/VerificationFailurePayload"
+      },
+      "title": "Failures",
+      "type": "array"
+    },
+    "inspection_bundle": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/InspectionBundleSection"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Inspection-bundle location block retained in the verify-rc report for later inspect-repro analysis."
+    },
+    "keys_url": {
+      "description": "ASF KEYS URL that Buildish used or expected while establishing the RC trust roots.",
+      "minLength": 1,
+      "title": "Keys Url",
+      "type": "string"
+    },
+    "manifest_url": {
+      "description": "URL of the RC vote manifest that Buildish fetched or verified.",
+      "minLength": 1,
+      "title": "Manifest Url",
+      "type": "string"
+    },
+    "manifest_verification": {
+      "$ref": "#/$defs/ManifestVerificationSection",
+      "description": "Manifest trust-chain verification section of the verify-rc report."
+    },
+    "rc_tag": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Exact RC Git tag, including the leading `v` prefix and `-rcN` suffix.",
+      "title": "Rc Tag"
+    },
+    "report_type": {
+      "const": "verify-rc",
+      "default": "verify-rc",
+      "description": "Stable report discriminator for one Buildish JSON report contract.",
+      "title": "Report Type",
+      "type": "string"
+    },
+    "reproducibility_execution": {
+      "$ref": "#/$defs/ReproducibilityExecutionSection",
+      "description": "Run-level reproducibility execution policy and outcome block retained in the verify-rc report."
+    },
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "description": "Schema version of the enclosing Buildish JSON or YAML contract.",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "secondary_artifact_verifications": {
+      "description": "Per-artifact verification sections for all secondary artifacts processed during verify-rc.",
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "_invalid-secondary-artifact-entry": "#/$defs/InvalidSecondaryArtifactVerificationReport",
+            "generic-file": "#/$defs/GenericFileVerificationReport",
+            "generic-file-with-openpgp": "#/$defs/GenericFileVerificationReport",
+            "maven-repository": "#/$defs/MavenRepositoryVerificationReport",
+            "npm-package": "#/$defs/NpmPackageVerificationReport",
+            "oci-image": "#/$defs/OciImageVerificationReport",
+            "python-distribution": "#/$defs/PythonDistributionVerificationReport"
+          },
+          "propertyName": "kind"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/GenericFileVerificationReport"
+          },
+          {
+            "$ref": "#/$defs/MavenRepositoryVerificationReport"
+          },
+          {
+            "$ref": "#/$defs/PythonDistributionVerificationReport"
+          },
+          {
+            "$ref": "#/$defs/OciImageVerificationReport"
+          },
+          {
+            "$ref": "#/$defs/NpmPackageVerificationReport"
+          },
+          {
+            "$ref": "#/$defs/InvalidSecondaryArtifactVerificationReport"
+          }
+        ]
+      },
+      "title": "Secondary Artifact Verifications",
+      "type": "array"
+    },
+    "source_artifact_verification": {
+      "$ref": "#/$defs/SourceArtifactVerificationSection",
+      "description": "Source-artifact verification section of the verify-rc report."
+    },
+    "source_commit_sha": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Resolved source Git commit SHA recorded in the authoritative RC manifest or verify-rc report.",
+      "title": "Source Commit Sha"
+    },
+    "source_date_epoch": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Canonical `SOURCE_DATE_EPOCH` integer carried through RC production and verification.",
+      "title": "Source Date Epoch"
+    },
+    "source_repository_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Canonical source repository URL recorded in the RC vote manifest or verification report.",
+      "title": "Source Repository Url"
+    },
+    "verdict": {
+      "description": "Structured verification or reproducibility verdict for the related subject.",
+      "enum": [
+        "verified",
+        "failed"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    },
+    "version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Release version string without a leading `v` prefix.",
+      "title": "Version"
+    },
+    "work_dir": {
+      "description": "Filesystem path of the verify-rc working directory where retained reports, logs, and downloaded artifacts were stored.",
+      "minLength": 1,
+      "title": "Work Dir",
+      "type": "string"
+    }
+  },
+  "required": [
+    "manifest_url",
+    "keys_url",
+    "verdict",
+    "work_dir",
+    "manifest_verification",
+    "source_artifact_verification",
+    "reproducibility_execution"
+  ],
+  "title": "Buildish Release Tooling VerifyRcReportV1",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Machine-readable `verify-rc` report contract, typically written through `--report-json`."
+  }
+}

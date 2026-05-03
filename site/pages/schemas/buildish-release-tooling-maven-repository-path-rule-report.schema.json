@@ -1,0 +1,37 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/buildish-release-tooling-maven-repository-path-rule-report.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One regex-based Maven repository path rule retained for inspection.",
+  "properties": {
+    "mode": {
+      "description": "Comparison mode that the associated regex path rule applies to matching staged Maven repository paths.",
+      "enum": [
+        "exact-bytes",
+        "zip-normalized",
+        "content-only",
+        "remote-only"
+      ],
+      "title": "Mode",
+      "type": "string"
+    },
+    "pattern": {
+      "description": "Regular-expression pattern used to match one family of repository paths.",
+      "minLength": 1,
+      "title": "Pattern",
+      "type": "string"
+    }
+  },
+  "required": [
+    "pattern",
+    "mode"
+  ],
+  "title": "Buildish Release Tooling MavenRepositoryPathRuleReport",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Rendered Maven repository per-path comparison rule retained in reproducibility metadata."
+  }
+}

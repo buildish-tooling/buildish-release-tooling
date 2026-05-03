@@ -1,0 +1,63 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/buildish-release-tooling-publish-dockerhub-moving-tags-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after publishing moving Docker Hub image aliases. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "publish-dockerhub-moving-tags",
+      "default": "publish-dockerhub-moving-tags",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "image_repository": {
+      "description": "Container image repository name without the moving tag or digest suffix.",
+      "minLength": 1,
+      "title": "Image Repository",
+      "type": "string"
+    },
+    "published_alias_refs": {
+      "description": "Fully qualified target image references that Buildish published as moving aliases.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Published Alias Refs",
+      "type": "array"
+    },
+    "source_image": {
+      "description": "Exact source OCI image reference that should be copied to produce the published moving aliases.",
+      "minLength": 1,
+      "title": "Source Image",
+      "type": "string"
+    },
+    "version": {
+      "description": "Release version string without a leading `v` prefix.",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "source_image",
+    "image_repository",
+    "published_alias_refs"
+  ],
+  "title": "Buildish Release Tooling PublishDockerhubMovingTagsManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `publish-dockerhub-moving-tags`."
+  }
+}

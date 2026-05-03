@@ -1,0 +1,80 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/buildish-release-tooling-prepare-rc-state.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Resolved source and artifact state for an RC workflow run.",
+  "properties": {
+    "final_tag": {
+      "description": "Final immutable Git tag that Buildish intends to publish for the released version.",
+      "title": "Final Tag",
+      "type": "string"
+    },
+    "rc_number": {
+      "description": "Numeric RC sequence selected for the related version.",
+      "minimum": 0,
+      "title": "Rc Number",
+      "type": "integer"
+    },
+    "rc_tag": {
+      "description": "Exact RC Git tag, including the leading `v` prefix and `-rcN` suffix.",
+      "title": "Rc Tag",
+      "type": "string"
+    },
+    "resolved_release_branch": {
+      "description": "Release branch name that Buildish resolved for the selected version.",
+      "title": "Resolved Release Branch",
+      "type": "string"
+    },
+    "resolved_source_ref": {
+      "description": "Resolved source Git commit SHA that Buildish selected for release production or verification.",
+      "title": "Resolved Source Ref",
+      "type": "string"
+    },
+    "source_artifact_name": {
+      "description": "Filename of the staged source release artifact.",
+      "title": "Source Artifact Name",
+      "type": "string"
+    },
+    "source_artifact_prefix_path": {
+      "description": "Top-level path prefix inside the source release archive.",
+      "title": "Source Artifact Prefix Path",
+      "type": "string"
+    },
+    "source_artifact_root_name": {
+      "description": "Root directory name that the source release archive should unpack to.",
+      "title": "Source Artifact Root Name",
+      "type": "string"
+    },
+    "source_date_epoch": {
+      "description": "Canonical `SOURCE_DATE_EPOCH` integer carried through RC production and verification.",
+      "minimum": 0,
+      "title": "Source Date Epoch",
+      "type": "integer"
+    },
+    "staging_url": {
+      "description": "ASF dev/dist staging directory URL selected for the current RC.",
+      "title": "Staging Url",
+      "type": "string"
+    }
+  },
+  "required": [
+    "resolved_release_branch",
+    "resolved_source_ref",
+    "source_date_epoch",
+    "rc_number",
+    "rc_tag",
+    "final_tag",
+    "source_artifact_name",
+    "source_artifact_root_name",
+    "source_artifact_prefix_path",
+    "staging_url"
+  ],
+  "title": "Buildish Release Tooling PrepareRcState",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "runtime",
+    "ownership": "runtime-derived",
+    "summary": "Resolved prepare-rc state persisted between release workflow steps."
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/buildish-release-tooling-draft-github-release-read.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Tolerant draft-release pointer accepted by verify-rc readers.",
+  "properties": {
+    "repository": {
+      "description": "Repository identifier or repository name associated with the related provenance or external-auth record.",
+      "minLength": 1,
+      "title": "Repository",
+      "type": "string"
+    },
+    "tag": {
+      "description": "Tag name associated with the related release, workflow fixture, or synthetic GitHub tag-object payload.",
+      "minLength": 1,
+      "title": "Tag",
+      "type": "string"
+    },
+    "url": {
+      "description": "Canonical browser or download URL associated with the related record.",
+      "minLength": 1,
+      "title": "Url",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository",
+    "tag",
+    "url"
+  ],
+  "title": "Buildish Release Tooling DraftGithubReleaseRead",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Tolerant read model for draft GitHub release coordinates recorded in vote materials."
+  }
+}

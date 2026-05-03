@@ -33,6 +33,8 @@ class CommandActionManifest(BuildishContractModel):
 
 
 class CreateReleaseBranchManifest(CommandActionManifest):
+    """Action manifest emitted after resolving or creating a release branch."""
+
     action: Literal["create-release-branch"] = Field(default="create-release-branch", description="Stable command action identifier written by one Buildish command manifest.")
     release_line: NonEmptyString = Field(description="Maintenance-line identifier used to group related versions, branches, and moving tags.")
     release_branch: NonEmptyString = Field(description="Git branch name that Buildish resolved as the authoritative release branch.")
@@ -40,6 +42,8 @@ class CreateReleaseBranchManifest(CommandActionManifest):
 
 
 class PrepareRcManifest(CommandActionManifest):
+    """Action manifest emitted after prepare-rc resolves one RC workflow state bundle."""
+
     action: Literal["prepare-rc"] = Field(default="prepare-rc", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     resolved_source_ref: NonEmptyString = Field(description="Resolved source Git commit SHA that Buildish selected for release production or verification.")
@@ -58,6 +62,8 @@ class PrepareRcManifest(CommandActionManifest):
 
 
 class CleanupDevSvnRcsManifest(CommandActionManifest):
+    """Action manifest emitted after old or conflicting RC staging directories are removed."""
+
     action: Literal["cleanup-dev-svn-rcs"] = Field(default="cleanup-dev-svn-rcs", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     dev_base_url: NonEmptyString = Field(description="Configured ASF `dist/dev` base URL that the cleanup or publication action targeted.")
@@ -65,6 +71,8 @@ class CleanupDevSvnRcsManifest(CommandActionManifest):
 
 
 class CreateSourceArtifactManifest(CommandActionManifest):
+    """Action manifest emitted after creating one local source release artifact."""
+
     action: Literal["create-source-artifact"] = Field(default="create-source-artifact", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     resolved_source_ref: NonEmptyString = Field(description="Resolved source Git commit SHA that Buildish selected for release production or verification.")
@@ -75,6 +83,8 @@ class CreateSourceArtifactManifest(CommandActionManifest):
 
 
 class BuildSourceRcManifest(CommandActionManifest):
+    """Action manifest emitted after building and staging the signed source RC bundle."""
+
     action: Literal["build-source-rc"] = Field(default="build-source-rc", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     resolved_source_ref: NonEmptyString = Field(description="Resolved source Git commit SHA that Buildish selected for release production or verification.")
@@ -89,6 +99,8 @@ class BuildSourceRcManifest(CommandActionManifest):
 
 
 class MaterializeRcGitContentManifest(CommandActionManifest):
+    """Action manifest emitted after building detached RC materialization Git content."""
+
     action: Literal["materialize-rc-git-content"] = Field(default="materialize-rc-git-content", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     resolved_source_ref: NonEmptyString = Field(description="Resolved source Git commit SHA that Buildish selected for release production or verification.")
@@ -100,6 +112,8 @@ class MaterializeRcGitContentManifest(CommandActionManifest):
 
 
 class CreateRcMaterializationTagManifest(CommandActionManifest):
+    """Action manifest emitted after tagging one detached RC materialization commit."""
+
     action: Literal["create-rc-materialization-tag"] = Field(default="create-rc-materialization-tag", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     resolved_source_ref: NonEmptyString = Field(description="Resolved source Git commit SHA that Buildish selected for release production or verification.")
@@ -113,6 +127,8 @@ class CreateRcMaterializationTagManifest(CommandActionManifest):
 
 
 class RecordArtifactManifest(CommandActionManifest):
+    """Action manifest emitted after writing one typed secondary-artifact bundle."""
+
     action: Literal["record-artifact"] = Field(default="record-artifact", description="Stable command action identifier written by one Buildish command manifest.")
     artifact_id: NonEmptyString = Field(description="Stable identifier for one source, secondary, or emitted artifact within Buildish release tooling.")
     kind: NonEmptyString = Field(description="Declared artifact or report kind discriminator.")
@@ -122,6 +138,8 @@ class RecordArtifactManifest(CommandActionManifest):
 
 
 class FinalizeRcVoteMaterialsManifest(CommandActionManifest):
+    """Action manifest emitted after publishing and signing final RC vote materials."""
+
     action: Literal["finalize-rc-vote-materials"] = Field(default="finalize-rc-vote-materials", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     resolved_source_ref: NonEmptyString = Field(description="Resolved source Git commit SHA that Buildish selected for release production or verification.")
@@ -140,6 +158,8 @@ class FinalizeRcVoteMaterialsManifest(CommandActionManifest):
 
 
 class PublishAtrCandidateManifest(CommandActionManifest):
+    """Action manifest emitted after publishing one release candidate to ATR."""
+
     action: Literal["publish-atr-candidate"] = Field(default="publish-atr-candidate", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     rc_tag: NonEmptyString = Field(description="Exact RC Git tag, including the leading `v` prefix and `-rcN` suffix.")
@@ -158,6 +178,8 @@ class PublishAtrCandidateManifest(CommandActionManifest):
 
 
 class ReportAtrChecksManifest(CommandActionManifest):
+    """Action manifest emitted after summarizing ATR checks for one candidate revision."""
+
     action: Literal["report-atr-checks"] = Field(default="report-atr-checks", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     rc_tag: NonEmptyString = Field(description="Exact RC Git tag, including the leading `v` prefix and `-rcN` suffix.")
@@ -177,6 +199,8 @@ class ReportAtrChecksManifest(CommandActionManifest):
 
 
 class SyncDraftGithubReleaseManifest(CommandActionManifest):
+    """Action manifest emitted after synchronizing the draft GitHub release with staged RC artifacts."""
+
     action: Literal["sync-draft-github-release"] = Field(default="sync-draft-github-release", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     repository_slug: NonEmptyString = Field(description="GitHub `owner/name` repository slug used for API calls and emitted release metadata.")
@@ -193,6 +217,8 @@ class SyncDraftGithubReleaseManifest(CommandActionManifest):
 
 
 class PublishSourceReleaseSvnManifest(CommandActionManifest):
+    """Action manifest emitted after promoting a verified source artifact into dist/release."""
+
     action: Literal["publish-source-release-svn"] = Field(default="publish-source-release-svn", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     selected_rc_tag: NonEmptyString = Field(description="RC tag that Buildish selected as the winning release candidate for a final release action.")
@@ -203,6 +229,8 @@ class PublishSourceReleaseSvnManifest(CommandActionManifest):
 
 
 class PruneOlderLineReleasesManifest(CommandActionManifest):
+    """Action manifest emitted after pruning older same-line releases from dist/release."""
+
     action: Literal["prune-older-line-releases"] = Field(default="prune-older-line-releases", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     release_line: NonEmptyString = Field(description="Maintenance-line identifier used to group related versions, branches, and moving tags.")
@@ -211,6 +239,8 @@ class PruneOlderLineReleasesManifest(CommandActionManifest):
 
 
 class CreateFinalTagManifest(CommandActionManifest):
+    """Action manifest emitted after creating or validating the final immutable release tag."""
+
     action: Literal["create-final-tag"] = Field(default="create-final-tag", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     selected_rc_tag: NonEmptyString = Field(description="RC tag that Buildish selected as the winning release candidate for a final release action.")
@@ -221,6 +251,8 @@ class CreateFinalTagManifest(CommandActionManifest):
 
 
 class FinalizeDraftGithubReleaseManifest(CommandActionManifest):
+    """Action manifest emitted after finalizing a selected GitHub draft release."""
+
     action: Literal["finalize-draft-github-release"] = Field(default="finalize-draft-github-release", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     repository_slug: NonEmptyString = Field(description="GitHub `owner/name` repository slug used for API calls and emitted release metadata.")
@@ -233,6 +265,8 @@ class FinalizeDraftGithubReleaseManifest(CommandActionManifest):
 
 
 class ReleaseVersionManifest(CommandActionManifest):
+    """Action manifest emitted after a full release-version orchestration run completes."""
+
     action: Literal["release-version"] = Field(default="release-version", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     release_line: NonEmptyString = Field(description="Maintenance-line identifier used to group related versions, branches, and moving tags.")
@@ -245,6 +279,8 @@ class ReleaseVersionManifest(CommandActionManifest):
 
 
 class UpdateMovingTagsManifest(CommandActionManifest):
+    """Action manifest emitted after updating moving Git tags for a final release."""
+
     action: Literal["update-moving-tags"] = Field(default="update-moving-tags", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     final_tag: NonEmptyString = Field(description="Final immutable Git tag that Buildish intends to publish for the released version.")
@@ -255,6 +291,8 @@ class UpdateMovingTagsManifest(CommandActionManifest):
 
 
 class UpdateMovingImageAliasesManifest(CommandActionManifest):
+    """Action manifest emitted after resolving moving OCI image aliases for publication."""
+
     action: Literal["update-moving-image-aliases"] = Field(default="update-moving-image-aliases", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     exact_image_tag: NonEmptyString = Field(description="Exact released image tag that Buildish uses as the source for moving image aliases.")
@@ -262,6 +300,8 @@ class UpdateMovingImageAliasesManifest(CommandActionManifest):
 
 
 class PublishDockerhubMovingTagsManifest(CommandActionManifest):
+    """Action manifest emitted after publishing moving Docker Hub image aliases."""
+
     action: Literal["publish-dockerhub-moving-tags"] = Field(default="publish-dockerhub-moving-tags", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     source_image: NonEmptyString = Field(description="Exact source OCI image reference that should be copied to produce the published moving aliases.")
@@ -270,6 +310,8 @@ class PublishDockerhubMovingTagsManifest(CommandActionManifest):
 
 
 class AttachGithubReleaseAssetsManifest(CommandActionManifest):
+    """Action manifest emitted after uploading primary and derived assets to a GitHub release."""
+
     action: Literal["attach-github-release-assets"] = Field(default="attach-github-release-assets", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     repository_slug: NonEmptyString = Field(description="GitHub `owner/name` repository slug used for API calls and emitted release metadata.")

@@ -16,10 +16,10 @@ UV_RUN = uv run --frozen --group dev
 RELEASE_LEGAL_OUT_DIR ?= dist-release-legal/preliminary
 RELEASE_LEGAL_DETAILS_OUT_DIR ?= dist/release-legal-preliminary
 HELP_TARGETS = $(MAKEFILE_LIST)
-HELP_PUBLIC_CHECK_TARGETS := lint typecheck test rat release-legal-preliminary-check check
+HELP_PUBLIC_CHECK_TARGETS := lint typecheck test rat release-legal-preliminary-check check schemas
 HELP_PUBLIC_RELEASE_TARGETS := release-legal-preliminary
 
-.PHONY: help lint typecheck test rat release-legal-preliminary-check check release-legal-preliminary
+.PHONY: help lint typecheck test rat release-legal-preliminary-check check schemas release-legal-preliminary
 
 help: ## Show curated Make targets for buildish-release-tooling.
 	@desc_for() { awk -v target="$$1" 'BEGIN {FS = ":.*## "} $$1 == target {print $$2; exit}' $(HELP_TARGETS); }; \
@@ -52,6 +52,9 @@ test: ## Run the Python unit and integration test suite.
 	$(UV_RUN) python -m unittest discover -s tests -p 'test_*.py'
 
 check: lint typecheck test rat release-legal-preliminary-check ## Run lint, type checks, tests, RAT, and legal-artifact verification.
+
+schemas: ## Regenerate checked-in JSON Schema files and the Markdown model reference.
+	$(UV_RUN) python -m apache_buildish_release_tooling.docs.schema_export --output-dir site/pages/schemas
 
 release-legal-preliminary: ## Generate preliminary wheel legal drafts from the runtime dependency set.
 	$(UV_RUN) python3 -m apache_buildish_release_tooling.legal.release_legal --output-dir $(RELEASE_LEGAL_OUT_DIR) --details-output-dir $(RELEASE_LEGAL_DETAILS_OUT_DIR)

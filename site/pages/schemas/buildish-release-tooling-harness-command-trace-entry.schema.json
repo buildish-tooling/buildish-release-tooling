@@ -1,0 +1,70 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/buildish-release-tooling-harness-command-trace-entry.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One persisted command-trace entry recorded by harness tool shims.",
+  "properties": {
+    "argv": {
+      "description": "Exact argv list that the harness should match or that it recorded for the related command invocation.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Argv",
+      "type": "array"
+    },
+    "cwd": {
+      "description": "Working directory that the harness should use or that it observed for the related command invocation.",
+      "title": "Cwd",
+      "type": "string"
+    },
+    "delegated": {
+      "default": false,
+      "description": "Whether the recorded harness command invocation delegated to the real tool implementation.",
+      "title": "Delegated",
+      "type": "boolean"
+    },
+    "env": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Environment-variable mapping supplied to the related build, scenario, or command step.",
+      "title": "Env",
+      "type": "object"
+    },
+    "exit_code": {
+      "description": "Process exit code that the harness recorded or should synthesize for the related tool invocation.",
+      "title": "Exit Code",
+      "type": "integer"
+    },
+    "stderr": {
+      "default": "",
+      "description": "Captured stderr that the harness recorded or should synthesize for the related tool invocation.",
+      "title": "Stderr",
+      "type": "string"
+    },
+    "stdout": {
+      "default": "",
+      "description": "Captured stdout that the harness recorded or should synthesize for the related tool invocation.",
+      "title": "Stdout",
+      "type": "string"
+    },
+    "tool": {
+      "description": "Tool name associated with the recorded harness command trace entry.",
+      "title": "Tool",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tool",
+    "cwd",
+    "exit_code"
+  ],
+  "title": "Buildish Release Tooling HarnessCommandTraceEntry",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "runtime",
+    "ownership": "runtime-derived",
+    "summary": "Structured command-trace record emitted by the harness shim for one intercepted invocation."
+  }
+}

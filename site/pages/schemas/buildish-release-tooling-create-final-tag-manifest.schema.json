@@ -1,0 +1,73 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/buildish-release-tooling-create-final-tag-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after creating or validating the final immutable release tag. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "create-final-tag",
+      "default": "create-final-tag",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "created_ref": {
+      "description": "Git ref name that Buildish created or reused while performing the related tag or ref action.",
+      "title": "Created Ref",
+      "type": "string"
+    },
+    "final_tag": {
+      "description": "Final immutable Git tag that Buildish intends to publish for the released version.",
+      "minLength": 1,
+      "title": "Final Tag",
+      "type": "string"
+    },
+    "selected_rc_tag": {
+      "description": "RC tag that Buildish selected as the winning release candidate for a final release action.",
+      "minLength": 1,
+      "title": "Selected Rc Tag",
+      "type": "string"
+    },
+    "tag_creation_mode": {
+      "description": "Mode that Buildish used when creating or reusing the related annotated Git tag.",
+      "minLength": 1,
+      "title": "Tag Creation Mode",
+      "type": "string"
+    },
+    "target_commit": {
+      "description": "Git commit SHA that the related tag or alias operation targeted.",
+      "minLength": 1,
+      "title": "Target Commit",
+      "type": "string"
+    },
+    "version": {
+      "description": "Release version string without a leading `v` prefix.",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "selected_rc_tag",
+    "final_tag",
+    "target_commit",
+    "tag_creation_mode",
+    "created_ref"
+  ],
+  "title": "Buildish Release Tooling CreateFinalTagManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `create-final-tag`."
+  }
+}

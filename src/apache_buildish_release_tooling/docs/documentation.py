@@ -28,6 +28,7 @@ from typing import Any, ClassVar, Literal, get_args, get_origin
 from pydantic import BaseModel
 
 from apache_buildish_release_tooling.contracts.base import BuildishContractModel
+from apache_buildish_release_tooling.docs.reference_docs import ReferenceDocumentation
 
 ContractCategory = Literal["authored", "emitted", "runtime"]
 ContractOwnership = Literal[
@@ -46,6 +47,7 @@ class ContractDocumentation:
     ownership: ContractOwnership
     summary: str | None = None
     file_path: str | None = None
+    reference: ReferenceDocumentation | None = None
 
     def as_schema_extension(self) -> dict[str, str]:
         """Return a stable vendor extension for eventual JSON Schema exports."""
