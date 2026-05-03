@@ -57,6 +57,8 @@ bdist_wheel = "apache_buildish_release_tooling.legal.build_hooks.FlattenedLicens
 [dependency-groups]
 dev = [
     "mypy==1.20.1",
+    "pytest==8.4.2",
+    "pytest-xdist==3.8.0",
     "ruff==0.15.11",
 ]
 

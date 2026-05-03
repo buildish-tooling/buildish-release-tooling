@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 import json
+import os
 import subprocess
 import sys
 import unittest
@@ -400,6 +401,11 @@ class HarnessIntegrationTest(unittest.TestCase):
         state_path = self.sandbox_dir / "shim-state.json"
         origin_root = self.sandbox_dir / ".buildish-release-harness" / "git-origins" / "self"
         origin_root.parent.mkdir(parents=True, exist_ok=True)
+        commit_env = {
+            **os.environ,
+            "GIT_AUTHOR_DATE": "2026-01-01T00:00:00+0000",
+            "GIT_COMMITTER_DATE": "2026-01-01T00:00:00+0000",
+        }
         for repository in (self.sandbox_dir, origin_root):
             subprocess.run(
                 ["git", "init", "--initial-branch=main", str(repository)],
@@ -431,6 +437,7 @@ class HarnessIntegrationTest(unittest.TestCase):
                 check=True,
                 capture_output=True,
                 text=True,
+                env=commit_env,
             )
         target_commit = subprocess.run(
             ["git", "-C", str(self.sandbox_dir), "rev-parse", "HEAD"],
@@ -438,6 +445,15 @@ class HarnessIntegrationTest(unittest.TestCase):
             capture_output=True,
             text=True,
         ).stdout.strip()
+        self.assertEqual(
+            target_commit,
+            subprocess.run(
+                ["git", "-C", str(origin_root), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip(),
+        )
         state_path.write_text(
             json.dumps(
                 {

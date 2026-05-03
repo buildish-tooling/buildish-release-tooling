@@ -13,6 +13,7 @@
 # limitations under the License.
 
 UV_RUN = uv run --frozen --group dev
+PYTEST_WORKERS ?= 4
 RELEASE_LEGAL_OUT_DIR ?= dist-release-legal/preliminary
 RELEASE_LEGAL_DETAILS_OUT_DIR ?= dist/release-legal-preliminary
 HELP_TARGETS = $(MAKEFILE_LIST)
@@ -49,7 +50,7 @@ release-legal-preliminary-check: ## Verify the checked-in preliminary release-le
 	diff -ru "$(RELEASE_LEGAL_OUT_DIR)" "$$tmp_dir/tracked"
 
 test: ## Run the Python unit and integration test suite.
-	$(UV_RUN) python -m unittest discover -s tests -p 'test_*.py'
+	$(UV_RUN) python -m pytest tests -n $(PYTEST_WORKERS) -q
 
 check: lint typecheck test rat release-legal-preliminary-check ## Run lint, type checks, tests, RAT, and legal-artifact verification.
 
