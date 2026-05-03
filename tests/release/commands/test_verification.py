@@ -20,6 +20,7 @@ from collections.abc import Callable
 from argparse import Namespace
 from dataclasses import dataclass
 import io
+from subprocess import CompletedProcess
 import tarfile
 from typing import cast
 import unittest
@@ -109,6 +110,24 @@ class VerificationOriginTemplateKey:
     drift_oci_image_reproducibility_platform: bool = False
 
 
+@dataclass(frozen=True)
+class CachedCommandResult:
+    """In-memory copy of one finished CLI invocation used by fixture-family caches."""
+
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+@dataclass(frozen=True)
+class CachedVerificationFamily:
+    """Prepared verification sandbox plus its finished verify-rc result."""
+
+    cache_root: Path
+    fixture: VerificationFixture
+    verify_completed: CachedCommandResult
+
+
 def _write_zip_archive(
     archive_path: Path,
     *,
@@ -148,6 +167,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
     _origin_template: Path
     _gpg_home_template: Path
     _origin_templates: dict[VerificationOriginTemplateKey, Path]
+    _cached_verification_families: dict[str, CachedVerificationFamily]
+    _cached_inspect_results: dict[tuple[str, tuple[str, ...]], CachedCommandResult]
     _public_key: str
 
     @classmethod
@@ -158,6 +179,8 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         cls._baseline_root = create_build_test_sandbox()
         cls._origin_template = init_git_origin_repo(cls._baseline_root, dir_name="origin-template")
         cls._origin_templates = {}
+        cls._cached_verification_families = {}
+        cls._cached_inspect_results = {}
         gpg_home = cls._baseline_root / "gpg-home-template"
         gpg_home.mkdir(parents=True, exist_ok=True)
         gpg_home.chmod(0o700)
@@ -612,6 +635,167 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         self.fail(f"bundle artifact metadata not found for {artifact_id}")
         raise AssertionError("unreachable")
 
+    @staticmethod
+    def _cached_command_result(completed: CompletedProcess[str]) -> CachedCommandResult:
+        return CachedCommandResult(
+            returncode=completed.returncode,
+            stdout=completed.stdout,
+            stderr=completed.stderr,
+        )
+
+    @staticmethod
+    def _verify_rc_command(
+        fixture: VerificationFixture,
+        *,
+        mode: str | None = None,
+        progress: bool = False,
+        report_markdown: bool = False,
+        inspection_bundle: bool = False,
+        repro_override_file: Path | None = None,
+    ) -> list[str]:
+        command = [
+            "verify-rc",
+            "--component-config",
+            str(fixture.config_path),
+            "--allow-non-production-release-targets",
+        ]
+        if mode is not None:
+            command.extend(["--mode", mode])
+        if progress:
+            command.extend(["--progress", "on"])
+        command.extend(
+            [
+                "--work-dir",
+                str(fixture.work_dir),
+                "--report-json",
+                str(fixture.report_json_path),
+            ]
+        )
+        if report_markdown:
+            command.extend(["--report-md", str(fixture.report_md_path)])
+        if inspection_bundle:
+            command.extend(["--inspection-bundle", str(fixture.inspection_bundle_path)])
+        if repro_override_file is not None:
+            command.extend(["--repro-override-file", str(repro_override_file)])
+        command.extend([fixture.manifest_url, fixture.keys_url])
+        return command
+
+    @classmethod
+    def _rebase_fixture(
+        cls,
+        fixture: VerificationFixture,
+        *,
+        old_root: Path,
+        new_root: Path,
+    ) -> VerificationFixture:
+        old_root_str = str(old_root)
+        new_root_str = str(new_root)
+        old_root_uri = old_root.as_uri()
+        new_root_uri = new_root.as_uri()
+
+        def rebase_path(path: Path) -> Path:
+            return new_root / path.relative_to(old_root)
+
+        def rebase_text(value: str) -> str:
+            if value.startswith(old_root_uri):
+                return value.replace(old_root_uri, new_root_uri, 1)
+            if value.startswith(old_root_str):
+                return value.replace(old_root_str, new_root_str, 1)
+            return value
+
+        return VerificationFixture(
+            config_path=rebase_path(fixture.config_path),
+            keys_url=rebase_text(fixture.keys_url),
+            manifest_url=rebase_text(fixture.manifest_url),
+            manifest_output_path=rebase_path(fixture.manifest_output_path),
+            inspection_bundle_path=rebase_path(fixture.inspection_bundle_path),
+            origin_dir=rebase_path(fixture.origin_dir),
+            log_path=rebase_path(fixture.log_path),
+            report_json_path=rebase_path(fixture.report_json_path),
+            report_md_path=rebase_path(fixture.report_md_path),
+            source_commit_sha=fixture.source_commit_sha,
+            source_date_epoch=fixture.source_date_epoch,
+            work_dir=rebase_path(fixture.work_dir),
+            extra_env={key: rebase_text(value) for key, value in fixture.extra_env.items()},
+            prepend_dirs=tuple(rebase_path(path) for path in fixture.prepend_dirs),
+        )
+
+    def _build_cached_verification_family(
+        self,
+        sandbox_dir: Path,
+        *,
+        build_fixture: Callable[[Path], VerificationFixture],
+        verify_command: Callable[[VerificationFixture], list[str]],
+    ) -> CachedVerificationFamily:
+        fixture = build_fixture(sandbox_dir)
+        completed = run_cli(
+            verify_command(fixture),
+            cwd=fixture.origin_dir,
+            env=self._fixture_cli_env(fixture),
+        )
+        return CachedVerificationFamily(
+            cache_root=sandbox_dir,
+            fixture=fixture,
+            verify_completed=self._cached_command_result(completed),
+        )
+
+    def _ensure_cached_verification_family(
+        self,
+        cache_name: str,
+        *,
+        build_family: Callable[[Path], CachedVerificationFamily],
+    ) -> CachedVerificationFamily:
+        cached = self._cached_verification_families.get(cache_name)
+        if cached is not None:
+            return cached
+        cache_root = self._baseline_root / "cached-verification-families" / cache_name
+        cache_root.parent.mkdir(parents=True, exist_ok=True)
+        cached = build_family(cache_root)
+        self._cached_verification_families[cache_name] = cached
+        return cached
+
+    def _materialize_cached_verification_family(
+        self,
+        sandbox_dir: Path,
+        *,
+        cache_name: str,
+        build_family: Callable[[Path], CachedVerificationFamily],
+    ) -> tuple[VerificationFixture, CachedCommandResult]:
+        cached = self._ensure_cached_verification_family(
+            cache_name,
+            build_family=build_family,
+        )
+        cleanup_sandbox(sandbox_dir)
+        copy_test_tree(cached.cache_root, sandbox_dir)
+        return (
+            self._rebase_fixture(cached.fixture, old_root=cached.cache_root, new_root=sandbox_dir),
+            cached.verify_completed,
+        )
+
+    def _cached_inspect_repro_result(
+        self,
+        cache_name: str,
+        *,
+        build_family: Callable[[Path], CachedVerificationFamily],
+        inspect_args: tuple[str, ...] = (),
+    ) -> CachedCommandResult:
+        cache_key = (cache_name, inspect_args)
+        cached = self._cached_inspect_results.get(cache_key)
+        if cached is not None:
+            return cached
+        family = self._ensure_cached_verification_family(
+            cache_name,
+            build_family=build_family,
+        )
+        completed = run_cli(
+            ["inspect-repro", *inspect_args, str(family.fixture.report_json_path)],
+            cwd=family.fixture.origin_dir,
+            env=self._fixture_cli_env(family.fixture),
+        )
+        cached = self._cached_command_result(completed)
+        self._cached_inspect_results[cache_key] = cached
+        return cached
+
     def _prepare_generic_file_fixture(
         self,
         sandbox_dir: Path,
@@ -707,6 +891,419 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             include_oci_image_reproducibility=include_reproducibility,
             drift_oci_image_reproducibility=drift_reproducibility,
             drift_oci_image_reproducibility_platform=drift_reproducibility_platform,
+        )
+
+    def _materialize_cached_generic_file_drift_family(
+        self,
+        sandbox_dir: Path,
+    ) -> tuple[VerificationFixture, CachedCommandResult]:
+        return self._materialize_cached_verification_family(
+            sandbox_dir,
+            cache_name="generic-file-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_generic_file_fixture(
+                    family_dir,
+                    include_reproducibility=True,
+                    drift_reproducibility=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    progress=True,
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _cached_generic_file_drift_inspect_result(
+        self,
+        *inspect_args: str,
+    ) -> CachedCommandResult:
+        return self._cached_inspect_repro_result(
+            "generic-file-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_generic_file_fixture(
+                    family_dir,
+                    include_reproducibility=True,
+                    drift_reproducibility=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    progress=True,
+                    inspection_bundle=True,
+                ),
+            ),
+            inspect_args=tuple(inspect_args),
+        )
+
+    def _materialize_cached_generic_file_archive_drift_family(
+        self,
+        sandbox_dir: Path,
+    ) -> tuple[VerificationFixture, CachedCommandResult]:
+        return self._materialize_cached_verification_family(
+            sandbox_dir,
+            cache_name="generic-file-archive-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_generic_file_fixture(
+                    family_dir,
+                    include_reproducibility=True,
+                    drift_reproducibility=True,
+                    archive_reproducibility=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _cached_generic_file_archive_drift_inspect_result(self) -> CachedCommandResult:
+        return self._cached_inspect_repro_result(
+            "generic-file-archive-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_generic_file_fixture(
+                    family_dir,
+                    include_reproducibility=True,
+                    drift_reproducibility=True,
+                    archive_reproducibility=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _materialize_cached_source_drift_family(
+        self,
+        sandbox_dir: Path,
+    ) -> tuple[VerificationFixture, CachedCommandResult]:
+        return self._materialize_cached_verification_family(
+            sandbox_dir,
+            cache_name="source-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_verification_fixture(
+                    family_dir,
+                    drift_source_artifact=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    progress=True,
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _cached_source_drift_inspect_result(self) -> CachedCommandResult:
+        return self._cached_inspect_repro_result(
+            "source-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_verification_fixture(
+                    family_dir,
+                    drift_source_artifact=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    progress=True,
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _materialize_cached_source_and_generic_drift_family(
+        self,
+        sandbox_dir: Path,
+    ) -> tuple[VerificationFixture, CachedCommandResult]:
+        return self._materialize_cached_verification_family(
+            sandbox_dir,
+            cache_name="source-and-generic-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_verification_fixture(
+                    family_dir,
+                    drift_source_artifact=True,
+                    secondary_kind="generic-file",
+                    include_generic_file_reproducibility=True,
+                    drift_generic_file_reproducibility=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _materialize_cached_selected_failure_family(
+        self,
+        sandbox_dir: Path,
+    ) -> tuple[VerificationFixture, CachedCommandResult]:
+        return self._materialize_cached_verification_family(
+            sandbox_dir,
+            cache_name="source-generic-maven-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_verification_fixture(
+                    family_dir,
+                    drift_source_artifact=True,
+                    secondary_kind="generic-file",
+                    include_generic_file_reproducibility=True,
+                    drift_generic_file_reproducibility=True,
+                    include_maven_repository=True,
+                    include_maven_repository_reproducibility=True,
+                    drift_maven_repository_reproducibility=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _materialize_cached_mixed_failure_family(
+        self,
+        sandbox_dir: Path,
+    ) -> tuple[VerificationFixture, CachedCommandResult]:
+        return self._materialize_cached_verification_family(
+            sandbox_dir,
+            cache_name="mixed-failures-all-kinds",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_verification_fixture(
+                    family_dir,
+                    drift_source_artifact=True,
+                    secondary_kind="generic-file",
+                    include_generic_file_reproducibility=True,
+                    drift_generic_file_reproducibility=True,
+                    include_maven_repository=True,
+                    include_maven_repository_reproducibility=True,
+                    drift_maven_repository_reproducibility=True,
+                    include_oci_image=True,
+                    include_oci_image_reproducibility=True,
+                    drift_oci_image_reproducibility_platform=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _materialize_cached_python_distribution_drift_family(
+        self,
+        sandbox_dir: Path,
+    ) -> tuple[VerificationFixture, CachedCommandResult]:
+        return self._materialize_cached_verification_family(
+            sandbox_dir,
+            cache_name="python-distribution-archive-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_python_distribution_fixture(
+                    family_dir,
+                    include_reproducibility=True,
+                    drift_reproducibility=True,
+                    archive_reproducibility=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _cached_python_distribution_drift_inspect_result(self) -> CachedCommandResult:
+        return self._cached_inspect_repro_result(
+            "python-distribution-archive-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_python_distribution_fixture(
+                    family_dir,
+                    include_reproducibility=True,
+                    drift_reproducibility=True,
+                    archive_reproducibility=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _materialize_cached_npm_package_drift_family(
+        self,
+        sandbox_dir: Path,
+    ) -> tuple[VerificationFixture, CachedCommandResult]:
+        return self._materialize_cached_verification_family(
+            sandbox_dir,
+            cache_name="npm-package-archive-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_npm_package_fixture(
+                    family_dir,
+                    include_reproducibility=True,
+                    drift_reproducibility=True,
+                    archive_reproducibility=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _cached_npm_package_drift_inspect_result(self) -> CachedCommandResult:
+        return self._cached_inspect_repro_result(
+            "npm-package-archive-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_npm_package_fixture(
+                    family_dir,
+                    include_reproducibility=True,
+                    drift_reproducibility=True,
+                    archive_reproducibility=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _materialize_cached_maven_repository_drift_family(
+        self,
+        sandbox_dir: Path,
+    ) -> tuple[VerificationFixture, CachedCommandResult]:
+        return self._materialize_cached_verification_family(
+            sandbox_dir,
+            cache_name="maven-repository-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_maven_repository_fixture(
+                    family_dir,
+                    include_reproducibility=True,
+                    drift_reproducibility=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _cached_maven_repository_drift_inspect_result(self) -> CachedCommandResult:
+        return self._cached_inspect_repro_result(
+            "maven-repository-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_maven_repository_fixture(
+                    family_dir,
+                    include_reproducibility=True,
+                    drift_reproducibility=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _materialize_cached_oci_image_drift_family(
+        self,
+        sandbox_dir: Path,
+    ) -> tuple[VerificationFixture, CachedCommandResult]:
+        return self._materialize_cached_verification_family(
+            sandbox_dir,
+            cache_name="oci-image-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_oci_image_fixture(
+                    family_dir,
+                    include_reproducibility=True,
+                    drift_reproducibility=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _cached_oci_image_drift_inspect_result(self) -> CachedCommandResult:
+        return self._cached_inspect_repro_result(
+            "oci-image-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_oci_image_fixture(
+                    family_dir,
+                    include_reproducibility=True,
+                    drift_reproducibility=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _materialize_cached_oci_image_platform_drift_family(
+        self,
+        sandbox_dir: Path,
+    ) -> tuple[VerificationFixture, CachedCommandResult]:
+        return self._materialize_cached_verification_family(
+            sandbox_dir,
+            cache_name="oci-image-platform-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_oci_image_fixture(
+                    family_dir,
+                    include_reproducibility=True,
+                    drift_reproducibility_platform=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+        )
+
+    def _cached_oci_image_platform_drift_inspect_result(self) -> CachedCommandResult:
+        return self._cached_inspect_repro_result(
+            "oci-image-platform-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_oci_image_fixture(
+                    family_dir,
+                    include_reproducibility=True,
+                    drift_reproducibility_platform=True,
+                ),
+                verify_command=lambda fixture: self._verify_rc_command(
+                    fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
         )
 
     def test_verify_rc_command_reports_progress_for_successful_run(self) -> None:
@@ -2229,33 +2826,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_generic_file_fixture(
-            sandbox_dir,
-            include_reproducibility=True,
-            drift_reproducibility=True,
-        )
-        completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--progress",
-                "on",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
+        fixture, completed = self._materialize_cached_generic_file_drift_family(sandbox_dir)
 
         self.assertEqual(1, completed.returncode)
         self.assertIn("generic-file reproducibility output does not match the staged artifact bytes", completed.stderr)
@@ -2280,46 +2851,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
     def test_inspect_repro_command_reports_saved_generic_file_drift(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-
-        fixture = self._prepare_generic_file_fixture(
-            sandbox_dir,
-            include_reproducibility=True,
-            drift_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--progress",
-                "on",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
-
-        self.assertEqual(1, verify_completed.returncode)
-        inspect_completed = run_cli(
-            [
-                "inspect-repro",
-                str(fixture.report_json_path),
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
+        inspect_completed = self._cached_generic_file_drift_inspect_result()
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         self.assertIn("Inspect Repro", inspect_completed.stderr)
@@ -2354,45 +2886,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
     def test_inspect_repro_command_can_emit_machine_readable_json(self) -> None:
         if not command_available("gpg"):
             self.skipTest("gpg is required for verify-rc integration coverage")
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-
-        fixture = self._prepare_generic_file_fixture(
-            sandbox_dir,
-            include_reproducibility=True,
-            drift_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
-
-        self.assertEqual(1, verify_completed.returncode)
-        inspect_completed = run_cli(
-            [
-                "inspect-repro",
-                "--json",
-                str(fixture.report_json_path),
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
+        inspect_completed = self._cached_generic_file_drift_inspect_result("--json")
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         payload = json.loads(inspect_completed.stdout)
@@ -2467,50 +2961,32 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
-            sandbox_dir,
-            drift_source_artifact=True,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
-            include_maven_repository=True,
-            include_maven_repository_reproducibility=True,
-            drift_maven_repository_reproducibility=True,
-            include_oci_image=True,
-            include_oci_image_reproducibility=True,
-            drift_oci_image_reproducibility_platform=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
-
+        fixture, verify_completed = self._materialize_cached_mixed_failure_family(sandbox_dir)
         self.assertEqual(1, verify_completed.returncode)
-        inspect_completed = run_cli(
-            [
-                "inspect-repro",
-                "--json",
-                "--summary-only",
-                str(fixture.report_json_path),
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
+        inspect_completed = self._cached_inspect_repro_result(
+            "mixed-failures-all-kinds",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_verification_fixture(
+                    family_dir,
+                    drift_source_artifact=True,
+                    secondary_kind="generic-file",
+                    include_generic_file_reproducibility=True,
+                    drift_generic_file_reproducibility=True,
+                    include_maven_repository=True,
+                    include_maven_repository_reproducibility=True,
+                    drift_maven_repository_reproducibility=True,
+                    include_oci_image=True,
+                    include_oci_image_reproducibility=True,
+                    drift_oci_image_reproducibility_platform=True,
+                ),
+                verify_command=lambda cached_fixture: self._verify_rc_command(
+                    cached_fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+            inspect_args=("--json", "--summary-only"),
         )
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
@@ -2582,50 +3058,29 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
-            sandbox_dir,
-            drift_source_artifact=True,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
-            include_maven_repository=True,
-            include_maven_repository_reproducibility=True,
-            drift_maven_repository_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
-
+        fixture, verify_completed = self._materialize_cached_selected_failure_family(sandbox_dir)
         self.assertEqual(1, verify_completed.returncode)
-        inspect_completed = run_cli(
-            [
-                "inspect-repro",
-                "--json",
-                "--artifact-id",
-                "source-artifact",
-                "--artifact-id",
-                "maven-staging-main",
-                str(fixture.report_json_path),
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
+        inspect_completed = self._cached_inspect_repro_result(
+            "source-generic-maven-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_verification_fixture(
+                    family_dir,
+                    drift_source_artifact=True,
+                    secondary_kind="generic-file",
+                    include_generic_file_reproducibility=True,
+                    drift_generic_file_reproducibility=True,
+                    include_maven_repository=True,
+                    include_maven_repository_reproducibility=True,
+                    drift_maven_repository_reproducibility=True,
+                ),
+                verify_command=lambda cached_fixture: self._verify_rc_command(
+                    cached_fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+            inspect_args=("--json", "--artifact-id", "source-artifact", "--artifact-id", "maven-staging-main"),
         )
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
@@ -2650,44 +3105,26 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
-            sandbox_dir,
-            drift_source_artifact=True,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
-
+        fixture, verify_completed = self._materialize_cached_source_and_generic_drift_family(sandbox_dir)
         self.assertEqual(1, verify_completed.returncode)
-        inspect_completed = run_cli(
-            [
-                "inspect-repro",
-                "--artifact-id",
-                "bootstrap-zip",
-                str(fixture.report_json_path),
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
+        inspect_completed = self._cached_inspect_repro_result(
+            "source-and-generic-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_verification_fixture(
+                    family_dir,
+                    drift_source_artifact=True,
+                    secondary_kind="generic-file",
+                    include_generic_file_reproducibility=True,
+                    drift_generic_file_reproducibility=True,
+                ),
+                verify_command=lambda cached_fixture: self._verify_rc_command(
+                    cached_fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+            inspect_args=("--artifact-id", "bootstrap-zip"),
         )
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
@@ -2763,43 +3200,26 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
-            sandbox_dir,
-            drift_source_artifact=True,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
-
+        fixture, verify_completed = self._materialize_cached_source_and_generic_drift_family(sandbox_dir)
         self.assertEqual(1, verify_completed.returncode)
-        inspect_completed = run_cli(
-            [
-                "inspect-repro",
-                "--compact",
-                str(fixture.report_json_path),
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
+        inspect_completed = self._cached_inspect_repro_result(
+            "source-and-generic-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_verification_fixture(
+                    family_dir,
+                    drift_source_artifact=True,
+                    secondary_kind="generic-file",
+                    include_generic_file_reproducibility=True,
+                    drift_generic_file_reproducibility=True,
+                ),
+                verify_command=lambda cached_fixture: self._verify_rc_command(
+                    cached_fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+            inspect_args=("--compact",),
         )
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
@@ -2823,43 +3243,26 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
-            sandbox_dir,
-            drift_source_artifact=True,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
-
+        fixture, verify_completed = self._materialize_cached_source_and_generic_drift_family(sandbox_dir)
         self.assertEqual(1, verify_completed.returncode)
-        inspect_completed = run_cli(
-            [
-                "inspect-repro",
-                "--summary-only",
-                str(fixture.report_json_path),
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
+        inspect_completed = self._cached_inspect_repro_result(
+            "source-and-generic-drift",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_verification_fixture(
+                    family_dir,
+                    drift_source_artifact=True,
+                    secondary_kind="generic-file",
+                    include_generic_file_reproducibility=True,
+                    drift_generic_file_reproducibility=True,
+                ),
+                verify_command=lambda cached_fixture: self._verify_rc_command(
+                    cached_fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+            inspect_args=("--summary-only",),
         )
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
@@ -2877,49 +3280,32 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
-            sandbox_dir,
-            drift_source_artifact=True,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
-            include_maven_repository=True,
-            include_maven_repository_reproducibility=True,
-            drift_maven_repository_reproducibility=True,
-            include_oci_image=True,
-            include_oci_image_reproducibility=True,
-            drift_oci_image_reproducibility_platform=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
-
+        fixture, verify_completed = self._materialize_cached_mixed_failure_family(sandbox_dir)
         self.assertEqual(1, verify_completed.returncode)
-        inspect_completed = run_cli(
-            [
-                "inspect-repro",
-                "--summary-only",
-                str(fixture.report_json_path),
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
+        inspect_completed = self._cached_inspect_repro_result(
+            "mixed-failures-all-kinds",
+            build_family=lambda cache_dir: self._build_cached_verification_family(
+                cache_dir,
+                build_fixture=lambda family_dir: self._prepare_verification_fixture(
+                    family_dir,
+                    drift_source_artifact=True,
+                    secondary_kind="generic-file",
+                    include_generic_file_reproducibility=True,
+                    drift_generic_file_reproducibility=True,
+                    include_maven_repository=True,
+                    include_maven_repository_reproducibility=True,
+                    drift_maven_repository_reproducibility=True,
+                    include_oci_image=True,
+                    include_oci_image_reproducibility=True,
+                    drift_oci_image_reproducibility_platform=True,
+                ),
+                verify_command=lambda cached_fixture: self._verify_rc_command(
+                    cached_fixture,
+                    mode="full",
+                    inspection_bundle=True,
+                ),
+            ),
+            inspect_args=("--summary-only",),
         )
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
@@ -2963,42 +3349,11 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_generic_file_fixture(
-            sandbox_dir,
-            include_reproducibility=True,
-            drift_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
-
+        fixture, verify_completed = self._materialize_cached_generic_file_drift_family(sandbox_dir)
         self.assertEqual(1, verify_completed.returncode)
-        inspect_completed = run_cli(
-            [
-                "inspect-repro",
-                "--artifact-id",
-                "does-not-exist",
-                str(fixture.report_json_path),
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
+        inspect_completed = self._cached_generic_file_drift_inspect_result(
+            "--artifact-id",
+            "does-not-exist",
         )
 
         self.assertEqual(1, inspect_completed.returncode)
@@ -3013,32 +3368,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_generic_file_fixture(
-            sandbox_dir,
-            include_reproducibility=True,
-            drift_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
-
+        fixture, verify_completed = self._materialize_cached_generic_file_drift_family(sandbox_dir)
         self.assertEqual(1, verify_completed.returncode)
         valid_report_text = fixture.report_json_path.read_text(encoding="utf-8")
         fixture.report_json_path.write_text("{\n", encoding="utf-8")
@@ -3081,31 +3411,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        source_fixture = self._prepare_verification_fixture(
-            sandbox_dir,
-            drift_source_artifact=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(source_fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(source_fixture.work_dir),
-                "--report-json",
-                str(source_fixture.report_json_path),
-                "--inspection-bundle",
-                str(source_fixture.inspection_bundle_path),
-                source_fixture.manifest_url,
-                source_fixture.keys_url,
-            ],
-            cwd=source_fixture.origin_dir,
-            env=self._fixture_cli_env(source_fixture),
-        )
-
+        source_fixture, verify_completed = self._materialize_cached_source_drift_family(sandbox_dir)
         self.assertEqual(1, verify_completed.returncode)
         source_metadata_path = self._bundle_artifact_metadata_path(
             source_fixture.inspection_bundle_path,
@@ -3129,33 +3435,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
 
         secondary_sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, secondary_sandbox_dir)
-        secondary_fixture = self._prepare_verification_fixture(
-            secondary_sandbox_dir,
-            secondary_kind="generic-file",
-            include_generic_file_reproducibility=True,
-            drift_generic_file_reproducibility=True,
+        secondary_fixture, verify_completed = self._materialize_cached_generic_file_drift_family(
+            secondary_sandbox_dir
         )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(secondary_fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(secondary_fixture.work_dir),
-                "--report-json",
-                str(secondary_fixture.report_json_path),
-                "--inspection-bundle",
-                str(secondary_fixture.inspection_bundle_path),
-                secondary_fixture.manifest_url,
-                secondary_fixture.keys_url,
-            ],
-            cwd=secondary_fixture.origin_dir,
-            env=self._fixture_cli_env(secondary_fixture),
-        )
-
         self.assertEqual(1, verify_completed.returncode)
         secondary_metadata_path = self._bundle_artifact_metadata_path(
             secondary_fixture.inspection_bundle_path,
@@ -3183,42 +3465,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_generic_file_fixture(
-            sandbox_dir,
-            include_reproducibility=True,
-            drift_reproducibility=True,
-            archive_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
-
+        fixture, verify_completed = self._materialize_cached_generic_file_archive_drift_family(sandbox_dir)
         self.assertEqual(1, verify_completed.returncode)
-        inspect_completed = run_cli(
-            [
-                "inspect-repro",
-                str(fixture.report_json_path),
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
+        inspect_completed = self._cached_generic_file_archive_drift_inspect_result()
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         self.assertIn("Shallow archive comparison", inspect_completed.stderr)
@@ -3300,30 +3549,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
-            sandbox_dir,
-            drift_source_artifact=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--progress",
-                "on",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
+        fixture, verify_completed = self._materialize_cached_source_drift_family(sandbox_dir)
 
         self.assertEqual(1, verify_completed.returncode)
         report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
@@ -3333,14 +3559,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             {evidence["label"] for evidence in source_reproducibility["evidence"]},
         )
 
-        inspect_completed = run_cli(
-            [
-                "inspect-repro",
-                str(fixture.report_json_path),
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
+        inspect_completed = self._cached_source_drift_inspect_result()
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         self.assertIn("Failure kinds: source-artifact=1", inspect_completed.stderr)
@@ -3381,30 +3600,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_verification_fixture(
-            sandbox_dir,
-            drift_source_artifact=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--progress",
-                "on",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
+        fixture, verify_completed = self._materialize_cached_source_drift_family(sandbox_dir)
 
         self.assertEqual(1, verify_completed.returncode)
         report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
@@ -3433,33 +3629,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_generic_file_fixture(
-            sandbox_dir,
-            include_reproducibility=True,
-            drift_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--progress",
-                "on",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
+        fixture, verify_completed = self._materialize_cached_generic_file_drift_family(sandbox_dir)
 
         self.assertEqual(1, verify_completed.returncode)
         report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
@@ -3486,31 +3656,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_generic_file_fixture(
-            sandbox_dir,
-            include_reproducibility=True,
-            drift_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
+        fixture, verify_completed = self._materialize_cached_generic_file_drift_family(sandbox_dir)
 
         self.assertEqual(1, verify_completed.returncode)
         report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
@@ -3537,31 +3683,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_generic_file_fixture(
-            sandbox_dir,
-            include_reproducibility=True,
-            drift_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
+        fixture, verify_completed = self._materialize_cached_generic_file_drift_family(sandbox_dir)
 
         self.assertEqual(1, verify_completed.returncode)
         report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
@@ -3611,33 +3733,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_generic_file_fixture(
-            sandbox_dir,
-            include_reproducibility=True,
-            drift_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--progress",
-                "on",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
+        fixture, verify_completed = self._materialize_cached_generic_file_drift_family(sandbox_dir)
 
         self.assertEqual(1, verify_completed.returncode)
         report_payload = json.loads(fixture.report_json_path.read_text(encoding="utf-8"))
@@ -4502,43 +4598,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
     def test_inspect_repro_command_reports_saved_python_distribution_drift(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
-
-        fixture = self._prepare_python_distribution_fixture(
-            sandbox_dir,
-            include_reproducibility=True,
-            drift_reproducibility=True,
-            archive_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
-
+        fixture, verify_completed = self._materialize_cached_python_distribution_drift_family(sandbox_dir)
         self.assertEqual(1, verify_completed.returncode)
-        inspect_completed = run_cli(
-            [
-                "inspect-repro",
-                str(fixture.report_json_path),
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
+        inspect_completed = self._cached_python_distribution_drift_inspect_result()
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         self.assertIn("Artifact 1/1: pypi-wheel", inspect_completed.stderr)
@@ -4706,43 +4768,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
     def test_inspect_repro_command_reports_saved_npm_package_drift(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
-
-        fixture = self._prepare_npm_package_fixture(
-            sandbox_dir,
-            include_reproducibility=True,
-            drift_reproducibility=True,
-            archive_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
-
+        fixture, verify_completed = self._materialize_cached_npm_package_drift_family(sandbox_dir)
         self.assertEqual(1, verify_completed.returncode)
-        inspect_completed = run_cli(
-            [
-                "inspect-repro",
-                str(fixture.report_json_path),
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
+        inspect_completed = self._cached_npm_package_drift_inspect_result()
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         self.assertIn("Artifact 1/1: npm-package-main", inspect_completed.stderr)
@@ -4970,41 +4998,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
 
-        fixture = self._prepare_maven_repository_fixture(
-            sandbox_dir,
-            include_reproducibility=True,
-            drift_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
-
+        fixture, verify_completed = self._materialize_cached_maven_repository_drift_family(sandbox_dir)
         self.assertEqual(1, verify_completed.returncode)
-        inspect_completed = run_cli(
-            [
-                "inspect-repro",
-                str(fixture.report_json_path),
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
+        inspect_completed = self._cached_maven_repository_drift_inspect_result()
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         self.assertIn("Artifact 1/1: maven-staging-main", inspect_completed.stderr)
@@ -5242,42 +5238,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
     def test_inspect_repro_command_reports_saved_oci_image_drift(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
-
-        fixture = self._prepare_oci_image_fixture(
-            sandbox_dir,
-            include_reproducibility=True,
-            drift_reproducibility=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
-
+        fixture, verify_completed = self._materialize_cached_oci_image_drift_family(sandbox_dir)
         self.assertEqual(1, verify_completed.returncode)
-        inspect_completed = run_cli(
-            [
-                "inspect-repro",
-                str(fixture.report_json_path),
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
+        inspect_completed = self._cached_oci_image_drift_inspect_result()
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         self.assertIn("Artifact 1/1: ghcr-main-image", inspect_completed.stderr)
@@ -5290,42 +5253,9 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
     def test_inspect_repro_command_reports_saved_oci_image_platform_drift(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
-
-        fixture = self._prepare_oci_image_fixture(
-            sandbox_dir,
-            include_reproducibility=True,
-            drift_reproducibility_platform=True,
-        )
-        verify_completed = run_cli(
-            [
-                "verify-rc",
-                "--component-config",
-                str(fixture.config_path),
-                "--allow-non-production-release-targets",
-                "--mode",
-                "full",
-                "--work-dir",
-                str(fixture.work_dir),
-                "--report-json",
-                str(fixture.report_json_path),
-                "--inspection-bundle",
-                str(fixture.inspection_bundle_path),
-                fixture.manifest_url,
-                fixture.keys_url,
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
-
+        fixture, verify_completed = self._materialize_cached_oci_image_platform_drift_family(sandbox_dir)
         self.assertEqual(1, verify_completed.returncode)
-        inspect_completed = run_cli(
-            [
-                "inspect-repro",
-                str(fixture.report_json_path),
-            ],
-            cwd=fixture.origin_dir,
-            env=self._fixture_cli_env(fixture),
-        )
+        inspect_completed = self._cached_oci_image_platform_drift_inspect_result()
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         self.assertIn("Platform digests differ from the signed manifest", inspect_completed.stderr)
