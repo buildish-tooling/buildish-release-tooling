@@ -18,14 +18,22 @@ from __future__ import annotations
 
 import json
 
+from pydantic import Field
+
 from apache_buildish_release_tooling.release.external_json import validate_json_object_model_text
 from apache_buildish_release_tooling.release.github_api_models import ExternalGithubReadModel
 from apache_buildish_release_tooling.release.process import run_logged_command
 
 
 class _GitHubGitObjectRead(ExternalGithubReadModel):
-    sha: str | None = None
-    ref: str | None = None
+    sha: str | None = Field(
+        default=None,
+        description="Git object SHA returned by the GitHub Git tags or refs API.",
+    )
+    ref: str | None = Field(
+        default=None,
+        description="Fully qualified Git ref name returned by the GitHub Git refs API.",
+    )
 
 
 def _json_object_output(stdout: str, *, source: str) -> dict[str, object]:

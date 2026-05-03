@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Shared Pydantic base types for owned Buildish contract models."""
+"""Shared Pydantic base type for owned Buildish contract models."""
 
 from apache_buildish_release_tooling.contracts.base import BuildishContractModel
 

@@ -48,19 +48,37 @@ class _ExternalOciReadModel(BaseModel):
 
 
 class _OciPlatformRead(_ExternalOciReadModel):
-    os: str | None = None
-    architecture: str | None = None
-    variant: str | None = None
+    os: str | None = Field(default=None, description="Operating-system name reported for one OCI manifest platform entry.")
+    architecture: str | None = Field(
+        default=None,
+        description="CPU architecture reported for one OCI manifest platform entry.",
+    )
+    variant: str | None = Field(
+        default=None,
+        description="Optional architecture variant reported for one OCI manifest platform entry.",
+    )
 
 
 class _OciManifestEntryRead(_ExternalOciReadModel):
-    digest: str | None = None
-    platform: _OciPlatformRead | None = None
+    digest: str | None = Field(
+        default=None,
+        description="Digest string reported for one OCI manifest entry returned by registry inspection.",
+    )
+    platform: _OciPlatformRead | None = Field(
+        default=None,
+        description="Platform descriptor reported for one OCI manifest entry returned by registry inspection.",
+    )
 
 
 class _OciManifestRead(_ExternalOciReadModel):
-    digest: str | None = None
-    manifests: list[_OciManifestEntryRead] = Field(default_factory=list)
+    digest: str | None = Field(
+        default=None,
+        description="Top-level digest reported for the inspected OCI image reference.",
+    )
+    manifests: list[_OciManifestEntryRead] = Field(
+        default_factory=list,
+        description="Nested platform-specific manifest entries reported for a multi-platform OCI image.",
+    )
 
 
 def _required_text(raw_value: object | None, *, option_name: str) -> str:

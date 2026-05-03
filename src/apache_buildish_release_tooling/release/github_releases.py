@@ -20,7 +20,7 @@ import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 
 from apache_buildish_release_tooling.release.external_json import validate_json_object_model
 from apache_buildish_release_tooling.release.github_api_models import ExternalGithubReadModel
@@ -28,19 +28,49 @@ from apache_buildish_release_tooling.release.process import run_logged_command
 
 
 class _GitHubReleaseAssetRead(ExternalGithubReadModel):
-    id: int | None = None
-    name: str | None = None
+    id: int | None = Field(
+        default=None,
+        description="GitHub Release asset identifier returned by the releases API.",
+    )
+    name: str | None = Field(
+        default=None,
+        description="GitHub Release asset filename returned by the releases API.",
+    )
 
 
 class _GitHubReleaseRead(ExternalGithubReadModel):
-    id: int | None = None
-    draft: bool | None = None
-    tag_name: str | None = None
-    name: str | None = None
-    body: str | None = None
-    html_url: str | None = None
-    url: str | None = None
-    assets: list[_GitHubReleaseAssetRead] | None = None
+    id: int | None = Field(
+        default=None,
+        description="GitHub Release identifier returned by the releases API.",
+    )
+    draft: bool | None = Field(
+        default=None,
+        description="Whether the GitHub Release is still a draft release rather than a published final release.",
+    )
+    tag_name: str | None = Field(
+        default=None,
+        description="Git tag name associated with the GitHub Release.",
+    )
+    name: str | None = Field(
+        default=None,
+        description="Rendered release title attached to the GitHub Release.",
+    )
+    body: str | None = Field(
+        default=None,
+        description="Rendered release notes body attached to the GitHub Release.",
+    )
+    html_url: str | None = Field(
+        default=None,
+        description="Browser-facing GitHub Release URL.",
+    )
+    url: str | None = Field(
+        default=None,
+        description="GitHub API URL for the release resource.",
+    )
+    assets: list[_GitHubReleaseAssetRead] | None = Field(
+        default=None,
+        description="GitHub Release asset entries attached to this release.",
+    )
 
 
 def _release_read_view(release: Mapping[str, object]) -> _GitHubReleaseRead | None:

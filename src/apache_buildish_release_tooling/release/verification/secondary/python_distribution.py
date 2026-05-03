@@ -62,13 +62,25 @@ class _ExternalSimpleIndexReadModel(BaseModel):
 
 
 class _SimpleIndexJsonFileRead(_ExternalSimpleIndexReadModel):
-    filename: str | None = None
-    url: str | None = None
-    hashes: dict[str, str] | None = None
+    filename: str | None = Field(
+        default=None,
+        description="Distribution filename advertised by the JSON simple-index response.",
+    )
+    url: str | None = Field(
+        default=None,
+        description="Distribution download URL advertised by the JSON simple-index response.",
+    )
+    hashes: dict[str, str] | None = Field(
+        default=None,
+        description="Hash values advertised for one Python distribution file in the JSON simple-index response.",
+    )
 
 
 class _SimpleIndexJsonRead(_ExternalSimpleIndexReadModel):
-    files: list[_SimpleIndexJsonFileRead] = Field(default_factory=list)
+    files: list[_SimpleIndexJsonFileRead] = Field(
+        default_factory=list,
+        description="Distribution-file entries advertised by the JSON simple-index response.",
+    )
 
 
 class _SimpleIndexHtmlParser(HTMLParser):

@@ -78,19 +78,40 @@ class _ExternalNpmRegistryReadModel(BaseModel):
 
 
 class _NpmRegistryDistRead(_ExternalNpmRegistryReadModel):
-    tarball: str | None = None
-    integrity: str | None = None
-    signatures: list[object] | None = None
+    tarball: str | None = Field(
+        default=None,
+        description="Registry tarball download URL for the requested npm package version.",
+    )
+    integrity: str | None = Field(
+        default=None,
+        description="Registry integrity string advertised for the requested npm package tarball.",
+    )
+    signatures: list[object] | None = Field(
+        default=None,
+        description="Registry signature objects advertised for the requested npm package tarball.",
+    )
 
 
 class _NpmRegistryVersionRead(_ExternalNpmRegistryReadModel):
-    name: str | None = None
-    version: str | None = None
-    dist: _NpmRegistryDistRead | None = None
+    name: str | None = Field(
+        default=None,
+        description="npm package name reported for one registry version document.",
+    )
+    version: str | None = Field(
+        default=None,
+        description="npm package version reported for one registry version document.",
+    )
+    dist: _NpmRegistryDistRead | None = Field(
+        default=None,
+        description="Registry `dist` block for the requested npm package version.",
+    )
 
 
 class _NpmRegistryMetadataRead(_ExternalNpmRegistryReadModel):
-    versions: dict[str, _NpmRegistryVersionRead] = Field(default_factory=dict)
+    versions: dict[str, _NpmRegistryVersionRead] = Field(
+        default_factory=dict,
+        description="Package versions indexed by version string in the npm registry metadata document.",
+    )
 
 
 def verify_npm_package(

@@ -19,7 +19,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from pathlib import Path
 
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 
 from apache_buildish_release_tooling.release.external_json import parse_json_object
 from apache_buildish_release_tooling.release.github_api_models import ExternalGithubReadModel
@@ -27,22 +27,43 @@ from apache_buildish_release_tooling.release.process import run_logged_command
 
 
 class _CheckRunRead(ExternalGithubReadModel):
-    name: str | None = None
-    status: str | None = None
-    conclusion: str | None = None
+    name: str | None = Field(
+        default=None,
+        description="GitHub check-run name associated with the reported CI result.",
+    )
+    status: str | None = Field(
+        default=None,
+        description="GitHub check-run status string, such as queued, in_progress, or completed.",
+    )
+    conclusion: str | None = Field(
+        default=None,
+        description="GitHub check-run conclusion string returned once the check run has completed.",
+    )
 
 
 class _StatusRead(ExternalGithubReadModel):
-    context: str | None = None
-    state: str | None = None
+    context: str | None = Field(
+        default=None,
+        description="Legacy GitHub status-context name associated with the reported state.",
+    )
+    state: str | None = Field(
+        default=None,
+        description="Legacy GitHub status state, such as success, failure, error, or pending.",
+    )
 
 
 class _CheckRunsPayloadRead(ExternalGithubReadModel):
-    check_runs: list[_CheckRunRead] | None = None
+    check_runs: list[_CheckRunRead] | None = Field(
+        default=None,
+        description="GitHub check-run entries returned for the requested commit.",
+    )
 
 
 class _StatusesPayloadRead(ExternalGithubReadModel):
-    statuses: list[_StatusRead] | None = None
+    statuses: list[_StatusRead] | None = Field(
+        default=None,
+        description="Legacy GitHub commit-status entries returned for the requested commit.",
+    )
 
 
 def _parsed_check_runs_payload(

@@ -23,7 +23,10 @@ from typing import Literal
 import yaml
 from pydantic import ConfigDict, Field
 
-from apache_buildish_release_tooling.contracts import BuildishContractModel
+from apache_buildish_release_tooling.docs.documentation import (
+    ConsumerOwnedAuthoredModel,
+    RuntimeDerivedModel,
+)
 from apache_buildish_release_tooling.harness.yaml_types import (
     YamlMapping,
     deep_merge_yaml_mappings,
@@ -34,55 +37,55 @@ SelfRepositoryCheckoutMode = Literal["when_repository_omitted", "disabled"]
 RepositoryOverrideCheckoutMode = Literal["always", "disabled"]
 
 
-class SelfRepositoryConfig(BuildishContractModel):
+class SelfRepositoryConfig(ConsumerOwnedAuthoredModel):
     """Committed harness settings for the workflow repository under test."""
 
     model_config = ConfigDict(extra="forbid")
 
-    repository_id: str
-    local_checkout_mode: SelfRepositoryCheckoutMode = "when_repository_omitted"
-    local_path: str | None = None
+    repository_id: str = Field(description="Logical repository identifier used by the harness configuration layer.")
+    local_checkout_mode: SelfRepositoryCheckoutMode = Field(default="when_repository_omitted", description="Policy describing whether the related repository binding should resolve to a local checkout path.")
+    local_path: str | None = Field(default=None, description="Resolved or configured local filesystem path associated with the related repository binding.")
 
 
-class RepositoryOverrideConfig(BuildishContractModel):
+class RepositoryOverrideConfig(ConsumerOwnedAuthoredModel):
     """Committed harness settings for one explicit repository override."""
 
     model_config = ConfigDict(extra="forbid")
 
-    local_checkout_mode: RepositoryOverrideCheckoutMode = "always"
-    local_path: str | None = None
+    local_checkout_mode: RepositoryOverrideCheckoutMode = Field(default="always", description="Policy describing whether the related repository binding should resolve to a local checkout path.")
+    local_path: str | None = Field(default=None, description="Resolved or configured local filesystem path associated with the related repository binding.")
 
 
-class ReleaseHarnessConfig(BuildishContractModel):
+class ReleaseHarnessConfig(ConsumerOwnedAuthoredModel):
     """Committed `release-harness.yaml` plus optional local overrides."""
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["1"] = "1"
-    self_repository: SelfRepositoryConfig
-    repository_overrides: dict[str, RepositoryOverrideConfig] = Field(default_factory=dict)
+    schema_version: Literal["1"] = Field(default="1", description="Schema version of the enclosing Buildish JSON or YAML contract.")
+    self_repository: SelfRepositoryConfig = Field(description="Resolved binding for the primary workflow repository under harness control.")
+    repository_overrides: dict[str, RepositoryOverrideConfig] = Field(description="Per-repository local override bindings resolved from the harness configuration.", default_factory=dict)
 
 
-class ResolvedRepositoryBindingJson(BuildishContractModel):
+class ResolvedRepositoryBindingJson(RuntimeDerivedModel):
     """Machine-readable JSON payload for one resolved harness repository binding."""
 
     model_config = ConfigDict(extra="forbid")
 
-    repository_id: str
-    local_checkout_mode: str
-    local_path: str
+    repository_id: str = Field(description="Logical repository identifier used by the harness configuration layer.")
+    local_checkout_mode: str = Field(description="Policy describing whether the related repository binding should resolve to a local checkout path.")
+    local_path: str = Field(description="Resolved or configured local filesystem path associated with the related repository binding.")
 
 
-class ResolvedReleaseHarnessConfigJson(BuildishContractModel):
+class ResolvedReleaseHarnessConfigJson(RuntimeDerivedModel):
     """Machine-readable JSON payload for one resolved harness config file."""
 
     model_config = ConfigDict(extra="forbid")
 
-    config_path: str
-    local_override_path: str
-    local_override_present: bool
-    self_repository: ResolvedRepositoryBindingJson
-    repository_overrides: dict[str, ResolvedRepositoryBindingJson] = Field(default_factory=dict)
+    config_path: str = Field(description="Filesystem path of the resolved configuration document.")
+    local_override_path: str = Field(description="Filesystem path of the optional local harness override file that was considered during config loading.")
+    local_override_present: bool = Field(description="Whether the optional local harness override file existed and was merged into the effective harness config.")
+    self_repository: ResolvedRepositoryBindingJson = Field(description="Resolved binding for the primary workflow repository under harness control.")
+    repository_overrides: dict[str, ResolvedRepositoryBindingJson] = Field(description="Per-repository local override bindings resolved from the harness configuration.", default_factory=dict)
 
 
 @dataclass(frozen=True)

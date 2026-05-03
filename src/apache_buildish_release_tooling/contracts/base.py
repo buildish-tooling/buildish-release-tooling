@@ -14,6 +14,10 @@
 
 """Shared conventions for Buildish-owned file and wire contracts."""
 
+from __future__ import annotations
+
+from typing import Any, ClassVar
+
 from pydantic import BaseModel, ConfigDict
 
 
@@ -21,3 +25,15 @@ class BuildishContractModel(BaseModel):
     """Base model for Buildish-owned persisted contracts."""
 
     model_config = ConfigDict(extra="forbid")
+    contract_documentation: ClassVar[object | None] = None
+
+    @classmethod
+    def model_json_schema(cls, *args: Any, **kwargs: Any) -> dict[str, Any]:
+        """Return the generated JSON Schema with Buildish documentation metadata injected."""
+
+        schema = super().model_json_schema(*args, **kwargs)
+        from apache_buildish_release_tooling.docs.documentation import (
+            apply_documentation_to_schema,
+        )
+
+        return apply_documentation_to_schema(cls, schema)

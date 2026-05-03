@@ -21,7 +21,9 @@ import subprocess
 import sys
 from pathlib import Path
 
-from apache_buildish_release_tooling.contracts import BuildishContractModel
+from pydantic import Field
+
+from apache_buildish_release_tooling.docs.documentation import RuntimeDerivedModel
 from apache_buildish_release_tooling.harness.models import (
     HarnessBuiltinGhTagObject,
     HarnessShimState,
@@ -29,11 +31,11 @@ from apache_buildish_release_tooling.harness.models import (
 )
 
 
-class HarnessBuiltinGhRefMutationPayload(BuildishContractModel):
+class HarnessBuiltinGhRefMutationPayload(RuntimeDerivedModel):
     """Synthetic GitHub tag-ref mutation payload consumed by the harness shim."""
 
-    ref: str | None = None
-    sha: str | None = None
+    ref: str | None = Field(default=None, description="Git ref name observed or created during the related operation.")
+    sha: str | None = Field(default=None, description="Git object SHA associated with one synthetic harness GitHub ref mutation payload.")
 
 
 def handle_builtin_tool(

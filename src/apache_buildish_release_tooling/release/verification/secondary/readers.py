@@ -18,8 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from apache_buildish_release_tooling.release.contracts import (
     AnySecondaryArtifact,
@@ -36,26 +35,59 @@ class _ExternalPayloadReadModel(BaseModel):
 
 
 class _RawVoteMaterialsRead(_ExternalPayloadReadModel):
-    secondary_artifacts: list[AnySecondaryArtifact | SecondaryArtifactEnvelopeRead] | None = None
+    secondary_artifacts: list[AnySecondaryArtifact | SecondaryArtifactEnvelopeRead] | None = Field(
+        default=None,
+        description="Secondary-artifact entries extracted from the raw vote-materials block before strict validation.",
+    )
 
 
 class _RawManifestRead(_ExternalPayloadReadModel):
-    vote_materials: _RawVoteMaterialsRead | None = None
+    vote_materials: _RawVoteMaterialsRead | None = Field(
+        default=None,
+        description="Raw vote-materials block extracted from one RC vote manifest payload.",
+    )
 
 
 class _RawInventoryEntryRead(_ExternalPayloadReadModel):
-    path: str | None = None
-    size_bytes: int | None = None
-    sha512: str | None = None
+    path: str | None = Field(
+        default=None,
+        description="Repository-relative path recorded in one raw Maven inventory entry.",
+    )
+    size_bytes: int | None = Field(
+        default=None,
+        description="Declared byte size recorded in one raw Maven inventory entry.",
+    )
+    sha512: str | None = Field(
+        default=None,
+        description="Declared SHA-512 digest recorded in one raw Maven inventory entry.",
+    )
 
 
 class _RawInventoryRead(_ExternalPayloadReadModel):
-    schema_version: str | None = None
-    inventory_type: str | None = None
-    artifact_id: str | None = None
-    staging_repository_id: str | None = None
-    base_url: str | None = None
-    entries: list[_RawInventoryEntryRead] | None = None
+    schema_version: str | None = Field(
+        default=None,
+        description="Schema version string declared by the raw Maven inventory payload.",
+    )
+    inventory_type: str | None = Field(
+        default=None,
+        description="Inventory type discriminator declared by the raw Maven inventory payload.",
+    )
+    artifact_id: str | None = Field(
+        default=None,
+        description="Artifact identifier declared by the raw Maven inventory payload.",
+    )
+    staging_repository_id: str | None = Field(
+        default=None,
+        description="Staging repository identifier declared by the raw Maven inventory payload.",
+    )
+    base_url: str | None = Field(
+        default=None,
+        description="Base repository URL declared by the raw Maven inventory payload.",
+    )
+    entries: list[_RawInventoryEntryRead] | None = Field(
+        default=None,
+        description="Raw Maven inventory entries extracted before strict per-entry validation.",
+    )
 
 
 @dataclass(frozen=True)
