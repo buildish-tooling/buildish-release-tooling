@@ -71,7 +71,7 @@ Common runtime context passed into command handlers.
 
 - category: `runtime`
 - ownership: `runtime-derived`
-- schema file: [`buildish-release-tooling-command-context.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-command-context.schema.json)
+- schema file: [`command-context.schema.json`](/components/buildish-release-tooling/schemas/command-context.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -88,7 +88,7 @@ Validated component policy and release-target configuration.
 
 - category: `authored`
 - ownership: `component-owned`
-- schema file: [`buildish-release-tooling-component-config.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-component-config.schema.json)
+- schema file: [`component-config.schema.json`](/components/buildish-release-tooling/schemas/component-config.schema.json)
 - audience: `supported`
 - stability: `stable`
 - file contract: `release-config.yaml`
@@ -121,7 +121,7 @@ Resolved source and artifact state for an RC workflow run.
 
 - category: `runtime`
 - ownership: `runtime-derived`
-- schema file: [`buildish-release-tooling-prepare-rc-state.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-prepare-rc-state.schema.json)
+- schema file: [`prepare-rc-state.schema.json`](/components/buildish-release-tooling/schemas/prepare-rc-state.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -146,7 +146,7 @@ Resolved final-release state for a release workflow run.
 
 - category: `runtime`
 - ownership: `runtime-derived`
-- schema file: [`buildish-release-tooling-release-version-state.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-release-version-state.schema.json)
+- schema file: [`release-version-state.schema.json`](/components/buildish-release-tooling/schemas/release-version-state.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -282,7 +282,7 @@ Validated local override file for non-canonical reproducibility runs.
 
 - category: `authored`
 - ownership: `consumer-owned`
-- schema file: [`buildish-release-tooling-verify-rc-override-file-config.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-verify-rc-override-file-config.schema.json)
+- schema file: [`verify-rc-override-file-config.schema.json`](/components/buildish-release-tooling/schemas/verify-rc-override-file-config.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)

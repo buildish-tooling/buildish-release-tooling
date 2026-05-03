@@ -241,7 +241,7 @@ Tolerant ASF KEYS trust-root subset accepted by verify-rc readers.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-asf-keys-trust-root-read.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-asf-keys-trust-root-read.schema.json)
+- schema file: [`asf-keys-trust-root-read.schema.json`](/components/buildish-release-tooling/schemas/asf-keys-trust-root-read.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -274,7 +274,7 @@ Tolerant authoritative-manifest reference accepted by verify-rc readers.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-authoritative-manifest-reference-read.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-authoritative-manifest-reference-read.schema.json)
+- schema file: [`authoritative-manifest-reference-read.schema.json`](/components/buildish-release-tooling/schemas/authoritative-manifest-reference-read.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -323,7 +323,7 @@ Tolerant draft-release pointer accepted by verify-rc readers.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-draft-github-release-read.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-draft-github-release-read.schema.json)
+- schema file: [`draft-github-release-read.schema.json`](/components/buildish-release-tooling/schemas/draft-github-release-read.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -341,7 +341,7 @@ Retained comparison metadata for one file-like reproducibility failure or drift.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-file-like-reproducibility-metadata.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-file-like-reproducibility-metadata.schema.json)
+- schema file: [`file-like-reproducibility-metadata.schema.json`](/components/buildish-release-tooling/schemas/file-like-reproducibility-metadata.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -469,7 +469,7 @@ Machine-readable inspect-repro output for automation and post-processing.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-inspect-repro-report-v1.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-inspect-repro-report-v1.schema.json)
+- schema file: [`inspect-repro-report-v1.schema.json`](/components/buildish-release-tooling/schemas/inspect-repro-report-v1.schema.json)
 - audience: `supported`
 - stability: `stable`
 - file contract: (inner type)
@@ -559,7 +559,7 @@ Top-level contract manifest for one curated verify-rc inspection bundle.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-inspection-bundle-manifest-v1.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-inspection-bundle-manifest-v1.schema.json)
+- schema file: [`inspection-bundle-manifest-v1.schema.json`](/components/buildish-release-tooling/schemas/inspection-bundle-manifest-v1.schema.json)
 - audience: `supported`
 - stability: `stable`
 - file contract: `inspection-bundle.json`
@@ -769,7 +769,7 @@ A signed Maven repository inventory attachment.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-maven-repository-inventory-v1.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-maven-repository-inventory-v1.schema.json)
+- schema file: [`maven-repository-inventory-v1.schema.json`](/components/buildish-release-tooling/schemas/maven-repository-inventory-v1.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -790,7 +790,7 @@ One comparable staged Maven repository path result retained for inspection.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-maven-repository-path-result-report.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-maven-repository-path-result-report.schema.json)
+- schema file: [`maven-repository-path-result-report.schema.json`](/components/buildish-release-tooling/schemas/maven-repository-path-result-report.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -813,7 +813,7 @@ One regex-based Maven repository path rule retained for inspection.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-maven-repository-path-rule-report.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-maven-repository-path-rule-report.schema.json)
+- schema file: [`maven-repository-path-rule-report.schema.json`](/components/buildish-release-tooling/schemas/maven-repository-path-rule-report.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -830,7 +830,7 @@ Retained comparison metadata for one Maven repository reproducibility run.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-maven-repository-reproducibility-metadata.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-maven-repository-reproducibility-metadata.schema.json)
+- schema file: [`maven-repository-reproducibility-metadata.schema.json`](/components/buildish-release-tooling/schemas/maven-repository-reproducibility-metadata.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -1001,7 +1001,7 @@ Retained comparison metadata for one OCI image reproducibility run.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-oci-image-reproducibility-metadata.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-oci-image-reproducibility-metadata.schema.json)
+- schema file: [`oci-image-reproducibility-metadata.schema.json`](/components/buildish-release-tooling/schemas/oci-image-reproducibility-metadata.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -1187,7 +1187,7 @@ Strict authoritative RC vote manifest emitted by buildish-release-tooling.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-rc-vote-manifest-v1.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-rc-vote-manifest-v1.schema.json)
+- schema file: [`rc-vote-manifest-v1.schema.json`](/components/buildish-release-tooling/schemas/rc-vote-manifest-v1.schema.json)
 - audience: `supported`
 - stability: `stable`
 - file contract: `rc-vote-manifest.json`
@@ -1220,7 +1220,7 @@ One rebuilt output file described inside an inspection-bundle metadata document.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-rebuilt-output-snapshot.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-rebuilt-output-snapshot.schema.json)
+- schema file: [`rebuilt-output-snapshot.schema.json`](/components/buildish-release-tooling/schemas/rebuilt-output-snapshot.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -1271,7 +1271,7 @@ One retained file snapshot described inside an inspection-bundle metadata docume
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-retained-artifact-snapshot.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-retained-artifact-snapshot.schema.json)
+- schema file: [`retained-artifact-snapshot.schema.json`](/components/buildish-release-tooling/schemas/retained-artifact-snapshot.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -1289,7 +1289,7 @@ Common fields shared across supported secondary artifact kinds.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-secondary-artifact-base.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-secondary-artifact-base.schema.json)
+- schema file: [`secondary-artifact-base.schema.json`](/components/buildish-release-tooling/schemas/secondary-artifact-base.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -1311,7 +1311,7 @@ A reusable secondary-artifact manifest fragment.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-secondary-artifact-manifest-v1.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-secondary-artifact-manifest-v1.schema.json)
+- schema file: [`secondary-artifact-manifest-v1.schema.json`](/components/buildish-release-tooling/schemas/secondary-artifact-manifest-v1.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: `artifact-manifest.json`
@@ -1476,7 +1476,7 @@ Retained comparison metadata for source-artifact reproducibility inspection.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-source-artifact-reproducibility-metadata.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-source-artifact-reproducibility-metadata.schema.json)
+- schema file: [`source-artifact-reproducibility-metadata.schema.json`](/components/buildish-release-tooling/schemas/source-artifact-reproducibility-metadata.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -1570,7 +1570,7 @@ Machine-readable Phase 1a RC verification report.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-verify-rc-report-v1.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-verify-rc-report-v1.schema.json)
+- schema file: [`verify-rc-report-v1.schema.json`](/components/buildish-release-tooling/schemas/verify-rc-report-v1.schema.json)
 - audience: `supported`
 - stability: `stable`
 - file contract: (inner type)
@@ -1603,7 +1603,7 @@ Tolerant vote-materials block used by verify-rc readers.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-vote-materials-read.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-vote-materials-read.schema.json)
+- schema file: [`vote-materials-read.schema.json`](/components/buildish-release-tooling/schemas/vote-materials-read.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -1620,7 +1620,7 @@ Strict vote-materials block for authored and emitted manifests.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-vote-materials-strict.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-vote-materials-strict.schema.json)
+- schema file: [`vote-materials-strict.schema.json`](/components/buildish-release-tooling/schemas/vote-materials-strict.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)

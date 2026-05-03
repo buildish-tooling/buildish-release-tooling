@@ -34,7 +34,7 @@ Synthetic GitHub tag-ref mutation payload consumed by the harness shim.
 
 - category: `runtime`
 - ownership: `runtime-derived`
-- schema file: [`buildish-release-tooling-harness-builtin-gh-ref-mutation-payload.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-harness-builtin-gh-ref-mutation-payload.schema.json)
+- schema file: [`harness-builtin-gh-ref-mutation-payload.schema.json`](/components/buildish-release-tooling/schemas/harness-builtin-gh-ref-mutation-payload.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)

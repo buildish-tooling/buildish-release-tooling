@@ -1,0 +1,53 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/create-release-branch-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after resolving or creating a release branch. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "create-release-branch",
+      "default": "create-release-branch",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "release_branch": {
+      "description": "Git branch name that Buildish resolved as the authoritative release branch.",
+      "minLength": 1,
+      "title": "Release Branch",
+      "type": "string"
+    },
+    "release_line": {
+      "description": "Maintenance-line identifier used to group related versions, branches, and moving tags.",
+      "minLength": 1,
+      "title": "Release Line",
+      "type": "string"
+    },
+    "source_ref": {
+      "description": "Source ref that Buildish used as the starting point for the related release-branch or materialization action.",
+      "minLength": 1,
+      "title": "Source Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "release_line",
+    "release_branch",
+    "source_ref"
+  ],
+  "title": "Buildish Release Tooling CreateReleaseBranchManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `create-release-branch`."
+  }
+}

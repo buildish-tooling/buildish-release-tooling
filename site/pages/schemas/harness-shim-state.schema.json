@@ -1,0 +1,312 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "FileWriteAction": {
+      "additionalProperties": false,
+      "description": "A file write that a mocked tool invocation should perform.",
+      "properties": {
+        "content": {
+          "description": "Literal file content that the harness should write or that the mocked tool should emit.",
+          "title": "Content",
+          "type": "string"
+        },
+        "executable": {
+          "default": false,
+          "description": "Whether the written file should have the executable bit set in the harness workspace.",
+          "title": "Executable",
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Filesystem path, relative artifact path, or retained evidence path associated with the related record.",
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "content"
+      ],
+      "title": "FileWriteAction",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    },
+    "HarnessBuiltinGhTagObject": {
+      "additionalProperties": true,
+      "description": "Synthetic GitHub tag-object payload retained by the harness shim.",
+      "properties": {
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Human-readable message body associated with the related verification failure, harness tag object, or fixture definition.",
+          "title": "Message"
+        },
+        "object": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Git object SHA that the synthetic annotated-tag payload ultimately points at.",
+          "title": "Object"
+        },
+        "tag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Tag name associated with the related release, workflow fixture, or synthetic GitHub tag-object payload.",
+          "title": "Tag"
+        }
+      },
+      "title": "HarnessBuiltinGhTagObject",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "InvocationMatch": {
+      "additionalProperties": false,
+      "description": "A matcher for a single intercepted tool invocation.",
+      "properties": {
+        "argv": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Exact argv list that the harness should match or that it recorded for the related command invocation.",
+          "title": "Argv"
+        },
+        "argv_contains": {
+          "description": "Command-line fragments that must appear somewhere in the intercepted argv list before the harness behavior matches.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Argv Contains",
+          "type": "array"
+        },
+        "argv_prefix": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Command-line prefix that the intercepted argv list must start with before the harness behavior matches.",
+          "title": "Argv Prefix"
+        },
+        "cwd": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Working directory that the harness should use or that it observed for the related command invocation.",
+          "title": "Cwd"
+        },
+        "env_contains": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Subset of required environment entries that a harness tool matcher must observe.",
+          "title": "Env Contains",
+          "type": "object"
+        }
+      },
+      "title": "InvocationMatch",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    },
+    "ToolBehavior": {
+      "additionalProperties": false,
+      "description": "A scripted behavior for an intercepted tool invocation.",
+      "properties": {
+        "match": {
+          "$ref": "#/$defs/InvocationMatch",
+          "description": "Tool-invocation matcher that decides when the related scripted harness behavior should be applied."
+        },
+        "result": {
+          "$ref": "#/$defs/ToolBehaviorResult",
+          "description": "Scripted harness tool result that should be returned when the matching invocation is observed."
+        },
+        "times": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum number of times that the harness should apply the scripted tool behavior before it stops matching.",
+          "title": "Times"
+        }
+      },
+      "title": "ToolBehavior",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    },
+    "ToolBehaviorResult": {
+      "additionalProperties": false,
+      "description": "The mocked result of an intercepted tool invocation.",
+      "properties": {
+        "append_stdout_to_summary": {
+          "default": false,
+          "description": "Whether the harness should append mocked stdout to the rendered step or job summary output.",
+          "title": "Append Stdout To Summary",
+          "type": "boolean"
+        },
+        "delegate_to_real_tool": {
+          "default": false,
+          "description": "Whether the harness should fall through to the real external tool instead of returning the mocked result directly.",
+          "title": "Delegate To Real Tool",
+          "type": "boolean"
+        },
+        "exit_code": {
+          "default": 0,
+          "description": "Process exit code that the harness recorded or should synthesize for the related tool invocation.",
+          "title": "Exit Code",
+          "type": "integer"
+        },
+        "stderr": {
+          "default": "",
+          "description": "Captured stderr that the harness recorded or should synthesize for the related tool invocation.",
+          "title": "Stderr",
+          "type": "string"
+        },
+        "stdout": {
+          "default": "",
+          "description": "Captured stdout that the harness recorded or should synthesize for the related tool invocation.",
+          "title": "Stdout",
+          "type": "string"
+        },
+        "summary": {
+          "default": "",
+          "description": "Human-readable short summary for the related result or mocked tool behavior.",
+          "title": "Summary",
+          "type": "string"
+        },
+        "writes": {
+          "description": "Files that the mocked tool behavior should write when the invocation matches.",
+          "items": {
+            "$ref": "#/$defs/FileWriteAction"
+          },
+          "title": "Writes",
+          "type": "array"
+        }
+      },
+      "title": "ToolBehaviorResult",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    }
+  },
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/harness-shim-state.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Persisted subprocess-facing harness shim state.",
+  "properties": {
+    "counts": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "description": "Per-tool or per-key invocation counts retained in harness runtime state.",
+      "title": "Counts",
+      "type": "object"
+    },
+    "env_capture": {
+      "description": "Environment variable names that the harness shim should retain in trace output.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Env Capture",
+      "type": "array"
+    },
+    "gh_tag_objects": {
+      "additionalProperties": {
+        "$ref": "#/$defs/HarnessBuiltinGhTagObject"
+      },
+      "description": "Synthetic GitHub annotated-tag payloads persisted in harness shim state for later ref mutation handling.",
+      "title": "Gh Tag Objects",
+      "type": "object"
+    },
+    "tool_behaviors": {
+      "additionalProperties": {
+        "items": {
+          "$ref": "#/$defs/ToolBehavior"
+        },
+        "type": "array"
+      },
+      "description": "Scripted intercepted-tool behaviors keyed by tool name in the related harness scenario or runtime state.",
+      "title": "Tool Behaviors",
+      "type": "object"
+    },
+    "trace_file": {
+      "description": "Filesystem path where the harness shim appends structured command trace entries.",
+      "title": "Trace File",
+      "type": "string"
+    },
+    "workspace_root": {
+      "description": "Filesystem path of the harness workspace root used by the persisted shim state.",
+      "title": "Workspace Root",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_root",
+    "trace_file"
+  ],
+  "title": "Buildish Release Tooling HarnessShimState",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "runtime",
+    "ownership": "runtime-derived",
+    "summary": "Persisted subprocess-facing harness shim state used by intercepted tool wrappers."
+  }
+}

@@ -1,0 +1,129 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "InspectionBundleArtifactEntry": {
+      "additionalProperties": false,
+      "description": "One artifact-specific metadata document retained inside an inspection bundle.",
+      "properties": {
+        "artifact_id": {
+          "description": "Stable identifier for one source, secondary, or emitted artifact within Buildish release tooling.",
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Declared artifact or report kind discriminator.",
+          "minLength": 1,
+          "title": "Kind",
+          "type": "string"
+        },
+        "metadata_path": {
+          "description": "Bundle-relative path to the metadata file for one retained inspection target.",
+          "minLength": 1,
+          "title": "Metadata Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "kind",
+        "metadata_path"
+      ],
+      "title": "InspectionBundleArtifactEntry",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    }
+  },
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/inspection-bundle-manifest-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Top-level contract manifest for one curated verify-rc inspection bundle.",
+  "properties": {
+    "artifacts": {
+      "description": "Artifact entries retained in the related inspection bundle manifest.",
+      "items": {
+        "$ref": "#/$defs/InspectionBundleArtifactEntry"
+      },
+      "title": "Artifacts",
+      "type": "array"
+    },
+    "bundle_type": {
+      "const": "verify-rc-inspection",
+      "default": "verify-rc-inspection",
+      "description": "Stable inspection-bundle manifest discriminator.",
+      "title": "Bundle Type",
+      "type": "string"
+    },
+    "component_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Stable component identifier used across Buildish manifests, reports, and release-state records.",
+      "title": "Component Id"
+    },
+    "rc_tag": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Exact RC Git tag, including the leading `v` prefix and `-rcN` suffix.",
+      "title": "Rc Tag"
+    },
+    "report_schema_version": {
+      "const": "1",
+      "default": "1",
+      "description": "Supported schema version of the related Buildish report payload.",
+      "title": "Report Schema Version",
+      "type": "string"
+    },
+    "report_type": {
+      "const": "verify-rc",
+      "default": "verify-rc",
+      "description": "Stable report discriminator for one Buildish JSON report contract.",
+      "title": "Report Type",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "description": "Schema version of the enclosing Buildish JSON or YAML contract.",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "version": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Release version string without a leading `v` prefix.",
+      "title": "Version"
+    }
+  },
+  "title": "Buildish Release Tooling InspectionBundleManifestV1",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "filePath": "inspection-bundle.json",
+    "ownership": "tooling-derived",
+    "summary": "Top-level manifest for a retained verify-rc inspection bundle."
+  }
+}

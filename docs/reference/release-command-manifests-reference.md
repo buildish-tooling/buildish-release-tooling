@@ -55,7 +55,7 @@ Action manifest emitted after uploading primary and derived assets to a GitHub r
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-attach-github-release-assets-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-attach-github-release-assets-manifest.schema.json)
+- schema file: [`attach-github-release-assets-manifest.schema.json`](/components/buildish-release-tooling/schemas/attach-github-release-assets-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -84,7 +84,7 @@ Action manifest emitted after building and staging the signed source RC bundle.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-build-source-rc-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-build-source-rc-manifest.schema.json)
+- schema file: [`build-source-rc-manifest.schema.json`](/components/buildish-release-tooling/schemas/build-source-rc-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -111,7 +111,7 @@ Action manifest emitted after old or conflicting RC staging directories are remo
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-cleanup-dev-svn-rcs-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-cleanup-dev-svn-rcs-manifest.schema.json)
+- schema file: [`cleanup-dev-svn-rcs-manifest.schema.json`](/components/buildish-release-tooling/schemas/cleanup-dev-svn-rcs-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -131,7 +131,7 @@ Common top-level shape for command action manifests.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-command-action-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-command-action-manifest.schema.json)
+- schema file: [`command-action-manifest.schema.json`](/components/buildish-release-tooling/schemas/command-action-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -148,7 +148,7 @@ Action manifest emitted after creating or validating the final immutable release
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-create-final-tag-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-create-final-tag-manifest.schema.json)
+- schema file: [`create-final-tag-manifest.schema.json`](/components/buildish-release-tooling/schemas/create-final-tag-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -171,7 +171,7 @@ Action manifest emitted after tagging one detached RC materialization commit.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-create-rc-materialization-tag-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-create-rc-materialization-tag-manifest.schema.json)
+- schema file: [`create-rc-materialization-tag-manifest.schema.json`](/components/buildish-release-tooling/schemas/create-rc-materialization-tag-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -197,7 +197,7 @@ Action manifest emitted after resolving or creating a release branch.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-create-release-branch-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-create-release-branch-manifest.schema.json)
+- schema file: [`create-release-branch-manifest.schema.json`](/components/buildish-release-tooling/schemas/create-release-branch-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -217,7 +217,7 @@ Action manifest emitted after creating one local source release artifact.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-create-source-artifact-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-create-source-artifact-manifest.schema.json)
+- schema file: [`create-source-artifact-manifest.schema.json`](/components/buildish-release-tooling/schemas/create-source-artifact-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -240,7 +240,7 @@ Action manifest emitted after finalizing a selected GitHub draft release.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-finalize-draft-github-release-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-finalize-draft-github-release-manifest.schema.json)
+- schema file: [`finalize-draft-github-release-manifest.schema.json`](/components/buildish-release-tooling/schemas/finalize-draft-github-release-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -265,7 +265,7 @@ Action manifest emitted after publishing and signing final RC vote materials.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-finalize-rc-vote-materials-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-finalize-rc-vote-materials-manifest.schema.json)
+- schema file: [`finalize-rc-vote-materials-manifest.schema.json`](/components/buildish-release-tooling/schemas/finalize-rc-vote-materials-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -296,7 +296,7 @@ Action manifest emitted after building detached RC materialization Git content.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-materialize-rc-git-content-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-materialize-rc-git-content-manifest.schema.json)
+- schema file: [`materialize-rc-git-content-manifest.schema.json`](/components/buildish-release-tooling/schemas/materialize-rc-git-content-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -320,7 +320,7 @@ Action manifest emitted after prepare-rc resolves one RC workflow state bundle.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-prepare-rc-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-prepare-rc-manifest.schema.json)
+- schema file: [`prepare-rc-manifest.schema.json`](/components/buildish-release-tooling/schemas/prepare-rc-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -351,7 +351,7 @@ Action manifest emitted after pruning older same-line releases from dist/release
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-prune-older-line-releases-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-prune-older-line-releases-manifest.schema.json)
+- schema file: [`prune-older-line-releases-manifest.schema.json`](/components/buildish-release-tooling/schemas/prune-older-line-releases-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -372,7 +372,7 @@ Action manifest emitted after publishing one release candidate to ATR.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-publish-atr-candidate-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-publish-atr-candidate-manifest.schema.json)
+- schema file: [`publish-atr-candidate-manifest.schema.json`](/components/buildish-release-tooling/schemas/publish-atr-candidate-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -403,7 +403,7 @@ Action manifest emitted after publishing moving Docker Hub image aliases.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-publish-dockerhub-moving-tags-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-publish-dockerhub-moving-tags-manifest.schema.json)
+- schema file: [`publish-dockerhub-moving-tags-manifest.schema.json`](/components/buildish-release-tooling/schemas/publish-dockerhub-moving-tags-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -424,7 +424,7 @@ Action manifest emitted after promoting a verified source artifact into dist/rel
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-publish-source-release-svn-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-publish-source-release-svn-manifest.schema.json)
+- schema file: [`publish-source-release-svn-manifest.schema.json`](/components/buildish-release-tooling/schemas/publish-source-release-svn-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -447,7 +447,7 @@ Action manifest emitted after writing one typed secondary-artifact bundle.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-record-artifact-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-record-artifact-manifest.schema.json)
+- schema file: [`record-artifact-manifest.schema.json`](/components/buildish-release-tooling/schemas/record-artifact-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -469,7 +469,7 @@ Action manifest emitted after a full release-version orchestration run completes
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-release-version-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-release-version-manifest.schema.json)
+- schema file: [`release-version-manifest.schema.json`](/components/buildish-release-tooling/schemas/release-version-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -494,7 +494,7 @@ Action manifest emitted after summarizing ATR checks for one candidate revision.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-report-atr-checks-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-report-atr-checks-manifest.schema.json)
+- schema file: [`report-atr-checks-manifest.schema.json`](/components/buildish-release-tooling/schemas/report-atr-checks-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -526,7 +526,7 @@ Action manifest emitted after synchronizing the draft GitHub release with staged
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-sync-draft-github-release-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-sync-draft-github-release-manifest.schema.json)
+- schema file: [`sync-draft-github-release-manifest.schema.json`](/components/buildish-release-tooling/schemas/sync-draft-github-release-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -555,7 +555,7 @@ Action manifest emitted after resolving moving OCI image aliases for publication
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-update-moving-image-aliases-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-update-moving-image-aliases-manifest.schema.json)
+- schema file: [`update-moving-image-aliases-manifest.schema.json`](/components/buildish-release-tooling/schemas/update-moving-image-aliases-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)
@@ -575,7 +575,7 @@ Action manifest emitted after updating moving Git tags for a final release.
 
 - category: `emitted`
 - ownership: `tooling-derived`
-- schema file: [`buildish-release-tooling-update-moving-tags-manifest.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-update-moving-tags-manifest.schema.json)
+- schema file: [`update-moving-tags-manifest.schema.json`](/components/buildish-release-tooling/schemas/update-moving-tags-manifest.schema.json)
 - audience: `internal`
 - stability: `unstable`
 - file contract: (inner type)

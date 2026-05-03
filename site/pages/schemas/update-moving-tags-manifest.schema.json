@@ -1,0 +1,83 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/update-moving-tags-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after updating moving Git tags for a final release. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "update-moving-tags",
+      "default": "update-moving-tags",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "final_tag": {
+      "description": "Final immutable Git tag that Buildish intends to publish for the released version.",
+      "minLength": 1,
+      "title": "Final Tag",
+      "type": "string"
+    },
+    "skipped_tags": {
+      "description": "Moving tags that Buildish intentionally left unchanged during the related update operation.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Skipped Tags",
+      "type": "array"
+    },
+    "tag_update_modes": {
+      "description": "Per-tag update outcomes describing how each moving tag was handled during the related publication run.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Tag Update Modes",
+      "type": "array"
+    },
+    "target_commit": {
+      "description": "Git commit SHA that the related tag or alias operation targeted.",
+      "minLength": 1,
+      "title": "Target Commit",
+      "type": "string"
+    },
+    "updated_tags": {
+      "description": "Moving tags that Buildish updated during the related tag-publication action.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Updated Tags",
+      "type": "array"
+    },
+    "version": {
+      "description": "Release version string without a leading `v` prefix.",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "final_tag",
+    "target_commit",
+    "updated_tags",
+    "skipped_tags",
+    "tag_update_modes"
+  ],
+  "title": "Buildish Release Tooling UpdateMovingTagsManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `update-moving-tags`."
+  }
+}

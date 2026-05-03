@@ -1,0 +1,102 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/build-source-rc-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after building and staging the signed source RC bundle. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "build-source-rc",
+      "default": "build-source-rc",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "rc_tag": {
+      "description": "Exact RC Git tag, including the leading `v` prefix and `-rcN` suffix.",
+      "minLength": 1,
+      "title": "Rc Tag",
+      "type": "string"
+    },
+    "resolved_source_ref": {
+      "description": "Resolved source Git commit SHA that Buildish selected for release production or verification.",
+      "minLength": 1,
+      "title": "Resolved Source Ref",
+      "type": "string"
+    },
+    "source_artifact_asc_path": {
+      "description": "Filesystem path of the detached OpenPGP signature file for the locally produced source artifact.",
+      "minLength": 1,
+      "title": "Source Artifact Asc Path",
+      "type": "string"
+    },
+    "source_artifact_name": {
+      "description": "Filename of the staged source release artifact.",
+      "minLength": 1,
+      "title": "Source Artifact Name",
+      "type": "string"
+    },
+    "source_artifact_path": {
+      "description": "Filesystem path of the locally produced or staged source release artifact.",
+      "minLength": 1,
+      "title": "Source Artifact Path",
+      "type": "string"
+    },
+    "source_artifact_sha512": {
+      "description": "SHA-512 digest of the staged or locally produced source release artifact.",
+      "minLength": 1,
+      "title": "Source Artifact Sha512",
+      "type": "string"
+    },
+    "source_artifact_sha512_path": {
+      "description": "Filesystem path of the `.sha512` sidecar generated for the locally produced source artifact.",
+      "minLength": 1,
+      "title": "Source Artifact Sha512 Path",
+      "type": "string"
+    },
+    "source_date_epoch": {
+      "description": "Canonical `SOURCE_DATE_EPOCH` integer carried through RC production and verification.",
+      "minLength": 1,
+      "title": "Source Date Epoch",
+      "type": "string"
+    },
+    "staging_url": {
+      "description": "ASF dev/dist staging directory URL selected for the current RC.",
+      "minLength": 1,
+      "title": "Staging Url",
+      "type": "string"
+    },
+    "version": {
+      "description": "Release version string without a leading `v` prefix.",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "resolved_source_ref",
+    "source_date_epoch",
+    "rc_tag",
+    "source_artifact_name",
+    "source_artifact_path",
+    "source_artifact_sha512",
+    "source_artifact_sha512_path",
+    "source_artifact_asc_path",
+    "staging_url"
+  ],
+  "title": "Buildish Release Tooling BuildSourceRcManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `build-source-rc`."
+  }
+}

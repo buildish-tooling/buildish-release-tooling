@@ -1,0 +1,119 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "RepositoryOverrideConfig": {
+      "additionalProperties": false,
+      "description": "Committed harness settings for one explicit repository override.",
+      "properties": {
+        "local_checkout_mode": {
+          "default": "always",
+          "description": "Policy describing whether the related repository binding should resolve to a local checkout path.",
+          "enum": [
+            "always",
+            "disabled"
+          ],
+          "title": "Local Checkout Mode",
+          "type": "string"
+        },
+        "local_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Resolved or configured local filesystem path associated with the related repository binding.",
+          "title": "Local Path"
+        }
+      },
+      "title": "RepositoryOverrideConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    },
+    "SelfRepositoryConfig": {
+      "additionalProperties": false,
+      "description": "Committed harness settings for the workflow repository under test.",
+      "properties": {
+        "local_checkout_mode": {
+          "default": "when_repository_omitted",
+          "description": "Policy describing whether the related repository binding should resolve to a local checkout path.",
+          "enum": [
+            "when_repository_omitted",
+            "disabled"
+          ],
+          "title": "Local Checkout Mode",
+          "type": "string"
+        },
+        "local_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Resolved or configured local filesystem path associated with the related repository binding.",
+          "title": "Local Path"
+        },
+        "repository_id": {
+          "description": "Logical repository identifier used by the harness configuration layer.",
+          "title": "Repository Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_id"
+      ],
+      "title": "SelfRepositoryConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "consumer-owned"
+      }
+    }
+  },
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/release-harness-config.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Committed `release-harness.yaml` plus optional local overrides.",
+  "properties": {
+    "repository_overrides": {
+      "additionalProperties": {
+        "$ref": "#/$defs/RepositoryOverrideConfig"
+      },
+      "description": "Per-repository local override bindings resolved from the harness configuration.",
+      "title": "Repository Overrides",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "description": "Schema version of the enclosing Buildish JSON or YAML contract.",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "self_repository": {
+      "$ref": "#/$defs/SelfRepositoryConfig",
+      "description": "Resolved binding for the primary workflow repository under harness control."
+    }
+  },
+  "required": [
+    "self_repository"
+  ],
+  "title": "Buildish Release Tooling ReleaseHarnessConfig",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "authored",
+    "filePath": "harness/release-harness.yaml",
+    "ownership": "consumer-owned",
+    "summary": "Committed harness configuration contract for local repository bindings and optional overrides."
+  }
+}

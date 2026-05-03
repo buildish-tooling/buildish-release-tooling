@@ -38,7 +38,7 @@ Committed `release-harness.yaml` plus optional local overrides.
 
 - category: `authored`
 - ownership: `consumer-owned`
-- schema file: [`buildish-release-tooling-release-harness-config.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-release-harness-config.schema.json)
+- schema file: [`release-harness-config.schema.json`](/components/buildish-release-tooling/schemas/release-harness-config.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: `harness/release-harness.yaml`
@@ -70,7 +70,7 @@ Machine-readable JSON payload for one resolved harness config file.
 
 - category: `runtime`
 - ownership: `runtime-derived`
-- schema file: [`buildish-release-tooling-resolved-release-harness-config-json.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-resolved-release-harness-config-json.schema.json)
+- schema file: [`resolved-release-harness-config-json.schema.json`](/components/buildish-release-tooling/schemas/resolved-release-harness-config-json.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)

@@ -1,0 +1,128 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/attach-github-release-assets-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after uploading primary and derived assets to a GitHub release. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "attach-github-release-assets",
+      "default": "attach-github-release-assets",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "checksum_algorithms": {
+      "description": "Checksum algorithms that Buildish generated or expects for the related artifact set.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Checksum Algorithms",
+      "type": "array"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "generated_checksum_asset_names": {
+      "description": "Generated checksum asset names that Buildish attached or expected to attach to the GitHub release.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Generated Checksum Asset Names",
+      "type": "array"
+    },
+    "generated_signature_asset_names": {
+      "description": "Generated detached-signature asset names that Buildish attached or expected to attach to the GitHub release.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Generated Signature Asset Names",
+      "type": "array"
+    },
+    "gpg_fingerprint": {
+      "description": "OpenPGP fingerprint of the signing key Buildish used or verified.",
+      "title": "Gpg Fingerprint",
+      "type": "string"
+    },
+    "primary_asset_names": {
+      "description": "Primary release asset names that Buildish attached or expected to attach to the selected GitHub release.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Primary Asset Names",
+      "type": "array"
+    },
+    "release_id": {
+      "description": "GitHub release id associated with the related draft or final release record.",
+      "minLength": 1,
+      "title": "Release Id",
+      "type": "string"
+    },
+    "release_name": {
+      "description": "Human-facing GitHub release title used for the related draft or final release.",
+      "title": "Release Name",
+      "type": "string"
+    },
+    "release_tag": {
+      "description": "GitHub release tag name as stored on the related release record.",
+      "title": "Release Tag",
+      "type": "string"
+    },
+    "release_url": {
+      "description": "Primary user-facing URL of the related GitHub release or published release artifact.",
+      "minLength": 1,
+      "title": "Release Url",
+      "type": "string"
+    },
+    "repository_slug": {
+      "description": "GitHub `owner/name` repository slug used for API calls and emitted release metadata.",
+      "minLength": 1,
+      "title": "Repository Slug",
+      "type": "string"
+    },
+    "uploaded_asset_names": {
+      "description": "GitHub release asset names that Buildish uploaded during the related command.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Uploaded Asset Names",
+      "type": "array"
+    },
+    "version": {
+      "description": "Release version string without a leading `v` prefix.",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "repository_slug",
+    "release_id",
+    "release_name",
+    "release_tag",
+    "release_url",
+    "primary_asset_names",
+    "uploaded_asset_names",
+    "generated_checksum_asset_names",
+    "generated_signature_asset_names",
+    "checksum_algorithms",
+    "gpg_fingerprint"
+  ],
+  "title": "Buildish Release Tooling AttachGithubReleaseAssetsManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `attach-github-release-assets`."
+  }
+}

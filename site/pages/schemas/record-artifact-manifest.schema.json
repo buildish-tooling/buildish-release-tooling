@@ -1,0 +1,70 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/record-artifact-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after writing one typed secondary-artifact bundle. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "record-artifact",
+      "default": "record-artifact",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "artifact_bundle_dir": {
+      "description": "Directory that contains one emitted secondary-artifact registration bundle.",
+      "minLength": 1,
+      "title": "Artifact Bundle Dir",
+      "type": "string"
+    },
+    "artifact_id": {
+      "description": "Stable identifier for one source, secondary, or emitted artifact within Buildish release tooling.",
+      "minLength": 1,
+      "title": "Artifact Id",
+      "type": "string"
+    },
+    "artifact_manifest_path": {
+      "description": "Filesystem path to the emitted secondary-artifact manifest fragment.",
+      "minLength": 1,
+      "title": "Artifact Manifest Path",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "inventory_paths": {
+      "description": "Filesystem paths of supplemental inventory files emitted alongside one artifact bundle.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Inventory Paths",
+      "type": "array"
+    },
+    "kind": {
+      "description": "Declared artifact or report kind discriminator.",
+      "minLength": 1,
+      "title": "Kind",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "artifact_id",
+    "kind",
+    "artifact_manifest_path",
+    "artifact_bundle_dir",
+    "inventory_paths"
+  ],
+  "title": "Buildish Release Tooling RecordArtifactManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `record-artifact`."
+  }
+}

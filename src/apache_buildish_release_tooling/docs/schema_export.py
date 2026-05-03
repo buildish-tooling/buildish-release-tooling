@@ -81,7 +81,7 @@ def _model_schema(model: type[DocumentedContractModel]) -> SchemaBuilder:
 
 
 def _schema_filename_for_model(model: type[DocumentedContractModel]) -> str:
-    return f"buildish-release-tooling-{_kebab_case(model.__name__)}.schema.json"
+    return f"{_kebab_case(model.__name__)}.schema.json"
 
 
 def _kebab_case(value: str) -> str:

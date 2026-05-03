@@ -83,14 +83,14 @@ class SchemaExportTests(unittest.TestCase):
         component_export = next(
             export
             for export in schema_exports()
-            if export.filename == "buildish-release-tooling-component-config.schema.json"
+            if export.filename == "component-config.schema.json"
         )
         component_schema = build_schema_document(component_export)
 
         self.assertEqual(component_schema["$schema"], "https://json-schema.org/draft/2020-12/schema")
         self.assertEqual(
             component_schema["$id"],
-            "https://buildish.apache.org/components/buildish-release-tooling/schemas/buildish-release-tooling-component-config.schema.json",
+            "https://buildish.apache.org/components/buildish-release-tooling/schemas/component-config.schema.json",
         )
         self.assertIn("Do not edit by hand", component_schema["$comment"])
         self.assertEqual(
@@ -110,7 +110,7 @@ class SchemaExportTests(unittest.TestCase):
         command_export = next(
             export
             for export in schema_exports()
-            if export.filename == "buildish-release-tooling-prepare-rc-manifest.schema.json"
+            if export.filename == "prepare-rc-manifest.schema.json"
         )
         command_schema = build_schema_document(command_export)
         self.assertEqual(
@@ -163,7 +163,7 @@ class SchemaExportTests(unittest.TestCase):
                 generated_reference_dir / "release-manifests-and-verification-reference.md"
             ).read_text(encoding="utf-8")
             self.assertIn(
-                "[`buildish-release-tooling-verify-rc-report-v1.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-verify-rc-report-v1.schema.json)",
+                "[`verify-rc-report-v1.schema.json`](/components/buildish-release-tooling/schemas/verify-rc-report-v1.schema.json)",
                 verification_reference_text,
             )
 
@@ -178,19 +178,19 @@ class SchemaExportTests(unittest.TestCase):
     def test_export_inventory_covers_supported_and_internal_contracts(self) -> None:
         export_names = {export.filename for export in schema_exports()}
 
-        self.assertIn("buildish-release-tooling-component-config.schema.json", export_names)
-        self.assertIn("buildish-release-tooling-rc-vote-manifest-v1.schema.json", export_names)
-        self.assertIn("buildish-release-tooling-verify-rc-report-v1.schema.json", export_names)
-        self.assertIn("buildish-release-tooling-inspection-bundle-manifest-v1.schema.json", export_names)
-        self.assertIn("buildish-release-tooling-harness-scenario.schema.json", export_names)
-        self.assertIn("buildish-release-tooling-command-action-manifest.schema.json", export_names)
-        self.assertIn("buildish-release-tooling-prepare-rc-manifest.schema.json", export_names)
+        self.assertIn("component-config.schema.json", export_names)
+        self.assertIn("rc-vote-manifest-v1.schema.json", export_names)
+        self.assertIn("verify-rc-report-v1.schema.json", export_names)
+        self.assertIn("inspection-bundle-manifest-v1.schema.json", export_names)
+        self.assertIn("harness-scenario.schema.json", export_names)
+        self.assertIn("command-action-manifest.schema.json", export_names)
+        self.assertIn("prepare-rc-manifest.schema.json", export_names)
         self.assertGreaterEqual(len(export_names), 20)
 
         authored_names = {export.filename for export in authored_schema_exports()}
-        self.assertIn("buildish-release-tooling-component-config.schema.json", authored_names)
-        self.assertIn("buildish-release-tooling-release-harness-config.schema.json", authored_names)
-        self.assertIn("buildish-release-tooling-harness-scenario.schema.json", authored_names)
+        self.assertIn("component-config.schema.json", authored_names)
+        self.assertIn("release-harness-config.schema.json", authored_names)
+        self.assertIn("harness-scenario.schema.json", authored_names)
 
     def test_reference_roots_cover_all_documented_models(self) -> None:
         reachable_models = set(_collect_reachable_models(schema_exports()))

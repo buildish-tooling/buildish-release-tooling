@@ -1,0 +1,89 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/finalize-draft-github-release-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after finalizing a selected GitHub draft release. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "finalize-draft-github-release",
+      "default": "finalize-draft-github-release",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "deleted_asset_names": {
+      "description": "GitHub Release asset names that Buildish deleted during the related release-finalization step.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Deleted Asset Names",
+      "type": "array"
+    },
+    "finalize_mode": {
+      "description": "Mode that Buildish used when finalizing the selected draft GitHub release.",
+      "minLength": 1,
+      "title": "Finalize Mode",
+      "type": "string"
+    },
+    "release_id": {
+      "description": "GitHub release id associated with the related draft or final release record.",
+      "minLength": 1,
+      "title": "Release Id",
+      "type": "string"
+    },
+    "release_name": {
+      "description": "Human-facing GitHub release title used for the related draft or final release.",
+      "title": "Release Name",
+      "type": "string"
+    },
+    "release_tag": {
+      "description": "GitHub release tag name as stored on the related release record.",
+      "title": "Release Tag",
+      "type": "string"
+    },
+    "release_url": {
+      "description": "Primary user-facing URL of the related GitHub release or published release artifact.",
+      "minLength": 1,
+      "title": "Release Url",
+      "type": "string"
+    },
+    "repository_slug": {
+      "description": "GitHub `owner/name` repository slug used for API calls and emitted release metadata.",
+      "minLength": 1,
+      "title": "Repository Slug",
+      "type": "string"
+    },
+    "version": {
+      "description": "Release version string without a leading `v` prefix.",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "repository_slug",
+    "release_id",
+    "release_tag",
+    "release_name",
+    "release_url",
+    "deleted_asset_names",
+    "finalize_mode"
+  ],
+  "title": "Buildish Release Tooling FinalizeDraftGithubReleaseManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `finalize-draft-github-release`."
+  }
+}

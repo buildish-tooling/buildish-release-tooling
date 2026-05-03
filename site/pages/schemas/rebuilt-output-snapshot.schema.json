@@ -1,0 +1,38 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/rebuilt-output-snapshot.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One rebuilt output file described inside an inspection-bundle metadata document.",
+  "properties": {
+    "path": {
+      "description": "Filesystem path, relative artifact path, or retained evidence path associated with the related record.",
+      "minLength": 1,
+      "title": "Path",
+      "type": "string"
+    },
+    "sha512": {
+      "description": "SHA-512 checksum payload associated with the related artifact.",
+      "title": "Sha512",
+      "type": "string"
+    },
+    "size_bytes": {
+      "description": "Byte size recorded for the related artifact, retained snapshot, or inventory entry.",
+      "minimum": 0,
+      "title": "Size Bytes",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "path",
+    "sha512",
+    "size_bytes"
+  ],
+  "title": "Buildish Release Tooling RebuiltOutputSnapshot",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Snapshot of one rebuilt output retained in reproducibility metadata."
+  }
+}
