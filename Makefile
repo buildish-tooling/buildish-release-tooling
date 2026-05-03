@@ -13,16 +13,20 @@
 # limitations under the License.
 
 UV_RUN = uv run --frozen --group dev
+RELEASE_LEGAL_OUT_DIR ?= dist-release-legal/preliminary
+RELEASE_LEGAL_DETAILS_OUT_DIR ?= dist/release-legal-preliminary
 HELP_TARGETS = $(MAKEFILE_LIST)
-HELP_PUBLIC_CHECK_TARGETS := lint typecheck test check
+HELP_PUBLIC_CHECK_TARGETS := lint typecheck test rat release-legal-preliminary-check check
+HELP_PUBLIC_RELEASE_TARGETS := release-legal-preliminary
 
-.PHONY: help lint typecheck test check
+.PHONY: help lint typecheck test rat release-legal-preliminary-check check release-legal-preliminary
 
 help: ## Show curated Make targets for buildish-release-tooling.
 	@desc_for() { awk -v target="$$1" 'BEGIN {FS = ":.*## "} $$1 == target {print $$2; exit}' $(HELP_TARGETS); }; \
 	print_section() { title="$$1"; shift; printf "\n%s\n" "$$title"; for target in "$$@"; do printf "  %-20s %s\n" "$$target" "$$(desc_for "$$target")"; done; }; \
 	printf "Available targets:\n"; \
-	print_section "Checks:" $(HELP_PUBLIC_CHECK_TARGETS)
+	print_section "Checks:" $(HELP_PUBLIC_CHECK_TARGETS); \
+	print_section "Release helpers:" $(HELP_PUBLIC_RELEASE_TARGETS)
 
 lint: ## Run Ruff checks for the Python sources and tests.
 	$(UV_RUN) ruff check src tests
@@ -33,7 +37,21 @@ typecheck: ## Run Mypy across the repository.
 rat: ## Run Apache RAT license checks.
 	tools/rat/rat-check.sh
 
+release-legal-preliminary-check: ## Verify the checked-in preliminary release-legal artifacts are up to date.
+	@tmp_dir="$$(mktemp -d)"; \
+	trap 'rm -rf "$$tmp_dir"' EXIT; \
+	$(UV_RUN) python3 -m apache_buildish_release_tooling.legal.release_legal --output-dir "$$tmp_dir/tracked" --details-output-dir "$$tmp_dir/details" >/dev/null; \
+	if [ ! -d "$(RELEASE_LEGAL_OUT_DIR)" ]; then \
+		echo "Missing checked-in preliminary release-legal artifacts under $(RELEASE_LEGAL_OUT_DIR)." >&2; \
+		echo "Run 'make release-legal-preliminary' and commit the results." >&2; \
+		exit 1; \
+	fi; \
+	diff -ru "$(RELEASE_LEGAL_OUT_DIR)" "$$tmp_dir/tracked"
+
 test: ## Run the Python unit and integration test suite.
 	$(UV_RUN) python -m unittest discover -s tests -p 'test_*.py'
 
-check: lint typecheck test rat ## Run lint, type checks, and tests.
+check: lint typecheck test rat release-legal-preliminary-check ## Run lint, type checks, tests, RAT, and legal-artifact verification.
+
+release-legal-preliminary: ## Generate preliminary wheel legal drafts from the runtime dependency set.
+	$(UV_RUN) python3 -m apache_buildish_release_tooling.legal.release_legal --output-dir $(RELEASE_LEGAL_OUT_DIR) --details-output-dir $(RELEASE_LEGAL_DETAILS_OUT_DIR)

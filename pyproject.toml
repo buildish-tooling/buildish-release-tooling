@@ -26,6 +26,11 @@ dependencies = [
     "pyyaml>=6.0.3",
     "urllib3>=2.5.0",
 ]
+license-files = [
+    "dist-release-legal/LICENSE",
+    "dist-release-legal/NOTICE",
+    "DISCLAIMER",
+]
 
 [project.scripts]
 buildish-release-tooling = "apache_buildish_release_tooling.release.cli:main"
@@ -44,6 +49,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["apache_buildish_release_tooling*"]
+
+[tool.setuptools.cmdclass]
+bdist_wheel = "apache_buildish_release_tooling.legal.build_hooks.FlattenedLicenseFilesBdistWheel"
 
 [dependency-groups]
 dev = [

@@ -30,6 +30,7 @@ The pages below describe the current source tree for maintainers. They are inten
 descriptive, not contractual.
 
 - [Codebase Layout](codebase-layout.md)
+- [Release-legal maintenance](release-legal.md)
 - [Test Suite Layout](test-suite.md)
 - [Verification Report and Bundle Contract](verification-contracts.md)
 
