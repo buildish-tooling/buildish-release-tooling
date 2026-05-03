@@ -35,6 +35,52 @@ class CommandActionManifest(BuildishContractModel):
     action: NonEmptyString = Field(description="Stable command action identifier written by one Buildish command manifest.")
 
 
+def _internal_unstable_command_manifest_export(
+    model: type[CommandActionManifest],
+    *,
+    filename: str,
+) -> SchemaExportSpecification:
+    if model is CommandActionManifest:
+        summary = (
+            "Common top-level shape for internal unstable command action manifests "
+            "written through `MANIFEST_PATH`."
+        )
+        description = (
+            "Common top-level shape for command action manifests. "
+            "This schema is documented for maintenance and debugging only and is not a supported external API."
+        )
+    else:
+        action_field = model.model_fields.get("action")
+        action_name = (
+            action_field.default
+            if action_field is not None and isinstance(action_field.default, str)
+            else None
+        )
+        summary = (
+            f"Internal unstable JSON action manifest emitted by `{action_name}`."
+            if action_name is not None
+            else "Internal unstable JSON action manifest emitted by one release-tooling command."
+        )
+        description = (
+            f"{model.__doc__ or ''} "
+            "This command manifest is internal Buildish workflow I/O and is not a supported external API."
+        ).strip()
+    return SchemaExportSpecification(
+        filename=filename,
+        audience="internal",
+        stability="unstable",
+        summary=summary,
+        description=description,
+        reference_group="internal-unstable-root",
+    )
+
+
+CommandActionManifest.schema_export = _internal_unstable_command_manifest_export(
+    CommandActionManifest,
+    filename="command-action-manifest.schema.json",
+)
+
+
 class CreateReleaseBranchManifest(CommandActionManifest):
     """Action manifest emitted after resolving or creating a release branch."""
 
@@ -42,6 +88,12 @@ class CreateReleaseBranchManifest(CommandActionManifest):
     release_line: NonEmptyString = Field(description="Maintenance-line identifier used to group related versions, branches, and moving tags.")
     release_branch: NonEmptyString = Field(description="Git branch name that Buildish resolved as the authoritative release branch.")
     source_ref: NonEmptyString = Field(description="Source ref that Buildish used as the starting point for the related release-branch or materialization action.")
+
+
+CreateReleaseBranchManifest.schema_export = _internal_unstable_command_manifest_export(
+    CreateReleaseBranchManifest,
+    filename="create-release-branch-manifest.schema.json",
+)
 
 
 class PrepareRcManifest(CommandActionManifest):
@@ -64,6 +116,12 @@ class PrepareRcManifest(CommandActionManifest):
     final_tag_mode: NonEmptyString = Field(description="Configured or recorded policy describing how the final immutable release tag should be created for this component or release run.")
 
 
+PrepareRcManifest.schema_export = _internal_unstable_command_manifest_export(
+    PrepareRcManifest,
+    filename="prepare-rc-manifest.schema.json",
+)
+
+
 class CleanupDevSvnRcsManifest(CommandActionManifest):
     """Action manifest emitted after old or conflicting RC staging directories are removed."""
 
@@ -71,6 +129,12 @@ class CleanupDevSvnRcsManifest(CommandActionManifest):
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     dev_base_url: NonEmptyString = Field(description="Configured ASF `dist/dev` base URL that the cleanup or publication action targeted.")
     deleted_rc_directories: list[NonEmptyString] = Field(description="ASF dev/dist RC directories that Buildish deleted during cleanup.")
+
+
+CleanupDevSvnRcsManifest.schema_export = _internal_unstable_command_manifest_export(
+    CleanupDevSvnRcsManifest,
+    filename="cleanup-dev-svn-rcs-manifest.schema.json",
+)
 
 
 class CreateSourceArtifactManifest(CommandActionManifest):
@@ -83,6 +147,12 @@ class CreateSourceArtifactManifest(CommandActionManifest):
     source_artifact_name: NonEmptyString = Field(description="Filename of the staged source release artifact.")
     source_artifact_path: NonEmptyString = Field(description="Filesystem path of the locally produced or staged source release artifact.")
     source_artifact_sha512: NonEmptyString = Field(description="SHA-512 digest of the staged or locally produced source release artifact.")
+
+
+CreateSourceArtifactManifest.schema_export = _internal_unstable_command_manifest_export(
+    CreateSourceArtifactManifest,
+    filename="create-source-artifact-manifest.schema.json",
+)
 
 
 class BuildSourceRcManifest(CommandActionManifest):
@@ -101,6 +171,12 @@ class BuildSourceRcManifest(CommandActionManifest):
     staging_url: NonEmptyString = Field(description="ASF dev/dist staging directory URL selected for the current RC.")
 
 
+BuildSourceRcManifest.schema_export = _internal_unstable_command_manifest_export(
+    BuildSourceRcManifest,
+    filename="build-source-rc-manifest.schema.json",
+)
+
+
 class MaterializeRcGitContentManifest(CommandActionManifest):
     """Action manifest emitted after building detached RC materialization Git content."""
 
@@ -112,6 +188,12 @@ class MaterializeRcGitContentManifest(CommandActionManifest):
     materialized_commit_sha: NonEmptyString = Field(description="Git commit SHA of the materialized tree that Buildish created for the RC tagging workflow.")
     materialized_ref_name: NonEmptyString = Field(description="Temporary Git ref name that Buildish created or reused for RC materialization.")
     materialized_ref_mode: NonEmptyString = Field(description="Policy that Buildish used when creating or reusing the temporary materialization ref.")
+
+
+MaterializeRcGitContentManifest.schema_export = _internal_unstable_command_manifest_export(
+    MaterializeRcGitContentManifest,
+    filename="materialize-rc-git-content-manifest.schema.json",
+)
 
 
 class CreateRcMaterializationTagManifest(CommandActionManifest):
@@ -129,6 +211,12 @@ class CreateRcMaterializationTagManifest(CommandActionManifest):
     created_ref: str = Field(description="Git ref name that Buildish created or reused while performing the related tag or ref action.")
 
 
+CreateRcMaterializationTagManifest.schema_export = _internal_unstable_command_manifest_export(
+    CreateRcMaterializationTagManifest,
+    filename="create-rc-materialization-tag-manifest.schema.json",
+)
+
+
 class RecordArtifactManifest(CommandActionManifest):
     """Action manifest emitted after writing one typed secondary-artifact bundle."""
 
@@ -138,6 +226,12 @@ class RecordArtifactManifest(CommandActionManifest):
     artifact_manifest_path: NonEmptyString = Field(description="Filesystem path to the emitted secondary-artifact manifest fragment.")
     artifact_bundle_dir: NonEmptyString = Field(description="Directory that contains one emitted secondary-artifact registration bundle.")
     inventory_paths: list[NonEmptyString] = Field(description="Filesystem paths of supplemental inventory files emitted alongside one artifact bundle.")
+
+
+RecordArtifactManifest.schema_export = _internal_unstable_command_manifest_export(
+    RecordArtifactManifest,
+    filename="record-artifact-manifest.schema.json",
+)
 
 
 class FinalizeRcVoteMaterialsManifest(CommandActionManifest):
@@ -160,6 +254,12 @@ class FinalizeRcVoteMaterialsManifest(CommandActionManifest):
     gpg_fingerprint: NonEmptyString = Field(description="OpenPGP fingerprint of the signing key Buildish used or verified.")
 
 
+FinalizeRcVoteMaterialsManifest.schema_export = _internal_unstable_command_manifest_export(
+    FinalizeRcVoteMaterialsManifest,
+    filename="finalize-rc-vote-materials-manifest.schema.json",
+)
+
+
 class PublishAtrCandidateManifest(CommandActionManifest):
     """Action manifest emitted after publishing one release candidate to ATR."""
 
@@ -178,6 +278,12 @@ class PublishAtrCandidateManifest(CommandActionManifest):
     atr_failure_count: NonEmptyString = Field(description="Number of ATR checks that reported a failing outcome for the related candidate or report.")
     atr_exception_count: NonEmptyString = Field(description="Number of ATR checks that ended in an exception state for the related candidate or report.")
     atr_warning_count: NonEmptyString = Field(description="Number of ATR checks that reported warnings for the related candidate or report.")
+
+
+PublishAtrCandidateManifest.schema_export = _internal_unstable_command_manifest_export(
+    PublishAtrCandidateManifest,
+    filename="publish-atr-candidate-manifest.schema.json",
+)
 
 
 class ReportAtrChecksManifest(CommandActionManifest):
@@ -201,6 +307,12 @@ class ReportAtrChecksManifest(CommandActionManifest):
     would_block_release: Literal["true", "false"] = Field(description="Whether the related check result would block release publication under the requested strictness policy.")
 
 
+ReportAtrChecksManifest.schema_export = _internal_unstable_command_manifest_export(
+    ReportAtrChecksManifest,
+    filename="report-atr-checks-manifest.schema.json",
+)
+
+
 class SyncDraftGithubReleaseManifest(CommandActionManifest):
     """Action manifest emitted after synchronizing the draft GitHub release with staged RC artifacts."""
 
@@ -219,6 +331,12 @@ class SyncDraftGithubReleaseManifest(CommandActionManifest):
     sync_mode: NonEmptyString = Field(description="Mode that Buildish used when reconciling the selected draft GitHub release with staged RC materials.")
 
 
+SyncDraftGithubReleaseManifest.schema_export = _internal_unstable_command_manifest_export(
+    SyncDraftGithubReleaseManifest,
+    filename="sync-draft-github-release-manifest.schema.json",
+)
+
+
 class PublishSourceReleaseSvnManifest(CommandActionManifest):
     """Action manifest emitted after promoting a verified source artifact into dist/release."""
 
@@ -231,6 +349,12 @@ class PublishSourceReleaseSvnManifest(CommandActionManifest):
     publish_mode: NonEmptyString = Field(description="Mode that Buildish used when publishing the verified source artifact to ASF `dist/release`.")
 
 
+PublishSourceReleaseSvnManifest.schema_export = _internal_unstable_command_manifest_export(
+    PublishSourceReleaseSvnManifest,
+    filename="publish-source-release-svn-manifest.schema.json",
+)
+
+
 class PruneOlderLineReleasesManifest(CommandActionManifest):
     """Action manifest emitted after pruning older same-line releases from dist/release."""
 
@@ -239,6 +363,12 @@ class PruneOlderLineReleasesManifest(CommandActionManifest):
     release_line: NonEmptyString = Field(description="Maintenance-line identifier used to group related versions, branches, and moving tags.")
     pruned_versions: list[NonEmptyString] = Field(description="Older release versions that Buildish removed from the active release line while pruning prior dist/release artifacts.")
     release_base_url: NonEmptyString = Field(description="Base ASF dist/release URL associated with the related publication action.")
+
+
+PruneOlderLineReleasesManifest.schema_export = _internal_unstable_command_manifest_export(
+    PruneOlderLineReleasesManifest,
+    filename="prune-older-line-releases-manifest.schema.json",
+)
 
 
 class CreateFinalTagManifest(CommandActionManifest):
@@ -251,6 +381,12 @@ class CreateFinalTagManifest(CommandActionManifest):
     target_commit: NonEmptyString = Field(description="Git commit SHA that the related tag or alias operation targeted.")
     tag_creation_mode: NonEmptyString = Field(description="Mode that Buildish used when creating or reusing the related annotated Git tag.")
     created_ref: str = Field(description="Git ref name that Buildish created or reused while performing the related tag or ref action.")
+
+
+CreateFinalTagManifest.schema_export = _internal_unstable_command_manifest_export(
+    CreateFinalTagManifest,
+    filename="create-final-tag-manifest.schema.json",
+)
 
 
 class FinalizeDraftGithubReleaseManifest(CommandActionManifest):
@@ -267,6 +403,12 @@ class FinalizeDraftGithubReleaseManifest(CommandActionManifest):
     finalize_mode: NonEmptyString = Field(description="Mode that Buildish used when finalizing the selected draft GitHub release.")
 
 
+FinalizeDraftGithubReleaseManifest.schema_export = _internal_unstable_command_manifest_export(
+    FinalizeDraftGithubReleaseManifest,
+    filename="finalize-draft-github-release-manifest.schema.json",
+)
+
+
 class ReleaseVersionManifest(CommandActionManifest):
     """Action manifest emitted after a full release-version orchestration run completes."""
 
@@ -281,6 +423,12 @@ class ReleaseVersionManifest(CommandActionManifest):
     final_tag_mode: NonEmptyString = Field(description="Configured or recorded policy describing how the final immutable release tag should be created for this component or release run.")
 
 
+ReleaseVersionManifest.schema_export = _internal_unstable_command_manifest_export(
+    ReleaseVersionManifest,
+    filename="release-version-manifest.schema.json",
+)
+
+
 class UpdateMovingTagsManifest(CommandActionManifest):
     """Action manifest emitted after updating moving Git tags for a final release."""
 
@@ -293,6 +441,12 @@ class UpdateMovingTagsManifest(CommandActionManifest):
     tag_update_modes: list[NonEmptyString] = Field(description="Per-tag update outcomes describing how each moving tag was handled during the related publication run.")
 
 
+UpdateMovingTagsManifest.schema_export = _internal_unstable_command_manifest_export(
+    UpdateMovingTagsManifest,
+    filename="update-moving-tags-manifest.schema.json",
+)
+
+
 class UpdateMovingImageAliasesManifest(CommandActionManifest):
     """Action manifest emitted after resolving moving OCI image aliases for publication."""
 
@@ -300,6 +454,12 @@ class UpdateMovingImageAliasesManifest(CommandActionManifest):
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
     exact_image_tag: NonEmptyString = Field(description="Exact released image tag that Buildish uses as the source for moving image aliases.")
     image_aliases: list[NonEmptyString] = Field(description="Derived moving container tags that should point at the exact released image tag.")
+
+
+UpdateMovingImageAliasesManifest.schema_export = _internal_unstable_command_manifest_export(
+    UpdateMovingImageAliasesManifest,
+    filename="update-moving-image-aliases-manifest.schema.json",
+)
 
 
 class PublishDockerhubMovingTagsManifest(CommandActionManifest):
@@ -310,6 +470,12 @@ class PublishDockerhubMovingTagsManifest(CommandActionManifest):
     source_image: NonEmptyString = Field(description="Exact source OCI image reference that should be copied to produce the published moving aliases.")
     image_repository: NonEmptyString = Field(description="Container image repository name without the moving tag or digest suffix.")
     published_alias_refs: list[NonEmptyString] = Field(description="Fully qualified target image references that Buildish published as moving aliases.")
+
+
+PublishDockerhubMovingTagsManifest.schema_export = _internal_unstable_command_manifest_export(
+    PublishDockerhubMovingTagsManifest,
+    filename="publish-dockerhub-moving-tags-manifest.schema.json",
+)
 
 
 class AttachGithubReleaseAssetsManifest(CommandActionManifest):
@@ -330,75 +496,7 @@ class AttachGithubReleaseAssetsManifest(CommandActionManifest):
     gpg_fingerprint: str = Field(description="OpenPGP fingerprint of the signing key Buildish used or verified.")
 
 
-def _assign_command_manifest_export(
-    model: type[CommandActionManifest],
-    *,
-    filename: str,
-) -> None:
-    action_field = model.model_fields.get("action")
-    action_name = (
-        action_field.default
-        if action_field is not None and isinstance(action_field.default, str)
-        else None
-    )
-    if model is CommandActionManifest:
-        summary = (
-            "Common top-level shape for internal unstable command action manifests "
-            "written through `MANIFEST_PATH`."
-        )
-        description = (
-            f"{model.__doc__ or ''} "
-            "This schema is documented for maintenance and debugging only and is not "
-            "a supported external API."
-        ).strip()
-    else:
-        summary = (
-            f"Internal unstable JSON action manifest emitted by `{action_name}`."
-            if action_name is not None
-            else "Internal unstable JSON action manifest emitted by one release-tooling command."
-        )
-        description = (
-            f"{model.__doc__ or ''} "
-            "This command manifest is internal Buildish workflow I/O and is not a supported external API."
-        ).strip()
-    model.schema_export = SchemaExportSpecification(
-        filename=filename,
-        audience="internal",
-        stability="unstable",
-        summary=summary,
-        description=description,
-        reference_group="internal-unstable-root",
-    )
-
-
-for _command_manifest_model, _command_manifest_filename in (
-    (CommandActionManifest, "command-action-manifest.schema.json"),
-    (CreateReleaseBranchManifest, "create-release-branch-manifest.schema.json"),
-    (PrepareRcManifest, "prepare-rc-manifest.schema.json"),
-    (CleanupDevSvnRcsManifest, "cleanup-dev-svn-rcs-manifest.schema.json"),
-    (CreateSourceArtifactManifest, "create-source-artifact-manifest.schema.json"),
-    (BuildSourceRcManifest, "build-source-rc-manifest.schema.json"),
-    (MaterializeRcGitContentManifest, "materialize-rc-git-content-manifest.schema.json"),
-    (CreateRcMaterializationTagManifest, "create-rc-materialization-tag-manifest.schema.json"),
-    (RecordArtifactManifest, "record-artifact-manifest.schema.json"),
-    (FinalizeRcVoteMaterialsManifest, "finalize-rc-vote-materials-manifest.schema.json"),
-    (PublishAtrCandidateManifest, "publish-atr-candidate-manifest.schema.json"),
-    (ReportAtrChecksManifest, "report-atr-checks-manifest.schema.json"),
-    (SyncDraftGithubReleaseManifest, "sync-draft-github-release-manifest.schema.json"),
-    (PublishSourceReleaseSvnManifest, "publish-source-release-svn-manifest.schema.json"),
-    (PruneOlderLineReleasesManifest, "prune-older-line-releases-manifest.schema.json"),
-    (CreateFinalTagManifest, "create-final-tag-manifest.schema.json"),
-    (FinalizeDraftGithubReleaseManifest, "finalize-draft-github-release-manifest.schema.json"),
-    (ReleaseVersionManifest, "release-version-manifest.schema.json"),
-    (UpdateMovingTagsManifest, "update-moving-tags-manifest.schema.json"),
-    (UpdateMovingImageAliasesManifest, "update-moving-image-aliases-manifest.schema.json"),
-    (PublishDockerhubMovingTagsManifest, "publish-dockerhub-moving-tags-manifest.schema.json"),
-    (AttachGithubReleaseAssetsManifest, "attach-github-release-assets-manifest.schema.json"),
-):
-    _assign_command_manifest_export(
-        _command_manifest_model,
-        filename=_command_manifest_filename,
-    )
-
-del _command_manifest_model
-del _command_manifest_filename
+AttachGithubReleaseAssetsManifest.schema_export = _internal_unstable_command_manifest_export(
+    AttachGithubReleaseAssetsManifest,
+    filename="attach-github-release-assets-manifest.schema.json",
+)
