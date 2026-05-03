@@ -21,7 +21,10 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, TypeAdapter, field_validator, model_validator
 from pydantic.functional_validators import AfterValidator
 
-from apache_buildish_release_tooling.docs.documentation import ToolingDerivedModel as BuildishContractModel
+from apache_buildish_release_tooling.docs.documentation import (
+    SchemaExportSpecification,
+    ToolingDerivedModel as BuildishContractModel,
+)
 
 SchemaVersionV1 = Literal["1"]
 VerificationVerdict = Literal["verified", "failed"]
@@ -1156,6 +1159,103 @@ class VerifyRcReportV1(BuildishContractModel):
     reproducibility_execution: ReproducibilityExecutionSection = Field(description="Run-level reproducibility execution policy and outcome block retained in the verify-rc report.")
     inspection_bundle: InspectionBundleSection | None = Field(default=None, description="Inspection-bundle location block retained in the verify-rc report for later inspect-repro analysis.")
     secondary_artifact_verifications: list[AnySecondaryArtifactVerification] = Field(description="Per-artifact verification sections for all secondary artifacts processed during verify-rc.", default_factory=list)
+
+
+SecondaryArtifactBase.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Common base shape shared across supported secondary-artifact manifest entries.",
+)
+SecondaryArtifactManifestV1.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    file_path="artifact-manifest.json",
+    summary="Typed secondary-artifact registration manifest fragment written by `record-artifact`.",
+)
+AsfKeysTrustRootRead.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Tolerant read model for ASF KEYS trust-root references carried through vote-materials loading.",
+)
+DraftGithubReleaseRead.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Tolerant read model for draft GitHub release coordinates recorded in vote materials.",
+)
+VoteMaterialsStrict.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Strict typed vote-materials bundle assembled by release-tooling before RC publication.",
+)
+VoteMaterialsRead.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Tolerant read model for vote materials consumed during verification and bootstrap workflows.",
+)
+AuthoritativeManifestReferenceRead.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Tolerant read model for the authoritative signed manifest reference used by vote-materials loading.",
+)
+RcVoteManifestV1.schema_export = SchemaExportSpecification(
+    file_path="rc-vote-manifest.json",
+    summary="Signed RC vote manifest that declares the source artifact, trust roots, and secondary artifacts that verifiers must inspect.",
+)
+MavenRepositoryInventoryV1.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Signed Maven repository inventory contract emitted for staged Maven repository verification.",
+)
+RetainedArtifactSnapshot.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Snapshot of one retained staged or rebuilt artifact captured in reproducibility metadata.",
+)
+RebuiltOutputSnapshot.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Snapshot of one rebuilt output retained in reproducibility metadata.",
+)
+FileLikeReproducibilityMetadata.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Inspection-bundle metadata payload for file-like reproducibility comparisons.",
+)
+SourceArtifactReproducibilityMetadata.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Inspection-bundle metadata payload for source-artifact reproducibility evidence.",
+)
+MavenRepositoryPathRuleReport.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Rendered Maven repository per-path comparison rule retained in reproducibility metadata.",
+)
+MavenRepositoryPathResultReport.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Per-path Maven repository reproducibility comparison result retained in bundle metadata.",
+)
+MavenRepositoryReproducibilityMetadata.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Inspection-bundle metadata payload for Maven repository reproducibility evidence.",
+)
+OciImageReproducibilityMetadata.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Inspection-bundle metadata payload for OCI image reproducibility evidence.",
+)
+InspectionBundleManifestV1.schema_export = SchemaExportSpecification(
+    file_path="inspection-bundle.json",
+    summary="Top-level manifest for a retained verify-rc inspection bundle.",
+)
+InspectReproReportV1.schema_export = SchemaExportSpecification(
+    summary="Machine-readable `inspect-repro --json` output contract.",
+)
+VerifyRcReportV1.schema_export = SchemaExportSpecification(
+    summary="Machine-readable `verify-rc` report contract, typically written through `--report-json`.",
+)
 
 
 __all__ = [

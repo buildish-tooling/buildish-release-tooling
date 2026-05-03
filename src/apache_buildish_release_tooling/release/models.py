@@ -25,6 +25,7 @@ from apache_buildish_release_tooling.docs.documentation import (
     ComponentOwnedAuthoredModel,
     ConsumerOwnedAuthoredModel,
     RuntimeDerivedModel,
+    SchemaExportSpecification,
 )
 
 
@@ -401,3 +402,29 @@ class CommandContext(RuntimeDerivedModel):
 
     component_config: ComponentConfig = Field(description="Validated component configuration resolved for the current Buildish command run.")
     component_config_path: Path | None = Field(default=None, description="Filesystem path of the component configuration file used for the current Buildish command run.")
+
+
+VerifyRcOverrideFileConfig.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Local non-canonical verify-rc reproducibility override file passed through `--repro-override-file`.",
+)
+ComponentConfig.schema_export = SchemaExportSpecification(
+    file_path="release-config.yaml",
+    summary="Component-authored `release-config.yaml` contract for release policy and target integration settings.",
+)
+PrepareRcState.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Resolved prepare-rc state persisted between release workflow steps.",
+)
+ReleaseVersionState.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Resolved release-version state persisted across final release workflow steps.",
+)
+CommandContext.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Runtime command context built from CLI arguments and validated component configuration.",
+)

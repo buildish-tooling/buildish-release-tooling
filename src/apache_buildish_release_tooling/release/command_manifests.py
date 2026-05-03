@@ -20,7 +20,10 @@ from typing import Annotated, Literal
 
 from pydantic import Field, StringConstraints
 
-from apache_buildish_release_tooling.docs.documentation import ToolingDerivedModel as BuildishContractModel
+from apache_buildish_release_tooling.docs.documentation import (
+    SchemaExportSpecification,
+    ToolingDerivedModel as BuildishContractModel,
+)
 
 NonEmptyString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
@@ -325,3 +328,68 @@ class AttachGithubReleaseAssetsManifest(CommandActionManifest):
     generated_signature_asset_names: list[NonEmptyString] = Field(description="Generated detached-signature asset names that Buildish attached or expected to attach to the GitHub release.")
     checksum_algorithms: list[NonEmptyString] = Field(description="Checksum algorithms that Buildish generated or expects for the related artifact set.")
     gpg_fingerprint: str = Field(description="OpenPGP fingerprint of the signing key Buildish used or verified.")
+
+
+def _assign_command_manifest_export(model: type[CommandActionManifest]) -> None:
+    action_field = model.model_fields.get("action")
+    action_name = (
+        action_field.default
+        if action_field is not None and isinstance(action_field.default, str)
+        else None
+    )
+    if model is CommandActionManifest:
+        summary = (
+            "Common top-level shape for internal unstable command action manifests "
+            "written through `MANIFEST_PATH`."
+        )
+        description = (
+            f"{model.__doc__ or ''} "
+            "This schema is documented for maintenance and debugging only and is not "
+            "a supported external API."
+        ).strip()
+    else:
+        summary = (
+            f"Internal unstable JSON action manifest emitted by `{action_name}`."
+            if action_name is not None
+            else "Internal unstable JSON action manifest emitted by one release-tooling command."
+        )
+        description = (
+            f"{model.__doc__ or ''} "
+            "This command manifest is internal Buildish workflow I/O and is not a supported external API."
+        ).strip()
+    model.schema_export = SchemaExportSpecification(
+        audience="internal",
+        stability="unstable",
+        summary=summary,
+        description=description,
+        reference_group="internal-unstable-root",
+    )
+
+
+for _command_manifest_model in (
+    CommandActionManifest,
+    CreateReleaseBranchManifest,
+    PrepareRcManifest,
+    CleanupDevSvnRcsManifest,
+    CreateSourceArtifactManifest,
+    BuildSourceRcManifest,
+    MaterializeRcGitContentManifest,
+    CreateRcMaterializationTagManifest,
+    RecordArtifactManifest,
+    FinalizeRcVoteMaterialsManifest,
+    PublishAtrCandidateManifest,
+    ReportAtrChecksManifest,
+    SyncDraftGithubReleaseManifest,
+    PublishSourceReleaseSvnManifest,
+    PruneOlderLineReleasesManifest,
+    CreateFinalTagManifest,
+    FinalizeDraftGithubReleaseManifest,
+    ReleaseVersionManifest,
+    UpdateMovingTagsManifest,
+    UpdateMovingImageAliasesManifest,
+    PublishDockerhubMovingTagsManifest,
+    AttachGithubReleaseAssetsManifest,
+):
+    _assign_command_manifest_export(_command_manifest_model)
+
+del _command_manifest_model

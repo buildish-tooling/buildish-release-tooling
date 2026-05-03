@@ -24,6 +24,7 @@ from pathlib import Path
 from pydantic import Field
 
 from apache_buildish_release_tooling.docs.documentation import RuntimeDerivedModel
+from apache_buildish_release_tooling.docs.documentation import SchemaExportSpecification
 from apache_buildish_release_tooling.harness.models import (
     HarnessBuiltinGhTagObject,
     HarnessShimState,
@@ -155,3 +156,10 @@ def builtin_gh_mutated_repositories(state: HarnessShimState) -> list[Path]:
     workspace_root = Path(state.workspace_root)
     origin_root = workspace_root / ".buildish-release-harness" / "git-origins" / "self"
     return [workspace_root, origin_root]
+
+
+HarnessBuiltinGhRefMutationPayload.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Harness shim builtin payload describing a synthetic GitHub ref mutation request.",
+)

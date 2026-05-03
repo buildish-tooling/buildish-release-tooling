@@ -24,6 +24,7 @@ from pydantic import ConfigDict, Field, RootModel, model_validator
 from apache_buildish_release_tooling.docs.documentation import (
     ConsumerOwnedAuthoredModel,
     RuntimeDerivedModel,
+    SchemaExportSpecification,
 )
 
 HarnessBackendName = Literal["custom", "act"]
@@ -356,3 +357,31 @@ def ordered_job_ids(jobs: Sequence[JobScenario]) -> list[str]:
     """Return the job identifiers in declaration order."""
 
     return [job.id for job in jobs]
+
+
+HarnessShimState.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Persisted subprocess-facing harness shim state used by intercepted tool wrappers.",
+)
+HarnessScenario.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    file_path="harness/scenarios/*.yaml",
+    summary="Harness scenario contract for synthetic or `act`-backed release-workflow integration tests.",
+)
+HarnessCommandTraceEntry.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Structured command-trace record emitted by the harness shim for one intercepted invocation.",
+)
+HarnessRunResultJson.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Machine-readable JSON result for one harness scenario run.",
+)
+HarnessSequenceRunResultJson.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Machine-readable JSON result for a multi-scenario harness sequence run.",
+)

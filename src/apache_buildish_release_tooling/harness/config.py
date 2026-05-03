@@ -26,6 +26,7 @@ from pydantic import ConfigDict, Field
 from apache_buildish_release_tooling.docs.documentation import (
     ConsumerOwnedAuthoredModel,
     RuntimeDerivedModel,
+    SchemaExportSpecification,
 )
 from apache_buildish_release_tooling.harness.yaml_types import (
     YamlMapping,
@@ -217,3 +218,16 @@ def _default_repository_path(repository_id: str) -> Path:
     """Derive the default repository-root-relative sibling checkout path `../<repo-name>`."""
 
     return Path("..") / repository_id.rsplit("/", 1)[-1]
+
+
+ReleaseHarnessConfig.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    file_path="harness/release-harness.yaml",
+    summary="Committed harness configuration contract for local repository bindings and optional overrides.",
+)
+ResolvedReleaseHarnessConfigJson.schema_export = SchemaExportSpecification(
+    audience="internal",
+    stability="stable",
+    summary="Machine-readable JSON payload for one resolved harness configuration.",
+)

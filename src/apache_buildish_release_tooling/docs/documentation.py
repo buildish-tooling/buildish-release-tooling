@@ -21,14 +21,23 @@ maintaining a parallel registry keyed by model class.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from functools import lru_cache
+import importlib
 import inspect
+import pkgutil
 from typing import Any, ClassVar, Literal, get_args, get_origin
 
 from pydantic import BaseModel
 
 from apache_buildish_release_tooling.contracts.base import BuildishContractModel
 from apache_buildish_release_tooling.docs.reference_docs import ReferenceDocumentation
+
+_MODEL_REGISTRY_PACKAGE_NAMES = (
+    "apache_buildish_release_tooling.release",
+    "apache_buildish_release_tooling.harness",
+)
 
 ContractCategory = Literal["authored", "emitted", "runtime"]
 ContractOwnership = Literal[
@@ -37,6 +46,18 @@ ContractOwnership = Literal[
     "tooling-derived",
     "runtime-derived",
 ]
+SchemaAudience = Literal["supported", "internal"]
+SchemaStability = Literal["stable", "unstable"]
+ReferenceGroup = Literal[
+    "supported-authored-file",
+    "supported-emitted-file",
+    "supported-emitted-root",
+    "internal-stable-file",
+    "internal-stable-root",
+    "internal-unstable-root",
+]
+ExampleRenderFormat = Literal["json", "yaml"]
+ExampleValueBuilder = Callable[[], object]
 
 
 @dataclass(frozen=True)
@@ -63,10 +84,33 @@ class ContractDocumentation:
         return extension
 
 
+@dataclass(frozen=True)
+class SchemaExample:
+    """One generated example shared by schema files and reference docs."""
+
+    summary: str
+    value_builder: ExampleValueBuilder
+    render_format: ExampleRenderFormat = "json"
+
+
+@dataclass(frozen=True)
+class SchemaExportSpecification:
+    """Export metadata attached to one checked-in Buildish schema root."""
+
+    audience: SchemaAudience = "supported"
+    stability: SchemaStability = "stable"
+    file_path: str | None = None
+    summary: str | None = None
+    description: str | None = None
+    reference_group: ReferenceGroup | None = None
+    examples: tuple[SchemaExample, ...] = ()
+
+
 class DocumentedContractModel(BuildishContractModel):
     """Base class for Buildish-owned wire models that expose contract metadata."""
 
     contract_documentation: ClassVar[ContractDocumentation | None] = None
+    schema_export: ClassVar[SchemaExportSpecification | None] = None
 
 
 class ConsumerOwnedAuthoredModel(DocumentedContractModel):
@@ -114,6 +158,15 @@ def contract_documentation_for(
     return documentation if isinstance(documentation, ContractDocumentation) else None
 
 
+def schema_export_spec_for(
+    model: type[BaseModel],
+) -> SchemaExportSpecification | None:
+    """Return export metadata for one Buildish schema root when present."""
+
+    specification = model.__dict__.get("schema_export")
+    return specification if isinstance(specification, SchemaExportSpecification) else None
+
+
 def field_description_for(model: type[BaseModel], field_name: str) -> str | None:
     """Return the explicit field description for one Buildish-owned model field."""
 
@@ -134,11 +187,15 @@ def apply_documentation_to_schema(
     definitions = schema.get("$defs")
     if isinstance(definitions, dict):
         nested_models = _reachable_models(model)
+        global_models = _global_model_registry()
         for definition_name, definition_schema in definitions.items():
             if not isinstance(definition_schema, dict):
                 continue
-            nested_model = nested_models.get(str(definition_name)) or nested_models.get(
-                str(definition_schema.get("title"))
+            nested_model = (
+                nested_models.get(str(definition_name))
+                or nested_models.get(str(definition_schema.get("title")))
+                or global_models.get(str(definition_name))
+                or global_models.get(str(definition_schema.get("title")))
             )
             if nested_model is not None:
                 _apply_model_documentation(nested_model, definition_schema)
@@ -193,3 +250,33 @@ def _reachable_models(root_model: type[BaseModel]) -> dict[str, type[BaseModel]]
 
     visit_model(root_model)
     return discovered
+
+
+@lru_cache(maxsize=1)
+def _global_model_registry() -> dict[str, type[BaseModel]]:
+    """Return a deterministic model-name registry for schema doc enrichment."""
+
+    registry: dict[str, type[BaseModel]] = {}
+    for package_name in _MODEL_REGISTRY_PACKAGE_NAMES:
+        package = importlib.import_module(package_name)
+        for module_name in (package.__name__, *_walk_module_names(package)):
+            module = importlib.import_module(module_name)
+            for candidate in vars(module).values():
+                if (
+                    inspect.isclass(candidate)
+                    and issubclass(candidate, BaseModel)
+                    and candidate.__module__ == module.__name__
+                ):
+                    registry.setdefault(candidate.__name__, candidate)
+                    registry.setdefault(str(getattr(candidate, "__name__", "")), candidate)
+    return registry
+
+
+def _walk_module_names(package: Any) -> tuple[str, ...]:
+    package_path = getattr(package, "__path__", None)
+    if package_path is None:
+        return ()
+    return tuple(
+        module_info.name
+        for module_info in pkgutil.walk_packages(package_path, package.__name__ + ".")
+    )
