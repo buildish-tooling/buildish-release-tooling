@@ -36,10 +36,21 @@ class WheelLegalFilesTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             out_dir = Path(temp_dir)
-            subprocess.run(  # noqa: S603
+            completed = subprocess.run(  # noqa: S603
                 [uv_executable, "build", "--wheel", "--out-dir", str(out_dir)],
-                check=True,
                 cwd=project_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(
+                0,
+                completed.returncode,
+                msg=(
+                    "wheel build failed\n"
+                    f"stdout:\n{completed.stdout}\n"
+                    f"stderr:\n{completed.stderr}"
+                ),
             )
 
             wheel_path = next(out_dir.glob("*.whl"))
