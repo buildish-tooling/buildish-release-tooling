@@ -27,6 +27,7 @@ as filesystem-setup scripts.
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import shutil
@@ -34,8 +35,10 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Mapping
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, cast
+from unittest import mock
 
 import yaml
 
@@ -980,7 +983,27 @@ def read_json(path: Path) -> dict[str, object]:
     return {str(key): value for key, value in payload.items()}
 
 
-def run_cli(arguments: list[str], *, cwd: Path, env: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+class _TestCliStream(io.StringIO):
+    """Small text stream used to emulate stdin/stdout/stderr for in-process CLI tests."""
+
+    def __init__(self, initial_value: str = "", *, isatty: bool) -> None:
+        super().__init__(initial_value)
+        self._isatty = isatty
+
+    def isatty(self) -> bool:
+        return self._isatty
+
+    @property
+    def encoding(self) -> str:
+        return "utf-8"
+
+
+def run_cli_subprocess(
+    arguments: list[str],
+    *,
+    cwd: Path,
+    env: Mapping[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     """Run the CLI in a subprocess with the local source tree on `PYTHONPATH`."""
 
     return subprocess.run(
@@ -991,3 +1014,74 @@ def run_cli(arguments: list[str], *, cwd: Path, env: Mapping[str, str] | None = 
         capture_output=True,
         check=False,
     )
+
+
+def run_cli_inprocess(
+    arguments: list[str],
+    *,
+    cwd: Path,
+    env: Mapping[str, str] | None = None,
+    stdin_text: str = "",
+    stdin_isatty: bool = False,
+    stdout_isatty: bool = False,
+    stderr_isatty: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Run the release CLI in-process while emulating one isolated subprocess environment."""
+
+    from apache_buildish_release_tooling.release.cli import main
+
+    effective_env = tool_env(env)
+    stdin_stream = _TestCliStream(stdin_text, isatty=stdin_isatty)
+    stdout_stream = _TestCliStream(isatty=stdout_isatty)
+    stderr_stream = _TestCliStream(isatty=stderr_isatty)
+    old_cwd = Path.cwd()
+
+    with ExitStack() as stack:
+        stack.enter_context(mock.patch.dict(os.environ, effective_env, clear=True))
+        stack.enter_context(mock.patch.object(sys, "stdin", stdin_stream))
+        stack.enter_context(mock.patch.object(sys, "stdout", stdout_stream))
+        stack.enter_context(mock.patch.object(sys, "stderr", stderr_stream))
+        os.chdir(cwd)
+        try:
+            try:
+                returncode = main(arguments)
+            except SystemExit as exc:
+                code = exc.code
+                returncode = 0 if code is None else cast(int, code)
+        finally:
+            os.chdir(old_cwd)
+
+    return subprocess.CompletedProcess(
+        [sys.executable, "-m", "apache_buildish_release_tooling.release", *arguments],
+        returncode,
+        stdout_stream.getvalue(),
+        stderr_stream.getvalue(),
+    )
+
+
+def run_cli(
+    arguments: list[str],
+    *,
+    cwd: Path,
+    env: Mapping[str, str] | None = None,
+    execution_mode: str = "inprocess",
+    stdin_text: str = "",
+    stdin_isatty: bool = False,
+    stdout_isatty: bool = False,
+    stderr_isatty: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Run the CLI using either one in-process harness or a real subprocess."""
+
+    if execution_mode == "subprocess":
+        return run_cli_subprocess(arguments, cwd=cwd, env=env)
+    if execution_mode == "inprocess":
+        return run_cli_inprocess(
+            arguments,
+            cwd=cwd,
+            env=env,
+            stdin_text=stdin_text,
+            stdin_isatty=stdin_isatty,
+            stdout_isatty=stdout_isatty,
+            stderr_isatty=stderr_isatty,
+        )
+    raise ValueError(f"unsupported CLI execution mode: {execution_mode}")

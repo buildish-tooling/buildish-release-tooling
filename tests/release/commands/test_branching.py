@@ -20,6 +20,21 @@ from tests.release.commands.support import *
 class BranchingCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
     """Branching command integration tests."""
 
+    def test_release_cli_subprocess_help_smoke(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        completed = run_cli(
+            ["--help"],
+            cwd=sandbox_dir,
+            execution_mode="subprocess",
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        self.assertIn("buildish-release-tooling", completed.stdout)
+        self.assertIn("create-release-branch", completed.stdout)
+        self.assertEqual("", completed.stderr)
+
     def test_create_release_branch_command_applies_changes_when_requested(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
@@ -52,3 +67,35 @@ class BranchingCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
         created_commit = git_rev_parse(clone_dir, "refs/heads/release/1.2.x^{commit}")
         source_commit = git_rev_parse(clone_dir, "refs/remotes/origin/release/1.x^{commit}")
         self.assertEqual(source_commit, created_commit)
+
+    def test_create_release_branch_command_subprocess_smoke(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        manifest_path = sandbox_dir / "create-release-branch-subprocess.json"
+        git_create_branch(origin_dir, "release/1.x")
+        fetch_git_origin_refs(clone_dir)
+        self._write_component_config(
+            config_path,
+            component_id="buildish-example",
+            dev_base_url="https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+            release_base_url="https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+        )
+        completed = run_cli(
+            [
+                "create-release-branch",
+                "--component-config",
+                str(config_path),
+                "--apply",
+                "1.2.x",
+                "release/1.x",
+            ],
+            cwd=clone_dir,
+            env=cli_env(manifest_path),
+            execution_mode="subprocess",
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual("release/1.2.x", manifest["release_branch"])

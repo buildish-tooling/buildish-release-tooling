@@ -750,6 +750,7 @@ class VerificationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport)
             return cached
         cache_root = self._baseline_root / "cached-verification-families" / cache_name
         cache_root.parent.mkdir(parents=True, exist_ok=True)
+        cleanup_sandbox(cache_root)
         cached = build_family(cache_root)
         self._cached_verification_families[cache_name] = cached
         return cached
