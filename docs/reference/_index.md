@@ -22,7 +22,9 @@ limitations under the License.
 
 This section contains generated reference material for the typed Buildish Release Tooling contracts.
 
-- [Release model schema reference](release-model-schema-reference.md)
+- [Release model schema reference](./release-model-schema-reference/)
+- [File contract index](./release-file-contract-index/)
+- [Shared types reference](./release-shared-types-reference/)
 
 The generated reference intentionally includes both:
 
@@ -31,3 +33,6 @@ The generated reference intentionally includes both:
 
 Internal command action manifests are documented here for maintenance and debugging, but they are
 explicitly unstable and are not a supported external API.
+
+The detailed generated reference is intentionally split across multiple pages so the schema and
+field-level contract pages stay navigable.

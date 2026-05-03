@@ -272,14 +272,24 @@ def write_authored_schema_files(output_dir: Path) -> tuple[Path, ...]:
     return write_schema_files(output_dir)
 
 
-def write_reference_file(output_path: Path) -> Path:
-    """Write the generated Markdown schema reference document."""
+def write_reference_files(output_dir: Path) -> tuple[Path, ...]:
+    """Write the generated Markdown schema reference page set."""
 
     from apache_buildish_release_tooling.docs.reference_export import (
-        write_reference_markdown_file,
+        write_reference_markdown_files,
     )
 
-    return write_reference_markdown_file(output_path, schema_exports())
+    return write_reference_markdown_files(output_dir, schema_exports())
+
+
+def write_reference_file(output_path: Path) -> tuple[Path, ...]:
+    """Backward-compatible alias that writes the full Markdown reference page set."""
+
+    if output_path.name != "release-model-schema-reference.md":
+        raise ValueError(
+            "reference output path must be docs/reference/release-model-schema-reference.md or an equivalent filename"
+        )
+    return write_reference_files(output_path.parent)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -292,9 +302,9 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Directory that should receive the generated JSON Schema files.",
     )
     parser.add_argument(
-        "--reference-output",
-        default="docs/reference/release-model-schema-reference.md",
-        help="Path that should receive the generated Markdown schema reference.",
+        "--reference-dir",
+        default="docs/reference",
+        help="Directory that should receive the generated Markdown schema reference pages.",
     )
     return parser
 
@@ -306,9 +316,9 @@ def main(argv: list[str] | None = None) -> int:
     for output_path in write_schema_files(Path(args.output_dir)):
         sys.stdout.write(output_path.as_posix())  # noqa: TID251
         sys.stdout.write("\n")  # noqa: TID251
-    reference_path = write_reference_file(Path(args.reference_output))
-    sys.stdout.write(reference_path.as_posix())  # noqa: TID251
-    sys.stdout.write("\n")  # noqa: TID251
+    for reference_path in write_reference_files(Path(args.reference_dir)):
+        sys.stdout.write(reference_path.as_posix())  # noqa: TID251
+        sys.stdout.write("\n")  # noqa: TID251
     return 0
 
 

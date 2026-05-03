@@ -31,7 +31,7 @@ from apache_buildish_release_tooling.docs.schema_export import (
     build_schema_document,
     main,
     schema_exports,
-    write_reference_file,
+    write_reference_files,
     write_schema_files,
 )
 from apache_buildish_release_tooling.harness import config as harness_config_models
@@ -65,6 +65,19 @@ def _reference_model_roots() -> tuple[type[DocumentedContractModel], ...]:
 
 class SchemaExportTests(unittest.TestCase):
     """Verify the checked-in schema export workflow."""
+
+    def _generated_reference_file_names(self) -> tuple[str, ...]:
+        return (
+            "release-model-schema-reference.md",
+            "release-file-contract-index.md",
+            "release-shared-types-reference.md",
+            "release-config-reference.md",
+            "release-manifests-and-verification-reference.md",
+            "release-command-manifests-reference.md",
+            "release-harness-config-reference.md",
+            "release-harness-runtime-reference.md",
+            "release-harness-shim-reference.md",
+        )
 
     def test_generated_schema_uses_model_metadata_and_contract_classification(self) -> None:
         component_export = next(
@@ -108,33 +121,59 @@ class SchemaExportTests(unittest.TestCase):
 
     def test_generated_reference_doc_matches_checked_in_output(self) -> None:
         with tempfile.TemporaryDirectory() as tempdir:
-            generated_reference_path = Path(tempdir) / "release-model-schema-reference.md"
-            write_reference_file(generated_reference_path)
-            checked_in_reference_path = (
-                Path(__file__).resolve().parents[2] / "docs/reference/release-model-schema-reference.md"
-            )
-            generated_reference_text = generated_reference_path.read_text(encoding="utf-8")
+            generated_reference_dir = Path(tempdir)
+            write_reference_files(generated_reference_dir)
+            checked_in_reference_dir = Path(__file__).resolve().parents[2] / "docs/reference"
 
             self.assertEqual(
-                checked_in_reference_path.read_text(encoding="utf-8"),
+                sorted(self._generated_reference_file_names()),
+                sorted(path.name for path in generated_reference_dir.glob("*.md")),
+            )
+            self.assertEqual(
+                sorted(self._generated_reference_file_names()),
+                sorted(
+                    path.name
+                    for path in checked_in_reference_dir.glob("*.md")
+                    if path.name in self._generated_reference_file_names()
+                ),
+            )
+
+            generated_reference_text = (
+                generated_reference_dir / "release-model-schema-reference.md"
+            ).read_text(encoding="utf-8")
+            self.assertEqual(
+                (checked_in_reference_dir / "release-model-schema-reference.md").read_text(encoding="utf-8"),
                 generated_reference_text,
             )
             self.assertIn(
                 "This reference describes the typed Buildish Release Tooling contracts that are checked into this repository.",
                 generated_reference_text,
             )
-            self.assertIn("### Internal unstable command action manifests", generated_reference_text)
+            self.assertIn("[File contract index](../release-file-contract-index/)", generated_reference_text)
+            self.assertIn("[Internal unstable command action manifest types](../release-command-manifests-reference/)", generated_reference_text)
+            self.assertNotIn("**UX warning:**", generated_reference_text)
+
+            command_manifest_reference_text = (
+                generated_reference_dir / "release-command-manifests-reference.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("- audience: `internal`", command_manifest_reference_text)
+            self.assertIn("- stability: `unstable`", command_manifest_reference_text)
+
+            verification_reference_text = (
+                generated_reference_dir / "release-manifests-and-verification-reference.md"
+            ).read_text(encoding="utf-8")
             self.assertIn(
                 "[`buildish-release-tooling-verify-rc-report-v1.schema.json`](/components/buildish-release-tooling/schemas/buildish-release-tooling-verify-rc-report-v1.schema.json)",
-                generated_reference_text,
+                verification_reference_text,
             )
+
+            config_reference_text = (
+                generated_reference_dir / "release-config-reference.md"
+            ).read_text(encoding="utf-8")
             self.assertIn(
                 "| <a id=\"componentconfig-component-id\"></a>`component_id` | str | yes |",
-                generated_reference_text,
+                config_reference_text,
             )
-            self.assertIn("- audience: `internal`", generated_reference_text)
-            self.assertIn("- stability: `unstable`", generated_reference_text)
-            self.assertNotIn("**UX warning:**", generated_reference_text)
 
     def test_export_inventory_covers_supported_and_internal_contracts(self) -> None:
         export_names = {export.filename for export in schema_exports()}
@@ -178,7 +217,12 @@ class SchemaExportTests(unittest.TestCase):
 
     def test_anchor_index_covers_release_tooling_models(self) -> None:
         reachable_models = _collect_reachable_models(schema_exports())
-        anchors = _build_anchor_index(models=reachable_models, enums=(), scalar_entries=())
+        anchors = _build_anchor_index(
+            schema_exports(),
+            models=reachable_models,
+            enums=(),
+            scalar_entries=(),
+        )
 
         self.assertIn("ComponentConfig", anchors.type_anchors)
         self.assertIn(("ComponentConfig", "component_id"), anchors.field_anchors)
@@ -189,10 +233,7 @@ class SchemaExportTests(unittest.TestCase):
         namespace = parser.parse_args([])
 
         self.assertEqual(namespace.output_dir, "site/pages/schemas")
-        self.assertEqual(
-            namespace.reference_output,
-            "docs/reference/release-model-schema-reference.md",
-        )
+        self.assertEqual(namespace.reference_dir, "docs/reference")
 
         with tempfile.TemporaryDirectory() as tempdir:
             stdout = io.StringIO()
@@ -201,20 +242,25 @@ class SchemaExportTests(unittest.TestCase):
                     [
                         "--output-dir",
                         tempdir,
-                        "--reference-output",
-                        str(Path(tempdir) / "release-model-schema-reference.md"),
+                        "--reference-dir",
+                        tempdir,
                     ]
                 )
 
             written_lines = [line for line in stdout.getvalue().splitlines() if line.strip()]
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(len(written_lines), len(schema_exports()) + 1)
         self.assertEqual(
-            sorted(Path(line).name for line in written_lines[:-1]),
-            sorted(export.filename for export in schema_exports()),
+            len(written_lines),
+            len(schema_exports()) + len(self._generated_reference_file_names()),
         )
-        self.assertTrue(written_lines[-1].endswith("release-model-schema-reference.md"))
+        self.assertEqual(
+            sorted(Path(line).name for line in written_lines),
+            sorted(
+                [export.filename for export in schema_exports()]
+                + list(self._generated_reference_file_names())
+            ),
+        )
 
 
 if __name__ == "__main__":

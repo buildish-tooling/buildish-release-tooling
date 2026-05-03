@@ -25,6 +25,7 @@ class ModelSectionDefinition:
 
     title: str
     description: str
+    page_slug: str
     module_prefixes: tuple[str, ...]
 
     def matches(self, module_name: str) -> bool:
@@ -47,6 +48,7 @@ MODEL_SECTION_DEFINITIONS = (
             "Consumer-owned and component-owned authored configuration models, "
             "including `release-config.yaml` and local verify-rc override payloads."
         ),
+        page_slug="release-config-reference",
         module_prefixes=("apache_buildish_release_tooling.release.models",),
     ),
     ModelSectionDefinition(
@@ -55,6 +57,7 @@ MODEL_SECTION_DEFINITIONS = (
             "Typed Buildish release manifests, emitted verification reports, "
             "inspection-bundle payloads, and related helper contracts."
         ),
+        page_slug="release-manifests-and-verification-reference",
         module_prefixes=("apache_buildish_release_tooling.release.contracts",),
     ),
     ModelSectionDefinition(
@@ -63,6 +66,7 @@ MODEL_SECTION_DEFINITIONS = (
             "Machine-readable command action manifests written for workflow coordination. "
             "These are Buildish-owned internal input/output contracts and are intentionally unstable."
         ),
+        page_slug="release-command-manifests-reference",
         module_prefixes=("apache_buildish_release_tooling.release.command_manifests",),
     ),
     ModelSectionDefinition(
@@ -70,6 +74,7 @@ MODEL_SECTION_DEFINITIONS = (
         description=(
             "Committed and resolved release-harness configuration models."
         ),
+        page_slug="release-harness-config-reference",
         module_prefixes=("apache_buildish_release_tooling.harness.config",),
     ),
     ModelSectionDefinition(
@@ -77,6 +82,7 @@ MODEL_SECTION_DEFINITIONS = (
         description=(
             "Harness scenario inputs, mocked tool behavior contracts, and machine-readable run results."
         ),
+        page_slug="release-harness-runtime-reference",
         module_prefixes=("apache_buildish_release_tooling.harness.models",),
     ),
     ModelSectionDefinition(
@@ -84,6 +90,7 @@ MODEL_SECTION_DEFINITIONS = (
         description=(
             "Small runtime payloads used by the harness shim to emulate GitHub and other tools."
         ),
+        page_slug="release-harness-shim-reference",
         module_prefixes=("apache_buildish_release_tooling.harness.shim_builtins",),
     ),
 )
