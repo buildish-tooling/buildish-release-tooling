@@ -85,7 +85,7 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual("1.2.x", manifest["release_line"])
         self.assertEqual("v1.2.3-rc2", manifest["selected_rc_tag"])
-        self.assertEqual("1.2.1,1.2.2", manifest["archive_versions"])
+        self.assertEqual(["1.2.1", "1.2.2"], manifest["archive_versions"])
 
     def test_sync_draft_github_release_command_recreates_matching_draft_release(self) -> None:
         sandbox_dir = create_build_test_sandbox()
@@ -157,7 +157,7 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertEqual(expected_commit, manifest["resolved_source_ref"])
         self.assertEqual("v1.2.3-rc3", manifest["rc_tag"])
         self.assertEqual("v1.2.3", manifest["final_tag"])
-        self.assertEqual("11,12", manifest["deleted_release_ids"])
+        self.assertEqual(["11", "12"], manifest["deleted_release_ids"])
         self.assertEqual("created", manifest["sync_mode"])
         self.assertEqual("42", manifest["release_id"])
         self.assertEqual("v1.2.3-rc3", manifest["release_tag"])
@@ -592,7 +592,7 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual("1.2.x", manifest["release_line"])
-        self.assertEqual("1.2.1,1.2.2", manifest["pruned_versions"])
+        self.assertEqual(["1.2.1", "1.2.2"], manifest["pruned_versions"])
         self.assertEqual(["1.2.3/", "1.3.0/"], client.list_entries(release_base_url))
 
     def test_create_final_tag_command_creates_remote_annotated_tag(self) -> None:
@@ -724,7 +724,7 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual("reused", manifest["sync_mode"])
-        self.assertEqual("", manifest["deleted_release_ids"])
+        self.assertEqual([], manifest["deleted_release_ids"])
         self.assertFalse((gh_state_dir / "deleted-endpoints.log").exists())
         self.assertFalse((gh_state_dir / "create-release-request.json").exists())
 
@@ -923,7 +923,10 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertEqual("42", manifest["release_id"])
         self.assertEqual("v1.2.3", manifest["release_tag"])
         self.assertEqual("published-draft", manifest["finalize_mode"])
-        self.assertEqual("rc-vote-manifest.json,rc-vote-manifest.json.asc", manifest["deleted_asset_names"])
+        self.assertEqual(
+            ["rc-vote-manifest.json", "rc-vote-manifest.json.asc"],
+            manifest["deleted_asset_names"],
+        )
         update_request = json.loads(
             (gh_state_dir / "update-release-request.json").read_text(encoding="utf-8")
         )

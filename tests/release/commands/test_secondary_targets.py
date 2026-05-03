@@ -92,8 +92,8 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual(expected_commit, manifest["target_commit"])
-        self.assertEqual("v1.2", manifest["updated_tags"])
-        self.assertEqual("v1", manifest["skipped_tags"])
+        self.assertEqual(["v1.2"], manifest["updated_tags"])
+        self.assertEqual(["v1"], manifest["skipped_tags"])
         create_tag_request = json.loads((gh_state_dir / "create-tag-request.json").read_text(encoding="utf-8"))
         self.assertEqual("v1.2", create_tag_request["tag"])
         self.assertEqual(expected_commit, create_tag_request["object"])
@@ -128,7 +128,7 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual("1.2.3", manifest["exact_image_tag"])
-        self.assertEqual("1 1.2", manifest["image_aliases"])
+        self.assertEqual(["1", "1.2"], manifest["image_aliases"])
 
     def test_publish_dockerhub_moving_tags_command_creates_alias_refs(self) -> None:
         sandbox_dir = create_build_test_sandbox()
@@ -167,7 +167,10 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         self.assertEqual("docker.io/apache/buildish-example:1.2.3", manifest["source_image"])
         self.assertEqual("docker.io/apache/buildish-example", manifest["image_repository"])
         self.assertEqual(
-            "docker.io/apache/buildish-example:1 docker.io/apache/buildish-example:1.2",
+            [
+                "docker.io/apache/buildish-example:1",
+                "docker.io/apache/buildish-example:1.2",
+            ],
             manifest["published_alias_refs"],
         )
         self.assertEqual(
@@ -282,8 +285,8 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual("42", manifest["release_id"])
         self.assertEqual("v1.2.3", manifest["release_tag"])
-        self.assertEqual("buildish-example.zip", manifest["primary_asset_names"])
-        self.assertEqual("sha512,sha256", manifest["checksum_algorithms"])
+        self.assertEqual(["buildish-example.zip"], manifest["primary_asset_names"])
+        self.assertEqual(["sha512", "sha256"], manifest["checksum_algorithms"])
         self.assertIn("buildish-example.zip.asc", manifest["generated_signature_asset_names"])
         self.assertIn("buildish-example.zip.sha512", manifest["generated_checksum_asset_names"])
         self.assertIn("buildish-example.zip.sha256", manifest["generated_checksum_asset_names"])

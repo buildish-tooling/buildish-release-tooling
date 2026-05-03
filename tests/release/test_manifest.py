@@ -19,13 +19,14 @@ from __future__ import annotations
 import json
 import unittest
 
+from apache_buildish_release_tooling.release.command_manifests import CreateReleaseBranchManifest
 from apache_buildish_release_tooling.release.manifest import write_manifest
 
 from tests.support import cleanup_sandbox, create_build_test_sandbox
 
 
 class ManifestTest(unittest.TestCase):
-    """Verify that workflow manifests are written as flat JSON objects."""
+    """Verify that typed workflow manifests are written as JSON objects."""
 
     def test_write_manifest(self) -> None:
         sandbox_dir = create_build_test_sandbox()
@@ -33,13 +34,16 @@ class ManifestTest(unittest.TestCase):
         manifest_path = sandbox_dir / "release.json"
         write_manifest(
             manifest_path,
-            {
-                "component": "buildish-mammoth-cache",
-                "version": "1.2.3",
-                "rc_tag": "v1.2.3-rc0",
-            },
+            CreateReleaseBranchManifest(
+                component="buildish-mammoth-cache",
+                release_line="1.2.x",
+                release_branch="release/1.2.x",
+                source_ref="deadbeef",
+            ),
         )
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual("buildish-mammoth-cache", manifest["component"])
-        self.assertEqual("1.2.3", manifest["version"])
-        self.assertEqual("v1.2.3-rc0", manifest["rc_tag"])
+        self.assertEqual("create-release-branch", manifest["action"])
+        self.assertEqual("1.2.x", manifest["release_line"])
+        self.assertEqual("release/1.2.x", manifest["release_branch"])
+        self.assertEqual("deadbeef", manifest["source_ref"])

@@ -35,6 +35,12 @@ from apache_buildish_release_tooling.release.gpg_signing import (
     import_private_key_from_secret,
     secret_key_fingerprint,
 )
+from apache_buildish_release_tooling.release.command_manifests import (
+    AttachGithubReleaseAssetsManifest,
+    PublishDockerhubMovingTagsManifest,
+    UpdateMovingImageAliasesManifest,
+    UpdateMovingTagsManifest,
+)
 from apache_buildish_release_tooling.release.manifest import write_manifest
 from apache_buildish_release_tooling.release.release_state import derive_final_tag, derive_moving_tags
 from apache_buildish_release_tooling.release.source_artifact import checksum, write_checksum_file
@@ -193,16 +199,15 @@ def run_update_moving_tags(args: Namespace) -> Path:
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "update-moving-tags",
-            "version": version,
-            "final_tag": final_tag,
-            "target_commit": target_commit,
-            "updated_tags": ",".join(updated_tags),
-            "skipped_tags": ",".join(skipped_tags),
-            "tag_update_modes": ",".join(tag_update_modes),
-        },
+        UpdateMovingTagsManifest(
+            component=context.component_config.component_id,
+            version=version,
+            final_tag=final_tag,
+            target_commit=target_commit,
+            updated_tags=updated_tags,
+            skipped_tags=skipped_tags,
+            tag_update_modes=tag_update_modes,
+        ),
     )
     summary.append_heading("Update moving tags")
     summary.append_plaintext_block("Final tag", final_tag)
@@ -227,13 +232,12 @@ def run_update_moving_image_aliases(args: Namespace) -> Path:
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "update-moving-image-aliases",
-            "version": version,
-            "exact_image_tag": version,
-            "image_aliases": " ".join(image_aliases),
-        },
+        UpdateMovingImageAliasesManifest(
+            component=context.component_config.component_id,
+            version=version,
+            exact_image_tag=version,
+            image_aliases=image_aliases,
+        ),
     )
     summary.append_heading("Update moving image aliases")
     summary.append_plaintext_block("Exact image tag", version)
@@ -278,14 +282,13 @@ def run_publish_dockerhub_moving_tags(args: Namespace) -> Path:
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "publish-dockerhub-moving-tags",
-            "version": version,
-            "source_image": source_image,
-            "image_repository": image_reference.repository,
-            "published_alias_refs": " ".join(published_alias_refs),
-        },
+        PublishDockerhubMovingTagsManifest(
+            component=context.component_config.component_id,
+            version=version,
+            source_image=source_image,
+            image_repository=image_reference.repository,
+            published_alias_refs=published_alias_refs,
+        ),
     )
     summary.append_heading("Publish Docker Hub moving tags")
     summary.append_plaintext_block("Source image", source_image)
@@ -330,28 +333,27 @@ def run_attach_github_release_assets(args: Namespace) -> Path:
     release_url = asset_release_url(release_payload)
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "attach-github-release-assets",
-            "version": version,
-            "repository_slug": repository_slug,
-            "release_id": str(release_id),
-            "release_name": str(release_name or ""),
-            "release_tag": str(release_tag or ""),
-            "release_url": release_url,
-            "primary_asset_names": ",".join(asset_path.name for asset_path in asset_paths),
-            "uploaded_asset_names": ",".join(
+        AttachGithubReleaseAssetsManifest(
+            component=context.component_config.component_id,
+            version=version,
+            repository_slug=repository_slug,
+            release_id=str(release_id),
+            release_name=str(release_name or ""),
+            release_tag=str(release_tag or ""),
+            release_url=release_url,
+            primary_asset_names=[asset_path.name for asset_path in asset_paths],
+            uploaded_asset_names=[
                 upload_path.name for upload_path in prepared_uploads.upload_paths
-            ),
-            "generated_checksum_asset_names": ",".join(
+            ],
+            generated_checksum_asset_names=[
                 checksum_path.name for checksum_path in prepared_uploads.generated_checksum_paths
-            ),
-            "generated_signature_asset_names": ",".join(
+            ],
+            generated_signature_asset_names=[
                 signature_path.name for signature_path in prepared_uploads.generated_signature_paths
-            ),
-            "checksum_algorithms": ",".join(prepared_uploads.checksum_algorithms),
-            "gpg_fingerprint": prepared_uploads.gpg_fingerprint,
-        },
+            ],
+            checksum_algorithms=prepared_uploads.checksum_algorithms,
+            gpg_fingerprint=prepared_uploads.gpg_fingerprint,
+        ),
     )
     summary.append_heading("Attach GitHub Release assets")
     summary.append_plaintext_block("GitHub repository", repository_slug)

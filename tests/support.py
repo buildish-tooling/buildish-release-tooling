@@ -938,11 +938,11 @@ def dispatcher_env(
     return env
 
 
-def read_json(path: Path) -> dict[str, str]:
-    """Read a JSON object from disk and coerce keys and values to strings."""
+def read_json(path: Path) -> dict[str, object]:
+    """Read a JSON object from disk without coercing the payload values."""
 
     payload = json.loads(path.read_text(encoding="utf-8"))
-    return {str(key): str(value) for key, value in payload.items()}
+    return {str(key): value for key, value in payload.items()}
 
 
 def run_cli(arguments: list[str], *, cwd: Path, env: Mapping[str, str] | None = None) -> subprocess.CompletedProcess[str]:

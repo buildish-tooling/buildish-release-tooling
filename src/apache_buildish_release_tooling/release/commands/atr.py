@@ -25,6 +25,10 @@ from urllib.parse import urlparse
 
 import yaml
 
+from apache_buildish_release_tooling.release.command_manifests import (
+    PublishAtrCandidateManifest,
+    ReportAtrChecksManifest,
+)
 from apache_buildish_release_tooling.release.external_json import parse_json_object
 from apache_buildish_release_tooling.release.git_repo import GitRepository
 from apache_buildish_release_tooling.release.manifest import write_manifest
@@ -407,26 +411,29 @@ def run_publish_atr_candidate(args: Namespace) -> Path:
             )
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "publish-atr-candidate",
-            "version": version,
-            "rc_tag": state.rc_tag,
-            "atr_base_url": runtime.base_url,
-            "atr_committee": runtime.committee,
-            "atr_project": runtime.project_key,
-            "atr_release_mode": release_mode,
-            "atr_phase": phase,
-            "atr_latest_revision": latest_revision or "",
-            "uploaded_file_names": ",".join(path.name for path in downloaded_files),
-            "waited_for_checks": "true" if args.wait_for_checks else "false",
-            "atr_total_checks": str(status_summary.total_checks if status_summary is not None else 0),
-            "atr_failure_count": str(status_summary.counts.get("failure", 0) if status_summary is not None else 0),
-            "atr_exception_count": str(
+        PublishAtrCandidateManifest(
+            component=context.component_config.component_id,
+            version=version,
+            rc_tag=state.rc_tag,
+            atr_base_url=runtime.base_url,
+            atr_committee=runtime.committee,
+            atr_project=runtime.project_key,
+            atr_release_mode=release_mode,
+            atr_phase=phase,
+            atr_latest_revision=latest_revision or "",
+            uploaded_file_names=[path.name for path in downloaded_files],
+            waited_for_checks="true" if args.wait_for_checks else "false",
+            atr_total_checks=str(status_summary.total_checks if status_summary is not None else 0),
+            atr_failure_count=str(
+                status_summary.counts.get("failure", 0) if status_summary is not None else 0
+            ),
+            atr_exception_count=str(
                 status_summary.counts.get("exception", 0) if status_summary is not None else 0
             ),
-            "atr_warning_count": str(status_summary.counts.get("warning", 0) if status_summary is not None else 0),
-        },
+            atr_warning_count=str(
+                status_summary.counts.get("warning", 0) if status_summary is not None else 0
+            ),
+        ),
     )
     _append_github_outputs(
         {
@@ -511,25 +518,24 @@ def run_report_atr_checks(args: Namespace) -> Path:
     strict_failure = runtime.strict_checking and check_summary.hard_failure_count > 0
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "report-atr-checks",
-            "version": version,
-            "rc_tag": state.rc_tag,
-            "atr_base_url": runtime.base_url,
-            "atr_committee": runtime.committee,
-            "atr_project": runtime.project_key,
-            "atr_phase": phase,
-            "atr_latest_revision": latest_revision or "",
-            "atr_reported_revision": requested_revision or "",
-            "atr_total_checks": str(check_summary.total_checks),
-            "atr_failure_count": str(check_summary.counts.get("failure", 0)),
-            "atr_exception_count": str(check_summary.counts.get("exception", 0)),
-            "atr_warning_count": str(check_summary.counts.get("warning", 0)),
-            "atr_success_count": str(check_summary.counts.get("success", 0)),
-            "strict_checking": "true" if runtime.strict_checking else "false",
-            "would_block_release": "true" if strict_failure else "false",
-        },
+        ReportAtrChecksManifest(
+            component=context.component_config.component_id,
+            version=version,
+            rc_tag=state.rc_tag,
+            atr_base_url=runtime.base_url,
+            atr_committee=runtime.committee,
+            atr_project=runtime.project_key,
+            atr_phase=phase,
+            atr_latest_revision=latest_revision or "",
+            atr_reported_revision=requested_revision or "",
+            atr_total_checks=str(check_summary.total_checks),
+            atr_failure_count=str(check_summary.counts.get("failure", 0)),
+            atr_exception_count=str(check_summary.counts.get("exception", 0)),
+            atr_warning_count=str(check_summary.counts.get("warning", 0)),
+            atr_success_count=str(check_summary.counts.get("success", 0)),
+            strict_checking="true" if runtime.strict_checking else "false",
+            would_block_release="true" if strict_failure else "false",
+        ),
     )
     _append_github_outputs(
         {

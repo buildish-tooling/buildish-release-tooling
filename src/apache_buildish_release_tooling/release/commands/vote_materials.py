@@ -24,6 +24,9 @@ from pathlib import Path
 from typing import Any
 
 from apache_buildish_release_tooling.release.asf_svn import AsfSvnClient
+from apache_buildish_release_tooling.release.command_manifests import (
+    FinalizeRcVoteMaterialsManifest,
+)
 from apache_buildish_release_tooling.release.email_templates import (
     render_incubator_rc_vote_email,
     render_project_rc_vote_email,
@@ -545,26 +548,25 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "finalize-rc-vote-materials",
-            "version": version,
-            "resolved_source_ref": state.resolved_source_ref,
-            "rc_tag": state.rc_tag,
-            "final_tag": state.final_tag,
-            "rc_tag_target_commit": rc_tag_target_commit,
-            "source_artifact_url": source_artifact_url,
-            "authoritative_manifest_url": authoritative_manifest_url,
-            "authoritative_manifest_sha512": artifacts.manifest_sha512,
-            "bootstrap_script_url": (
+        FinalizeRcVoteMaterialsManifest(
+            component=context.component_config.component_id,
+            version=version,
+            resolved_source_ref=state.resolved_source_ref,
+            rc_tag=state.rc_tag,
+            final_tag=state.final_tag,
+            rc_tag_target_commit=rc_tag_target_commit,
+            source_artifact_url=source_artifact_url,
+            authoritative_manifest_url=authoritative_manifest_url,
+            authoritative_manifest_sha512=artifacts.manifest_sha512,
+            bootstrap_script_url=(
                 f"{state.staging_url.rstrip('/')}/{artifacts.bootstrap_artifacts.script_path.name}"
             ),
-            "bootstrap_script_sha512": artifacts.bootstrap_artifacts.script_sha512,
-            "draft_release_url": selected_release.release_url,
-            "secondary_artifact_count": str(len(secondary_artifacts)),
-            "mirrored_asset_names": ",".join(_rc_vote_manifest_asset_names(artifacts)),
-            "gpg_fingerprint": artifacts.gpg_fingerprint,
-        },
+            bootstrap_script_sha512=artifacts.bootstrap_artifacts.script_sha512,
+            draft_release_url=selected_release.release_url,
+            secondary_artifact_count=str(len(secondary_artifacts)),
+            mirrored_asset_names=_rc_vote_manifest_asset_names(artifacts),
+            gpg_fingerprint=artifacts.gpg_fingerprint,
+        ),
     )
     _append_finalize_rc_vote_materials_summary(
         summary,

@@ -28,6 +28,9 @@ from apache_buildish_release_tooling.release.github_checks import (
     resolve_repository_slug,
 )
 from apache_buildish_release_tooling.release.manifest import write_manifest
+from apache_buildish_release_tooling.release.command_manifests import (
+    CreateReleaseBranchManifest,
+)
 from apache_buildish_release_tooling.release.prepare_rc_state import resolve_prepare_rc_state
 from apache_buildish_release_tooling.release.summary import SummaryWriter
 
@@ -52,13 +55,12 @@ def run_create_release_branch(args: Namespace) -> Path:
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "create-release-branch",
-            "release_line": release_line,
-            "release_branch": f"release/{release_line}",
-            "source_ref": source_ref,
-        },
+        CreateReleaseBranchManifest(
+            component=context.component_config.component_id,
+            release_line=release_line,
+            release_branch=f"release/{release_line}",
+            source_ref=source_ref,
+        ),
     )
     summary.append_heading("Create release branch")
     summary.append_plaintext_block(

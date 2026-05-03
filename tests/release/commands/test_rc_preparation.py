@@ -111,7 +111,7 @@ class RcPreparationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual(component_id, manifest["component"])
-        self.assertEqual("1.2.3-rc0,1.2.3-rc2", manifest["deleted_rc_directories"])
+        self.assertEqual(["1.2.3-rc0", "1.2.3-rc2"], manifest["deleted_rc_directories"])
         self.assertEqual(["1.2.4-rc0/"], client.list_entries(dev_base_url))
         summary_text = manifest_path.with_suffix(".summary.md").read_text(encoding="utf-8")
         self.assertIn("Cleanup ASF SVN dev/dist for version 1.2.3", summary_text)

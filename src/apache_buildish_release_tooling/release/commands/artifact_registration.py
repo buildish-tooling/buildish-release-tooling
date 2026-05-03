@@ -25,6 +25,9 @@ from apache_buildish_release_tooling.release.artifact_registration import (
 from apache_buildish_release_tooling.release.artifact_registration.models import (
     ArtifactRegistrationBundle,
 )
+from apache_buildish_release_tooling.release.command_manifests import (
+    RecordArtifactManifest,
+)
 from apache_buildish_release_tooling.release.contracts import SecondaryArtifactManifestV1
 from apache_buildish_release_tooling.release.manifest import write_manifest
 
@@ -83,15 +86,14 @@ def run_record_artifact(args: Namespace) -> Path:
     )
     write_manifest(
         action_manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "record-artifact",
-            "artifact_id": args.artifact_id,
-            "kind": args.kind,
-            "artifact_manifest_path": str(bundle.manifest_path),
-            "artifact_bundle_dir": str(bundle.bundle_dir),
-            "inventory_paths": [str(path) for path in bundle.inventory_paths],
-        },
+        RecordArtifactManifest(
+            component=context.component_config.component_id,
+            artifact_id=args.artifact_id,
+            kind=args.kind,
+            artifact_manifest_path=str(bundle.manifest_path),
+            artifact_bundle_dir=str(bundle.bundle_dir),
+            inventory_paths=[str(path) for path in bundle.inventory_paths],
+        ),
     )
     _append_github_outputs(
         {

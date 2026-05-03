@@ -20,6 +20,14 @@ from argparse import Namespace
 from pathlib import Path
 
 from apache_buildish_release_tooling.release.asf_svn import AsfSvnClient, url_join
+from apache_buildish_release_tooling.release.command_manifests import (
+    CreateFinalTagManifest,
+    FinalizeDraftGithubReleaseManifest,
+    PruneOlderLineReleasesManifest,
+    PublishSourceReleaseSvnManifest,
+    ReleaseVersionManifest,
+    SyncDraftGithubReleaseManifest,
+)
 from apache_buildish_release_tooling.release.email_templates import (
     render_announce_email,
     render_project_vote_result_email,
@@ -120,22 +128,21 @@ def run_sync_draft_github_release(args: Namespace) -> Path:
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "sync-draft-github-release",
-            "version": version,
-            "repository_slug": repository_slug,
-            "resolved_source_ref": state.resolved_source_ref,
-            "rc_tag": state.rc_tag,
-            "final_tag": state.final_tag,
-            "staging_url": state.staging_url,
-            "deleted_release_ids": ",".join(str(item) for item in deleted_release_ids),
-            "release_id": str(created_release_id or ""),
-            "release_tag": str(created_release_tag or ""),
-            "release_name": str(created_release_title or ""),
-            "release_url": str(created_release_url),
-            "sync_mode": sync_mode,
-        },
+        SyncDraftGithubReleaseManifest(
+            component=context.component_config.component_id,
+            version=version,
+            repository_slug=repository_slug,
+            resolved_source_ref=state.resolved_source_ref,
+            rc_tag=state.rc_tag,
+            final_tag=state.final_tag,
+            staging_url=state.staging_url,
+            deleted_release_ids=[str(item) for item in deleted_release_ids],
+            release_id=str(created_release_id or ""),
+            release_tag=str(created_release_tag or ""),
+            release_name=str(created_release_title or ""),
+            release_url=str(created_release_url),
+            sync_mode=sync_mode,
+        ),
     )
     summary.append_heading("Sync draft GitHub Release")
     summary.append_plaintext_block("GitHub repository", repository_slug)
@@ -219,16 +226,15 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "publish-source-release-svn",
-            "version": version,
-            "selected_rc_tag": selected_release.selected_rc_tag,
-            "source_url": f"{source_url}/",
-            "target_url": f"{target_url}/",
-            "verified_source_artifact_sha512": verified_source_artifact_sha512,
-            "publish_mode": publish_mode,
-        },
+        PublishSourceReleaseSvnManifest(
+            component=context.component_config.component_id,
+            version=version,
+            selected_rc_tag=selected_release.selected_rc_tag,
+            source_url=f"{source_url}/",
+            target_url=f"{target_url}/",
+            verified_source_artifact_sha512=verified_source_artifact_sha512,
+            publish_mode=publish_mode,
+        ),
     )
     summary.append_heading("Publish source release SVN")
     summary.append_plaintext_block("Selected RC", selected_release.selected_rc_tag)
@@ -260,14 +266,13 @@ def run_prune_older_line_releases(args: Namespace) -> Path:
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "prune-older-line-releases",
-            "version": version,
-            "release_line": release_line,
-            "pruned_versions": ",".join(state.archive_versions),
-            "release_base_url": f"{release_base_url}/",
-        },
+        PruneOlderLineReleasesManifest(
+            component=context.component_config.component_id,
+            version=version,
+            release_line=release_line,
+            pruned_versions=state.archive_versions,
+            release_base_url=f"{release_base_url}/",
+        ),
     )
     summary.append_heading("Prune older line releases")
     summary.append_plaintext_block("Release line", release_line)
@@ -306,16 +311,15 @@ def run_create_final_tag(args: Namespace) -> Path:
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "create-final-tag",
-            "version": version,
-            "selected_rc_tag": selected_release.selected_rc_tag,
-            "final_tag": final_tag,
-            "target_commit": target_commit,
-            "tag_creation_mode": tag_creation_mode,
-            "created_ref": str(created_ref.get("ref") or ""),
-        },
+        CreateFinalTagManifest(
+            component=context.component_config.component_id,
+            version=version,
+            selected_rc_tag=selected_release.selected_rc_tag,
+            final_tag=final_tag,
+            target_commit=target_commit,
+            tag_creation_mode=tag_creation_mode,
+            created_ref=str(created_ref.get("ref") or ""),
+        ),
     )
     summary.append_heading("Create final tag")
     summary.append_plaintext_block("Selected RC", selected_release.selected_rc_tag)
@@ -375,18 +379,17 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "finalize-draft-github-release",
-            "version": version,
-            "repository_slug": selected_release.repository_slug,
-            "release_id": str(release_id),
-            "release_tag": str(finalized_release_tag or ""),
-            "release_name": str(finalized_release_name or ""),
-            "release_url": str(finalized_release_url),
-            "deleted_asset_names": ",".join(sorted(deleted_asset_names)),
-            "finalize_mode": finalize_mode,
-        },
+        FinalizeDraftGithubReleaseManifest(
+            component=context.component_config.component_id,
+            version=version,
+            repository_slug=selected_release.repository_slug,
+            release_id=str(release_id),
+            release_tag=str(finalized_release_tag or ""),
+            release_name=str(finalized_release_name or ""),
+            release_url=str(finalized_release_url),
+            deleted_asset_names=sorted(deleted_asset_names),
+            finalize_mode=finalize_mode,
+        ),
     )
     summary.append_heading("Finalize draft GitHub Release")
     summary.append_plaintext_block("GitHub repository", selected_release.repository_slug)
@@ -434,18 +437,17 @@ def run_release_version(args: Namespace) -> Path:
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "release-version",
-            "version": version,
-            "release_line": release_line,
-            "selected_rc_tag": state.selected_rc_tag,
-            "final_tag": state.final_tag,
-            "archive_versions": ",".join(state.archive_versions),
-            "release_url": state.release_url,
-            "moving_tags": " ".join(state.moving_tags),
-            "final_tag_mode": context.component_config.final_tag_mode,
-        },
+        ReleaseVersionManifest(
+            component=context.component_config.component_id,
+            version=version,
+            release_line=release_line,
+            selected_rc_tag=state.selected_rc_tag,
+            final_tag=state.final_tag,
+            archive_versions=state.archive_versions,
+            release_url=state.release_url,
+            moving_tags=state.moving_tags,
+            final_tag_mode=context.component_config.final_tag_mode,
+        ),
     )
     summary.append_heading("Release version")
     summary.append_plaintext_block("Selected RC", state.selected_rc_tag)

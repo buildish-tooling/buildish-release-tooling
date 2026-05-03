@@ -61,8 +61,8 @@ class ComponentCase:
     release_version_tags: tuple[str, ...]
     expected_selected_rc_tag: str
     published_release_versions: tuple[str, ...]
-    expected_archive_versions: str
-    expected_moving_tags: str
+    expected_archive_versions: tuple[str, ...]
+    expected_moving_tags: tuple[str, ...]
 
 
 COMPONENT_CASES = (
@@ -77,8 +77,8 @@ COMPONENT_CASES = (
         release_version_tags=("v1.2.3-rc0", "v1.2.3-rc2"),
         expected_selected_rc_tag="v1.2.3-rc2",
         published_release_versions=("1.1.9", "1.2.1", "1.2.2", "2.0.0"),
-        expected_archive_versions="1.2.1,1.2.2",
-        expected_moving_tags="v1 v1.2",
+        expected_archive_versions=("1.2.1", "1.2.2"),
+        expected_moving_tags=("v1", "v1.2"),
     ),
     ComponentCase(
         component_id="buildish-no-gradle-wrapper-jar",
@@ -91,8 +91,8 @@ COMPONENT_CASES = (
         release_version_tags=("v1.2.3-rc0",),
         expected_selected_rc_tag="v1.2.3-rc0",
         published_release_versions=("1.2.1", "1.2.2", "1.3.0"),
-        expected_archive_versions="1.2.1,1.2.2",
-        expected_moving_tags="",
+        expected_archive_versions=("1.2.1", "1.2.2"),
+        expected_moving_tags=(),
     ),
     ComponentCase(
         component_id="buildish-site-pipeline",
@@ -105,8 +105,8 @@ COMPONENT_CASES = (
         release_version_tags=("v1.2.3-rc1",),
         expected_selected_rc_tag="v1.2.3-rc1",
         published_release_versions=("1.2.1", "1.2.2", "1.3.0"),
-        expected_archive_versions="1.2.1,1.2.2",
-        expected_moving_tags="1 1.2",
+        expected_archive_versions=("1.2.1", "1.2.2"),
+        expected_moving_tags=("1", "1.2"),
     ),
 )
 
@@ -225,8 +225,8 @@ class ComponentMatrixIntegrationTest(unittest.TestCase):
                 self.assertEqual(case.component_id, manifest["component"])
                 self.assertEqual(case.release_line, manifest["release_line"])
                 self.assertEqual(case.expected_selected_rc_tag, manifest["selected_rc_tag"])
-                self.assertEqual(case.expected_archive_versions, manifest["archive_versions"])
-                self.assertEqual(case.expected_moving_tags, manifest["moving_tags"])
+                self.assertEqual(list(case.expected_archive_versions), manifest["archive_versions"])
+                self.assertEqual(list(case.expected_moving_tags), manifest["moving_tags"])
                 self.assertEqual(case.expected_final_tag_mode, manifest["final_tag_mode"])
 
     def test_component_dispatchers_smoke_test_fixture_component_configs(self) -> None:

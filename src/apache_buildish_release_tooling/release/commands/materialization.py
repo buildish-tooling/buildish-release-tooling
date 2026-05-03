@@ -19,6 +19,7 @@ from __future__ import annotations
 from argparse import Namespace
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from apache_buildish_release_tooling.release.git_materialization import (
     add_detached_worktree,
@@ -33,6 +34,10 @@ from apache_buildish_release_tooling.release.git_materialization import (
 )
 from apache_buildish_release_tooling.release.git_repo import GitRepository
 from apache_buildish_release_tooling.release.manifest import write_manifest
+from apache_buildish_release_tooling.release.command_manifests import (
+    CreateRcMaterializationTagManifest,
+    MaterializeRcGitContentManifest,
+)
 from apache_buildish_release_tooling.release.models import CommandContext, PrepareRcState
 from apache_buildish_release_tooling.release.process import run_logged_command
 from apache_buildish_release_tooling.release.summary import SummaryWriter
@@ -122,7 +127,7 @@ def _resolve_materialization_tag_target(
     context: CommandContext,
     state: PrepareRcState,
     target_commit: str | None,
-) -> tuple[str, str]:
+) -> tuple[str, Literal["materialized-commit", "source-commit"]]:
     """Resolve the commit to tag and whether it comes from source or detached materialization."""
 
     if target_commit is not None:
@@ -131,7 +136,7 @@ def _resolve_materialization_tag_target(
             and target_commit != state.resolved_source_ref
         ):
             raise ValueError("target_commit override is only valid for detached-materialization components")
-        tag_target_origin = (
+        tag_target_origin: Literal["materialized-commit", "source-commit"] = (
             "materialized-commit" if target_commit != state.resolved_source_ref else "source-commit"
         )
         return target_commit, tag_target_origin
@@ -170,17 +175,16 @@ def run_materialize_rc_git_content(args: Namespace) -> Path:
     )
     manifest_path = _manifest_path(context.component_config.component_id, "materialize-rc-git-content")
     summary = SummaryWriter.from_environment()
-    manifest_entries = {
-        "component": context.component_config.component_id,
-        "action": "materialize-rc-git-content",
-        "version": version,
-        "resolved_source_ref": state.resolved_source_ref,
-        "rc_tag": state.rc_tag,
-        "materialized_paths": ",".join(materialized_content.materialized_paths),
-        "materialized_commit_sha": materialized_content.materialized_commit_sha,
-        "materialized_ref_name": materialized_content.materialized_ref_name,
-        "materialized_ref_mode": materialized_content.materialized_ref_mode,
-    }
+    manifest_entries = MaterializeRcGitContentManifest(
+        component=context.component_config.component_id,
+        version=version,
+        resolved_source_ref=state.resolved_source_ref,
+        rc_tag=state.rc_tag,
+        materialized_paths=materialized_content.materialized_paths,
+        materialized_commit_sha=materialized_content.materialized_commit_sha,
+        materialized_ref_name=materialized_content.materialized_ref_name,
+        materialized_ref_mode=materialized_content.materialized_ref_mode,
+    )
     write_manifest(manifest_path, manifest_entries)
     _append_github_outputs(
         {
@@ -238,19 +242,18 @@ def run_create_rc_materialization_tag(args: Namespace) -> Path:
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "create-rc-materialization-tag",
-            "version": version,
-            "resolved_source_ref": state.resolved_source_ref,
-            "rc_tag": state.rc_tag,
-            "target_commit": target_commit,
-            "tag_target_origin": tag_target_origin,
-            "cleanup_materialized_ref_name": cleanup_materialized_ref_name or "",
-            "cleanup_materialized_ref_mode": cleanup_materialized_ref_mode,
-            "tag_creation_mode": tag_creation_mode,
-            "created_ref": str(created_ref.get("ref") or ""),
-        },
+        CreateRcMaterializationTagManifest(
+            component=context.component_config.component_id,
+            version=version,
+            resolved_source_ref=state.resolved_source_ref,
+            rc_tag=state.rc_tag,
+            target_commit=target_commit,
+            tag_target_origin=tag_target_origin,
+            cleanup_materialized_ref_name=cleanup_materialized_ref_name or "",
+            cleanup_materialized_ref_mode=cleanup_materialized_ref_mode,
+            tag_creation_mode=tag_creation_mode,
+            created_ref=str(created_ref.get("ref") or ""),
+        ),
     )
     summary.append_heading("Create RC tag")
     summary.append_plaintext_block("Resolved source ref", state.resolved_source_ref)

@@ -20,6 +20,12 @@ from argparse import Namespace
 from pathlib import Path
 
 from apache_buildish_release_tooling.release.asf_svn import AsfSvnClient, url_join
+from apache_buildish_release_tooling.release.command_manifests import (
+    BuildSourceRcManifest,
+    CleanupDevSvnRcsManifest,
+    CreateSourceArtifactManifest,
+    PrepareRcManifest,
+)
 from apache_buildish_release_tooling.release.git_repo import GitRepository
 from apache_buildish_release_tooling.release.gpg_signing import (
     detached_ascii_sign,
@@ -53,31 +59,28 @@ def run_prepare_rc(args: Namespace) -> Path:
     version, state = _resolve_prepare_rc_state_from_args(args, context, repo)
     manifest_path = _manifest_path(context.component_config.component_id, "prepare-rc")
     summary = SummaryWriter.from_environment()
-    manifest_entries = {
-        "component": context.component_config.component_id,
-        "action": "prepare-rc",
-        "version": version,
-        "resolved_source_ref": state.resolved_source_ref,
-        "source_date_epoch": str(state.source_date_epoch),
-        "resolved_release_branch": state.resolved_release_branch,
-        "rc_number": str(state.rc_number),
-        "rc_tag": state.rc_tag,
-        "final_tag": state.final_tag,
-        "source_artifact_name": state.source_artifact_name,
-        "source_artifact_root_name": state.source_artifact_root_name,
-        "source_artifact_prefix_path": state.source_artifact_prefix_path,
-        "staging_url": state.staging_url,
-        "cleanup_existing_rc_staging": "true",
-        "draft_release_action": "recreate",
-        "final_tag_mode": context.component_config.final_tag_mode,
-    }
+    manifest_entries = PrepareRcManifest(
+        component=context.component_config.component_id,
+        version=version,
+        resolved_source_ref=state.resolved_source_ref,
+        source_date_epoch=str(state.source_date_epoch),
+        resolved_release_branch=state.resolved_release_branch,
+        rc_number=str(state.rc_number),
+        rc_tag=state.rc_tag,
+        final_tag=state.final_tag,
+        source_artifact_name=state.source_artifact_name,
+        source_artifact_root_name=state.source_artifact_root_name,
+        source_artifact_prefix_path=state.source_artifact_prefix_path,
+        staging_url=state.staging_url,
+        final_tag_mode=context.component_config.final_tag_mode,
+    )
     write_manifest(manifest_path, manifest_entries)
     _append_github_outputs(
         {
-            "version": manifest_entries["version"],
-            "rc_tag": manifest_entries["rc_tag"],
-            "resolved_source_ref": manifest_entries["resolved_source_ref"],
-            "source_date_epoch": manifest_entries["source_date_epoch"],
+            "version": manifest_entries.version,
+            "rc_tag": manifest_entries.rc_tag,
+            "resolved_source_ref": manifest_entries.resolved_source_ref,
+            "source_date_epoch": manifest_entries.source_date_epoch,
         }
     )
     summary.append_heading("Prepare RC")
@@ -116,13 +119,12 @@ def run_cleanup_dev_svn_rcs(args: Namespace) -> Path:
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "cleanup-dev-svn-rcs",
-            "version": version,
-            "dev_base_url": f"{dev_base_url}/",
-            "deleted_rc_directories": ",".join(deleted_rc_entries),
-        },
+        CleanupDevSvnRcsManifest(
+            component=context.component_config.component_id,
+            version=version,
+            dev_base_url=f"{dev_base_url}/",
+            deleted_rc_directories=deleted_rc_entries,
+        ),
     )
     summary.append_heading(f"Cleanup ASF SVN dev/dist for version {version}")
     summary.append_key_value_table(
@@ -166,16 +168,15 @@ def run_create_source_artifact(args: Namespace) -> Path:
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
-        {
-            "component": context.component_config.component_id,
-            "action": "create-source-artifact",
-            "version": version,
-            "resolved_source_ref": state.resolved_source_ref,
-            "source_date_epoch": str(state.source_date_epoch),
-            "source_artifact_name": state.source_artifact_name,
-            "source_artifact_path": str(artifact_path),
-            "source_artifact_sha512": artifact_sha512,
-        },
+        CreateSourceArtifactManifest(
+            component=context.component_config.component_id,
+            version=version,
+            resolved_source_ref=state.resolved_source_ref,
+            source_date_epoch=str(state.source_date_epoch),
+            source_artifact_name=state.source_artifact_name,
+            source_artifact_path=str(artifact_path),
+            source_artifact_sha512=artifact_sha512,
+        ),
     )
     summary.append_heading("Source Artifact")
     summary.append_plaintext_block("Source artifact path", str(artifact_path))
@@ -226,20 +227,19 @@ def run_build_source_rc(args: Namespace) -> Path:
         summary = SummaryWriter.from_environment()
         write_manifest(
             manifest_path,
-            {
-                "component": context.component_config.component_id,
-                "action": "build-source-rc",
-                "version": version,
-                "resolved_source_ref": state.resolved_source_ref,
-                "source_date_epoch": str(state.source_date_epoch),
-                "rc_tag": state.rc_tag,
-                "source_artifact_name": state.source_artifact_name,
-                "source_artifact_path": str(artifact_path),
-                "source_artifact_sha512": artifact_sha512,
-                "source_artifact_sha512_path": str(sha512_path),
-                "source_artifact_asc_path": str(asc_path),
-                "staging_url": f"{staging_url}/",
-            },
+            BuildSourceRcManifest(
+                component=context.component_config.component_id,
+                version=version,
+                resolved_source_ref=state.resolved_source_ref,
+                source_date_epoch=str(state.source_date_epoch),
+                rc_tag=state.rc_tag,
+                source_artifact_name=state.source_artifact_name,
+                source_artifact_path=str(artifact_path),
+                source_artifact_sha512=artifact_sha512,
+                source_artifact_sha512_path=str(sha512_path),
+                source_artifact_asc_path=str(asc_path),
+                staging_url=f"{staging_url}/",
+            ),
         )
         summary.append_heading("Build Source RC")
         summary.append_plaintext_block("Source artifact path", str(artifact_path))

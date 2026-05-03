@@ -92,7 +92,7 @@ class MaterializationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual("v1.2.3-rc0", manifest["rc_tag"])
         self.assertEqual(resolved_source_ref, manifest["resolved_source_ref"])
-        self.assertEqual("dist,NOTICE.generated", manifest["materialized_paths"])
+        self.assertEqual(["dist", "NOTICE.generated"], manifest["materialized_paths"])
         self.assertEqual(materialized_ref_name, manifest["materialized_ref_name"])
         self.assertEqual("pushed", manifest["materialized_ref_mode"])
         github_outputs = _read_simple_github_outputs(github_output_path)

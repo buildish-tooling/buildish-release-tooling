@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import shutil
-from collections.abc import Mapping
 from pathlib import Path
 import re
 
@@ -58,7 +57,7 @@ def write_reproducibility_metadata(
     bundle_root: Path,
     *,
     artifact_id: str,
-    payload: Mapping[str, object] | BaseModel,
+    payload: BaseModel,
 ) -> str:
     """Write one reproducibility metadata JSON file and return its bundle-relative path."""
 
@@ -70,7 +69,7 @@ def write_reproducibility_metadata(
 def write_source_artifact_reproducibility_metadata(
     bundle_root: Path,
     *,
-    payload: Mapping[str, object] | BaseModel,
+    payload: BaseModel,
 ) -> str:
     """Write source-artifact reproducibility metadata and return its bundle-relative path."""
 
