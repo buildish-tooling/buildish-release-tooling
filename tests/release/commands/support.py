@@ -233,6 +233,7 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
         final_tag_mode: str = "rc-source-commit",
         project_status: str = "tlp",
         incubator_disclaimer_file: str = "DISCLAIMER",
+        candidate_start_number: int = 0,
         atr_lines: tuple[str, ...] = (),
         verify_rc_lines: tuple[str, ...] = (),
     ) -> None:
@@ -254,6 +255,7 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
                     f"vote_release_name: {vote_release_name}",
                     f"project_status: {project_status}",
                     f"incubator_disclaimer_file: {incubator_disclaimer_file}",
+                    f"candidate_start_number: {candidate_start_number}",
                     "release_verification_guide_url: https://buildish.apache.org/buildish-example/release-verification/",
                     "verify_rc_instructions: verify",
                     "prepare_rc_runs_tests: false",

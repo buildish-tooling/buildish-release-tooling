@@ -19,8 +19,10 @@ from __future__ import annotations
 from apache_buildish_release_tooling.release.git_repo import GitRepository
 from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
 from apache_buildish_release_tooling.release.release_state import (
+    derive_candidate_tag,
     derive_final_tag,
-    derive_rc_tag,
+    parse_candidate_tag,
+    require_candidate_label,
     require_semantic_version,
 )
 
@@ -51,6 +53,7 @@ def resolve_prepare_rc_state(
     version: str,
     source_sha: str | None,
     rc_tag: str | None = None,
+    candidate_label: str | None = None,
 ) -> PrepareRcState:
     """Resolve and validate the common state shared across RC-related commands."""
 
@@ -63,16 +66,20 @@ def resolve_prepare_rc_state(
         resolved_source_ref = repo.resolve_commit(resolved_release_branch)
     source_date_epoch = repo.commit_timestamp_epoch(resolved_source_ref)
     if rc_tag is None:
-        rc_number = repo.next_matching_rc_number(version)
-        resolved_rc_tag = derive_rc_tag(version, rc_number)
+        candidate_label = require_candidate_label(candidate_label or "rc")
+        rc_number = repo.next_matching_candidate_number(
+            version,
+            candidate_label,
+            component_config.candidate_start_number,
+        )
+        resolved_rc_tag = derive_candidate_tag(version, candidate_label, rc_number)
     else:
-        expected_prefix = f"v{version}-rc"
-        if not rc_tag.startswith(expected_prefix):
-            raise ValueError(f"explicit RC tag does not match version {version}: {rc_tag}")
-        rc_suffix = rc_tag.removeprefix(expected_prefix)
-        if not rc_suffix.isdigit():
-            raise ValueError(f"explicit RC tag does not end in a numeric suffix: {rc_tag}")
-        rc_number = int(rc_suffix)
+        parsed_label, rc_number = parse_candidate_tag(version, rc_tag)
+        if candidate_label is not None and parsed_label != candidate_label:
+            raise ValueError(
+                f"explicit candidate tag label does not match {candidate_label}: {rc_tag}"
+            )
+        candidate_label = parsed_label
         resolved_rc_tag = rc_tag
     source_artifact_name = prepare_rc_source_artifact_name(
         component_config.source_artifact_prefix, version
@@ -81,11 +88,12 @@ def resolve_prepare_rc_state(
         resolved_release_branch=resolved_release_branch,
         resolved_source_ref=resolved_source_ref,
         source_date_epoch=source_date_epoch,
+        candidate_label=candidate_label,
         rc_number=rc_number,
         rc_tag=resolved_rc_tag,
         final_tag=derive_final_tag(version),
         source_artifact_name=source_artifact_name,
         source_artifact_root_name=prepare_rc_source_artifact_root_name(source_artifact_name),
         source_artifact_prefix_path=prepare_rc_source_artifact_prefix_path(source_artifact_name),
-        staging_url=f"{component_config.asf_dist_dev_base.rstrip('/')}/{version}-rc{rc_number}/",
+        staging_url=f"{component_config.asf_dist_dev_base.rstrip('/')}/{resolved_rc_tag.removeprefix('v')}/",
     )

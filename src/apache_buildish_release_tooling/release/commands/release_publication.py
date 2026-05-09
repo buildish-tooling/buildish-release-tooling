@@ -86,7 +86,11 @@ from apache_buildish_release_tooling.release.commands._shared import (
 
 
 def _draft_release_body(
-    context: CommandContext, repo: GitRepository, state: PrepareRcState
+    context: CommandContext,
+    repo: GitRepository,
+    state: PrepareRcState,
+    *,
+    candidate_visibility: str,
 ) -> str:
     """Render the body used for the draft GitHub Release placeholder."""
 
@@ -97,6 +101,7 @@ def _draft_release_body(
             context.component_config,
             project_root=repo.path,
         ),
+        candidate_visibility=candidate_visibility,
     )
 
 
@@ -131,6 +136,7 @@ def run_sync_draft_github_release(args: Namespace) -> Path:
         version=version,
         tag_names=[state.final_tag, state.rc_tag],
         release_name=release_name,
+        candidate_label=state.candidate_label,
     )
     sync_plan = plan_draft_release_sync(
         matching_release_payloads,
@@ -140,13 +146,19 @@ def run_sync_draft_github_release(args: Namespace) -> Path:
     deleted_release_ids = sync_plan.deleted_release_ids
     for release_id in deleted_release_ids:
         delete_release(repository_slug, release_id)
-    desired_release_body = _draft_release_body(context, repo, state)
+    desired_release_body = _draft_release_body(
+        context,
+        repo,
+        state,
+        candidate_visibility=args.candidate_visibility,
+    )
     created_release, sync_mode = upsert_draft_release(
         repository_slug,
         state=state,
         release_name=release_name,
         desired_release_body=desired_release_body,
         same_rc_release=sync_plan.same_rc_release,
+        candidate_visibility=args.candidate_visibility,
     )
     created_release_id = created_release.get("id")
     created_release_tag = created_release.get("tag_name")

@@ -5,6 +5,12 @@
   "additionalProperties": false,
   "description": "Resolved source and artifact state for an RC workflow run.",
   "properties": {
+    "candidate_label": {
+      "default": "rc",
+      "description": "Candidate-series label used in the selected candidate tag.",
+      "title": "Candidate Label",
+      "type": "string"
+    },
     "final_tag": {
       "description": "Final immutable Git tag that Buildish intends to publish for the released version.",
       "title": "Final Tag",

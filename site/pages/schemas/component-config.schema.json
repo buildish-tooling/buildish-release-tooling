@@ -433,6 +433,13 @@
       "default": null,
       "description": "Nested ATR integration configuration for this component."
     },
+    "candidate_start_number": {
+      "default": 0,
+      "description": "First numeric candidate suffix to use when no matching candidate tag exists for a version and label.",
+      "minimum": 0,
+      "title": "Candidate Start Number",
+      "type": "integer"
+    },
     "component_id": {
       "description": "Stable component identifier used across Buildish manifests, reports, and release-state records.",
       "title": "Component Id",

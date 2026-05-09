@@ -47,6 +47,10 @@ class _GitHubReleaseRead(ExternalGithubReadModel):
         default=None,
         description="Whether the GitHub Release is still a draft release rather than a published final release.",
     )
+    prerelease: bool | None = Field(
+        default=None,
+        description="Whether the GitHub Release is marked as a GitHub pre-release.",
+    )
     tag_name: str | None = Field(
         default=None,
         description="Git tag name associated with the GitHub Release.",
@@ -238,6 +242,29 @@ def create_draft_release(
 ) -> dict[str, object]:
     """Create a draft GitHub Release and return the API response payload."""
 
+    return create_release(
+        repository_slug,
+        tag_name=tag_name,
+        target_commitish=target_commitish,
+        release_name=release_name,
+        release_body=release_body,
+        draft=True,
+        prerelease=False,
+    )
+
+
+def create_release(
+    repository_slug: str,
+    *,
+    tag_name: str,
+    target_commitish: str,
+    release_name: str,
+    release_body: str,
+    draft: bool,
+    prerelease: bool,
+) -> dict[str, object]:
+    """Create a GitHub Release and return the API response payload."""
+
     completed = run_logged_command(
         [
             "gh",
@@ -256,8 +283,8 @@ def create_draft_release(
                 "target_commitish": target_commitish,
                 "name": release_name,
                 "body": release_body,
-                "draft": True,
-                "prerelease": False,
+                "draft": draft,
+                "prerelease": prerelease,
                 "generate_release_notes": False,
             }
         ),

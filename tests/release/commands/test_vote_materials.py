@@ -587,9 +587,9 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
                     "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
                     "body": "\n".join(
                         [
-                            "Draft GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
                             "",
-                            "RC tag: v1.2.3-rc0",
+                            "Candidate tag: v1.2.3-rc0",
                             f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc0^{commit}')}",
                         ]
                     ),

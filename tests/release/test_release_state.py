@@ -20,12 +20,15 @@ import unittest
 
 from apache_buildish_release_tooling.release.release_state import (
     compare_versions,
+    derive_candidate_tag,
     derive_specific_release_line,
     derive_moving_tags,
     highest_existing_rc_number_or_zero,
     is_version_in_release_line,
     latest_rc_tag_from_tags,
+    next_candidate_number_from_tags,
     next_rc_number_from_tags,
+    parse_candidate_tag,
     published_versions_from_entries,
     resolve_release_branch,
     version_from_final_tag,
@@ -59,6 +62,23 @@ class ReleaseStateTest(unittest.TestCase):
             next_rc_number_from_tags("1.2.3", ["v1.2.3-rc0", "v1.2.3-rc2"]),
         )
         self.assertEqual(0, next_rc_number_from_tags("1.2.3", []))
+
+    def test_candidate_tag_helpers_use_label_and_configured_start(self) -> None:
+        self.assertEqual("v1.2.3-alpha1", derive_candidate_tag("1.2.3", "alpha", 1))
+        self.assertEqual(("alpha", 1), parse_candidate_tag("1.2.3", "v1.2.3-alpha1"))
+        self.assertEqual(
+            3,
+            next_candidate_number_from_tags(
+                "1.2.3",
+                "alpha",
+                1,
+                ["v1.2.3-alpha1", "v1.2.3-alpha2", "v1.2.3-rc7"],
+            ),
+        )
+        self.assertEqual(
+            1,
+            next_candidate_number_from_tags("1.2.3", "alpha", 1, ["v1.2.3-rc7"]),
+        )
 
     def test_derive_moving_tags(self) -> None:
         self.assertEqual(

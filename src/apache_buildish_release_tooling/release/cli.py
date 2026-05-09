@@ -82,6 +82,23 @@ def _add_rc_tag_argument(parser: argparse.ArgumentParser, help_text: str) -> Non
     parser.add_argument("--rc-tag", dest="rc_tag", help=help_text)
 
 
+def _add_candidate_label_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--candidate-label",
+        dest="candidate_label",
+        help="Candidate-series label used when deriving the candidate tag. Defaults to rc.",
+    )
+
+
+def _add_candidate_visibility_argument(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--candidate-visibility",
+        choices=("draft", "public-prerelease"),
+        default="draft",
+        help="GitHub candidate release visibility. Defaults to draft.",
+    )
+
+
 def _add_selected_rc_tag_argument(parser: argparse.ArgumentParser, help_text: str) -> None:
     parser.add_argument("--selected-rc-tag", dest="selected_rc_tag", help=help_text)
 
@@ -122,6 +139,7 @@ def _register_source_selection_commands(
         help_text="Resolve shared RC state and emit vote summaries.",
         handler=commands.run_prepare_rc,
     )
+    _add_candidate_label_argument(prepare_rc)
     _add_version_and_optional_source_sha_arguments(prepare_rc)
 
     cleanup_dev_svn_rcs = _add_command_parser(
@@ -520,6 +538,8 @@ def _register_publication_commands(
         sync_draft_github_release,
         "Exact RC tag to record in the draft GitHub Release for this run.",
     )
+    _add_candidate_label_argument(sync_draft_github_release)
+    _add_candidate_visibility_argument(sync_draft_github_release)
     _add_version_and_optional_source_sha_arguments(sync_draft_github_release)
 
 

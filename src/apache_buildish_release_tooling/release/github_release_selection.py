@@ -23,12 +23,16 @@ from dataclasses import dataclass
 from apache_buildish_release_tooling.release.git_repo import GitRepository
 from apache_buildish_release_tooling.release.github_checks import resolve_repository_slug
 from apache_buildish_release_tooling.release.github_releases import (
-    create_draft_release,
+    create_release,
     list_releases,
     update_release,
 )
 from apache_buildish_release_tooling.release.models import PrepareRcState
-from apache_buildish_release_tooling.release.release_state import derive_final_tag, require_semantic_version
+from apache_buildish_release_tooling.release.release_state import (
+    derive_final_tag,
+    parse_candidate_tag,
+    require_semantic_version,
+)
 
 
 @dataclass(frozen=True)
@@ -88,24 +92,33 @@ def matching_draft_releases(
     version: str,
     tag_names: Iterable[str],
     release_name: str,
+    candidate_label: str = "rc",
 ) -> list[dict[str, object]]:
-    """Return draft GitHub Release payloads matching one exact release family."""
+    """Return candidate GitHub Release payloads matching one exact release family."""
 
     tag_name_set = set(tag_names)
     matching_releases: list[dict[str, object]] = []
     for release in releases:
-        if release.get("draft") is not True:
-            continue
         release_tag = release.get("tag_name")
+        same_candidate_tag = isinstance(release_tag, str) and release_tag in tag_name_set
+        if release.get("draft") is not True and not (
+            same_candidate_tag
+            and release.get("draft") is False
+            and release.get("prerelease") is True
+        ):
+            continue
         release_title = release.get("name")
-        matches_exact_version_rc = (
-            isinstance(release_tag, str)
-            and re.fullmatch(rf"v{re.escape(version)}-rc[0-9]+", release_tag) is not None
-        )
+        matches_exact_version_candidate = False
+        if isinstance(release_tag, str):
+            try:
+                parsed_label, _parsed_number = parse_candidate_tag(version, release_tag)
+            except ValueError:
+                parsed_label = None
+            matches_exact_version_candidate = parsed_label == candidate_label
         if (
             isinstance(release_tag, str)
             and release_tag in tag_name_set
-            or matches_exact_version_rc
+            or matches_exact_version_candidate
             or isinstance(release_title, str)
             and release_title == release_name
         ):
@@ -161,6 +174,8 @@ def plan_draft_release_sync(
             legacy_release_ids.append(release_id)
             continue
         existing_rc_number = _rc_number_from_tag(version, existing_rc_tag)
+        if release.get("draft") is not True and existing_rc_tag != state.rc_tag:
+            continue
         if existing_rc_number < state.rc_number:
             lower_rc_release_ids.append(release_id)
             continue
@@ -192,17 +207,24 @@ def upsert_draft_release(
     release_name: str,
     desired_release_body: str,
     same_rc_release: dict[str, object] | None,
+    candidate_visibility: str = "draft",
 ) -> tuple[dict[str, object], str]:
     """Create, reuse, or update the selected draft release for one RC."""
 
+    draft = candidate_visibility == "draft"
+    prerelease = candidate_visibility == "public-prerelease"
+    if not draft and not prerelease:
+        raise ValueError(f"unsupported candidate visibility: {candidate_visibility}")
     if same_rc_release is None:
         return (
-            create_draft_release(
+            create_release(
                 repository_slug,
                 tag_name=state.rc_tag,
                 target_commitish=state.resolved_source_ref,
                 release_name=release_name,
                 release_body=desired_release_body,
+                draft=draft,
+                prerelease=prerelease,
             ),
             "created",
         )
@@ -217,6 +239,8 @@ def upsert_draft_release(
         and isinstance(same_release_name, str)
         and same_release_name == release_name
         and same_rc_release.get("tag_name") == state.rc_tag
+        and same_rc_release.get("draft") is draft
+        and (same_rc_release.get("prerelease") or False) is prerelease
     ):
         return same_rc_release, "reused"
     return (
@@ -228,8 +252,8 @@ def upsert_draft_release(
                 "target_commitish": state.resolved_source_ref,
                 "name": release_name,
                 "body": desired_release_body,
-                "draft": True,
-                "prerelease": False,
+                "draft": draft,
+                "prerelease": prerelease,
             },
         ),
         "updated",
@@ -254,13 +278,25 @@ def _release_payload_rc_tag(release_payload: dict[str, object], version: str) ->
     """Resolve one RC tag from a draft release payload."""
 
     release_tag = release_payload.get("tag_name")
-    if isinstance(release_tag, str) and re.fullmatch(rf"v{re.escape(version)}-rc[0-9]+", release_tag):
-        return release_tag
-    body_rc_tag = _release_body_line_value(release_payload, "RC tag: ")
+    if isinstance(release_tag, str):
+        try:
+            parse_candidate_tag(version, release_tag)
+        except ValueError:
+            pass
+        else:
+            return release_tag
+    body_rc_tag = _release_body_line_value(
+        release_payload,
+        "Candidate tag: ",
+    )
     if body_rc_tag is None:
         return None
-    if not re.fullmatch(rf"v{re.escape(version)}-rc[0-9]+", body_rc_tag):
-        raise ValueError(f"draft release body contains an invalid RC tag for {version}: {body_rc_tag}")
+    try:
+        parse_candidate_tag(version, body_rc_tag)
+    except ValueError as exc:
+        raise ValueError(
+            f"draft release body contains an invalid candidate tag for {version}: {body_rc_tag}"
+        ) from exc
     return body_rc_tag
 
 
@@ -347,7 +383,5 @@ def _release_selection_priority(
 def _rc_number_from_tag(version: str, rc_tag: str) -> int:
     """Parse the numeric RC counter from one exact-version RC tag."""
 
-    match = re.fullmatch(rf"v{re.escape(version)}-rc([0-9]+)", rc_tag)
-    if match is None:
-        raise ValueError(f"invalid RC tag for version {version}: {rc_tag}")
-    return int(match.group(1))
+    _candidate_label, candidate_number = parse_candidate_tag(version, rc_tag)
+    return candidate_number

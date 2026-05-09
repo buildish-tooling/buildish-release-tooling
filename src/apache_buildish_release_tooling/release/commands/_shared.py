@@ -49,6 +49,7 @@ from apache_buildish_release_tooling.release.release_state import (
     derive_moving_tags,
     derive_specific_release_line,
     is_version_in_release_line,
+    parse_candidate_tag,
     published_versions_from_entries,
     require_semantic_version,
     version_from_final_tag,
@@ -142,6 +143,7 @@ def _resolve_prepare_rc_state_from_args(
             version,
             getattr(args, "source_sha", None),
             getattr(args, "rc_tag", None),
+            getattr(args, "candidate_label", None),
         ),
     )
 
@@ -199,9 +201,7 @@ def _resolve_release_version_state(
 
 
 def _latest_rc_directory_name(version: str, latest_rc_tag: str) -> str:
-    expected_prefix = f"v{version}-rc"
-    if not latest_rc_tag.startswith(expected_prefix):
-        raise ValueError(f"latest RC tag does not match version {version}: {latest_rc_tag}")
+    parse_candidate_tag(version, latest_rc_tag)
     return latest_rc_tag.removeprefix("v")
 
 
@@ -333,10 +333,5 @@ def _rc_tag_message(context: CommandContext, version: str, rc_tag: str) -> str:
 def _rc_number_from_tag(version: str, rc_tag: str) -> int:
     """Parse the numeric RC suffix from one exact RC tag string."""
 
-    expected_prefix = f"v{version}-rc"
-    if not rc_tag.startswith(expected_prefix):
-        raise ValueError(f"RC tag does not match version {version}: {rc_tag}")
-    rc_suffix = rc_tag.removeprefix(expected_prefix)
-    if not rc_suffix.isdigit():
-        raise ValueError(f"RC tag does not end in a numeric suffix: {rc_tag}")
-    return int(rc_suffix)
+    _candidate_label, candidate_number = parse_candidate_tag(version, rc_tag)
+    return candidate_number

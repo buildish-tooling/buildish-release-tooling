@@ -39,7 +39,7 @@ def _draft_metadata_lines(
     component_config: ComponentConfig, state: PrepareRcState
 ) -> list[str]:
     return [
-        f"RC tag: {state.rc_tag}",
+        f"Candidate tag: {state.rc_tag}",
         f"Final tag: {state.final_tag}",
         f"Resolved source ref: {state.resolved_source_ref}",
         f"ASF SVN staging URL: {state.staging_url}",
@@ -69,11 +69,12 @@ def render_draft_github_release_body(
     *,
     state: PrepareRcState,
     incubator_disclaimer: IncubatorDisclaimer | None,
+    candidate_visibility: str = "draft",
 ) -> str:
-    """Render the initial draft GitHub Release body."""
+    """Render the initial candidate GitHub Release body."""
 
     lines = [
-        f"Draft GitHub Release placeholder for {component_config.vote_release_name} {state.final_tag.removeprefix('v')}.",
+        f"Candidate GitHub Release placeholder for {component_config.vote_release_name} {state.final_tag.removeprefix('v')}.",
     ]
     _append_optional_section(
         lines,
@@ -86,9 +87,19 @@ def render_draft_github_release_body(
             "",
             *_draft_metadata_lines(component_config, state),
             "",
-            "This draft release is convenience metadata only and must remain unpublished until the ASF vote passes.",
         ]
     )
+    if candidate_visibility == "draft":
+        lines.append(
+            "This draft release is convenience metadata only and must remain unpublished until the ASF vote passes."
+        )
+    elif candidate_visibility == "public-prerelease":
+        lines.append(
+            "This public candidate GitHub Release is convenience metadata only. "
+            "It is not an official ASF release and must be marked as a GitHub pre-release."
+        )
+    else:
+        raise ValueError(f"unsupported candidate visibility: {candidate_visibility}")
     return "\n".join(lines)
 
 
@@ -112,6 +123,9 @@ def render_final_github_release_body(
     )
     lines.extend(
         [
+            "",
+            "Candidate tag:",
+            f"- {vote_manifest.rc_tag}",
             "",
             "## Authoritative Source Release",
             "",
@@ -147,7 +161,7 @@ def render_finalized_draft_github_release_body(
     """Render the draft GitHub Release body after RC vote materials exist."""
 
     lines = [
-        f"Draft GitHub Release placeholder for {component_config.vote_release_name} {state.final_tag.removeprefix('v')}.",
+        f"Candidate GitHub Release placeholder for {component_config.vote_release_name} {state.final_tag.removeprefix('v')}.",
     ]
     _append_optional_section(
         lines,

@@ -16,6 +16,11 @@
 
 from __future__ import annotations
 
+import re
+
+
+CANDIDATE_LABEL_PATTERN = r"[A-Za-z][A-Za-z._-]*"
+
 
 def _parse_version_parts(version: str) -> tuple[int, int, int]:
     pieces = version.split(".")
@@ -71,7 +76,37 @@ def derive_specific_release_line(version: str) -> str:
 def derive_rc_tag(version: str, rc_number: int) -> str:
     """Derive the exact RC tag name for a version and RC number."""
 
-    return f"v{version}-rc{rc_number}"
+    return derive_candidate_tag(version, "rc", rc_number)
+
+
+def require_candidate_label(candidate_label: str) -> str:
+    """Validate and return one candidate-series label."""
+
+    if re.fullmatch(CANDIDATE_LABEL_PATTERN, candidate_label) is None:
+        raise ValueError(
+            "candidate label must start with a letter and contain only letters, '.', '_', or '-'"
+        )
+    return candidate_label
+
+
+def parse_candidate_tag(version: str, candidate_tag: str) -> tuple[str, int]:
+    """Parse the candidate label and number from an exact-version candidate tag."""
+
+    match = re.fullmatch(
+        rf"v{re.escape(version)}-(?P<label>{CANDIDATE_LABEL_PATTERN})(?P<number>[0-9]+)",
+        candidate_tag,
+    )
+    if match is None:
+        raise ValueError(f"candidate tag does not match version {version}: {candidate_tag}")
+    return match.group("label"), int(match.group("number"))
+
+
+def derive_candidate_tag(version: str, candidate_label: str, candidate_number: int) -> str:
+    """Derive the exact candidate tag name for a version, label, and number."""
+
+    if candidate_number < 0:
+        raise ValueError("candidate number must be greater than or equal to 0")
+    return f"v{version}-{require_candidate_label(candidate_label)}{candidate_number}"
 
 
 def derive_final_tag(version: str) -> str:
@@ -96,25 +131,46 @@ def version_from_final_tag(tag_name: str) -> str | None:
 def highest_existing_rc_number_or_zero(version: str, tags: list[str]) -> int:
     """Find the highest matching RC number for a version from a supplied tag set."""
 
-    prefix = f"v{version}-rc"
-    matches = [
-        int(tag[len(prefix) :])
-        for tag in tags
-        if tag.startswith(prefix) and tag[len(prefix) :].isdigit()
-    ]
-    return max(matches) if matches else 0
+    return highest_existing_candidate_number_or_none(version, "rc", tags) or 0
+
+
+def highest_existing_candidate_number_or_none(
+    version: str,
+    candidate_label: str,
+    tags: list[str],
+) -> int | None:
+    """Find the highest matching candidate number for one version and label."""
+
+    require_candidate_label(candidate_label)
+    matches: list[int] = []
+    for tag in tags:
+        try:
+            parsed_label, parsed_number = parse_candidate_tag(version, tag)
+        except ValueError:
+            continue
+        if parsed_label == candidate_label:
+            matches.append(parsed_number)
+    return max(matches) if matches else None
 
 
 def next_rc_number_from_tags(version: str, tags: list[str]) -> int:
     """Derive the next RC number for a version from a supplied tag set."""
 
-    prefix = f"v{version}-rc"
-    matches = [
-        int(tag[len(prefix) :])
-        for tag in tags
-        if tag.startswith(prefix) and tag[len(prefix) :].isdigit()
-    ]
-    return max(matches) + 1 if matches else 0
+    return next_candidate_number_from_tags(version, "rc", 0, tags)
+
+
+def next_candidate_number_from_tags(
+    version: str,
+    candidate_label: str,
+    candidate_start_number: int,
+    tags: list[str],
+) -> int:
+    """Derive the next candidate number for one version and label from tags."""
+
+    if candidate_start_number < 0:
+        raise ValueError("candidate start number must be greater than or equal to 0")
+    highest = highest_existing_candidate_number_or_none(version, candidate_label, tags)
+    return highest + 1 if highest is not None else candidate_start_number
 
 
 def latest_rc_tag_from_tags(version: str, tags: list[str]) -> str:

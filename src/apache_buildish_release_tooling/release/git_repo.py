@@ -23,6 +23,7 @@ from apache_buildish_release_tooling.release.process import run_logged_command
 from apache_buildish_release_tooling.release.release_state import (
     highest_existing_rc_number_or_zero,
     latest_rc_tag_from_tags,
+    next_candidate_number_from_tags,
     next_rc_number_from_tags,
     resolve_release_branch,
 )
@@ -201,6 +202,21 @@ class GitRepository:
         """Derive the next RC number for a version from real repository tags."""
 
         return next_rc_number_from_tags(version, self.list_tags())
+
+    def next_matching_candidate_number(
+        self,
+        version: str,
+        candidate_label: str,
+        candidate_start_number: int,
+    ) -> int:
+        """Derive the next candidate number for a version and label from real tags."""
+
+        return next_candidate_number_from_tags(
+            version,
+            candidate_label,
+            candidate_start_number,
+            self.list_tags(),
+        )
 
     def latest_matching_rc_tag(self, version: str) -> str:
         """Resolve the latest RC tag for a version from real repository tags."""

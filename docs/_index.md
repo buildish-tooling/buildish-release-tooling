@@ -187,6 +187,7 @@ vote_release_name: Apache Buildish Example
 release_program: asf
 project_status: tlp
 incubator_disclaimer_file: DISCLAIMER
+candidate_start_number: 0
 release_summary_include_final_tag_mode: false
 release_verification_guide_url: https://buildish.apache.org/buildish-example/release-verification/
 verify_rc_instructions: |
@@ -228,6 +229,8 @@ Field meanings:
   `incubating` for ASF components
 - `incubator_disclaimer_file`: project-root-relative path to the approved Incubator disclaimer
   text; defaults to `DISCLAIMER`
+- `candidate_start_number`: first numeric suffix for a new candidate label when no matching tag
+  exists; defaults to `0`, preserving the default `rc0` sequence
 - `release_summary_include_final_tag_mode`: whether summaries explicitly repeat the final tag mode
 - `release_verification_guide_url`: authoritative verification-guide URL inserted into RC vote
   email templates
@@ -318,14 +321,14 @@ Summaries are intended for:
 ### RC preparation and staging
 
 - `verify-source-ref-checks <version> [source_sha]`
-- `prepare-rc <version> [source_sha]`
+- `prepare-rc [--candidate-label <label>] <version> [source_sha]`
 - `cleanup-dev-svn-rcs <version>`
 - `create-source-artifact <version> [source_sha]`
 - `build-source-rc [--rc-tag <tag>] <version> [source_sha]`
 - `materialize-rc-git-content [--rc-tag <tag>] --materialized-path <path>... [--materialized-ref-name <ref>] --run-command <shell> <version> [source_sha]`
 - `create-rc-materialization-tag [--rc-tag <tag>] [--target-commit <sha>] <version> [source_sha]`
 - `record-artifact --kind <kind> --artifact-id <id> --uri <uri> ...`
-- `sync-draft-github-release [--rc-tag <tag>] <version> [source_sha]`
+- `sync-draft-github-release [--rc-tag <tag>] [--candidate-label <label>] [--candidate-visibility draft|public-prerelease] <version> [source_sha]`
 - `finalize-rc-vote-materials [--secondary-artifact-manifest <path>]... [--rc-tag <tag>] <version> [source_sha]`
 - `publish-atr-candidate [--wait-for-checks] [--check-timeout-seconds <seconds>] [--check-interval-ms <ms>] [--rc-tag <tag>] <version> [source_sha]`
 - `report-atr-checks [--revision <number>] [--verbose-atr-output] [--rc-tag <tag>] <version> [source_sha]`
@@ -568,9 +571,22 @@ malformed contract or external payload data and continue with guessed semantics.
 
 ### `prepare-rc`
 
-- resolves the release branch, next RC number, and authoritative source commit for one version
+- resolves the release branch, next candidate number, and authoritative source commit for one version
+- derives candidate tags as `v<version>-<label><number>`; `--candidate-label` defaults to `rc`
+  and `candidate_start_number` controls the first number when no matching tag exists
 - writes the full JSON manifest to `MANIFEST_PATH`
 - appends `rc_tag` and `resolved_source_ref` to `GITHUB_OUTPUT` when that file path is present
+
+### `sync-draft-github-release`
+
+- creates or updates the GitHub Release page for the selected candidate tag
+- defaults to `--candidate-visibility draft`, which keeps the candidate GitHub Release non-public
+- supports `--candidate-visibility public-prerelease`, which publishes the candidate GitHub Release
+  with GitHub `prerelease=true`
+- uses `--candidate-label` when deriving a candidate tag and `--rc-tag` when a workflow rerun must
+  stay pinned to an already-selected candidate tag
+- keeps GitHub candidate releases as convenience metadata only; final ASF source releases remain
+  authoritative on ASF infrastructure
 
 ### `create-source-artifact`
 

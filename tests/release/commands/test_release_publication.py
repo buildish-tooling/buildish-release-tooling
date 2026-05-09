@@ -196,9 +196,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
                     "name": "Apache Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
-                            "Draft GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
                             "",
-                            "RC tag: v1.2.3-rc2",
+                            "Candidate tag: v1.2.3-rc2",
                             f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc2^{commit}')}",
                         ]
                     ),
@@ -326,7 +326,7 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
             "Apache Buildish Example is an effort undergoing incubation",
             create_request["body"],
         )
-        self.assertIn("RC tag: v1.2.3-rc3", create_request["body"])
+        self.assertIn("Candidate tag: v1.2.3-rc3", create_request["body"])
         self.assertIn(
             "ASF SVN staging URL: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc3/",
             create_request["body"],
@@ -402,9 +402,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
                     "name": "Apache Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
-                            "Draft GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
                             "",
-                            "RC tag: v1.2.3-rc2",
+                            "Candidate tag: v1.2.3-rc2",
                             f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc2^{commit}')}",
                         ],
                     ),
@@ -488,9 +488,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
                     "name": "Apache Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
-                            "Draft GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
                             "",
-                            "RC tag: v1.2.3-rc2",
+                            "Candidate tag: v1.2.3-rc2",
                             f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc2^{commit}')}",
                         ],
                     ),
@@ -589,9 +589,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
                     "name": "Apache Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
-                            "Draft GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
                             "",
-                            "RC tag: v1.2.3-rc2",
+                            "Candidate tag: v1.2.3-rc2",
                             f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc2^{commit}')}",
                         ],
                     ),
@@ -656,9 +656,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
                     "name": "Apache Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
-                            "Draft GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
                             "",
-                            "RC tag: v1.2.3-rc2",
+                            "Candidate tag: v1.2.3-rc2",
                             f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc2^{commit}')}",
                         ]
                     ),
@@ -726,9 +726,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
                     "name": "Apache Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
-                            "Draft GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
                             "",
-                            "RC tag: v1.2.3-rc2",
+                            "Candidate tag: v1.2.3-rc2",
                             f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc2^{commit}')}",
                         ]
                     ),
@@ -788,9 +788,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
                     "name": "Apache Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
-                            "Draft GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
                             "",
-                            "RC tag: v1.2.3-rc2",
+                            "Candidate tag: v1.2.3-rc2",
                             f"Resolved source ref: {expected_commit}",
                         ]
                     ),
@@ -851,9 +851,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         )
         release_body = "\n".join(
             [
-                "Draft GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
                 "",
-                "RC tag: v1.2.3-rc0",
+                "Candidate tag: v1.2.3-rc0",
                 "Final tag: v1.2.3",
                 f"Resolved source ref: {expected_commit}",
                 "ASF SVN staging URL: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/",
@@ -898,6 +898,70 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertFalse((gh_state_dir / "deleted-endpoints.log").exists())
         self.assertFalse((gh_state_dir / "create-release-request.json").exists())
 
+    def test_sync_draft_github_release_can_publish_public_candidate_prerelease(
+        self,
+    ) -> None:
+        sandbox_dir, origin_dir, clone_dir = self._create_git_sandbox()
+        config_path = sandbox_dir / "component.yaml"
+        manifest_path = sandbox_dir / "sync-draft-github-release.json"
+        git_create_branch(origin_dir, "release/1.x")
+        git_create_branch(origin_dir, "release/1.2.x")
+        fetch_git_origin_refs(clone_dir)
+        set_github_origin_url(clone_dir, "apache/buildish-example")
+        expected_commit = git_rev_parse(
+            clone_dir, "refs/remotes/origin/release/1.2.x^{commit}"
+        )
+        self._write_component_config(
+            config_path,
+            component_id="buildish-example",
+            dev_base_url="https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+            release_base_url="https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+            candidate_start_number=1,
+        )
+        gh_path, gh_state_dir = create_fake_gh_launcher(
+            sandbox_dir,
+            list_response=[],
+            create_response={
+                "id": 42,
+                "draft": False,
+                "prerelease": True,
+                "tag_name": "v1.2.3-alpha1",
+                "name": "Apache Buildish Example 1.2.3",
+                "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-alpha1",
+            },
+        )
+        completed = run_cli(
+            [
+                "sync-draft-github-release",
+                "--component-config",
+                str(config_path),
+                "--candidate-label",
+                "alpha",
+                "--candidate-visibility",
+                "public-prerelease",
+                "1.2.3",
+            ],
+            cwd=clone_dir,
+            env=cli_env(
+                manifest_path,
+                extra_env={"FAKE_GH_STATE_DIR": str(gh_state_dir)},
+                prepend_dirs=(gh_path.parent,),
+            ),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual("v1.2.3-alpha1", manifest["rc_tag"])
+        self.assertEqual("v1.2.3-alpha1", manifest["release_tag"])
+        create_request = json.loads(
+            (gh_state_dir / "create-release-request.json").read_text(encoding="utf-8")
+        )
+        self.assertFalse(create_request["draft"])
+        self.assertTrue(create_request["prerelease"])
+        self.assertEqual("v1.2.3-alpha1", create_request["tag_name"])
+        self.assertEqual(expected_commit, create_request["target_commitish"])
+        self.assertIn("Candidate tag: v1.2.3-alpha1", create_request["body"])
+        self.assertIn("not an official ASF release", create_request["body"])
+
     def test_sync_draft_github_release_retags_legacy_final_tag_release(self) -> None:
         sandbox_dir, origin_dir, clone_dir = self._create_git_sandbox()
         config_path = sandbox_dir / "component.yaml"
@@ -917,9 +981,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         )
         release_body = "\n".join(
             [
-                "Draft GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
                 "",
-                "RC tag: v1.2.3-rc0",
+                "Candidate tag: v1.2.3-rc0",
                 "Final tag: v1.2.3",
                 f"Resolved source ref: {expected_commit}",
                 "ASF SVN staging URL: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/",
@@ -996,9 +1060,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
                     "name": "Apache Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
-                            "Draft GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
                             "",
-                            "RC tag: v1.2.3-rc1",
+                            "Candidate tag: v1.2.3-rc1",
                         ]
                     ),
                 }
@@ -1056,9 +1120,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
                     "name": "Apache Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
-                            "Draft GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
                             "",
-                            "RC tag: v1.2.3-rc0",
+                            "Candidate tag: v1.2.3-rc0",
                             f"Resolved source ref: {expected_commit}",
                         ]
                     ),

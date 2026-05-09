@@ -251,7 +251,7 @@ class ComponentMatrixIntegrationTest(unittest.TestCase):
                             "name": f"{case.component_id} {case.version}",
                             "body": "\n".join(
                                 [
-                                    f"RC tag: {case.expected_selected_rc_tag}",
+                                    f"Candidate tag: {case.expected_selected_rc_tag}",
                                     f"Resolved source ref: {selected_rc_commit}",
                                 ]
                             ),

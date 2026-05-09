@@ -108,6 +108,7 @@ Validated component policy and release-target configuration.
 | <a id="componentconfig-release-program"></a>`release_program` | ReleaseProgram | no | Release-governance program whose policy model Buildish should apply to this component. |
 | <a id="componentconfig-project-status"></a>`project_status` | ProjectStatus | no | Project lifecycle status within the configured release program. |
 | <a id="componentconfig-incubator-disclaimer-file"></a>`incubator_disclaimer_file` | str | no | Project-root-relative file path that supplies the approved incubating disclaimer text. |
+| <a id="componentconfig-candidate-start-number"></a>`candidate_start_number` | int | no | First numeric candidate suffix to use when no matching candidate tag exists for a version and label. |
 | <a id="componentconfig-release-summary-include-final-tag-mode"></a>`release_summary_include_final_tag_mode` | bool | no | Whether release summary output should explicitly include the configured final-tag mode. |
 | <a id="componentconfig-release-verification-guide-url"></a>`release_verification_guide_url` | str | yes | User-facing guide URL that Buildish should include when pointing verifiers at the release verification instructions. |
 | <a id="componentconfig-verify-rc-instructions"></a>`verify_rc_instructions` | str | yes | Human-facing verification instructions that Buildish should include for this component's RC vote materials. |
@@ -133,6 +134,7 @@ Resolved source and artifact state for an RC workflow run.
 | <a id="preparercstate-resolved-release-branch"></a>`resolved_release_branch` | str | yes | Release branch name that Buildish resolved for the selected version. |
 | <a id="preparercstate-resolved-source-ref"></a>`resolved_source_ref` | str | yes | Resolved source Git commit SHA that Buildish selected for release production or verification. |
 | <a id="preparercstate-source-date-epoch"></a>`source_date_epoch` | int | yes | Canonical `SOURCE_DATE_EPOCH` integer carried through RC production and verification. |
+| <a id="preparercstate-candidate-label"></a>`candidate_label` | str | no | Candidate-series label used in the selected candidate tag. |
 | <a id="preparercstate-rc-number"></a>`rc_number` | int | yes | Numeric RC sequence selected for the related version. |
 | <a id="preparercstate-rc-tag"></a>`rc_tag` | str | yes | Exact RC Git tag, including the leading `v` prefix and `-rcN` suffix. |
 | <a id="preparercstate-final-tag"></a>`final_tag` | str | yes | Final immutable Git tag that Buildish intends to publish for the released version. |
