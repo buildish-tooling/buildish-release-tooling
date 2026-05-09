@@ -19,12 +19,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from argparse import Namespace
 from dataclasses import dataclass
-import io
 from subprocess import CompletedProcess
-import tarfile
 from typing import cast
 import unittest
-import zipfile
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     build_maven_repository_registration,
@@ -41,6 +38,7 @@ from apache_buildish_release_tooling.release.gpg_signing import (
 )
 from apache_buildish_release_tooling.release.source_artifact import create_from_git
 
+from tests.release.archive_support import write_tgz_archive, write_zip_archive
 from tests.release.commands.support import (
     Path,
     ReleaseCommandsIntegrationTestSupport,
@@ -273,40 +271,6 @@ class CachedVerificationFamily:
     cache_root: Path
     fixture: VerificationFixture
     verify_completed: CachedCommandResult
-
-
-def _write_zip_archive(
-    archive_path: Path,
-    *,
-    member_name: str,
-    payload: bytes,
-    timestamp: tuple[int, int, int, int, int, int],
-) -> None:
-    archive_path.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(
-        archive_path, mode="w", compression=zipfile.ZIP_DEFLATED
-    ) as archive:
-        zip_info = zipfile.ZipInfo(member_name, date_time=timestamp)
-        zip_info.compress_type = zipfile.ZIP_DEFLATED
-        zip_info.external_attr = 0o100644 << 16
-        archive.writestr(zip_info, payload)
-
-
-def _write_tgz_archive(
-    archive_path: Path,
-    *,
-    member_name: str,
-    payload: bytes,
-    mtime: int,
-    mode: int = 0o644,
-) -> None:
-    archive_path.parent.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(archive_path, mode="w:gz") as archive:
-        info = tarfile.TarInfo(member_name)
-        info.size = len(payload)
-        info.mtime = mtime
-        info.mode = mode
-        archive.addfile(info, io.BytesIO(payload))
 
 
 class VerificationCommandsIntegrationTestBase(ReleaseCommandsIntegrationTestSupport):
@@ -1768,11 +1732,16 @@ class VerificationCommandsIntegrationTestBase(ReleaseCommandsIntegrationTestSupp
             secondary_name = "buildish-example-bootstrap.zip"
             secondary_path = stage_dir / secondary_name
             if archive_generic_file_reproducibility:
-                _write_zip_archive(
+                write_zip_archive(
                     secondary_path,
-                    member_name="bootstrap.txt",
-                    payload=b"bootstrap zip bytes\n",
-                    timestamp=(2026, 4, 30, 12, 0, 1),
+                    members=[
+                        (
+                            "bootstrap.txt",
+                            b"bootstrap zip bytes\n",
+                            (2026, 4, 30, 12, 0, 1),
+                            0o100644,
+                        )
+                    ],
                 )
             else:
                 secondary_path.write_bytes(
@@ -1880,11 +1849,16 @@ class VerificationCommandsIntegrationTestBase(ReleaseCommandsIntegrationTestSupp
                 if zero_length_maven_repository_file:
                     artifact_path.write_bytes(b"")
                 else:
-                    _write_zip_archive(
+                    write_zip_archive(
                         artifact_path,
-                        member_name="app.txt",
-                        payload=b"jar payload\n",
-                        timestamp=(2026, 4, 30, 12, 0, 1),
+                        members=[
+                            (
+                                "app.txt",
+                                b"jar payload\n",
+                                (2026, 4, 30, 12, 0, 1),
+                                0o100644,
+                            )
+                        ],
                     )
                 pom_path = artifact_path.with_name("app-1.0.0.pom")
                 pom_path.write_text("<project>stable</project>\n", encoding="utf-8")
@@ -1945,11 +1919,16 @@ class VerificationCommandsIntegrationTestBase(ReleaseCommandsIntegrationTestSupp
             distribution_dir.mkdir(parents=True, exist_ok=True)
             distribution_path = distribution_dir / "example-1.2.3-py3-none-any.whl"
             if archive_python_distribution_reproducibility:
-                _write_zip_archive(
+                write_zip_archive(
                     distribution_path,
-                    member_name="example/__init__.py",
-                    payload=b"wheel payload\n",
-                    timestamp=(2026, 4, 30, 12, 0, 1),
+                    members=[
+                        (
+                            "example/__init__.py",
+                            b"wheel payload\n",
+                            (2026, 4, 30, 12, 0, 1),
+                            0o100644,
+                        )
+                    ],
                 )
             else:
                 distribution_path.write_bytes(
@@ -2020,11 +1999,16 @@ class VerificationCommandsIntegrationTestBase(ReleaseCommandsIntegrationTestSupp
             artifact_file_path = sandbox_dir / "npm-dist" / "buildish-example-1.2.3.tgz"
             artifact_file_path.parent.mkdir(parents=True, exist_ok=True)
             if archive_npm_package_reproducibility:
-                _write_tgz_archive(
+                write_tgz_archive(
                     artifact_file_path,
-                    member_name="package/package.json",
-                    payload=b"npm package payload\n",
-                    mtime=1714435201,
+                    members=[
+                        (
+                            "package/package.json",
+                            b"npm package payload\n",
+                            1714435201,
+                            0o644,
+                        )
+                    ],
                 )
             else:
                 artifact_file_path.write_bytes(
