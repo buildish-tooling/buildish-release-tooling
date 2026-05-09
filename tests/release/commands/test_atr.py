@@ -13,8 +13,22 @@
 # limitations under the License.
 """ATR command integration tests."""
 
-# ruff: noqa: F403, F405
-from tests.release.commands.support import *
+from tests.release.commands.support import (
+    AsfSvnClient,
+    ReleaseCommandsIntegrationTestSupport,
+    cleanup_sandbox,
+    cli_env,
+    command_available,
+    create_build_test_sandbox,
+    create_fake_atr_launcher,
+    fetch_git_origin_refs,
+    git_create_annotated_tag,
+    git_create_branch,
+    init_git_origin_and_clone,
+    init_svn_repo_and_checkout,
+    json,
+    run_cli,
+)
 
 
 class AtrCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
@@ -109,7 +123,9 @@ class AtrCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
                 "rc-vote-manifest.json.sha512",
                 "rc-vote-manifest.json.asc",
             ],
-            (atr_state_dir / "upload-paths.log").read_text(encoding="utf-8").splitlines(),
+            (atr_state_dir / "upload-paths.log")
+            .read_text(encoding="utf-8")
+            .splitlines(),
         )
         self.assertIn(
             "release-test.apache.org",
@@ -119,11 +135,15 @@ class AtrCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
             "wave",
             (atr_state_dir / "seen-asf-uids.log").read_text(encoding="utf-8"),
         )
-        summary_text = manifest_path.with_suffix(".summary.md").read_text(encoding="utf-8")
+        summary_text = manifest_path.with_suffix(".summary.md").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("Publish ATR candidate", summary_text)
         self.assertIn("Total checks: 6", summary_text)
 
-    def test_report_atr_checks_command_is_advisory_when_strict_checking_is_disabled(self) -> None:
+    def test_report_atr_checks_command_is_advisory_when_strict_checking_is_disabled(
+        self,
+    ) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
         origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
@@ -192,7 +212,9 @@ class AtrCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
         self.assertEqual("1", manifest["atr_failure_count"])
         self.assertEqual("false", manifest["would_block_release"])
 
-    def test_report_atr_checks_command_fails_when_strict_checking_is_enabled(self) -> None:
+    def test_report_atr_checks_command_fails_when_strict_checking_is_enabled(
+        self,
+    ) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
         origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
@@ -259,6 +281,8 @@ class AtrCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
         self.assertIn("ATR strict checking is enabled", completed.stderr)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual("true", manifest["would_block_release"])
-        summary_text = manifest_path.with_suffix(".summary.md").read_text(encoding="utf-8")
+        summary_text = manifest_path.with_suffix(".summary.md").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("Report ATR checks", summary_text)
         self.assertIn("failure: 1", summary_text)

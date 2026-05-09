@@ -13,8 +13,18 @@
 # limitations under the License.
 """Branching command integration tests."""
 
-# ruff: noqa: F403, F405
-from tests.release.commands.support import *
+from tests.release.commands.support import (
+    ReleaseCommandsIntegrationTestSupport,
+    cleanup_sandbox,
+    cli_env,
+    create_build_test_sandbox,
+    fetch_git_origin_refs,
+    git_create_branch,
+    git_rev_parse,
+    init_git_origin_and_clone,
+    json,
+    run_cli,
+)
 
 
 class BranchingCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
@@ -65,7 +75,9 @@ class BranchingCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual("release/1.2.x", manifest["release_branch"])
         created_commit = git_rev_parse(clone_dir, "refs/heads/release/1.2.x^{commit}")
-        source_commit = git_rev_parse(clone_dir, "refs/remotes/origin/release/1.x^{commit}")
+        source_commit = git_rev_parse(
+            clone_dir, "refs/remotes/origin/release/1.x^{commit}"
+        )
         self.assertEqual(source_commit, created_commit)
 
     def test_create_release_branch_command_subprocess_smoke(self) -> None:

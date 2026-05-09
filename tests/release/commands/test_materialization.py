@@ -13,8 +13,22 @@
 # limitations under the License.
 """Materialization command integration tests."""
 
-# ruff: noqa: F403, F405
-from tests.release.commands.support import *
+from tests.release.commands.support import (
+    ReleaseCommandsIntegrationTestSupport,
+    _read_simple_github_outputs,
+    cleanup_sandbox,
+    cli_env,
+    create_build_test_sandbox,
+    fetch_git_origin_refs,
+    git_create_annotated_tag,
+    git_create_branch,
+    git_rev_parse,
+    init_git_origin_and_clone,
+    json,
+    re,
+    run_cli,
+    subprocess,
+)
 
 
 class MaterializationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
@@ -29,7 +43,9 @@ class MaterializationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         git_create_branch(origin_dir, "release/1.x")
         git_create_branch(origin_dir, "release/1.2.x")
         fetch_git_origin_refs(clone_dir)
-        expected_commit = git_rev_parse(clone_dir, "refs/remotes/origin/release/1.2.x^{commit}")
+        expected_commit = git_rev_parse(
+            clone_dir, "refs/remotes/origin/release/1.2.x^{commit}"
+        )
         self._write_component_config(
             config_path,
             component_id="buildish-example",
@@ -51,16 +67,24 @@ class MaterializationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         self.assertEqual("v1.2.3-rc0", manifest["rc_tag"])
         self.assertEqual(expected_commit, manifest["target_commit"])
         self.assertEqual("source-commit", manifest["tag_target_origin"])
-        self.assertEqual(expected_commit, git_rev_parse(clone_dir, "v1.2.3-rc0^{commit}"))
+        self.assertEqual(
+            expected_commit, git_rev_parse(clone_dir, "v1.2.3-rc0^{commit}")
+        )
 
     def test_materialize_rc_git_content_command_generates_default_temp_ref_and_stages_repeatable_paths(
         self,
     ) -> None:
-        _sandbox_dir, origin_dir, clone_dir, config_path = self._prepare_detached_materialization_repo()
+        _sandbox_dir, origin_dir, clone_dir, config_path = (
+            self._prepare_detached_materialization_repo()
+        )
         manifest_path = config_path.parent / "materialize-rc-git-content.json"
         github_output_path = config_path.parent / "materialize-rc-git-content.outputs"
-        resolved_source_ref = git_rev_parse(clone_dir, "refs/remotes/origin/release/1.2.x^{commit}")
-        materialized_ref_name = "refs/heads/buildish-internal/materialized/v1.2.3-rc0/12345-6"
+        resolved_source_ref = git_rev_parse(
+            clone_dir, "refs/remotes/origin/release/1.2.x^{commit}"
+        )
+        materialized_ref_name = (
+            "refs/heads/buildish-internal/materialized/v1.2.3-rc0/12345-6"
+        )
 
         completed = run_cli(
             [
@@ -96,7 +120,10 @@ class MaterializationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         self.assertEqual(materialized_ref_name, manifest["materialized_ref_name"])
         self.assertEqual("pushed", manifest["materialized_ref_mode"])
         github_outputs = _read_simple_github_outputs(github_output_path)
-        self.assertEqual(manifest["materialized_commit_sha"], github_outputs["materialized_commit_sha"])
+        self.assertEqual(
+            manifest["materialized_commit_sha"],
+            github_outputs["materialized_commit_sha"],
+        )
         self.assertEqual(materialized_ref_name, github_outputs["materialized_ref_name"])
         self.assertNotEqual(resolved_source_ref, manifest["materialized_commit_sha"])
         self.assertEqual(
@@ -104,21 +131,39 @@ class MaterializationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
             git_rev_parse(origin_dir, f"{materialized_ref_name}^{{commit}}"),
         )
         materialized_payload = subprocess.run(
-            ["git", "-C", str(clone_dir), "show", f"{manifest['materialized_commit_sha']}:dist/release.txt"],
+            [
+                "git",
+                "-C",
+                str(clone_dir),
+                "show",
+                f"{manifest['materialized_commit_sha']}:dist/release.txt",
+            ],
             check=True,
             text=True,
             capture_output=True,
         ).stdout
         self.assertEqual("payload\n", materialized_payload)
         materialized_notice = subprocess.run(
-            ["git", "-C", str(clone_dir), "show", f"{manifest['materialized_commit_sha']}:NOTICE.generated"],
+            [
+                "git",
+                "-C",
+                str(clone_dir),
+                "show",
+                f"{manifest['materialized_commit_sha']}:NOTICE.generated",
+            ],
             check=True,
             text=True,
             capture_output=True,
         ).stdout
         self.assertEqual("generated notice\n", materialized_notice)
         source_payload = subprocess.run(
-            ["git", "-C", str(clone_dir), "show", f"{resolved_source_ref}:dist/release.txt"],
+            [
+                "git",
+                "-C",
+                str(clone_dir),
+                "show",
+                f"{resolved_source_ref}:dist/release.txt",
+            ],
             check=False,
             text=True,
             capture_output=True,
@@ -129,9 +174,15 @@ class MaterializationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
             manifest_path.with_suffix(".summary.md").read_text(encoding="utf-8"),
         )
 
-    def test_create_rc_materialization_tag_command_can_cleanup_generated_materialized_ref(self) -> None:
-        _sandbox_dir, origin_dir, clone_dir, config_path = self._prepare_detached_materialization_repo()
-        materialize_manifest_path = config_path.parent / "materialize-rc-git-content.json"
+    def test_create_rc_materialization_tag_command_can_cleanup_generated_materialized_ref(
+        self,
+    ) -> None:
+        _sandbox_dir, origin_dir, clone_dir, config_path = (
+            self._prepare_detached_materialization_repo()
+        )
+        materialize_manifest_path = (
+            config_path.parent / "materialize-rc-git-content.json"
+        )
         tag_manifest_path = config_path.parent / "create-rc-materialization-tag.json"
 
         completed = run_cli(
@@ -151,7 +202,9 @@ class MaterializationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
             env=cli_env(materialize_manifest_path),
         )
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
-        materialize_manifest = json.loads(materialize_manifest_path.read_text(encoding="utf-8"))
+        materialize_manifest = json.loads(
+            materialize_manifest_path.read_text(encoding="utf-8")
+        )
         materialized_ref_name = materialize_manifest["materialized_ref_name"]
         self.assertRegex(
             materialized_ref_name,
@@ -178,22 +231,36 @@ class MaterializationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
         manifest = json.loads(tag_manifest_path.read_text(encoding="utf-8"))
         self.assertEqual("v1.2.3-rc0", manifest["rc_tag"])
-        self.assertEqual(materialize_manifest["materialized_commit_sha"], manifest["target_commit"])
+        self.assertEqual(
+            materialize_manifest["materialized_commit_sha"], manifest["target_commit"]
+        )
         self.assertEqual("deleted", manifest["cleanup_materialized_ref_mode"])
-        self.assertEqual(materialized_ref_name, manifest["cleanup_materialized_ref_name"])
+        self.assertEqual(
+            materialized_ref_name, manifest["cleanup_materialized_ref_name"]
+        )
         self.assertEqual(
             materialize_manifest["materialized_commit_sha"],
             git_rev_parse(clone_dir, "v1.2.3-rc0^{commit}"),
         )
         remote_ref_check = subprocess.run(
-            ["git", "-C", str(origin_dir), "show-ref", "--verify", "--quiet", materialized_ref_name],
+            [
+                "git",
+                "-C",
+                str(origin_dir),
+                "show-ref",
+                "--verify",
+                "--quiet",
+                materialized_ref_name,
+            ],
             check=False,
             text=True,
             capture_output=True,
         )
         self.assertEqual(1, remote_ref_check.returncode)
 
-    def test_create_rc_materialization_tag_command_fails_when_rc_tag_already_exists(self) -> None:
+    def test_create_rc_materialization_tag_command_fails_when_rc_tag_already_exists(
+        self,
+    ) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
         origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)

@@ -13,8 +13,19 @@
 # limitations under the License.
 """Credential-handling tests for release command helpers."""
 
-# ruff: noqa: F403, F405
-from tests.release.commands.support import *
+from tests.release.commands.support import (
+    Any,
+    Mapping,
+    Path,
+    Sequence,
+    cast,
+    delete_remote_ref_best_effort,
+    mock,
+    os,
+    push_remote_ref,
+    subprocess,
+    unittest,
+)
 
 
 class CommandCredentialHandlingUnitTest(unittest.TestCase):
@@ -43,7 +54,9 @@ class CommandCredentialHandlingUnitTest(unittest.TestCase):
                 command,
             )
             self.assertNotIn("gh-secret-token", "".join(command))
-            self.assertEqual(["gh-secret-token"], cast(Sequence[str], kwargs["extra_secret_values"]))
+            self.assertEqual(
+                ["gh-secret-token"], cast(Sequence[str], kwargs["extra_secret_values"])
+            )
             env = cast(Mapping[str, str], kwargs["env"])
             self.assertEqual("0", env["GIT_TERMINAL_PROMPT"])
             self.assertEqual("", env["GH_TOKEN"])
@@ -60,10 +73,10 @@ class CommandCredentialHandlingUnitTest(unittest.TestCase):
                         'prompt="${1-}"',
                         'case "$prompt" in',
                         "  *Username*|*username*)",
-                        '    printf \'%s\\n\' "${BUILDISH_GIT_ASKPASS_USERNAME:-x-access-token}"',
+                        "    printf '%s\\n' \"${BUILDISH_GIT_ASKPASS_USERNAME:-x-access-token}\"",
                         "    ;;",
                         "  *)",
-                        '    printf \'%s\\n\' "${BUILDISH_GIT_ASKPASS_TOKEN:?}"',
+                        "    printf '%s\\n' \"${BUILDISH_GIT_ASKPASS_TOKEN:?}\"",
                         "    ;;",
                         "esac",
                         "",
@@ -74,7 +87,9 @@ class CommandCredentialHandlingUnitTest(unittest.TestCase):
             return subprocess.CompletedProcess(list(command), 0, "", "")
 
         with (
-            mock.patch.dict(os.environ, {"GITHUB_TOKEN": "gh-secret-token"}, clear=False),
+            mock.patch.dict(
+                os.environ, {"GITHUB_TOKEN": "gh-secret-token"}, clear=False
+            ),
             mock.patch(
                 "apache_buildish_release_tooling.release.git_materialization.run_logged_command",
                 side_effect=fake_run_logged_command,
@@ -94,7 +109,9 @@ class CommandCredentialHandlingUnitTest(unittest.TestCase):
             self.fail("expected askpass helper path to be captured")
         self.assertFalse(seen_script_path.exists())
 
-    def test_delete_remote_ref_best_effort_uses_git_askpass_for_github_https_pushes(self) -> None:
+    def test_delete_remote_ref_best_effort_uses_git_askpass_for_github_https_pushes(
+        self,
+    ) -> None:
         repo = mock.Mock()
         repo.path = Path("/sandbox/repo")
         repo.remote_url.return_value = "git@github.com:apache/buildish-example.git"

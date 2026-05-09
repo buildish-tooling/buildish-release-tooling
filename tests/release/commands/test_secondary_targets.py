@@ -13,14 +13,32 @@
 # limitations under the License.
 """Secondary-target command integration tests."""
 
-# ruff: noqa: F403, F405
-from tests.release.commands.support import *
+from tests.release.commands.support import (
+    ReleaseCommandsIntegrationTestSupport,
+    cleanup_sandbox,
+    cli_env,
+    command_available,
+    create_build_test_sandbox,
+    create_fake_docker_launcher,
+    create_fake_gh_launcher,
+    fetch_git_origin_refs,
+    git_create_branch,
+    git_rev_parse,
+    init_git_origin_and_clone,
+    json,
+    os,
+    run_cli,
+    run_quiet,
+    set_github_origin_url,
+)
 
 
 class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
     """Secondary-target command integration tests."""
 
-    def test_update_moving_tags_command_updates_only_aliases_that_do_not_roll_back(self) -> None:
+    def test_update_moving_tags_command_updates_only_aliases_that_do_not_roll_back(
+        self,
+    ) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
         origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
@@ -34,7 +52,9 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         )
         (origin_dir / "release-1.3.txt").write_text("1.3.4\n", encoding="utf-8")
         run_quiet(["git", "-C", str(origin_dir), "add", "release-1.3.txt"], check=True)
-        run_quiet(["git", "-C", str(origin_dir), "commit", "-m", "release 1.3.4"], check=True)
+        run_quiet(
+            ["git", "-C", str(origin_dir), "commit", "-m", "release 1.3.4"], check=True
+        )
         run_quiet(
             ["git", "-C", str(origin_dir), "tag", "-a", "v1.3.4", "-m", "v1.3.4"],
             check=True,
@@ -53,8 +73,12 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
             check=True,
         )
         (origin_dir / "release-1.2.3.txt").write_text("1.2.3\n", encoding="utf-8")
-        run_quiet(["git", "-C", str(origin_dir), "add", "release-1.2.3.txt"], check=True)
-        run_quiet(["git", "-C", str(origin_dir), "commit", "-m", "release 1.2.3"], check=True)
+        run_quiet(
+            ["git", "-C", str(origin_dir), "add", "release-1.2.3.txt"], check=True
+        )
+        run_quiet(
+            ["git", "-C", str(origin_dir), "commit", "-m", "release 1.2.3"], check=True
+        )
         run_quiet(
             ["git", "-C", str(origin_dir), "tag", "-a", "v1.2.3", "-m", "v1.2.3"],
             check=True,
@@ -94,14 +118,22 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         self.assertEqual(expected_commit, manifest["target_commit"])
         self.assertEqual(["v1.2"], manifest["updated_tags"])
         self.assertEqual(["v1"], manifest["skipped_tags"])
-        create_tag_request = json.loads((gh_state_dir / "create-tag-request.json").read_text(encoding="utf-8"))
+        create_tag_request = json.loads(
+            (gh_state_dir / "create-tag-request.json").read_text(encoding="utf-8")
+        )
         self.assertEqual("v1.2", create_tag_request["tag"])
         self.assertEqual(expected_commit, create_tag_request["object"])
-        update_ref_request = json.loads((gh_state_dir / "update-ref-request.json").read_text(encoding="utf-8"))
+        update_ref_request = json.loads(
+            (gh_state_dir / "update-ref-request.json").read_text(encoding="utf-8")
+        )
         self.assertEqual("moving-tag-object-sha", update_ref_request["sha"])
         requests_log = (gh_state_dir / "requests.log").read_text(encoding="utf-8")
-        self.assertIn("PATCH repos/apache/buildish-example/git/refs/tags/v1.2", requests_log)
-        self.assertNotIn("PATCH repos/apache/buildish-example/git/refs/tags/v1\n", requests_log)
+        self.assertIn(
+            "PATCH repos/apache/buildish-example/git/refs/tags/v1.2", requests_log
+        )
+        self.assertNotIn(
+            "PATCH repos/apache/buildish-example/git/refs/tags/v1\n", requests_log
+        )
 
     def test_update_moving_image_aliases_command_emits_derived_aliases(self) -> None:
         sandbox_dir = create_build_test_sandbox()
@@ -164,8 +196,12 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         )
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        self.assertEqual("docker.io/apache/buildish-example:1.2.3", manifest["source_image"])
-        self.assertEqual("docker.io/apache/buildish-example", manifest["image_repository"])
+        self.assertEqual(
+            "docker.io/apache/buildish-example:1.2.3", manifest["source_image"]
+        )
+        self.assertEqual(
+            "docker.io/apache/buildish-example", manifest["image_repository"]
+        )
         self.assertEqual(
             [
                 "docker.io/apache/buildish-example:1",
@@ -179,19 +215,27 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         )
         self.assertEqual(
             "docker.io",
-            (docker_state_dir / "login-registry.txt").read_text(encoding="utf-8").strip(),
+            (docker_state_dir / "login-registry.txt")
+            .read_text(encoding="utf-8")
+            .strip(),
         )
         self.assertEqual(
             [
                 "docker.io/apache/buildish-example:1|docker.io/apache/buildish-example:1.2.3|false",
                 "docker.io/apache/buildish-example:1.2|docker.io/apache/buildish-example:1.2.3|false",
             ],
-            (docker_state_dir / "imagetools-create.log").read_text(encoding="utf-8").splitlines(),
+            (docker_state_dir / "imagetools-create.log")
+            .read_text(encoding="utf-8")
+            .splitlines(),
         )
 
-    def test_attach_github_release_assets_command_uploads_assets_with_optional_sidecars(self) -> None:
+    def test_attach_github_release_assets_command_uploads_assets_with_optional_sidecars(
+        self,
+    ) -> None:
         if not command_available("gpg"):
-            self.skipTest("gpg is required for the GitHub Release asset-signing integration test")
+            self.skipTest(
+                "gpg is required for the GitHub Release asset-signing integration test"
+            )
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
         origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
@@ -287,9 +331,15 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         self.assertEqual("v1.2.3", manifest["release_tag"])
         self.assertEqual(["buildish-example.zip"], manifest["primary_asset_names"])
         self.assertEqual(["sha512", "sha256"], manifest["checksum_algorithms"])
-        self.assertIn("buildish-example.zip.asc", manifest["generated_signature_asset_names"])
-        self.assertIn("buildish-example.zip.sha512", manifest["generated_checksum_asset_names"])
-        self.assertIn("buildish-example.zip.sha256", manifest["generated_checksum_asset_names"])
+        self.assertIn(
+            "buildish-example.zip.asc", manifest["generated_signature_asset_names"]
+        )
+        self.assertIn(
+            "buildish-example.zip.sha512", manifest["generated_checksum_asset_names"]
+        )
+        self.assertIn(
+            "buildish-example.zip.sha256", manifest["generated_checksum_asset_names"]
+        )
         self.assertTrue(manifest["gpg_fingerprint"])
 
         self.assertTrue((asset_path.with_name("buildish-example.zip.asc")).is_file())
@@ -300,21 +350,31 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
                 str(asset_path.with_name("buildish-example.zip.sha256")),
                 str(asset_path.with_name("buildish-example.zip.asc")),
             ],
-            (gh_state_dir / "release-upload-files.log").read_text(encoding="utf-8").splitlines(),
+            (gh_state_dir / "release-upload-files.log")
+            .read_text(encoding="utf-8")
+            .splitlines(),
         )
         self.assertEqual(
             "v1.2.3",
-            (gh_state_dir / "release-upload-tag.txt").read_text(encoding="utf-8").strip(),
+            (gh_state_dir / "release-upload-tag.txt")
+            .read_text(encoding="utf-8")
+            .strip(),
         )
         self.assertEqual(
             "apache/buildish-example",
-            (gh_state_dir / "release-upload-repo.txt").read_text(encoding="utf-8").strip(),
+            (gh_state_dir / "release-upload-repo.txt")
+            .read_text(encoding="utf-8")
+            .strip(),
         )
         self.assertEqual(
             "true",
-            (gh_state_dir / "release-upload-clobber.txt").read_text(encoding="utf-8").strip(),
+            (gh_state_dir / "release-upload-clobber.txt")
+            .read_text(encoding="utf-8")
+            .strip(),
         )
-        summary_text = manifest_path.with_suffix(".summary.md").read_text(encoding="utf-8")
+        summary_text = manifest_path.with_suffix(".summary.md").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("Attach GitHub Release assets", summary_text)
         self.assertIn("buildish-example.zip.sha512", summary_text)
         self.assertIn("buildish-example.zip.asc", summary_text)
