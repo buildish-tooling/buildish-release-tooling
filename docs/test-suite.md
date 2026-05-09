@@ -61,6 +61,9 @@ The support module is the right place for reusable fake GitHub launchers, local 
 - `tests/release/test_git_repo_unit.py` and `tests/release/test_asf_svn_unit.py`: low-level
   adapter command construction
 - `tests/release/test_artifact_registration.py`: unit coverage for artifact registration helpers
+- `tests/test_release_legal_distributions.py`, `tests/test_release_legal_report.py`, and
+  `tests/test_release_legal_generation.py`: preliminary release-legal discovery, report policy,
+  and artifact generation
 - `tests/release/test_component_matrix.py`: fixture-backed release policy variation across component
   repositories
 
@@ -73,10 +76,13 @@ Release command integration tests now live under `tests/release/commands/`, spli
 instead of one large `test_commands.py`:
 
 - `test_rc_preparation.py`: `prepare-rc` and related RC staging behavior
-- `test_release_publication.py`: release publication, final tagging, SVN publish, and pruning flows
+- `test_release_publication_versioning.py`, `test_release_publication_svn.py`,
+  `test_release_publication_git_tags.py`, and `test_release_publication_github.py`: release
+  publication, final tagging, SVN publish, GitHub release, and pruning flows
 - `test_materialization.py`: RC content materialization and materialization tags
 - `test_secondary_targets.py`: secondary publication targets such as moving tags and GitHub assets
-- `test_artifact_registration.py`: `record-artifact` command coverage
+- `test_artifact_registration_*.py`: `record-artifact` command coverage split by artifact kind
+- `test_verification_*.py`: `verify-rc` and `inspect-repro` command coverage split by behavior
 - `test_vote_materials.py`: RC vote material generation and publication steps
 - `test_branching.py`: release branch creation flows
 - `test_atr.py`: ATR publication and reporting commands
@@ -96,7 +102,8 @@ adapter or end-to-end subsystem:
 ## Harness and workflow simulation coverage
 
 - `tests/harness/test_harness.py`: repo-local harness execution without `act`
-- `tests/harness/test_harness_act.py`: workflow rewriting, `act` backend behavior, and
+- `tests/harness/test_harness_act_runtime.py` and
+  `tests/harness/test_harness_act_workflow.py`: workflow rewriting, `act` backend behavior, and
   real/rewritten `uv` shim behavior
 - `tests/harness/test_harness_config.py`: harness config resolution and local override files
 - `tests/harness/test_harness_job_selection.py`: job selection and dependency behavior for harness
