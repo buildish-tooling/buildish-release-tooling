@@ -32,6 +32,18 @@ ReleaseProgram = Literal["asf"]
 ProjectStatus = Literal["tlp", "incubating"]
 
 
+def _validate_project_relative_path(value: str, *, field_name: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError(f"{field_name} must not be empty")
+    candidate = Path(normalized)
+    if candidate.is_absolute():
+        raise ValueError(f"{field_name} must be relative to the project root")
+    if ".." in candidate.parts:
+        raise ValueError(f"{field_name} must not escape the project root")
+    return normalized
+
+
 class AtrConfig(ComponentOwnedAuthoredModel):
     """Validated optional ATR integration policy and release coordinates."""
 
@@ -111,12 +123,7 @@ class VerifyRcBuildConfig(ComponentOwnedAuthoredModel):
     def _validate_working_dir(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("verify_rc build.working_dir must not be empty")
-        if Path(normalized).is_absolute():
-            raise ValueError("verify_rc build.working_dir must be relative to the project root")
-        return normalized
+        return _validate_project_relative_path(value, field_name="verify_rc build.working_dir")
 
     @field_validator("env", mode="after")
     @classmethod
@@ -133,7 +140,10 @@ class VerifyRcBuildConfig(ComponentOwnedAuthoredModel):
     def _validate_output_globs(cls, value: list[str]) -> list[str]:
         if not value or any(not item.strip() for item in value):
             raise ValueError("verify_rc build.output_globs must contain at least one non-empty glob")
-        return value
+        return [
+            _validate_project_relative_path(item, field_name="verify_rc build.output_globs")
+            for item in value
+        ]
 
 
 class VerifyRcBuildOverrideConfig(ConsumerOwnedAuthoredModel):
@@ -158,12 +168,10 @@ class VerifyRcBuildOverrideConfig(ConsumerOwnedAuthoredModel):
     def _validate_working_dir(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("verify_rc build override working_dir must not be empty")
-        if Path(normalized).is_absolute():
-            raise ValueError("verify_rc build override working_dir must be relative to the project root")
-        return normalized
+        return _validate_project_relative_path(
+            value,
+            field_name="verify_rc build override working_dir",
+        )
 
     @field_validator("env", mode="after")
     @classmethod
@@ -182,7 +190,13 @@ class VerifyRcBuildOverrideConfig(ConsumerOwnedAuthoredModel):
             return None
         if not value or any(not item.strip() for item in value):
             raise ValueError("verify_rc build override output_globs must contain at least one non-empty glob")
-        return value
+        return [
+            _validate_project_relative_path(
+                item,
+                field_name="verify_rc build override output_globs",
+            )
+            for item in value
+        ]
 
     @model_validator(mode="after")
     def _validate_non_empty_override(self) -> VerifyRcBuildOverrideConfig:

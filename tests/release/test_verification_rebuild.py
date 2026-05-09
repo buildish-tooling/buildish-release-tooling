@@ -25,7 +25,12 @@ from typing import Any, cast
 from unittest.mock import patch
 
 from apache_buildish_release_tooling.release.command_logging import command_log_sink
-from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
+from apache_buildish_release_tooling.release.models import (
+    ComponentConfig,
+    VerifyRcBuildConfig,
+    VerifyRcBuildOverrideConfig,
+    VerifyRcOverrideConfig,
+)
 from apache_buildish_release_tooling.release.verification.rebuild import (
     build_host_direct_environment,
     collect_profile_output_paths,
@@ -182,6 +187,39 @@ class VerificationRebuildTest(unittest.TestCase):
         self.assertEqual("canonical", resolved.profile.build.env["SHARED_FLAG"])
         self.assertEqual("1", resolved.profile.build.env["LOCAL_FLAG"])
         self.assertEqual(["override-dist/*.zip"], resolved.profile.build.output_globs)
+
+    def test_verify_rc_build_config_rejects_paths_that_escape_project_root(self) -> None:
+        with self.assertRaisesRegex(ValueError, "working_dir must not escape"):
+            VerifyRcBuildConfig.model_validate(
+                {
+                    "command": ["./buildish-release-tooling/rebuild.sh"],
+                    "working_dir": "../outside",
+                    "output_globs": ["dist/*.zip"],
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "output_globs must not escape"):
+            VerifyRcBuildConfig.model_validate(
+                {
+                    "command": ["./buildish-release-tooling/rebuild.sh"],
+                    "output_globs": ["../dist/*.zip"],
+                }
+            )
+
+    def test_verify_rc_build_override_rejects_paths_that_escape_project_root(self) -> None:
+        with self.assertRaisesRegex(ValueError, "working_dir must not escape"):
+            VerifyRcBuildOverrideConfig.model_validate(
+                {
+                    "working_dir": "../outside",
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "output_globs must not escape"):
+            VerifyRcBuildOverrideConfig.model_validate(
+                {
+                    "output_globs": ["../dist/*.zip"],
+                }
+            )
 
     def test_resolve_effective_rebuild_profile_inherits_omitted_fields_and_overrides_env_keys(self) -> None:
         component_config = self._component_config_with_rebuild_profiles()
