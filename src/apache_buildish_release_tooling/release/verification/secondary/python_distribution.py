@@ -34,6 +34,7 @@ from apache_buildish_release_tooling.release.contracts import (
 )
 from apache_buildish_release_tooling.release.external_json import validate_json_object_model_text
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
+from apache_buildish_release_tooling.release.path_validation import validate_simple_filename
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.common import (
@@ -112,7 +113,10 @@ def verify_python_distribution(
     profile_overrides: VerifyRcOverrideConfig | None,
 ) -> PythonDistributionVerificationReport:
     artifact_id = artifact_entry.artifact_id
-    filename = artifact_entry.filename
+    filename = validate_simple_filename(
+        artifact_entry.filename,
+        field_name=f"python distribution filename for {artifact_id}",
+    )
     artifact_uri = artifact_entry.uri
     index_url = artifact_entry.index_url
     project_name = artifact_entry.project_name

@@ -27,6 +27,7 @@ from apache_buildish_release_tooling.release.contracts import (
     GenericFileWithOpenPgpSecondaryArtifact,
 )
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
+from apache_buildish_release_tooling.release.path_validation import validate_simple_filename
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.common import (
@@ -59,7 +60,10 @@ def verify_generic_file(
     profile_overrides: VerifyRcOverrideConfig | None,
 ) -> GenericFileVerificationReport:
     artifact_id = artifact_entry.artifact_id
-    filename = artifact_entry.filename
+    filename = validate_simple_filename(
+        artifact_entry.filename,
+        field_name=f"secondary artifact filename for {artifact_id}",
+    )
     artifact_uri = artifact_entry.uri
     typed_kind = artifact_entry.kind
     issues: list[str] = []

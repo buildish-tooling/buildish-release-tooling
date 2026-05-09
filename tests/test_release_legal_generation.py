@@ -22,6 +22,7 @@ import tempfile
 
 from apache_buildish_release_tooling.legal.release_legal import (
     LockedPackage,
+    curated_container_image_bundles_by_ref,
     generate_release_legal_artifacts,
 )
 
@@ -31,6 +32,47 @@ from tests.release_legal_support import ReleaseLegalTestBase
 
 class ReleaseLegalGenerationTests(ReleaseLegalTestBase):
     """Release-legal artifact generation tests."""
+
+    def test_curated_container_bundle_manifest_rejects_path_escapes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            manifest_path = root / "base-image-bundles.toml"
+            manifest_path.write_text(
+                "\n".join(
+                    [
+                        "[[bundles]]",
+                        'image-ref = "example.invalid/image@sha256:abc"',
+                        'name = "image"',
+                        'version = "1"',
+                        'output-key = "image"',
+                        'license-files = ["../LICENSE"]',
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "project root"):
+                curated_container_image_bundles_by_ref(project_dir=root, manifest_path=manifest_path)
+
+    def test_curated_container_bundle_manifest_rejects_output_key_escapes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            manifest_path = root / "base-image-bundles.toml"
+            manifest_path.write_text(
+                "\n".join(
+                    [
+                        "[[bundles]]",
+                        'image-ref = "example.invalid/image@sha256:abc"',
+                        'name = "image"',
+                        'version = "1"',
+                        'output-key = "../image"',
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "output-key"):
+                curated_container_image_bundles_by_ref(project_dir=root, manifest_path=manifest_path)
 
     def test_generate_release_legal_artifacts_writes_preliminary_files_and_inventory(
         self,

@@ -24,6 +24,7 @@ from pathlib import Path
 from apache_buildish_release_tooling.release.command_logging import log_command_output, print_command
 
 _SUPPORTED_CHECKSUM_ALGORITHMS = frozenset({"sha256", "sha512"})
+_PIPE_STARTUP_CLEANUP_TIMEOUT_SECONDS = 5.0
 
 
 def fixed_mtime() -> str:
@@ -66,12 +67,18 @@ def create_from_git(
             stdout=subprocess.PIPE,
             stderr=archive_stderr_file,
         )
-        gzip_process = subprocess.Popen(  # noqa: S603
-            gzip_command,
-            stdin=archive_process.stdout,
-            stdout=handle,
-            stderr=gzip_stderr_file,
-        )
+        try:
+            gzip_process = subprocess.Popen(  # noqa: S603
+                gzip_command,
+                stdin=archive_process.stdout,
+                stdout=handle,
+                stderr=gzip_stderr_file,
+            )
+        except Exception:
+            if archive_process.stdout is not None:
+                archive_process.stdout.close()
+            _terminate_process(archive_process)
+            raise
         if archive_process.stdout is not None:
             archive_process.stdout.close()
         archive_return_code = archive_process.wait()
@@ -86,6 +93,15 @@ def create_from_git(
         raise RuntimeError("git archive failed while creating the source artifact")
     if gzip_return_code != 0:
         raise RuntimeError("gzip failed while creating the source artifact")
+
+
+def _terminate_process(process: subprocess.Popen[bytes]) -> None:
+    process.terminate()
+    try:
+        process.wait(timeout=_PIPE_STARTUP_CLEANUP_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait()
 
 
 def checksum(artifact_path: Path, algorithm: str) -> str:

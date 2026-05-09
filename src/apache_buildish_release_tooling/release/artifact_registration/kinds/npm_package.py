@@ -37,6 +37,7 @@ from apache_buildish_release_tooling.release.contracts import (
     Sha256ChecksumPayload,
     Sha512ChecksumPayload,
 )
+from apache_buildish_release_tooling.release.path_validation import validate_simple_filename
 from apache_buildish_release_tooling.release.source_artifact import checksum
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -74,9 +75,10 @@ def _resolved_filename(
     version: str,
 ) -> str:
     if explicit_filename is not None:
-        filename = explicit_filename.strip()
-        if not filename:
-            raise ValueError("npm-package --filename must not be empty")
+        filename = validate_simple_filename(
+            explicit_filename,
+            field_name="npm-package --filename",
+        )
         if explicit_uri is not None:
             uri_filename = _filename_from_uri(explicit_uri)
             if uri_filename is not None and uri_filename != filename:
@@ -84,8 +86,11 @@ def _resolved_filename(
         return filename
     uri_filename = _filename_from_uri(explicit_uri) if explicit_uri is not None else None
     if uri_filename is not None:
-        return uri_filename
-    return _canonical_tarball_filename(package_name, version)
+        return validate_simple_filename(uri_filename, field_name="npm-package URI filename")
+    return validate_simple_filename(
+        _canonical_tarball_filename(package_name, version),
+        field_name="npm-package filename",
+    )
 
 
 def _required_text(raw_value: str | None, *, option_name: str) -> str:

@@ -16,16 +16,28 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 from typing import Any, cast
 from typing import ClassVar
 
+from apache_buildish_release_tooling.release.artifact_registration.kinds.generic_file import (
+    _resolved_filename as _generic_file_resolved_filename,
+)
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     _RepositoryFile,
     _inventory_entry_sha512,
     _RemoteHttpClient,
     _normalized_base_url,
     _parse_nexus_index,
+    _repository_files,
+)
+from apache_buildish_release_tooling.release.artifact_registration.kinds.npm_package import (
+    _resolved_filename as _npm_package_resolved_filename,
+)
+from apache_buildish_release_tooling.release.artifact_registration.kinds.python_distribution import (
+    _resolved_filename as _python_distribution_resolved_filename,
 )
 
 
@@ -71,6 +83,14 @@ class _FakePoolManager:
 
     def clear(self) -> None:
         self.cleared = True
+
+
+class _NoopProgress:
+    def emit(self, _message: str) -> None:
+        pass
+
+    def update(self, _message: str) -> None:
+        pass
 
 
 class MavenRepositoryRegistrationUnitTest(unittest.TestCase):
@@ -218,3 +238,37 @@ class MavenRepositoryRegistrationUnitTest(unittest.TestCase):
                 cache=cache,
                 remote_http_client=None,
             )
+
+    def test_registration_filename_helpers_reject_path_components(self) -> None:
+        with self.assertRaisesRegex(ValueError, "simple file name"):
+            _generic_file_resolved_filename(None, "../artifact.zip")
+        with self.assertRaisesRegex(ValueError, "simple file name"):
+            _python_distribution_resolved_filename(None, "../artifact.whl")
+        with self.assertRaisesRegex(ValueError, "simple file name"):
+            _npm_package_resolved_filename(
+                "../package.tgz",
+                explicit_uri=None,
+                package_name="@apache/buildish-example",
+                version="1.2.3",
+            )
+
+    def test_local_maven_repository_rejects_symlinked_files(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            repo = root / "repo"
+            repo.mkdir()
+            target = root / "target.jar"
+            target.write_bytes(b"jar")
+            symlink_path = repo / "app.jar"
+            try:
+                symlink_path.symlink_to(target)
+            except OSError as exc:
+                self.skipTest(f"symlink creation is not supported: {exc}")
+
+            with self.assertRaisesRegex(ValueError, "symlinks"):
+                _repository_files(
+                    repo.as_uri(),
+                    worker_count=1,
+                    remote_http_client=None,
+                    progress_reporter=cast(Any, _NoopProgress()),
+                )

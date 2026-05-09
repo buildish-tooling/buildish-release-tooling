@@ -27,21 +27,10 @@ from apache_buildish_release_tooling.docs.documentation import (
     RuntimeDerivedModel,
     SchemaExportSpecification,
 )
+from apache_buildish_release_tooling.release.path_validation import validate_project_relative_path
 
 ReleaseProgram = Literal["asf"]
 ProjectStatus = Literal["tlp", "incubating"]
-
-
-def _validate_project_relative_path(value: str, *, field_name: str) -> str:
-    normalized = value.strip()
-    if not normalized:
-        raise ValueError(f"{field_name} must not be empty")
-    candidate = Path(normalized)
-    if candidate.is_absolute():
-        raise ValueError(f"{field_name} must be relative to the project root")
-    if ".." in candidate.parts:
-        raise ValueError(f"{field_name} must not escape the project root")
-    return normalized
 
 
 class AtrConfig(ComponentOwnedAuthoredModel):
@@ -123,7 +112,7 @@ class VerifyRcBuildConfig(ComponentOwnedAuthoredModel):
     def _validate_working_dir(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        return _validate_project_relative_path(value, field_name="verify_rc build.working_dir")
+        return validate_project_relative_path(value, field_name="verify_rc build.working_dir")
 
     @field_validator("env", mode="after")
     @classmethod
@@ -141,7 +130,7 @@ class VerifyRcBuildConfig(ComponentOwnedAuthoredModel):
         if not value or any(not item.strip() for item in value):
             raise ValueError("verify_rc build.output_globs must contain at least one non-empty glob")
         return [
-            _validate_project_relative_path(item, field_name="verify_rc build.output_globs")
+            validate_project_relative_path(item, field_name="verify_rc build.output_globs")
             for item in value
         ]
 
@@ -168,7 +157,7 @@ class VerifyRcBuildOverrideConfig(ConsumerOwnedAuthoredModel):
     def _validate_working_dir(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        return _validate_project_relative_path(
+        return validate_project_relative_path(
             value,
             field_name="verify_rc build override working_dir",
         )
@@ -191,7 +180,7 @@ class VerifyRcBuildOverrideConfig(ConsumerOwnedAuthoredModel):
         if not value or any(not item.strip() for item in value):
             raise ValueError("verify_rc build override output_globs must contain at least one non-empty glob")
         return [
-            _validate_project_relative_path(
+            validate_project_relative_path(
                 item,
                 field_name="verify_rc build override output_globs",
             )
@@ -242,12 +231,10 @@ class VerifyRcMavenRepositoryComparisonConfig(ComponentOwnedAuthoredModel):
     @field_validator("repository_dir")
     @classmethod
     def _validate_repository_dir(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("verify_rc maven repository_dir must not be empty")
-        if Path(normalized).is_absolute():
-            raise ValueError("verify_rc maven repository_dir must be relative to the project root")
-        return normalized
+        return validate_project_relative_path(
+            value,
+            field_name="verify_rc maven repository_dir",
+        )
 
 
 class VerifyRcOciImageComparisonConfig(ComponentOwnedAuthoredModel):
@@ -386,12 +373,7 @@ class ComponentConfig(ComponentOwnedAuthoredModel):
     @field_validator("incubator_disclaimer_file")
     @classmethod
     def _validate_incubator_disclaimer_file(cls, value: str) -> str:
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("incubator_disclaimer_file must not be empty")
-        if Path(normalized).is_absolute():
-            raise ValueError("incubator_disclaimer_file must be relative to the project root")
-        return normalized
+        return validate_project_relative_path(value, field_name="incubator_disclaimer_file")
 
     @model_validator(mode="after")
     def _validate_ci_policy(self) -> ComponentConfig:

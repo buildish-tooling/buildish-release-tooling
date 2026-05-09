@@ -73,6 +73,60 @@ class SourceArtifactIntegrationTest(unittest.TestCase):
         self.assertIsNot(popen_calls[0]["stderr"], subprocess.PIPE)
         self.assertIsNot(popen_calls[1]["stderr"], subprocess.PIPE)
 
+    def test_create_from_git_cleans_up_archive_process_when_gzip_start_fails(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        class FakeStdout(io.BytesIO):
+            closed_by_parent = False
+
+            def close(self) -> None:
+                self.closed_by_parent = True
+                super().close()
+
+        class FakeArchiveProcess:
+            def __init__(self) -> None:
+                self.stdout = FakeStdout()
+                self.terminated = False
+                self.killed = False
+
+            def terminate(self) -> None:
+                self.terminated = True
+
+            def kill(self) -> None:
+                self.killed = True
+
+            def wait(self, timeout: float | None = None) -> int:
+                del timeout
+                return 0
+
+        archive_process = FakeArchiveProcess()
+        calls = 0
+
+        def fake_popen(_command: list[str], **_kwargs: object) -> object:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return archive_process
+            raise OSError("gzip missing")
+
+        with mock.patch(
+            "apache_buildish_release_tooling.release.source_artifact.subprocess.Popen",
+            side_effect=fake_popen,
+        ):
+            with self.assertRaisesRegex(OSError, "gzip missing"):
+                create_from_git(
+                    sandbox_dir,
+                    "HEAD",
+                    "apache-buildish-example-1.2.3-incubating-src/",
+                    sandbox_dir / "artifact.tar.gz",
+                    log_commands=False,
+                )
+
+        self.assertTrue(archive_process.stdout.closed_by_parent)
+        self.assertTrue(archive_process.terminated)
+        self.assertFalse(archive_process.killed)
+
     def test_source_artifact_is_reproducible_across_detached_clones(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)

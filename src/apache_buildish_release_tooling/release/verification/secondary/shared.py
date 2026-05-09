@@ -33,6 +33,7 @@ from apache_buildish_release_tooling.release.contracts import (
     SignatureReference,
     SupplementalInventoryReference,
 )
+from apache_buildish_release_tooling.release.path_validation import validate_simple_filename
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.common import (
@@ -168,7 +169,10 @@ def downloaded_inventory(
     raw_inventory = _inventory_reference(artifact_entry)
     if raw_inventory is None:
         return None
-    filename = required_non_empty_string(raw_inventory.filename, field_name="filename", source=manifest_url)
+    filename = validate_simple_filename(
+        required_non_empty_string(raw_inventory.filename, field_name="filename", source=manifest_url),
+        field_name="secondary artifact inventory filename",
+    )
     inventory_uri = required_non_empty_string(raw_inventory.uri, field_name="uri", source=manifest_url)
     inventory_sha512 = required_hex_digest(
         raw_inventory.sha512,

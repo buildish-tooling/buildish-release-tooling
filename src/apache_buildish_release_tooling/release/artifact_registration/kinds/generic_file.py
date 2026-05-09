@@ -31,6 +31,7 @@ from apache_buildish_release_tooling.release.contracts import (
     Sha512ChecksumPayload,
     Sha512Checksums,
 )
+from apache_buildish_release_tooling.release.path_validation import validate_simple_filename
 from apache_buildish_release_tooling.release.source_artifact import sha512
 
 _SHA512_PATTERN = re.compile(r"^[0-9a-fA-F]{128}$")
@@ -63,13 +64,13 @@ def _normalized_sha512(local_file: Path | None, explicit_sha512: str | None) -> 
 
 def _resolved_filename(local_file: Path | None, explicit_filename: str | None) -> str:
     if explicit_filename is not None:
-        filename = explicit_filename.strip()
-        if not filename:
-            raise ValueError("generic-file --filename must not be empty")
-        return filename
+        return validate_simple_filename(
+            explicit_filename,
+            field_name="generic-file --filename",
+        )
     if local_file is None:
         raise ValueError("generic-file requires --file or --filename")
-    return local_file.name
+    return validate_simple_filename(local_file.name, field_name="generic-file filename")
 
 
 def build_generic_file_registration(args: Namespace, bundle_dir: Path) -> ArtifactRegistrationResult:

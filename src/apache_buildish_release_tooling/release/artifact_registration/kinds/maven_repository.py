@@ -342,6 +342,11 @@ def _enumerate_remote_repository(
 def _enumerate_local_repository(root_path: Path, *, progress_reporter: ProgressReporter) -> list[_RepositoryFile]:
     files: list[_RepositoryFile] = []
     for local_path in sorted(root_path.rglob("*")):
+        if local_path.is_symlink():
+            raise ValueError(
+                "maven-repository local repository must not contain symlinks: "
+                f"{local_path.relative_to(root_path).as_posix()}"
+            )
         if not local_path.is_file():
             continue
         files.append(

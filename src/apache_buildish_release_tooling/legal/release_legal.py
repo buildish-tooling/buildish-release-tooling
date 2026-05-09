@@ -50,6 +50,7 @@ _LOCK_SELECTION_COMMAND = (
     "--no-dev",
     "--frozen",
 )
+_LOCK_SELECTION_TIMEOUT_SECONDS = 15 * 60
 _CONTAINERFILE_PATH = Path("tools/release-tooling-image/Containerfile")
 _BASE_IMAGE_BUNDLE_MANIFEST_PATH = Path(
     "tools/release-tooling-image/legal/base-image-bundles.toml"
@@ -385,6 +386,7 @@ def export_locked_runtime_packages(project_dir: Path) -> tuple[LockedPackage, ..
             check=True,
             capture_output=True,
             text=True,
+            timeout=_LOCK_SELECTION_TIMEOUT_SECONDS,
         )
         if completed.stderr:
             # The command succeeded, so stderr is only advisory noise from tooling.
@@ -728,20 +730,43 @@ def curated_container_image_bundles_by_ref(
             image_ref=image_ref,
             name=str(raw_bundle["name"]),
             version=str(raw_bundle["version"]),
-            output_key=str(raw_bundle["output-key"]),
+            output_key=_validate_curated_output_key(str(raw_bundle["output-key"])),
             home_page=_optional_string(raw_bundle.get("home-page")),
             license_expression=_optional_string(raw_bundle.get("license-expression")),
             license_field=_optional_string(raw_bundle.get("license")),
             license_paths=tuple(
-                (project_dir / Path(str(relative_path))).resolve()
+                _resolve_curated_manifest_path(project_dir, str(relative_path), field_name="license-files")
                 for relative_path in raw_bundle.get("license-files", [])
             ),
             notice_paths=tuple(
-                (project_dir / Path(str(relative_path))).resolve()
+                _resolve_curated_manifest_path(project_dir, str(relative_path), field_name="notice-files")
                 for relative_path in raw_bundle.get("notice-files", [])
             ),
         )
     return bundles_by_ref
+
+
+def _resolve_curated_manifest_path(project_dir: Path, raw_path: str, *, field_name: str) -> Path:
+    project_root = project_dir.resolve()
+    candidate = Path(raw_path.strip())
+    if not raw_path.strip():
+        raise ValueError(f"curated container image {field_name} entry must not be empty")
+    if candidate.is_absolute() or ".." in candidate.parts:
+        raise ValueError(f"curated container image {field_name} entry must stay under the project root")
+    resolved = (project_root / candidate).resolve()
+    if not resolved.is_relative_to(project_root):
+        raise ValueError(f"curated container image {field_name} entry must stay under the project root")
+    return resolved
+
+
+def _validate_curated_output_key(raw_output_key: str) -> str:
+    output_key = raw_output_key.strip()
+    if not output_key:
+        raise ValueError("curated container image output-key must not be empty")
+    pure_key = PurePosixPath(output_key)
+    if pure_key.name != output_key or ".." in pure_key.parts:
+        raise ValueError("curated container image output-key must be a simple path component")
+    return output_key
 
 
 def build_curated_container_image_entry(

@@ -32,6 +32,7 @@ from apache_buildish_release_tooling.release.contracts import (
     Sha256Checksums,
     PythonDistributionSecondaryArtifact,
 )
+from apache_buildish_release_tooling.release.path_validation import validate_simple_filename
 from apache_buildish_release_tooling.release.source_artifact import checksum
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -64,13 +65,13 @@ def _normalized_sha256(local_file: Path | None, explicit_sha256: str | None) -> 
 
 def _resolved_filename(local_file: Path | None, explicit_filename: str | None) -> str:
     if explicit_filename is not None:
-        filename = explicit_filename.strip()
-        if not filename:
-            raise ValueError("python-distribution --filename must not be empty")
-        return filename
+        return validate_simple_filename(
+            explicit_filename,
+            field_name="python-distribution --filename",
+        )
     if local_file is None:
         raise ValueError("python-distribution requires --file or --filename")
-    return local_file.name
+    return validate_simple_filename(local_file.name, field_name="python-distribution filename")
 
 
 def _required_text(raw_value: str | None, *, option_name: str) -> str:

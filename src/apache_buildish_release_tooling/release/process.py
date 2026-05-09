@@ -25,9 +25,11 @@ from apache_buildish_release_tooling.release.command_logging import (
     format_command,
     log_command_output,
     print_command,
+    sanitize_text,
 )
 
 _FORCE_CAPTURE_OUTPUT_ENV_NAME = "BUILDISH_COMMAND_CAPTURE_OUTPUT"
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 60 * 60
 
 
 class CommandExecutionError(RuntimeError):
@@ -54,6 +56,7 @@ def run_logged_command(
     check: bool = True,
     log_command: bool = True,
     extra_secret_values: Sequence[str] | None = None,
+    timeout_seconds: float | None = DEFAULT_COMMAND_TIMEOUT_SECONDS,
 ) -> subprocess.CompletedProcess[str]:
     """Run a subprocess with sanitized command logging and optional captured output."""
 
@@ -73,21 +76,37 @@ def run_logged_command(
             extra_secret_values,
             stderr_enabled=False,
         )
-    completed = subprocess.run(  # noqa: S603
-        list(command),
-        cwd=str(cwd) if cwd is not None else None,
-        env=merged_env,
-        input=input_text,
-        text=True,
-        capture_output=effective_capture_output,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(  # noqa: S603
+            list(command),
+            cwd=str(cwd) if cwd is not None else None,
+            env=merged_env,
+            input=input_text,
+            text=True,
+            capture_output=effective_capture_output,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        timeout_detail = "unknown timeout" if timeout_seconds is None else f"{timeout_seconds:g}s"
+        raw_output = exc.stderr or exc.stdout or ""
+        if isinstance(raw_output, bytes):
+            raw_output = raw_output.decode("utf-8", errors="replace")
+        output_detail = raw_output.strip()
+        sanitized_output = sanitize_text(output_detail, extra_secret_values)
+        suffix = f": {sanitized_output}" if sanitized_output else ""
+        raise CommandExecutionError(
+            "command timed out after "
+            f"{timeout_detail}: {format_command(command, extra_secret_values)}{suffix}"
+        ) from exc
     if effective_capture_output:
         log_command_output("stdout", completed.stdout or "", extra_secret_values=extra_secret_values)
         log_command_output("stderr", completed.stderr or "", extra_secret_values=extra_secret_values)
     if check and completed.returncode != 0:
         stderr = (completed.stderr or "").strip()
         stdout = (completed.stdout or "").strip()
-        detail = stderr or stdout or f"exit code {completed.returncode}"
-        raise CommandExecutionError(f"command failed: {format_command(command)}: {detail}")
+        detail = sanitize_text(stderr or stdout or f"exit code {completed.returncode}", extra_secret_values)
+        raise CommandExecutionError(
+            f"command failed: {format_command(command, extra_secret_values)}: {detail}"
+        )
     return completed

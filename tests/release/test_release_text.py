@@ -89,6 +89,10 @@ class ReleaseTextTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "incubator disclaimer file does not exist"):
                 resolved_incubator_disclaimer(component_config, project_root=Path(temp_dir))
 
+    def test_incubator_disclaimer_file_must_not_escape_project_root(self) -> None:
+        with self.assertRaisesRegex(ValueError, "incubator_disclaimer_file"):
+            self._component_config(incubator_disclaimer_file="../DISCLAIMER")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -29,6 +29,7 @@ from apache_buildish_release_tooling.release.contracts import (
     SourceArtifactContract,
 )
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
+from apache_buildish_release_tooling.release.path_validation import validate_simple_filename
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.process import run_logged_command
 from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
@@ -296,7 +297,10 @@ def verify_rc_phase1(
             allow_non_production_release_targets=allow_non_production_release_targets,
             purpose="Source artifact URL",
         )
-        source_artifact_filename = source_artifact.filename
+        source_artifact_filename = validate_simple_filename(
+            source_artifact.filename,
+            field_name="source artifact filename",
+        )
         emit_detail(progress_reporter, "Artifact", source_artifact_filename)
         emit_detail(progress_reporter, "Artifact URL", source_artifact_url)
     except Exception as exc:
