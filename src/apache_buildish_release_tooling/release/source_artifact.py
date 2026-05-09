@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import subprocess
+import tempfile
 from pathlib import Path
 
 from apache_buildish_release_tooling.release.command_logging import log_command_output, print_command
@@ -55,36 +56,30 @@ def create_from_git(
     gzip_command = ["gzip", "-6", "--no-name"]
     print_command(git_command, stderr_enabled=log_commands)
     print_command(gzip_command, stderr_enabled=log_commands)
-    with output_path.open("wb") as handle:
+    with (
+        output_path.open("wb") as handle,
+        tempfile.TemporaryFile() as archive_stderr_file,
+        tempfile.TemporaryFile() as gzip_stderr_file,
+    ):
         archive_process = subprocess.Popen(  # noqa: S603
             git_command,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=archive_stderr_file,
         )
         gzip_process = subprocess.Popen(  # noqa: S603
             gzip_command,
             stdin=archive_process.stdout,
             stdout=handle,
-            stderr=subprocess.PIPE,
+            stderr=gzip_stderr_file,
         )
         if archive_process.stdout is not None:
             archive_process.stdout.close()
         archive_return_code = archive_process.wait()
         gzip_return_code = gzip_process.wait()
-        archive_stderr = (
-            archive_process.stderr.read().decode("utf-8", errors="replace")
-            if archive_process.stderr is not None
-            else ""
-        )
-        gzip_stderr = (
-            gzip_process.stderr.read().decode("utf-8", errors="replace")
-            if gzip_process.stderr is not None
-            else ""
-        )
-        if archive_process.stderr is not None:
-            archive_process.stderr.close()
-        if gzip_process.stderr is not None:
-            gzip_process.stderr.close()
+        archive_stderr_file.seek(0)
+        gzip_stderr_file.seek(0)
+        archive_stderr = archive_stderr_file.read().decode("utf-8", errors="replace")
+        gzip_stderr = gzip_stderr_file.read().decode("utf-8", errors="replace")
     log_command_output("stderr", archive_stderr)
     log_command_output("stderr", gzip_stderr)
     if archive_return_code != 0:

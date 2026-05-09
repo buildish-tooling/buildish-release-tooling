@@ -18,8 +18,11 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import io
+import subprocess
 import tarfile
 import unittest
+from unittest import mock
 
 from apache_buildish_release_tooling.release.source_artifact import checksum, create_from_git, write_checksum_file
 
@@ -33,6 +36,42 @@ from tests.support import (
 
 class SourceArtifactIntegrationTest(unittest.TestCase):
     """Verify that source artifacts are reproducible across detached clones."""
+
+    def test_create_from_git_redirects_child_stderr_to_files(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        popen_calls: list[dict[str, object]] = []
+
+        class FakeProcess:
+            def __init__(self, stdout: object) -> None:
+                self.stdout = io.BytesIO() if stdout == subprocess.PIPE else None
+
+            def wait(self) -> int:
+                return 0
+
+        def fake_popen(_command: list[str], **kwargs: object) -> FakeProcess:
+            popen_calls.append(kwargs)
+            stderr = kwargs.get("stderr")
+            write = getattr(stderr, "write", None)
+            if callable(write):
+                write(b"diagnostic\n")
+            return FakeProcess(kwargs.get("stdout"))
+
+        with mock.patch(
+            "apache_buildish_release_tooling.release.source_artifact.subprocess.Popen",
+            side_effect=fake_popen,
+        ):
+            create_from_git(
+                sandbox_dir,
+                "HEAD",
+                "apache-buildish-example-1.2.3-incubating-src/",
+                sandbox_dir / "artifact.tar.gz",
+                log_commands=False,
+            )
+
+        self.assertEqual(2, len(popen_calls))
+        self.assertIsNot(popen_calls[0]["stderr"], subprocess.PIPE)
+        self.assertIsNot(popen_calls[1]["stderr"], subprocess.PIPE)
 
     def test_source_artifact_is_reproducible_across_detached_clones(self) -> None:
         sandbox_dir = create_build_test_sandbox()
