@@ -443,23 +443,10 @@
       "title": "Final Tag Mode",
       "type": "string"
     },
-    "incubator_disclaimer": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "description": "Optional approved incubating disclaimer text. When omitted, Buildish renders the standard Apache Incubator disclaimer from the component release name and sponsor name.",
-      "title": "Incubator Disclaimer"
-    },
-    "incubator_sponsor_name": {
-      "default": "Apache Incubator",
-      "description": "Apache Incubator sponsor name used when rendering the default incubating disclaimer.",
-      "title": "Incubator Sponsor Name",
+    "incubator_disclaimer_file": {
+      "default": "DISCLAIMER",
+      "description": "Project-root-relative file path that supplies the approved incubating disclaimer text.",
+      "title": "Incubator Disclaimer File",
       "type": "string"
     },
     "latest_tag_enabled": {

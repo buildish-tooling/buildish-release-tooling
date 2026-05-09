@@ -422,6 +422,40 @@
         "ownership": "tooling-derived"
       }
     },
+    "IncubatorDisclaimer": {
+      "additionalProperties": false,
+      "description": "Exact Apache Incubator disclaimer text resolved for one RC.",
+      "properties": {
+        "sha512": {
+          "description": "SHA-512 checksum payload associated with the related artifact.",
+          "title": "Sha512",
+          "type": "string"
+        },
+        "source_path": {
+          "description": "Project-root-relative file path that supplied the incubating disclaimer text.",
+          "minLength": 1,
+          "title": "Source Path",
+          "type": "string"
+        },
+        "text": {
+          "description": "Exact incubating disclaimer text carried through release communication surfaces.",
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_path",
+        "text",
+        "sha512"
+      ],
+      "title": "IncubatorDisclaimer",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
     "ManifestProvenance": {
       "additionalProperties": false,
       "description": "Top-level provenance block for the RC vote manifest.",
@@ -1606,6 +1640,18 @@
       "minLength": 1,
       "title": "Final Tag Mode",
       "type": "string"
+    },
+    "incubator_disclaimer": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/IncubatorDisclaimer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Exact incubating disclaimer text resolved and signed for this RC."
     },
     "manifest_type": {
       "const": "rc-vote",

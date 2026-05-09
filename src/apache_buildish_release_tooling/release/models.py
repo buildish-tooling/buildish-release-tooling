@@ -344,8 +344,7 @@ class ComponentConfig(ComponentOwnedAuthoredModel):
     vote_release_name: str = Field(description="Human-facing release name that Buildish should use in vote mails, release summaries, and other user-visible output.")
     release_program: ReleaseProgram = Field(default="asf", description="Release-governance program whose policy model Buildish should apply to this component.")
     project_status: ProjectStatus = Field(default="tlp", description="Project lifecycle status within the configured release program.")
-    incubator_sponsor_name: str = Field(default="Apache Incubator", description="Apache Incubator sponsor name used when rendering the default incubating disclaimer.")
-    incubator_disclaimer: str | None = Field(default=None, description="Optional approved incubating disclaimer text. When omitted, Buildish renders the standard Apache Incubator disclaimer from the component release name and sponsor name.")
+    incubator_disclaimer_file: str = Field(default="DISCLAIMER", description="Project-root-relative file path that supplies the approved incubating disclaimer text.")
     release_summary_include_final_tag_mode: bool = Field(default=False, description="Whether release summary output should explicitly include the configured final-tag mode.")
     release_verification_guide_url: str = Field(description="User-facing guide URL that Buildish should include when pointing verifiers at the release verification instructions.")
     verify_rc_instructions: str = Field(description="Human-facing verification instructions that Buildish should include for this component's RC vote materials.")
@@ -369,22 +368,14 @@ class ComponentConfig(ComponentOwnedAuthoredModel):
             return [str(item) for item in value]
         raise TypeError("secondary_targets must be a whitespace-separated string or a list")
 
-    @field_validator("incubator_sponsor_name")
+    @field_validator("incubator_disclaimer_file")
     @classmethod
-    def _validate_incubator_sponsor_name(cls, value: str) -> str:
+    def _validate_incubator_disclaimer_file(cls, value: str) -> str:
         normalized = value.strip()
         if not normalized:
-            raise ValueError("incubator_sponsor_name must not be empty")
-        return normalized
-
-    @field_validator("incubator_disclaimer")
-    @classmethod
-    def _validate_incubator_disclaimer(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        normalized = value.strip()
-        if not normalized:
-            raise ValueError("incubator_disclaimer must not be empty when configured")
+            raise ValueError("incubator_disclaimer_file must not be empty")
+        if Path(normalized).is_absolute():
+            raise ValueError("incubator_disclaimer_file must be relative to the project root")
         return normalized
 
     @model_validator(mode="after")

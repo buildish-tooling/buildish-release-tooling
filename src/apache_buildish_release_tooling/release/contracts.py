@@ -512,6 +512,14 @@ class AuthoritativeManifestReferenceRead(AuthoritativeManifestReference):
     model_config = ConfigDict(extra="allow")
 
 
+class IncubatorDisclaimer(BuildishContractModel):
+    """Exact Apache Incubator disclaimer text resolved for one RC."""
+
+    source_path: NonEmptyString = Field(description="Project-root-relative file path that supplied the incubating disclaimer text.")
+    text: NonEmptyString = Field(description="Exact incubating disclaimer text carried through release communication surfaces.")
+    sha512: Sha512Hex = Field(description="SHA-512 checksum payload associated with the related artifact.")
+
+
 class ManifestVerificationMetadataStrict(BuildishContractModel):
     """Strict verification metadata emitted by finalize-rc-vote-materials."""
 
@@ -544,6 +552,7 @@ class RcVoteManifestV1(BuildishContractModel):
     provenance: ManifestProvenance = Field(description="Tooling, workflow, or publication provenance block embedded in or read from the related Buildish contract.")
     trust_roots: ManifestTrustRoots = Field(description="Pinned trust-root material that verify-rc uses to establish authenticity for the authoritative RC vote manifest.")
     draft_github_release: DraftGithubRelease = Field(description="Draft GitHub release metadata embedded in or read from the RC vote manifest.")
+    incubator_disclaimer: IncubatorDisclaimer | None = Field(default=None, description="Exact incubating disclaimer text resolved and signed for this RC.")
     vote_materials: VoteMaterialsStrict = Field(description="Vote-materials reference block embedded in or read from the authoritative RC vote manifest.")
     verification: ManifestVerificationMetadataStrict = Field(description="Verification metadata block nested inside the authoritative RC vote manifest.")
     materialized_commit_sha: GitCommitSha | None = Field(default=None, description="Git commit SHA of the materialized tree that Buildish created for the RC tagging workflow.")
@@ -567,6 +576,7 @@ class RcVoteManifestReadV1(_BuildishTolerantReadModel):
     provenance: ManifestProvenanceRead = Field(description="Tooling, workflow, or publication provenance block embedded in or read from the related Buildish contract.")
     trust_roots: ManifestTrustRootsRead = Field(description="Pinned trust-root material that verify-rc uses to establish authenticity for the authoritative RC vote manifest.")
     draft_github_release: DraftGithubReleaseRead = Field(description="Draft GitHub release metadata embedded in or read from the RC vote manifest.")
+    incubator_disclaimer: IncubatorDisclaimer | None = Field(default=None, description="Exact incubating disclaimer text resolved and signed for this RC.")
     vote_materials: VoteMaterialsRead = Field(description="Vote-materials reference block embedded in or read from the authoritative RC vote manifest.")
     verification: ManifestVerificationMetadataRead = Field(description="Verification metadata block nested inside the authoritative RC vote manifest.")
     materialized_commit_sha: GitCommitSha | None = Field(default=None, description="Git commit SHA of the materialized tree that Buildish created for the RC tagging workflow.")

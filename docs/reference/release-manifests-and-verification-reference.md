@@ -44,6 +44,7 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [GenericFileVerificationReport](#genericfileverificationreport) — Verification report for one generic secondary file.
 - [GenericFileWithOpenPgpSecondaryArtifact](#genericfilewithopenpgpsecondaryartifact) — A standalone file artifact that requires at least one detached signature.
 - [GithubWorkflowProvenance](#githubworkflowprovenance) — GitHub Actions provenance embedded in emitted manifests.
+- [IncubatorDisclaimer](#incubatordisclaimer) — Exact Apache Incubator disclaimer text resolved for one RC.
 - [InspectReproCountSummary](#inspectreprocountsummary) — One count bucket emitted by inspect-repro machine-readable summaries.
 - [InspectReproReportV1](#inspectreproreportv1) — Machine-readable inspect-repro output for automation and post-processing.
 - [InspectReproSummaryV1](#inspectreprosummaryv1) — Top-level summary block for machine-readable inspect-repro output.
@@ -447,6 +448,21 @@ GitHub Actions provenance embedded in emitted manifests.
 | <a id="githubworkflowprovenance-run-id"></a>`run_id` | int | yes | GitHub Actions run id associated with the related provenance record. |
 | <a id="githubworkflowprovenance-run-attempt"></a>`run_attempt` | int | no | GitHub Actions run attempt number associated with the related provenance record. |
 | <a id="githubworkflowprovenance-run-url"></a>`run_url` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | no | Browser URL of the related GitHub Actions workflow run. |
+
+<a id="incubatordisclaimer"></a>
+### IncubatorDisclaimer
+
+Exact Apache Incubator disclaimer text resolved for one RC.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="incubatordisclaimer-source-path"></a>`source_path` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Project-root-relative file path that supplied the incubating disclaimer text. |
+| <a id="incubatordisclaimer-text"></a>`text` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Exact incubating disclaimer text carried through release communication surfaces. |
+| <a id="incubatordisclaimer-sha512"></a>`sha512` | [Sha512Hex](../release-shared-types-reference/#sha512hex) | yes | SHA-512 checksum payload associated with the related artifact. |
 
 <a id="inspectreprocountsummary"></a>
 ### InspectReproCountSummary
@@ -1209,6 +1225,7 @@ Strict authoritative RC vote manifest emitted by buildish-release-tooling.
 | <a id="rcvotemanifestv1-provenance"></a>`provenance` | [ManifestProvenance](#manifestprovenance) | yes | Tooling, workflow, or publication provenance block embedded in or read from the related Buildish contract. |
 | <a id="rcvotemanifestv1-trust-roots"></a>`trust_roots` | [ManifestTrustRoots](#manifesttrustroots) | yes | Pinned trust-root material that verify-rc uses to establish authenticity for the authoritative RC vote manifest. |
 | <a id="rcvotemanifestv1-draft-github-release"></a>`draft_github_release` | [DraftGithubRelease](#draftgithubrelease) | yes | Draft GitHub release metadata embedded in or read from the RC vote manifest. |
+| <a id="rcvotemanifestv1-incubator-disclaimer"></a>`incubator_disclaimer` | [IncubatorDisclaimer](#incubatordisclaimer) | no | Exact incubating disclaimer text resolved and signed for this RC. |
 | <a id="rcvotemanifestv1-vote-materials"></a>`vote_materials` | [VoteMaterialsStrict](#votematerialsstrict) | yes | Vote-materials reference block embedded in or read from the authoritative RC vote manifest. |
 | <a id="rcvotemanifestv1-verification"></a>`verification` | [ManifestVerificationMetadataStrict](#manifestverificationmetadatastrict) | yes | Verification metadata block nested inside the authoritative RC vote manifest. |
 | <a id="rcvotemanifestv1-materialized-commit-sha"></a>`materialized_commit_sha` | [GitCommitSha](../release-shared-types-reference/#gitcommitsha) | no | Git commit SHA of the materialized tree that Buildish created for the RC tagging workflow. |

@@ -164,6 +164,7 @@ class RcVoteManifestTest(unittest.TestCase):
                 draft_release_url="https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc2",
                 rc_tag_target_commit="89abcdef0123456789abcdef0123456789abcdef",
                 source_artifact_sha512="b" * 128,
+                incubator_disclaimer=None,
                 secondary_artifacts=[
                     GenericFileSecondaryArtifact.model_validate(
                         {

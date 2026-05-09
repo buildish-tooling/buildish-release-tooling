@@ -113,6 +113,11 @@ class EmailTemplatesTest(unittest.TestCase):
                     "tag": "v1.2.3-rc2",
                     "url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc2",
                 },
+                "incubator_disclaimer": {
+                    "source_path": "DISCLAIMER",
+                    "text": "Apache Buildish Example is an effort undergoing incubation at The Apache Software Foundation (ASF).",
+                    "sha512": "c" * 128,
+                },
                 "vote_materials": {
                     "source_artifacts": [
                         {

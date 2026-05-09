@@ -31,6 +31,7 @@ from apache_buildish_release_tooling.release.contracts import (
     PythonDistributionSecondaryArtifact,
     RcVoteManifestV1,
     SourceArtifactContract,
+    IncubatorDisclaimer,
 )
 from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
 from apache_buildish_release_tooling.release.release_text import incubator_disclaimer_section
@@ -225,10 +226,12 @@ def _incubator_vote_binding_text() -> str:
     )
 
 
-def _incubator_disclaimer_email_block(component_config: ComponentConfig) -> str:
+def _incubator_disclaimer_email_block(
+    incubator_disclaimer: IncubatorDisclaimer | None,
+) -> str:
     """Render the incubator disclaimer block for human email templates."""
 
-    return incubator_disclaimer_section(component_config, heading="Incubating disclaimer:")
+    return incubator_disclaimer_section(incubator_disclaimer, heading="Incubating disclaimer:")
 
 
 def render_project_rc_vote_email(
@@ -300,7 +303,9 @@ def render_project_rc_vote_email(
         """,
         {
             "release_display_name": release_display_name,
-            "incubator_disclaimer_block": _incubator_disclaimer_email_block(component_config),
+            "incubator_disclaimer_block": _incubator_disclaimer_email_block(
+                manifest_payload.incubator_disclaimer,
+            ),
             "rc_tag": state.rc_tag,
             "source_commit_lines": "\n".join(source_commit_lines),
             "release_branch": state.resolved_release_branch,
@@ -381,7 +386,9 @@ def render_incubator_rc_vote_email(
             "project_name": component_config.vote_release_name,
             "release_display_name": release_display_name,
             "rc_label": _rc_label(state.rc_number),
-            "incubator_disclaimer_block": _incubator_disclaimer_email_block(component_config),
+            "incubator_disclaimer_block": _incubator_disclaimer_email_block(
+                manifest_payload.incubator_disclaimer,
+            ),
             "manifest_url": authoritative_manifest.uri,
             "verification_bootstrap_block": _verification_bootstrap_block(
                 bootstrap_script_url=bootstrap_script_url,
@@ -439,6 +446,7 @@ def render_announce_email(
     *,
     component_config: ComponentConfig,
     version: str,
+    incubator_disclaimer: IncubatorDisclaimer | None = None,
 ) -> RenderedEmail:
     """Render the final ANNOUNCE email with a human-fill placeholder section."""
 
@@ -456,7 +464,7 @@ def render_announce_email(
         {
             "project_name": component_config.vote_release_name,
             "release_display_name": release_display_name,
-            "incubator_disclaimer_block": _incubator_disclaimer_email_block(component_config),
+            "incubator_disclaimer_block": _incubator_disclaimer_email_block(incubator_disclaimer),
         },
     )
     return RenderedEmail(

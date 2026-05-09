@@ -16,48 +16,43 @@
 
 from __future__ import annotations
 
+import hashlib
+from pathlib import Path
+
+from apache_buildish_release_tooling.release.contracts import IncubatorDisclaimer
 from apache_buildish_release_tooling.release.models import ComponentConfig
 
 
-def default_incubator_disclaimer(
+def resolved_incubator_disclaimer(
+    component_config: ComponentConfig,
     *,
-    project_name: str,
-    sponsor_name: str,
-) -> str:
-    """Render the standard Apache Incubator disclaimer text."""
-
-    return "\n\n".join(
-        [
-            (
-                f"{project_name} is an effort undergoing incubation at The Apache Software "
-                f"Foundation (ASF), sponsored by {sponsor_name}. Incubation is required "
-                "of all newly accepted projects until a further review indicates that the "
-                "infrastructure, communications, and decision making process have "
-                "stabilized in a manner consistent with other successful ASF projects."
-            ),
-            (
-                "While incubation status is not necessarily a reflection of the "
-                "completeness or stability of the code, it does indicate that the "
-                "project has yet to be fully endorsed by the ASF."
-            ),
-        ]
-    )
-
-
-def incubator_disclaimer_text(component_config: ComponentConfig) -> str:
-    """Return the configured or default incubator disclaimer text."""
-
-    if component_config.incubator_disclaimer is not None:
-        return component_config.incubator_disclaimer.strip()
-    return default_incubator_disclaimer(
-        project_name=component_config.vote_release_name,
-        sponsor_name=component_config.incubator_sponsor_name,
-    )
-
-
-def incubator_disclaimer_section(component_config: ComponentConfig, *, heading: str) -> str:
-    """Render an incubator disclaimer section, or an empty string for non-podlings."""
+    project_root: Path,
+) -> IncubatorDisclaimer | None:
+    """Read and snapshot the Incubator disclaimer text for an incubating component."""
 
     if not component_config.is_incubating:
+        return None
+    source_path = Path(component_config.incubator_disclaimer_file)
+    disclaimer_path = project_root / source_path
+    if not disclaimer_path.is_file():
+        raise ValueError(f"incubator disclaimer file does not exist: {disclaimer_path}")
+    disclaimer_text = disclaimer_path.read_text(encoding="utf-8").strip()
+    if not disclaimer_text:
+        raise ValueError(f"incubator disclaimer file is empty: {disclaimer_path}")
+    return IncubatorDisclaimer(
+        source_path=source_path.as_posix(),
+        text=disclaimer_text,
+        sha512=hashlib.sha512(disclaimer_text.encode("utf-8")).hexdigest(),
+    )
+
+
+def incubator_disclaimer_section(
+    incubator_disclaimer: IncubatorDisclaimer | None,
+    *,
+    heading: str,
+) -> str:
+    """Render an incubator disclaimer section, or an empty string for non-podlings."""
+
+    if incubator_disclaimer is None:
         return ""
-    return f"{heading}\n\n{incubator_disclaimer_text(component_config)}"
+    return f"{heading}\n\n{incubator_disclaimer.text}"

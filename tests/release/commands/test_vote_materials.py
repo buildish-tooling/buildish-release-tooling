@@ -160,6 +160,10 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         component_id = "buildish-example"
         dev_base_url = f"{repo_url}/dist/dev/incubator/buildish/{component_id}"
         release_base_url = f"{repo_url}/dist/release/incubator/buildish/{component_id}"
+        (clone_dir / "DISCLAIMER").write_text(
+            "Apache Buildish Example is an effort undergoing incubation.\n",
+            encoding="utf-8",
+        )
 
         expected_source_date_epoch = int(
             run_quiet(
@@ -319,6 +323,11 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         self.assertEqual("rc-vote", staged_manifest["manifest_type"])
         self.assertEqual(component_id, staged_manifest["component_id"])
         self.assertEqual("v1.2.3-rc0", staged_manifest["rc_tag"])
+        self.assertEqual("DISCLAIMER", staged_manifest["incubator_disclaimer"]["source_path"])
+        self.assertEqual(
+            "Apache Buildish Example is an effort undergoing incubation.",
+            staged_manifest["incubator_disclaimer"]["text"],
+        )
         self.assertEqual(expected_source_date_epoch, staged_manifest["source_date_epoch"])
         self.assertEqual(
             "source-release",

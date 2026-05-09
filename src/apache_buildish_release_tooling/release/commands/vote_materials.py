@@ -53,6 +53,7 @@ from apache_buildish_release_tooling.release.rc_vote_manifest import (
     read_uri_text,
 )
 from apache_buildish_release_tooling.release.rc_vote_verification import verified_staged_source_artifact_sha512
+from apache_buildish_release_tooling.release.release_text import resolved_incubator_disclaimer
 from apache_buildish_release_tooling.release.source_artifact import sha512, write_sha512_file
 from apache_buildish_release_tooling.release.summary import SummaryWriter
 from apache_buildish_release_tooling.release.verification.bootstrap import (
@@ -226,6 +227,7 @@ def _build_rc_vote_manifest_artifacts(
     secondary_artifacts: list[AnySecondaryArtifact],
     supplemental_file_paths: tuple[Path, ...],
     output_dir: Path,
+    project_root: Path,
 ) -> RcVoteManifestArtifacts:
     """Build and sign the authoritative RC vote-manifest artifacts."""
 
@@ -255,6 +257,10 @@ def _build_rc_vote_manifest_artifacts(
             draft_release_url=selected_release.release_url,
             rc_tag_target_commit=rc_tag_target_commit,
             source_artifact_sha512=source_artifact_sha512,
+            incubator_disclaimer=resolved_incubator_disclaimer(
+                context.component_config,
+                project_root=project_root,
+            ),
             secondary_artifacts=secondary_artifacts,
         )
         write_manifest(manifest_file_path, manifest_payload, exclude_none=True)
@@ -373,6 +379,7 @@ def _draft_release_body(
     return render_finalized_draft_github_release_body(
         context.component_config,
         state=state,
+        incubator_disclaimer=artifacts.manifest_payload.incubator_disclaimer,
         authoritative_manifest_url=authoritative_manifest_url,
         bootstrap_script_url=bootstrap_script_url,
         bootstrap_invoker=artifacts.bootstrap_artifacts.invoker_snippet,
@@ -495,6 +502,7 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
         secondary_artifacts=secondary_artifacts,
         supplemental_file_paths=supplemental_file_paths,
         output_dir=output_dir,
+        project_root=repo.path,
     )
     authoritative_manifest_url = _stage_rc_vote_manifest_and_mirror(
         context,

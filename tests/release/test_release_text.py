@@ -15,12 +15,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+from tempfile import TemporaryDirectory
 import unittest
 
+from apache_buildish_release_tooling.release.contracts import IncubatorDisclaimer
 from apache_buildish_release_tooling.release.models import ComponentConfig
 from apache_buildish_release_tooling.release.release_text import (
     incubator_disclaimer_section,
-    incubator_disclaimer_text,
+    resolved_incubator_disclaimer,
 )
 
 
@@ -50,30 +53,41 @@ class ReleaseTextTest(unittest.TestCase):
         payload.update(overrides)
         return ComponentConfig.model_validate(payload)
 
-    def test_default_incubator_disclaimer_uses_project_name_and_sponsor(self) -> None:
+    def test_resolved_incubator_disclaimer_reads_project_file(self) -> None:
         component_config = self._component_config()
+        with TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir)
+            (project_root / "DISCLAIMER").write_text("Approved disclaimer.\n", encoding="utf-8")
 
-        disclaimer = incubator_disclaimer_text(component_config)
+            disclaimer = resolved_incubator_disclaimer(component_config, project_root=project_root)
 
-        self.assertIn("Apache Buildish Example is an effort undergoing incubation", disclaimer)
-        self.assertIn("sponsored by Apache Incubator", disclaimer)
-        self.assertIn("yet to be fully endorsed by the ASF", disclaimer)
-
-    def test_custom_incubator_disclaimer_overrides_default(self) -> None:
-        component_config = self._component_config(
-            incubator_disclaimer="Custom approved disclaimer.\n",
-        )
-
-        self.assertEqual("Custom approved disclaimer.", incubator_disclaimer_text(component_config))
-
-    def test_empty_incubator_disclaimer_is_rejected(self) -> None:
-        with self.assertRaisesRegex(ValueError, "incubator_disclaimer"):
-            self._component_config(incubator_disclaimer=" \n")
+        if disclaimer is None:
+            self.fail("expected incubating component to resolve a disclaimer")
+        else:
+            self.assertEqual("DISCLAIMER", disclaimer.source_path)
+            self.assertEqual("Approved disclaimer.", disclaimer.text)
+            self.assertEqual(128, len(disclaimer.sha512))
 
     def test_incubator_disclaimer_section_is_empty_for_top_level_projects(self) -> None:
-        component_config = self._component_config(project_status="tlp")
+        self.assertEqual("", incubator_disclaimer_section(None, heading="Disclaimer:"))
 
-        self.assertEqual("", incubator_disclaimer_section(component_config, heading="Disclaimer:"))
+    def test_incubator_disclaimer_section_uses_manifest_text(self) -> None:
+        disclaimer = IncubatorDisclaimer(
+            source_path="DISCLAIMER",
+            text="Approved disclaimer.",
+            sha512="a" * 128,
+        )
+
+        self.assertEqual(
+            "Disclaimer:\n\nApproved disclaimer.",
+            incubator_disclaimer_section(disclaimer, heading="Disclaimer:"),
+        )
+
+    def test_missing_incubator_disclaimer_file_is_rejected(self) -> None:
+        component_config = self._component_config()
+        with TemporaryDirectory() as temp_dir:
+            with self.assertRaisesRegex(ValueError, "incubator disclaimer file does not exist"):
+                resolved_incubator_disclaimer(component_config, project_root=Path(temp_dir))
 
 
 if __name__ == "__main__":

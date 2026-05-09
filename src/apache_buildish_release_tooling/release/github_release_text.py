@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+from apache_buildish_release_tooling.release.contracts import IncubatorDisclaimer
 from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
 from apache_buildish_release_tooling.release.release_text import incubator_disclaimer_section
 
@@ -40,6 +41,7 @@ def render_draft_github_release_body(
     component_config: ComponentConfig,
     *,
     state: PrepareRcState,
+    incubator_disclaimer: IncubatorDisclaimer | None,
 ) -> str:
     """Render the initial draft GitHub Release body."""
 
@@ -48,7 +50,7 @@ def render_draft_github_release_body(
     ]
     _append_optional_section(
         lines,
-        incubator_disclaimer_section(component_config, heading="## Incubating Disclaimer"),
+        incubator_disclaimer_section(incubator_disclaimer, heading="## Incubating Disclaimer"),
     )
     lines.extend(
         [
@@ -65,6 +67,7 @@ def render_finalized_draft_github_release_body(
     component_config: ComponentConfig,
     *,
     state: PrepareRcState,
+    incubator_disclaimer: IncubatorDisclaimer | None,
     authoritative_manifest_url: str,
     bootstrap_script_url: str,
     bootstrap_invoker: str,
@@ -76,7 +79,7 @@ def render_finalized_draft_github_release_body(
     ]
     _append_optional_section(
         lines,
-        incubator_disclaimer_section(component_config, heading="## Incubating Disclaimer"),
+        incubator_disclaimer_section(incubator_disclaimer, heading="## Incubating Disclaimer"),
     )
     lines.extend(
         [

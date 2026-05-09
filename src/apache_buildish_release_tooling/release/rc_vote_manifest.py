@@ -30,6 +30,7 @@ from apache_buildish_release_tooling.release.github_checks import resolve_reposi
 from apache_buildish_release_tooling.release.contracts import (
     AuthoritativeManifestReference,
     DraftGithubRelease,
+    IncubatorDisclaimer,
     GithubWorkflowProvenance,
     ManifestProvenance,
     ManifestTrustRoots,
@@ -197,6 +198,7 @@ def build_rc_vote_manifest(
     draft_release_url: str,
     rc_tag_target_commit: str,
     source_artifact_sha512: str,
+    incubator_disclaimer: IncubatorDisclaimer | None,
     secondary_artifacts: Sequence[AnySecondaryArtifact],
 ) -> RcVoteManifestV1:
     """Build the machine-readable RC inventory staged for vote."""
@@ -254,6 +256,7 @@ def build_rc_vote_manifest(
             tag=draft_release_tag,
             url=draft_release_url,
         ),
+        incubator_disclaimer=incubator_disclaimer,
         vote_materials=VoteMaterialsStrict(
             source_artifacts=[source_artifact_payload],
             secondary_artifacts=list(secondary_artifacts),

@@ -186,6 +186,7 @@ final_tag_mode: rc-source-commit
 vote_release_name: Apache Buildish Example
 release_program: asf
 project_status: tlp
+incubator_disclaimer_file: DISCLAIMER
 release_summary_include_final_tag_mode: false
 release_verification_guide_url: https://buildish.apache.org/buildish-example/release-verification/
 verify_rc_instructions: |
@@ -225,10 +226,8 @@ Field meanings:
   currently defaults to `asf`
 - `project_status`: project lifecycle status within the release program, currently `tlp` or
   `incubating` for ASF components
-- `incubator_sponsor_name`: sponsor name inserted into the default Incubator disclaimer; defaults
-  to `Apache Incubator`
-- `incubator_disclaimer`: optional approved Incubator disclaimer override, commonly authored as a
-  YAML block scalar
+- `incubator_disclaimer_file`: project-root-relative path to the approved Incubator disclaimer
+  text; defaults to `DISCLAIMER`
 - `release_summary_include_final_tag_mode`: whether summaries explicitly repeat the final tag mode
 - `release_verification_guide_url`: authoritative verification-guide URL inserted into RC vote
   email templates

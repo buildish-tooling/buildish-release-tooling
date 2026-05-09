@@ -45,11 +45,13 @@ from apache_buildish_release_tooling.release.github_release_text import render_d
 from apache_buildish_release_tooling.release.github_releases import (
     delete_release,
     delete_release_asset,
+    download_release_asset_text,
     list_releases,
     release_asset_ids_by_names,
     update_release,
 )
 from apache_buildish_release_tooling.release.manifest import write_manifest
+from apache_buildish_release_tooling.release.contracts import RcVoteManifestV1
 from apache_buildish_release_tooling.release.models import CommandContext, PrepareRcState
 from apache_buildish_release_tooling.release.rc_vote_verification import (
     required_rc_vote_manifest_file_names,
@@ -57,6 +59,7 @@ from apache_buildish_release_tooling.release.rc_vote_verification import (
     verify_staged_source_release_against_vote_manifest,
 )
 from apache_buildish_release_tooling.release.release_state import derive_final_tag
+from apache_buildish_release_tooling.release.release_text import resolved_incubator_disclaimer
 from apache_buildish_release_tooling.release.summary import SummaryWriter
 
 from apache_buildish_release_tooling.release.commands._shared import (
@@ -72,13 +75,37 @@ from apache_buildish_release_tooling.release.commands._shared import (
 )
 
 
-def _draft_release_body(context: CommandContext, state: PrepareRcState) -> str:
+def _draft_release_body(context: CommandContext, repo: GitRepository, state: PrepareRcState) -> str:
     """Render the body used for the draft GitHub Release placeholder."""
 
     return render_draft_github_release_body(
         context.component_config,
         state=state,
+        incubator_disclaimer=resolved_incubator_disclaimer(
+            context.component_config,
+            project_root=repo.path,
+        ),
     )
+
+
+def _selected_release_vote_manifest(
+    selected_release_payload: dict[str, object],
+    repository_slug: str,
+) -> RcVoteManifestV1 | None:
+    """Return the mirrored RC vote manifest from a selected GitHub Release when present."""
+
+    asset_ids = release_asset_ids_by_names(
+        selected_release_payload,
+        asset_names=["rc-vote-manifest.json"],
+    )
+    asset_id = asset_ids.get("rc-vote-manifest.json")
+    if asset_id is None:
+        return None
+    try:
+        manifest_text = download_release_asset_text(repository_slug, asset_id)
+        return RcVoteManifestV1.model_validate_json(manifest_text)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def run_sync_draft_github_release(args: Namespace) -> Path:
@@ -104,7 +131,7 @@ def run_sync_draft_github_release(args: Namespace) -> Path:
     deleted_release_ids = sync_plan.deleted_release_ids
     for release_id in deleted_release_ids:
         delete_release(repository_slug, release_id)
-    desired_release_body = _draft_release_body(context, state)
+    desired_release_body = _draft_release_body(context, repo, state)
     created_release, sync_mode = upsert_draft_release(
         repository_slug,
         state=state,
@@ -337,6 +364,10 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
     final_tag = derive_final_tag(version)
     final_tag_target_commit = repo.resolve_commit(selected_release.selected_rc_tag)
     release_id = selected_release.require_release_id(reference_tag=final_tag)
+    vote_manifest = _selected_release_vote_manifest(
+        selected_release.release_payload,
+        selected_release.repository_slug,
+    )
     deleted_asset_names: list[str] = []
     for asset_name, asset_id in release_asset_ids_by_names(
         selected_release.release_payload,
@@ -404,6 +435,11 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
     announce_email = render_announce_email(
         component_config=context.component_config,
         version=version,
+        incubator_disclaimer=(
+            vote_manifest.incubator_disclaimer
+            if vote_manifest is not None
+            else None
+        ),
     )
     summary.append_email_template_blocks(
         "ANNOUNCE",

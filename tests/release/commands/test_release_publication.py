@@ -125,6 +125,10 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         git_create_annotated_tag(origin_dir, "v1.2.3-rc2")
         fetch_git_origin_refs(clone_dir)
         set_github_origin_url(clone_dir, "apache/buildish-example")
+        (clone_dir / "DISCLAIMER").write_text(
+            "Apache Buildish Example is an effort undergoing incubation.\n",
+            encoding="utf-8",
+        )
         expected_commit = git_rev_parse(
             clone_dir,
             "refs/remotes/origin/release/1.2.x^{commit}",
