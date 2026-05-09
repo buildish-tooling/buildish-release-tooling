@@ -101,11 +101,8 @@ def _selected_release_vote_manifest(
     asset_id = asset_ids.get("rc-vote-manifest.json")
     if asset_id is None:
         return None
-    try:
-        manifest_text = download_release_asset_text(repository_slug, asset_id)
-        return RcVoteManifestV1.model_validate_json(manifest_text)
-    except Exception:  # noqa: BLE001
-        return None
+    manifest_text = download_release_asset_text(repository_slug, asset_id)
+    return RcVoteManifestV1.model_validate_json(manifest_text)
 
 
 def run_sync_draft_github_release(args: Namespace) -> Path:
@@ -364,10 +361,17 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
     final_tag = derive_final_tag(version)
     final_tag_target_commit = repo.resolve_commit(selected_release.selected_rc_tag)
     release_id = selected_release.require_release_id(reference_tag=final_tag)
-    vote_manifest = _selected_release_vote_manifest(
-        selected_release.release_payload,
-        selected_release.repository_slug,
-    )
+    vote_manifest = None
+    if context.component_config.is_incubating:
+        vote_manifest = _selected_release_vote_manifest(
+            selected_release.release_payload,
+            selected_release.repository_slug,
+        )
+        if vote_manifest is None or vote_manifest.incubator_disclaimer is None:
+            raise ValueError(
+                "incubating release finalization requires a mirrored rc-vote-manifest.json "
+                "with an incubator_disclaimer block"
+            )
     deleted_asset_names: list[str] = []
     for asset_name, asset_id in release_asset_ids_by_names(
         selected_release.release_payload,
@@ -435,11 +439,7 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
     announce_email = render_announce_email(
         component_config=context.component_config,
         version=version,
-        incubator_disclaimer=(
-            vote_manifest.incubator_disclaimer
-            if vote_manifest is not None
-            else None
-        ),
+        incubator_disclaimer=vote_manifest.incubator_disclaimer if vote_manifest is not None else None,
     )
     summary.append_email_template_blocks(
         "ANNOUNCE",
