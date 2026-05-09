@@ -53,6 +53,7 @@ from apache_buildish_release_tooling.release.verification.inspection.source_arti
 from apache_buildish_release_tooling.release.verification.inspection.report_loading import (
     load_supported_bundle_manifest,
     load_supported_verify_rc_report,
+    resolve_contained_relative_path,
 )
 from apache_buildish_release_tooling.release.verification.inspection.targets import (
     apply_reproducibility_target_filters,
@@ -85,7 +86,11 @@ def inspect_repro_report(
         raise ValueError(
             f"verify-rc report does not reference an inspection bundle: {report_path}"
         )
-    bundle_root = (report_path.parent / inspection_bundle.relative_path_from_report).resolve()
+    bundle_root = resolve_contained_relative_path(
+        report_path.parent,
+        inspection_bundle.relative_path_from_report,
+        field_name="inspection_bundle.relative_path_from_report",
+    )
     if not bundle_root.exists():
         raise ValueError(
             f"inspection bundle referenced by verify-rc report does not exist: {bundle_root}"
@@ -249,7 +254,11 @@ def inspect_repro_report_json(
         raise ValueError(
             f"verify-rc report does not reference an inspection bundle: {report_path}"
         )
-    bundle_root = (report_path.parent / inspection_bundle.relative_path_from_report).resolve()
+    bundle_root = resolve_contained_relative_path(
+        report_path.parent,
+        inspection_bundle.relative_path_from_report,
+        field_name="inspection_bundle.relative_path_from_report",
+    )
     if not bundle_root.exists():
         raise ValueError(
             f"inspection bundle referenced by verify-rc report does not exist: {bundle_root}"

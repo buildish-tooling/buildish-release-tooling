@@ -38,6 +38,19 @@ def _load_json_object(path: Path, *, payload_label: str) -> dict[str, object]:
     return raw_payload
 
 
+def resolve_contained_relative_path(root: Path, relative_path: str, *, field_name: str) -> Path:
+    """Resolve a contract relative path while rejecting escapes from its declared root."""
+
+    raw_path = Path(relative_path)
+    if raw_path.is_absolute() or ".." in raw_path.parts:
+        raise ValueError(f"{field_name} must be relative and remain under {root}: {relative_path}")
+    resolved_root = root.resolve(strict=False)
+    resolved_path = (resolved_root / raw_path).resolve(strict=False)
+    if not resolved_path.is_relative_to(resolved_root):
+        raise ValueError(f"{field_name} must be relative and remain under {root}: {relative_path}")
+    return resolved_path
+
+
 def load_supported_verify_rc_report(report_path: Path) -> VerifyRcReportV1:
     """Load and validate one supported verify-rc report JSON document."""
 
@@ -76,7 +89,11 @@ def load_supported_bundle_manifest(
         raise ValueError(
             f"unsupported inspection bundle schema version: {bundle_schema_version!r}; supported: 1"
         )
-    manifest_path = bundle_root / manifest_relative_path
+    manifest_path = resolve_contained_relative_path(
+        bundle_root,
+        manifest_relative_path,
+        field_name="inspection_bundle.manifest_relative_path",
+    )
     if not manifest_path.exists():
         raise ValueError(f"inspection bundle manifest does not exist: {manifest_path}")
     raw_payload = _load_json_object(

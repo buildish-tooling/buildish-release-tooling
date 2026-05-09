@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import hashlib
+import subprocess
 import unittest
 from unittest import mock
 
@@ -30,6 +31,7 @@ from apache_buildish_release_tooling.release.contracts import (
 )
 from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
 from apache_buildish_release_tooling.release.rc_vote_manifest import (
+    DEFAULT_SVN_CAT_TIMEOUT_SECONDS,
     DEFAULT_URI_READ_TIMEOUT_SECONDS,
     build_rc_vote_manifest,
     derive_asf_keys_uri,
@@ -64,6 +66,36 @@ class RcVoteManifestTest(unittest.TestCase):
         self.assertEqual(
             hashlib.sha512(keys_payload).hexdigest(),
             asf_keys.known_prefix_sha512,
+        )
+
+    def test_read_uri_bytes_decodes_local_file_uri_paths(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        payload_path = sandbox_dir / "KEYS with spaces"
+        payload_path.write_bytes(b"payload\n")
+
+        self.assertEqual(b"payload\n", read_uri_bytes(payload_path.as_uri()))
+
+    def test_read_uri_bytes_uses_timeout_for_svn_cat_fallback(self) -> None:
+        completed = subprocess.CompletedProcess(
+            ["svn", "cat", "file:///missing"],
+            0,
+            stdout=b"payload\n",
+            stderr=b"",
+        )
+
+        with mock.patch(
+            "apache_buildish_release_tooling.release.rc_vote_manifest.subprocess.run",
+            return_value=completed,
+        ) as run_mock:
+            payload = read_uri_bytes("file:///missing")
+
+        self.assertEqual(b"payload\n", payload)
+        run_mock.assert_called_once_with(
+            ["svn", "cat", "file:///missing"],
+            check=True,
+            capture_output=True,
+            timeout=DEFAULT_SVN_CAT_TIMEOUT_SECONDS,
         )
 
     def test_read_uri_bytes_uses_default_timeout_for_http_uris(self) -> None:

@@ -22,7 +22,7 @@ import subprocess
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 from urllib.request import urlopen
 
 from apache_buildish_release_tooling.release.git_repo import GitRepository
@@ -50,6 +50,7 @@ from apache_buildish_release_tooling.release.models import ComponentConfig, Prep
 from apache_buildish_release_tooling.release.release_state import derive_specific_release_line
 
 DEFAULT_URI_READ_TIMEOUT_SECONDS = 60.0
+DEFAULT_SVN_CAT_TIMEOUT_SECONDS = 60.0
 
 
 def _tooling_repo_root() -> Path:
@@ -151,7 +152,7 @@ def read_uri_bytes(uri: str) -> bytes:
 
     parsed = urlparse(uri)
     if parsed.scheme == "file":
-        local_path = Path(parsed.path)
+        local_path = Path(unquote(parsed.path))
         if local_path.exists():
             return local_path.read_bytes()
         try:
@@ -159,11 +160,14 @@ def read_uri_bytes(uri: str) -> bytes:
                 ["svn", "cat", uri],
                 check=True,
                 capture_output=True,
+                timeout=DEFAULT_SVN_CAT_TIMEOUT_SECONDS,
             )
         except subprocess.CalledProcessError as exc:
             stderr_text = exc.stderr.decode("utf-8", errors="replace").strip()
             detail = stderr_text or f"svn cat returned exit status {exc.returncode}"
             raise ValueError(f"file URI could not be read: {uri}: {detail}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise ValueError(f"file URI could not be read before timeout: {uri}") from exc
         return completed.stdout
     if parsed.scheme in {"http", "https"}:
         with urlopen(uri, timeout=DEFAULT_URI_READ_TIMEOUT_SECONDS) as response:  # noqa: S310
