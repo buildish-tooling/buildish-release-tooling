@@ -1,0 +1,73 @@
+<!--
+Copyright 2026 The Apache Software Foundation
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+# GitHub Release Policy
+
+Buildish treats GitHub Releases as convenience metadata and optional convenience asset mirrors.
+The authoritative ASF source release is the material published under ASF `dist/release`.
+
+## Candidate releases
+
+The candidate flow derives tags as:
+
+```text
+v<version>-<candidate-label><number>
+```
+
+Defaults preserve the existing RC convention:
+
+```text
+candidate label: rc
+candidate_start_number: 0
+first tag: v1.2.3-rc0
+```
+
+Projects can choose another candidate label per run:
+
+```text
+buildish-release-tooling prepare-rc --candidate-label alpha 1.2.3
+```
+
+If `candidate_start_number: 1` is configured, the first alpha candidate becomes
+`v1.2.3-alpha1`. Once matching tags exist, Buildish always uses the next number after the highest
+existing tag for the same version and label.
+
+## Candidate visibility
+
+`sync-draft-github-release` supports two visibility modes:
+
+- `draft`: the default; creates or updates a non-public GitHub Release.
+- `public-prerelease`: publishes the candidate GitHub Release with GitHub `prerelease=true`.
+
+Public candidate GitHub Releases are not official ASF releases. Their generated body says this
+explicitly and identifies the candidate tag. Incubating projects also include the incubating
+disclaimer when candidate release pages are public.
+
+## Final releases
+
+Final publication rewrites the GitHub Release body before publishing it as a final release. The
+final body:
+
+- does not use draft placeholder wording
+- links to the authoritative ASF source release directory
+- links to the source artifact, `.sha512`, and `.asc`
+- links to the ASF KEYS URL
+- links to the release verification guide
+- states that GitHub Release assets are convenience artifacts only
+- includes the incubating disclaimer for incubating projects
+
+Final GitHub Releases are published with `prerelease=false`.
+

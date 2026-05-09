@@ -31,7 +31,7 @@ Recent Incubator discussion and current ASF guidance make the practical requirem
 - ASF `downloads.apache.org` / `dist/release` remains authoritative.
 - GitHub Releases may be used as a convenience channel.
 - Incubating projects must show the incubating disclaimer clearly on GitHub release pages.
-- RCs, snapshots, and nightlies must not appear as normal public releases; if public on GitHub, they need to be marked as pre-releases.
+- Candidate GitHub releases such as RCs, alphas, betas, milestones, or previews must not appear as normal final releases; if public on GitHub, they need to be marked as pre-releases.
 
 Relevant policy and discussion:
 
@@ -47,12 +47,15 @@ Relevant policy and discussion:
 
 ## Current state in this repo
 
-These parts are already directionally correct:
+These parts are already implemented:
 
-- RC GitHub releases are created as drafts, not immediately published.
-- Draft bodies already say the GitHub release is convenience metadata only.
+- Candidate GitHub releases are drafts by default.
+- Candidate GitHub releases may be published explicitly with `--candidate-visibility public-prerelease`; that path sets GitHub `prerelease=true`.
+- Candidate tags are derived as `v<version>-<candidate-label><number>`, with default label `rc` and `candidate_start_number: 0`.
 - Final publication workflow promotes ASF dist first, then finalizes the GitHub release.
-- User docs already say GitHub release assets are not authoritative ASF releases.
+- Final GitHub release bodies point to ASF authoritative artifacts and say GitHub assets are convenience artifacts only.
+- Incubating release bodies include the manifest-carried incubating disclaimer.
+- User docs say GitHub release assets are not authoritative ASF releases.
 
 Relevant code:
 
@@ -67,28 +70,35 @@ Relevant code:
   - [.github/workflows/releasey-20-prepare-rc.yml](.github/workflows/releasey-20-prepare-rc.yml)
   - [.github/workflows/releasey-30-release-version.yml](.github/workflows/releasey-30-release-version.yml)
 
-## Current gaps
+## Current status
 
-### 1. No incubating disclaimer on GitHub release pages
+### 1. Incubating disclaimer on GitHub release pages
 
-`release_program` and `project_status` exist, but today `project_status=incubating` is used for vote/mail behavior, not for GitHub release title/body generation.
+Status: closed.
 
-That is insufficient for podlings.
+`release_program=asf` and `project_status=incubating` now drive GitHub candidate and final body
+disclaimer rendering. The exact disclaimer is read from the configured project file, signed into the
+RC vote manifest, and reused from that manifest during finalization.
 
-### 2. Final published GitHub release still looks like a draft placeholder
+### 2. Final published GitHub release body
 
-Current draft body text is reused too far into the flow. The final public GitHub release should not say "Draft GitHub Release placeholder".
+Status: closed.
 
-### 3. No explicit public pre-release mode
+`finalize-draft-github-release` rewrites the GitHub body to final public text before publishing. The
+final body links to the ASF release directory, source artifact, `.sha512`, `.asc`, ASF KEYS, and
+verification guide.
 
-The code hardcodes `prerelease: False` for:
+### 3. Explicit public pre-release mode
 
-- draft create/update
-- final publication
+Status: closed.
 
-That is acceptable for non-public drafts, but not enough if this tool ever supports public RC/nightly/snapshot GitHub releases.
+`sync-draft-github-release` accepts `--candidate-visibility draft|public-prerelease`. The
+`public-prerelease` mode publishes the candidate GitHub Release with `draft=false` and
+`prerelease=true`.
 
 ### 4. No explicit handling for historical pre-ASF GitHub releases
+
+Status: open.
 
 That matters for migrated incubating projects that already had GitHub releases before entering the ASF.
 
@@ -100,7 +110,8 @@ For top-level projects:
 
 - GitHub Releases may be used as convenience release pages and convenience asset mirrors.
 - Final public GitHub release pages must clearly state that ASF downloads are authoritative.
-- RC draft GitHub releases should remain drafts by default.
+- Candidate GitHub releases should remain drafts by default.
+- If candidate GitHub releases are public, they must be GitHub pre-releases.
 - Draft release text must never imply the GitHub release is itself the authoritative ASF release.
 
 ## Incubating projects
@@ -108,7 +119,7 @@ For top-level projects:
 For podlings:
 
 - Any public GitHub release page must include the incubating disclaimer clearly.
-- Any public RC/nightly/snapshot GitHub release page must be marked as `prerelease=true`.
+- Any public candidate GitHub release page must be marked as `prerelease=true`.
 - Final public incubating releases may exist as convenience pages only if they:
   - include the incubating disclaimer
   - clearly point to authoritative ASF release artifacts
@@ -116,20 +127,22 @@ For podlings:
 
 ## Recommended implementation model
 
-Keep the current draft-based RC flow. Do not switch RC handling to public pre-releases by default.
+Keep the current draft-based candidate flow. Do not switch candidate handling to public pre-releases by default.
 
 Instead:
 
-1. RC GitHub releases remain drafts.
+1. Candidate GitHub releases remain drafts by default.
 2. Final public GitHub releases get a dedicated final-release body.
 3. Podling-specific disclaimer injection is driven by config.
-4. Pre-release support is added as a capability for future public RC/nightly/snapshot flows.
+4. Public candidate support is an explicit CLI choice and always uses GitHub `prerelease=true`.
 
 That gives correct current behavior without inventing a new distribution model.
 
 ## Concrete implementation tasks
 
 ### Task A: Introduce explicit GitHub release text rendering
+
+Status: implemented.
 
 Add dedicated helpers for GitHub release page content, instead of embedding strings in command modules.
 
@@ -154,6 +167,8 @@ Rationale:
 
 ### Task B: Distinguish draft and final public GitHub release bodies
 
+Status: implemented.
+
 Current draft copy is suitable only for draft state.
 
 Required final body properties:
@@ -167,6 +182,8 @@ Required final body properties:
 The final release body should be rendered during `finalize-draft-github-release`, not inherited unchanged from the draft body.
 
 ### Task C: Make title rendering policy-aware
+
+Status: partially implemented.
 
 Current `_release_name()` returns:
 
@@ -183,6 +200,8 @@ Do not guess. Make this explicit in one renderer.
 
 ### Task D: Use `project_status=incubating` for GitHub release content too
 
+Status: implemented.
+
 Current behavior:
 
 - used for email/vote content
@@ -193,23 +212,29 @@ Required behavior:
 
 If the existing field name becomes awkward, add a new config flag only if really needed. Prefer reusing the existing flag if semantics stay coherent.
 
-### Task E: Add an explicit pre-release policy knob for future public RC/nightly/snapshot GitHub releases
+### Task E: Add an explicit pre-release policy knob for public candidate GitHub releases
 
-This is not mainly for the current draft RC path. It is forward-looking.
+Status: implemented.
 
-Suggested config shape:
+Implemented CLI shape:
 
-- `github_release_rc_visibility: "draft" | "public-prerelease"`
-- default: `"draft"`
+- `--candidate-visibility draft|public-prerelease`
+- default: `draft`
 
 Behavior:
 
-- `draft`: current behavior, non-public RC GitHub release
-- `public-prerelease`: if ever used, requires `prerelease=true`
+- `draft`: current behavior, non-public candidate GitHub Release
+- `public-prerelease`: public candidate GitHub Release with `prerelease=true`
 
-Do not change current default workflow behavior.
+The candidate label and numbering model is:
+
+- `--candidate-label <label>`, default `rc`
+- `candidate_start_number`, default `0`
+- candidate tags use `v<version>-<label><number>`
 
 ### Task F: Add a documented path for historical pre-ASF releases
+
+Status: open.
 
 This is likely not an automated core flow, but the project should have a supported way to represent this.
 
@@ -223,9 +248,13 @@ This can be docs-only if code support is not needed immediately.
 
 ### Task G: Tighten docs
 
+Status: implemented for gaps 1-3; still needs historical pre-ASF guidance when Task F is designed.
+
 Update:
 
 - `docs/_index.md`
+- `docs/github-release-policy.md`
+- `site/pages/github-release-policy.md`
 - `docs/reference/`
 - any release workflow docs that mention GitHub release publication
 
@@ -233,8 +262,8 @@ Document separately:
 
 - top-level ASF behavior
 - incubating project behavior
-- RC draft behavior
-- future/public pre-release behavior if configured
+- candidate draft behavior
+- public candidate pre-release behavior
 
 The docs should say clearly:
 
@@ -262,14 +291,14 @@ For `release_program=asf` and `project_status=incubating`:
 
 ### RC/public pre-release acceptance
 
-If future config enables a public RC/nightly/snapshot GitHub release mode:
+For `--candidate-visibility public-prerelease`:
 
 - the GitHub release must be published with `prerelease=true`
-- generated docs must say this mode is for unreleased materials only
+- generated docs must say candidate pages are not official ASF releases
 
 ### Non-regression acceptance
 
-- existing draft-based RC workflow remains the default
+- existing draft-based candidate workflow remains the default
 - final publication still occurs only after ASF source release promotion
 - existing command manifests and docs remain coherent after field changes
 
@@ -284,11 +313,12 @@ Add or update tests for:
   - top-level final
   - incubating draft
   - incubating final
-- optional future public pre-release mode rendering / flags
+- public candidate pre-release mode rendering / flags
 
 ### Command tests
 
-- `sync-draft-github-release` emits draft body text with expected fields
+- `sync-draft-github-release` emits candidate body text with expected fields
+- `sync-draft-github-release --candidate-visibility public-prerelease` emits `prerelease=true`
 - `finalize-draft-github-release` emits final body text, not draft text
 - incubating project config adds disclaimer in both places
 
@@ -304,14 +334,14 @@ Add or update tests for:
 3. Refactor final publication to render a dedicated final body.
 4. Make name rendering policy-aware.
 5. Add incubator disclaimer injection.
-6. Add tests.
-7. Update docs.
-8. Only then consider adding future public pre-release config.
+6. Add candidate label and public pre-release visibility.
+7. Add tests.
+8. Update docs.
 
 ## Things to avoid
 
 - Do not make GitHub Releases look authoritative.
-- Do not publish RC GitHub releases publicly by default.
+- Do not publish candidate GitHub releases publicly by default.
 - Do not hide incubating status in GitHub titles/body text.
 - Do not spread policy text across multiple command modules again.
 
@@ -323,4 +353,5 @@ If the follow-up work must be scoped narrowly, the minimum acceptable compliance
 2. make final public GitHub release body distinct from the draft body
 3. keep explicit "convenience only" language and authoritative ASF links in final public body
 
-That would address the main issue raised by the thread without redesigning the workflow.
+That minimum has been implemented. The only remaining tracked gap is historical pre-ASF GitHub
+release guidance for migrated projects.

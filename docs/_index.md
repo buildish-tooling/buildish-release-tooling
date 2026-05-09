@@ -30,6 +30,7 @@ The pages below describe the current source tree for maintainers. They are inten
 descriptive, not contractual.
 
 - [Reference](reference/)
+- [GitHub Release Policy](github-release-policy.md)
 - [Codebase Layout](codebase-layout.md)
 - [Release-legal maintenance](release-legal.md)
 - [Test Suite Layout](test-suite.md)
@@ -587,6 +588,8 @@ malformed contract or external payload data and continue with guessed semantics.
   stay pinned to an already-selected candidate tag
 - keeps GitHub candidate releases as convenience metadata only; final ASF source releases remain
   authoritative on ASF infrastructure
+- see [GitHub Release Policy](github-release-policy.md) for the candidate and final-release wording
+  model
 
 ### `create-source-artifact`
 

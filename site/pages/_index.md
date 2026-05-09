@@ -33,6 +33,7 @@ Use `make check` as the standard local and CI gate.
 
 Planning and assessment documents:
 
+- [GitHub Release policy](github-release-policy.md)
 - [Verify RC implementation plan](verify-rc-implementation-plan.md)
 - [ATR integration assessment](atr-integration-assessment.md)
 - [ASF project fit assessment](asf-project-fit-assessment.md)
