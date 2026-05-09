@@ -28,8 +28,12 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
     def setUpClass(cls) -> None:
         super().setUpClass()
         cls._baseline_root = create_build_test_sandbox()
-        cls._origin_template = init_git_origin_repo(cls._baseline_root, dir_name="origin-template")
-        cls._svn_repo_template, _repo_url = init_svn_repo(cls._baseline_root, dir_name="svnrepo-template")
+        cls._origin_template = init_git_origin_repo(
+            cls._baseline_root, dir_name="origin-template"
+        )
+        cls._svn_repo_template, _repo_url = init_svn_repo(
+            cls._baseline_root, dir_name="svnrepo-template"
+        )
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -50,7 +54,116 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         repo_url = checkout_svn_repo(repo_dir, working_copy_dir)
         return sandbox_dir, origin_dir, clone_dir, repo_dir, repo_url, working_copy_dir
 
-    def test_release_version_command_infers_release_line_and_pruning_from_svn(self) -> None:
+    @staticmethod
+    def _rc_vote_manifest_text(
+        *,
+        source_commit_sha: str,
+        incubator_disclaimer_text: str | None = None,
+    ) -> str:
+        payload: dict[str, object] = {
+            "schema_version": "1",
+            "manifest_type": "rc-vote",
+            "component_id": "buildish-example",
+            "version": "1.2.3",
+            "release_line": "1.2.x",
+            "release_branch": "release/1.2.x",
+            "source_repository_url": "https://github.com/apache/buildish-example",
+            "source_commit_sha": source_commit_sha,
+            "source_date_epoch": 1714132800,
+            "rc_tag": "v1.2.3-rc0",
+            "final_tag": "v1.2.3",
+            "final_tag_mode": "rc-source-commit",
+            "provenance": {
+                "created_at": "2026-04-26T12:00:00Z",
+                "tooling": {
+                    "repository": "apache/buildish-release-tooling",
+                    "repository_url": "https://github.com/apache/buildish-release-tooling",
+                    "git_commit_sha": "fedcba9876543210fedcba9876543210fedcba98",
+                },
+            },
+            "trust_roots": {
+                "asf_keys": {
+                    "uri": "https://dist.apache.org/repos/dist/release/incubator/buildish/KEYS",
+                    "known_length_bytes": 9,
+                    "known_prefix_sha512": "a" * 128,
+                }
+            },
+            "draft_github_release": {
+                "repository": "apache/buildish-example",
+                "tag": "v1.2.3-rc0",
+                "url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+            },
+            "vote_materials": {
+                "source_artifacts": [
+                    {
+                        "role": "asf-source-release",
+                        "filename": "apache-buildish-example-1.2.3-incubating-src.tar.gz",
+                        "uri": (
+                            "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/"
+                            "1.2.3-rc0/apache-buildish-example-1.2.3-incubating-src.tar.gz"
+                        ),
+                        "artifact_origin": "source-commit",
+                        "git_commit_sha": source_commit_sha,
+                        "checksums": {
+                            "sha512": {
+                                "value": "b" * 128,
+                                "uri": (
+                                    "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/"
+                                    "1.2.3-rc0/apache-buildish-example-1.2.3-incubating-src.tar.gz.sha512"
+                                ),
+                            }
+                        },
+                        "signatures": [
+                            {
+                                "type": "openpgp-detached-ascii-armored",
+                                "uri": (
+                                    "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/"
+                                    "1.2.3-rc0/apache-buildish-example-1.2.3-incubating-src.tar.gz.asc"
+                                ),
+                            }
+                        ],
+                    }
+                ],
+                "secondary_artifacts": [],
+            },
+            "verification": {
+                "staging_svn_url": (
+                    "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/"
+                ),
+                "authoritative_manifest": {
+                    "uri": (
+                        "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/"
+                        "1.2.3-rc0/rc-vote-manifest.json"
+                    ),
+                    "checksum_uris": {
+                        "sha512": (
+                            "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/"
+                            "1.2.3-rc0/rc-vote-manifest.json.sha512"
+                        )
+                    },
+                    "signatures": [
+                        {
+                            "type": "openpgp-detached-ascii-armored",
+                            "uri": (
+                                "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/"
+                                "1.2.3-rc0/rc-vote-manifest.json.asc"
+                            ),
+                        }
+                    ],
+                },
+            },
+        }
+        if incubator_disclaimer_text is not None:
+            payload["incubator_disclaimer"] = {
+                "source_path": "DISCLAIMER",
+                "text": incubator_disclaimer_text,
+                "sha512": "c" * 128,
+            }
+        return json.dumps(payload)
+
+    def test_release_version_command_infers_release_line_and_pruning_from_svn(
+        self,
+    ) -> None:
         if not command_available("svnadmin") or not command_available("svn"):
             self.skipTest("svnadmin and svn are required for the SVN integration test")
         sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, _working_copy_dir = (
@@ -94,7 +207,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         )
         client.mkdir_url(release_base_url, "create release component path")
         for published_version in ("1.2.1", "1.2.2", "1.3.0"):
-            client.mkdir_url(f"{release_base_url}/{published_version}", f"create {published_version}")
+            client.mkdir_url(
+                f"{release_base_url}/{published_version}", f"create {published_version}"
+            )
         completed = run_cli(
             [
                 "release-version",
@@ -116,7 +231,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertEqual("v1.2.3-rc2", manifest["selected_rc_tag"])
         self.assertEqual(["1.2.1", "1.2.2"], manifest["archive_versions"])
 
-    def test_sync_draft_github_release_command_recreates_matching_draft_release(self) -> None:
+    def test_sync_draft_github_release_command_recreates_matching_draft_release(
+        self,
+    ) -> None:
         sandbox_dir, origin_dir, clone_dir = self._create_git_sandbox()
         config_path = sandbox_dir / "component.yaml"
         manifest_path = sandbox_dir / "sync-draft-github-release.json"
@@ -205,15 +322,20 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertEqual(expected_commit, create_request["target_commitish"])
         self.assertEqual("Apache Buildish Example 1.2.3", create_request["name"])
         self.assertIn("## Incubating Disclaimer", create_request["body"])
-        self.assertIn("Apache Buildish Example is an effort undergoing incubation", create_request["body"])
+        self.assertIn(
+            "Apache Buildish Example is an effort undergoing incubation",
+            create_request["body"],
+        )
         self.assertIn("RC tag: v1.2.3-rc3", create_request["body"])
         self.assertIn(
             "ASF SVN staging URL: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc3/",
             create_request["body"],
         )
         deleted_endpoints = (
-            gh_state_dir / "deleted-endpoints.log"
-        ).read_text(encoding="utf-8").splitlines()
+            (gh_state_dir / "deleted-endpoints.log")
+            .read_text(encoding="utf-8")
+            .splitlines()
+        )
         self.assertEqual(
             [
                 "repos/apache/buildish-example/releases/11",
@@ -221,11 +343,15 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
             ],
             deleted_endpoints,
         )
-        summary_text = manifest_path.with_suffix(".summary.md").read_text(encoding="utf-8")
+        summary_text = manifest_path.with_suffix(".summary.md").read_text(
+            encoding="utf-8"
+        )
         self.assertIn("Sync draft GitHub Release", summary_text)
         self.assertIn("id: 42", summary_text)
 
-    def test_publish_source_release_svn_command_promotes_latest_rc_directory(self) -> None:
+    def test_publish_source_release_svn_command_promotes_latest_rc_directory(
+        self,
+    ) -> None:
         if not command_available("svnadmin") or not command_available("svn"):
             self.skipTest("svnadmin and svn are required for the SVN integration test")
         sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, working_copy_dir = (
@@ -327,7 +453,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         rerun_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual("already-present", rerun_manifest["publish_mode"])
 
-    def test_publish_source_release_svn_command_rejects_missing_required_source_files(self) -> None:
+    def test_publish_source_release_svn_command_rejects_missing_required_source_files(
+        self,
+    ) -> None:
         if not command_available("svnadmin") or not command_available("svn"):
             self.skipTest("svnadmin and svn are required for the SVN integration test")
         sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, _working_copy_dir = (
@@ -392,7 +520,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertIn("missing required staged release files", completed.stderr)
         self.assertEqual([], client.list_entries(release_base_url))
 
-    def test_publish_source_release_svn_command_rejects_staged_artifact_drift_from_vote_manifest(self) -> None:
+    def test_publish_source_release_svn_command_rejects_staged_artifact_drift_from_vote_manifest(
+        self,
+    ) -> None:
         if not command_available("svnadmin") or not command_available("svn"):
             self.skipTest("svnadmin and svn are required for the SVN integration test")
         sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, working_copy_dir = (
@@ -445,7 +575,10 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
             / "apache-buildish-example-1.2.3-incubating-src.tar.gz"
         )
         drifted_artifact.write_bytes(b"drifted source payload\n")
-        run_quiet(["svn", "commit", "-m", "drift staged artifact", str(working_copy_dir)], check=True)
+        run_quiet(
+            ["svn", "commit", "-m", "drift staged artifact", str(working_copy_dir)],
+            check=True,
+        )
         gh_path, gh_state_dir = create_fake_gh_launcher(
             sandbox_dir,
             list_response=[
@@ -558,7 +691,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
             completed.stderr,
         )
 
-    def test_prune_older_line_releases_command_deletes_specific_line_versions(self) -> None:
+    def test_prune_older_line_releases_command_deletes_specific_line_versions(
+        self,
+    ) -> None:
         if not command_available("svnadmin") or not command_available("svn"):
             self.skipTest("svnadmin and svn are required for the SVN integration test")
         sandbox_dir, origin_dir, clone_dir, _repo_dir, repo_url, _working_copy_dir = (
@@ -602,7 +737,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         )
         client.mkdir_url(release_base_url, "create release component path")
         for published_version in ("1.2.1", "1.2.2", "1.2.3", "1.3.0"):
-            client.mkdir_url(f"{release_base_url}/{published_version}", f"create {published_version}")
+            client.mkdir_url(
+                f"{release_base_url}/{published_version}", f"create {published_version}"
+            )
         completed = run_cli(
             [
                 "prune-older-line-releases",
@@ -682,14 +819,20 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertEqual(expected_commit, manifest["target_commit"])
         self.assertEqual("github-api", manifest["tag_creation_mode"])
         self.assertEqual("v1.2.3-rc2", manifest["selected_rc_tag"])
-        create_tag_request = json.loads((gh_state_dir / "create-tag-request.json").read_text(encoding="utf-8"))
+        create_tag_request = json.loads(
+            (gh_state_dir / "create-tag-request.json").read_text(encoding="utf-8")
+        )
         self.assertEqual("v1.2.3", create_tag_request["tag"])
         self.assertEqual(expected_commit, create_tag_request["object"])
-        create_ref_request = json.loads((gh_state_dir / "create-ref-request.json").read_text(encoding="utf-8"))
+        create_ref_request = json.loads(
+            (gh_state_dir / "create-ref-request.json").read_text(encoding="utf-8")
+        )
         self.assertEqual("refs/tags/v1.2.3", create_ref_request["ref"])
         self.assertEqual("tag-object-sha", create_ref_request["sha"])
 
-    def test_sync_draft_github_release_reuses_same_rc_without_deleting_assets(self) -> None:
+    def test_sync_draft_github_release_reuses_same_rc_without_deleting_assets(
+        self,
+    ) -> None:
         sandbox_dir, origin_dir, clone_dir = self._create_git_sandbox()
         config_path = sandbox_dir / "component.yaml"
         manifest_path = sandbox_dir / "sync-draft-github-release.json"
@@ -697,7 +840,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         git_create_branch(origin_dir, "release/1.2.x")
         fetch_git_origin_refs(clone_dir)
         set_github_origin_url(clone_dir, "apache/buildish-example")
-        expected_commit = git_rev_parse(clone_dir, "refs/remotes/origin/release/1.2.x^{commit}")
+        expected_commit = git_rev_parse(
+            clone_dir, "refs/remotes/origin/release/1.2.x^{commit}"
+        )
         self._write_component_config(
             config_path,
             component_id="buildish-example",
@@ -761,7 +906,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         git_create_branch(origin_dir, "release/1.2.x")
         fetch_git_origin_refs(clone_dir)
         set_github_origin_url(clone_dir, "apache/buildish-example")
-        expected_commit = git_rev_parse(clone_dir, "refs/remotes/origin/release/1.2.x^{commit}")
+        expected_commit = git_rev_parse(
+            clone_dir, "refs/remotes/origin/release/1.2.x^{commit}"
+        )
         self._write_component_config(
             config_path,
             component_id="buildish-example",
@@ -876,7 +1023,9 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertEqual(1, completed.returncode)
         self.assertIn("higher RC", completed.stderr)
 
-    def test_finalize_draft_github_release_command_publishes_existing_draft(self) -> None:
+    def test_finalize_draft_github_release_command_publishes_existing_draft(
+        self,
+    ) -> None:
         sandbox_dir, origin_dir, clone_dir = self._create_git_sandbox()
         config_path = sandbox_dir / "component.yaml"
         manifest_path = sandbox_dir / "finalize-draft-github-release.json"
@@ -891,6 +1040,11 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
             component_id="buildish-example",
             dev_base_url="https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
             release_base_url="https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+            project_status="incubating",
+        )
+        rc_vote_manifest_text = self._rc_vote_manifest_text(
+            source_commit_sha=expected_commit,
+            incubator_disclaimer_text="Apache Buildish Example is an effort undergoing incubation.",
         )
         gh_path, gh_state_dir = create_fake_gh_launcher(
             sandbox_dir,
@@ -922,6 +1076,7 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
                 "name": "Apache Buildish Example 1.2.3",
                 "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3",
             },
+            release_asset_text_by_id={201: rc_vote_manifest_text},
         )
         completed = run_cli(
             [
@@ -954,12 +1109,30 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertEqual("v1.2.3", update_request["tag_name"])
         self.assertEqual(expected_commit, update_request["target_commitish"])
         self.assertEqual("Apache Buildish Example 1.2.3", update_request["name"])
+        self.assertNotIn("Draft GitHub Release placeholder", update_request["body"])
+        self.assertIn("## Incubating Disclaimer", update_request["body"])
+        self.assertIn("Apache Buildish Example is an effort undergoing incubation.", update_request["body"])
+        self.assertIn("## Authoritative Source Release", update_request["body"])
+        self.assertIn(
+            "https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example/1.2.3/",
+            update_request["body"],
+        )
+        self.assertIn(
+            "apache-buildish-example-1.2.3-incubating-src.tar.gz.asc",
+            update_request["body"],
+        )
+        self.assertIn(
+            "GitHub release assets are convenience artifacts and are not the authoritative ASF release.",
+            update_request["body"],
+        )
         self.assertEqual(
             [
                 "repos/apache/buildish-example/releases/assets/201",
                 "repos/apache/buildish-example/releases/assets/202",
             ],
-            (gh_state_dir / "deleted-asset-endpoints.log").read_text(encoding="utf-8").splitlines(),
+            (gh_state_dir / "deleted-asset-endpoints.log")
+            .read_text(encoding="utf-8")
+            .splitlines(),
         )
         self.assertIn(
             "Finalize draft GitHub Release",

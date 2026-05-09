@@ -33,7 +33,9 @@ from apache_buildish_release_tooling.release.email_templates import (
     render_project_vote_result_email,
 )
 from apache_buildish_release_tooling.release.git_repo import GitRepository
-from apache_buildish_release_tooling.release.github_checks import resolve_repository_slug
+from apache_buildish_release_tooling.release.github_checks import (
+    resolve_repository_slug,
+)
 from apache_buildish_release_tooling.release.github_release_selection import (
     asset_release_url,
     matching_draft_releases,
@@ -41,7 +43,10 @@ from apache_buildish_release_tooling.release.github_release_selection import (
     selected_github_release,
     upsert_draft_release,
 )
-from apache_buildish_release_tooling.release.github_release_text import render_draft_github_release_body
+from apache_buildish_release_tooling.release.github_release_text import (
+    render_draft_github_release_body,
+    render_final_github_release_body,
+)
 from apache_buildish_release_tooling.release.github_releases import (
     delete_release,
     delete_release_asset,
@@ -52,14 +57,19 @@ from apache_buildish_release_tooling.release.github_releases import (
 )
 from apache_buildish_release_tooling.release.manifest import write_manifest
 from apache_buildish_release_tooling.release.contracts import RcVoteManifestV1
-from apache_buildish_release_tooling.release.models import CommandContext, PrepareRcState
+from apache_buildish_release_tooling.release.models import (
+    CommandContext,
+    PrepareRcState,
+)
 from apache_buildish_release_tooling.release.rc_vote_verification import (
     required_rc_vote_manifest_file_names,
     required_source_release_file_names,
     verify_staged_source_release_against_vote_manifest,
 )
 from apache_buildish_release_tooling.release.release_state import derive_final_tag
-from apache_buildish_release_tooling.release.release_text import resolved_incubator_disclaimer
+from apache_buildish_release_tooling.release.release_text import (
+    resolved_incubator_disclaimer,
+)
 from apache_buildish_release_tooling.release.summary import SummaryWriter
 
 from apache_buildish_release_tooling.release.commands._shared import (
@@ -75,7 +85,9 @@ from apache_buildish_release_tooling.release.commands._shared import (
 )
 
 
-def _draft_release_body(context: CommandContext, repo: GitRepository, state: PrepareRcState) -> str:
+def _draft_release_body(
+    context: CommandContext, repo: GitRepository, state: PrepareRcState
+) -> str:
     """Render the body used for the draft GitHub Release placeholder."""
 
     return render_draft_github_release_body(
@@ -140,7 +152,9 @@ def run_sync_draft_github_release(args: Namespace) -> Path:
     created_release_tag = created_release.get("tag_name")
     created_release_title = created_release.get("name")
     created_release_url = asset_release_url(created_release)
-    manifest_path = _manifest_path(context.component_config.component_id, "sync-draft-github-release")
+    manifest_path = _manifest_path(
+        context.component_config.component_id, "sync-draft-github-release"
+    )
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
@@ -164,7 +178,9 @@ def run_sync_draft_github_release(args: Namespace) -> Path:
     summary.append_plaintext_block("GitHub repository", repository_slug)
     summary.append_plaintext_block(
         "Deleted draft release IDs",
-        "\n".join(str(item) for item in deleted_release_ids) if deleted_release_ids else "<none>",
+        "\n".join(str(item) for item in deleted_release_ids)
+        if deleted_release_ids
+        else "<none>",
     )
     summary.append_plaintext_block(
         "Created draft release",
@@ -192,9 +208,15 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
         version=version,
         expected_selected_rc_tag=getattr(args, "selected_rc_tag", None),
     )
-    rc_directory_name = _latest_rc_directory_name(version, selected_release.selected_rc_tag)
-    source_url = url_join(context.component_config.asf_dist_dev_base.rstrip("/"), rc_directory_name)
-    target_url = url_join(context.component_config.asf_dist_release_base.rstrip("/"), version)
+    rc_directory_name = _latest_rc_directory_name(
+        version, selected_release.selected_rc_tag
+    )
+    source_url = url_join(
+        context.component_config.asf_dist_dev_base.rstrip("/"), rc_directory_name
+    )
+    target_url = url_join(
+        context.component_config.asf_dist_release_base.rstrip("/"), version
+    )
     svn_client = AsfSvnClient.from_environment()
     if not svn_client.path_exists(source_url):
         raise ValueError(f"RC staging directory does not exist: {source_url}")
@@ -208,21 +230,25 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
         *required_rc_vote_manifest_file_names(),
     ]
     missing_required_files = [
-        file_name for file_name in required_file_names if file_name not in staged_entries
+        file_name
+        for file_name in required_file_names
+        if file_name not in staged_entries
     ]
     if missing_required_files:
         raise ValueError(
             "RC staging directory is missing required staged release files: "
             + ", ".join(missing_required_files)
         )
-    verified_source_artifact_sha512 = verify_staged_source_release_against_vote_manifest(
-        context,
-        repository_slug=selected_release.repository_slug,
-        release_payload=selected_release.release_payload,
-        source_url=source_url,
-        version=version,
-        selected_rc_tag=selected_release.selected_rc_tag,
-        expected_source_artifact_name=required_source_release_files[0],
+    verified_source_artifact_sha512 = (
+        verify_staged_source_release_against_vote_manifest(
+            context,
+            repository_slug=selected_release.repository_slug,
+            release_payload=selected_release.release_payload,
+            source_url=source_url,
+            version=version,
+            selected_rc_tag=selected_release.selected_rc_tag,
+            expected_source_artifact_name=required_source_release_files[0],
+        )
     )
     if svn_client.path_exists(target_url):
         target_entries = sorted(svn_client.list_entries(target_url, recursive=True))
@@ -238,7 +264,9 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
             f"publish source release for {context.component_config.component_id} {version}",
         )
         publish_mode = "copied"
-    manifest_path = _manifest_path(context.component_config.component_id, "publish-source-release-svn")
+    manifest_path = _manifest_path(
+        context.component_config.component_id, "publish-source-release-svn"
+    )
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
@@ -278,7 +306,9 @@ def run_prune_older_line_releases(args: Namespace) -> Path:
             url_join(release_base_url, archived_version),
             f"prune older same-line release for {context.component_config.component_id} {archived_version}",
         )
-    manifest_path = _manifest_path(context.component_config.component_id, "prune-older-line-releases")
+    manifest_path = _manifest_path(
+        context.component_config.component_id, "prune-older-line-releases"
+    )
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
@@ -312,7 +342,9 @@ def run_create_final_tag(args: Namespace) -> Path:
         expected_selected_rc_tag=getattr(args, "selected_rc_tag", None),
     )
     final_tag = derive_final_tag(version)
-    final_tag_message = f"Release {context.component_config.vote_release_name} {version}"
+    final_tag_message = (
+        f"Release {context.component_config.vote_release_name} {version}"
+    )
     target_commit = repo.resolve_commit(selected_release.selected_rc_tag)
     repository_slug = _repository_slug_or_none(repo)
     tag_creation_mode, created_ref = _create_or_reuse_annotated_tag(
@@ -323,7 +355,9 @@ def run_create_final_tag(args: Namespace) -> Path:
         message=final_tag_message,
         allow_update=False,
     )
-    manifest_path = _manifest_path(context.component_config.component_id, "create-final-tag")
+    manifest_path = _manifest_path(
+        context.component_config.component_id, "create-final-tag"
+    )
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
@@ -361,17 +395,27 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
     final_tag = derive_final_tag(version)
     final_tag_target_commit = repo.resolve_commit(selected_release.selected_rc_tag)
     release_id = selected_release.require_release_id(reference_tag=final_tag)
-    vote_manifest = None
-    if context.component_config.is_incubating:
-        vote_manifest = _selected_release_vote_manifest(
-            selected_release.release_payload,
-            selected_release.repository_slug,
+    vote_manifest = _selected_release_vote_manifest(
+        selected_release.release_payload,
+        selected_release.repository_slug,
+    )
+    if vote_manifest is None:
+        raise ValueError(
+            "release finalization requires a mirrored rc-vote-manifest.json"
         )
-        if vote_manifest is None or vote_manifest.incubator_disclaimer is None:
-            raise ValueError(
-                "incubating release finalization requires a mirrored rc-vote-manifest.json "
-                "with an incubator_disclaimer block"
-            )
+    if (
+        context.component_config.is_incubating
+        and vote_manifest.incubator_disclaimer is None
+    ):
+        raise ValueError(
+            "incubating release finalization requires a mirrored rc-vote-manifest.json "
+            "with an incubator_disclaimer block"
+        )
+    final_release_body = render_final_github_release_body(
+        context.component_config,
+        version=version,
+        vote_manifest=vote_manifest,
+    )
     deleted_asset_names: list[str] = []
     for asset_name, asset_id in release_asset_ids_by_names(
         selected_release.release_payload,
@@ -383,26 +427,43 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
     ).items():
         delete_release_asset(selected_release.repository_slug, asset_id)
         deleted_asset_names.append(asset_name)
+    final_release_payload = {
+        "tag_name": final_tag,
+        "target_commitish": final_tag_target_commit,
+        "draft": False,
+        "prerelease": False,
+        "name": release_name,
+        "body": final_release_body,
+    }
     if selected_release.release_payload.get("draft") is False:
-        finalized_release = selected_release.release_payload
-        finalize_mode = "already-finalized"
+        if (
+            selected_release.release_payload.get("tag_name") == final_tag
+            and selected_release.release_payload.get("name") == release_name
+            and selected_release.release_payload.get("prerelease") is False
+            and selected_release.release_payload.get("body") == final_release_body
+        ):
+            finalized_release = selected_release.release_payload
+            finalize_mode = "already-finalized"
+        else:
+            finalized_release = update_release(
+                selected_release.repository_slug,
+                release_id,
+                payload=final_release_payload,
+            )
+            finalize_mode = "updated-finalized"
     else:
         finalized_release = update_release(
             selected_release.repository_slug,
             release_id,
-            payload={
-                "tag_name": final_tag,
-                "target_commitish": final_tag_target_commit,
-                "draft": False,
-                "prerelease": False,
-                "name": release_name,
-            },
+            payload=final_release_payload,
         )
         finalize_mode = "published-draft"
     finalized_release_tag = finalized_release.get("tag_name")
     finalized_release_name = finalized_release.get("name")
     finalized_release_url = asset_release_url(finalized_release)
-    manifest_path = _manifest_path(context.component_config.component_id, "finalize-draft-github-release")
+    manifest_path = _manifest_path(
+        context.component_config.component_id, "finalize-draft-github-release"
+    )
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
@@ -419,7 +480,9 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
         ),
     )
     summary.append_heading("Finalize draft GitHub Release")
-    summary.append_plaintext_block("GitHub repository", selected_release.repository_slug)
+    summary.append_plaintext_block(
+        "GitHub repository", selected_release.repository_slug
+    )
     summary.append_plaintext_block(
         "Removed draft-only assets",
         "\n".join(sorted(deleted_asset_names)) if deleted_asset_names else "<none>",
@@ -439,7 +502,9 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
     announce_email = render_announce_email(
         component_config=context.component_config,
         version=version,
-        incubator_disclaimer=vote_manifest.incubator_disclaimer if vote_manifest is not None else None,
+        incubator_disclaimer=vote_manifest.incubator_disclaimer
+        if vote_manifest is not None
+        else None,
     )
     summary.append_email_template_blocks(
         "ANNOUNCE",
@@ -461,7 +526,9 @@ def run_release_version(args: Namespace) -> Path:
         version,
         expected_selected_rc_tag=getattr(args, "selected_rc_tag", None),
     )
-    manifest_path = _manifest_path(context.component_config.component_id, "release-version")
+    manifest_path = _manifest_path(
+        context.component_config.component_id, "release-version"
+    )
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
@@ -484,10 +551,13 @@ def run_release_version(args: Namespace) -> Path:
         "\n".join(state.archive_versions) if state.archive_versions else "<none>",
     )
     summary.append_plaintext_block(
-        "Derived moving tags", " ".join(state.moving_tags) if state.moving_tags else "<none>"
+        "Derived moving tags",
+        " ".join(state.moving_tags) if state.moving_tags else "<none>",
     )
     if context.component_config.release_summary_include_final_tag_mode:
-        summary.append_plaintext_block("Final tag mode", context.component_config.final_tag_mode)
+        summary.append_plaintext_block(
+            "Final tag mode", context.component_config.final_tag_mode
+        )
     vote_result_email = render_project_vote_result_email(
         component_config=context.component_config,
         version=version,

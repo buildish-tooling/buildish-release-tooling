@@ -16,9 +16,17 @@
 
 from __future__ import annotations
 
-from apache_buildish_release_tooling.release.contracts import IncubatorDisclaimer
-from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
-from apache_buildish_release_tooling.release.release_text import incubator_disclaimer_section
+from apache_buildish_release_tooling.release.contracts import (
+    IncubatorDisclaimer,
+    RcVoteManifestV1,
+)
+from apache_buildish_release_tooling.release.models import (
+    ComponentConfig,
+    PrepareRcState,
+)
+from apache_buildish_release_tooling.release.release_text import (
+    incubator_disclaimer_section,
+)
 
 
 def _append_optional_section(lines: list[str], section: str) -> None:
@@ -27,13 +35,32 @@ def _append_optional_section(lines: list[str], section: str) -> None:
     lines.extend(["", section])
 
 
-def _draft_metadata_lines(component_config: ComponentConfig, state: PrepareRcState) -> list[str]:
+def _draft_metadata_lines(
+    component_config: ComponentConfig, state: PrepareRcState
+) -> list[str]:
     return [
         f"RC tag: {state.rc_tag}",
         f"Final tag: {state.final_tag}",
         f"Resolved source ref: {state.resolved_source_ref}",
         f"ASF SVN staging URL: {state.staging_url}",
         f"Final tag mode: {component_config.final_tag_mode}",
+    ]
+
+
+def _release_url(component_config: ComponentConfig, version: str) -> str:
+    return f"{component_config.asf_dist_release_base.rstrip('/')}/{version}/"
+
+
+def _source_release_lines(
+    component_config: ComponentConfig, version: str, vote_manifest: RcVoteManifestV1
+) -> list[str]:
+    source_artifact = vote_manifest.vote_materials.source_artifacts[0]
+    source_url = f"{_release_url(component_config, version)}{source_artifact.filename}"
+    return [
+        "Source artifact:",
+        f"- {source_url}",
+        f"- {source_url}.sha512",
+        f"- {source_url}.asc",
     ]
 
 
@@ -50,7 +77,9 @@ def render_draft_github_release_body(
     ]
     _append_optional_section(
         lines,
-        incubator_disclaimer_section(incubator_disclaimer, heading="## Incubating Disclaimer"),
+        incubator_disclaimer_section(
+            incubator_disclaimer, heading="## Incubating Disclaimer"
+        ),
     )
     lines.extend(
         [
@@ -58,6 +87,49 @@ def render_draft_github_release_body(
             *_draft_metadata_lines(component_config, state),
             "",
             "This draft release is convenience metadata only and must remain unpublished until the ASF vote passes.",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def render_final_github_release_body(
+    component_config: ComponentConfig,
+    *,
+    version: str,
+    vote_manifest: RcVoteManifestV1,
+) -> str:
+    """Render the public GitHub Release body for a finalized release."""
+
+    lines = [
+        f"{component_config.vote_release_name} {version}",
+    ]
+    _append_optional_section(
+        lines,
+        incubator_disclaimer_section(
+            vote_manifest.incubator_disclaimer,
+            heading="## Incubating Disclaimer",
+        ),
+    )
+    lines.extend(
+        [
+            "",
+            "## Authoritative Source Release",
+            "",
+            "The authoritative ASF source release is available from:",
+            f"- {_release_url(component_config, version)}",
+            "",
+            *_source_release_lines(component_config, version, vote_manifest),
+            "",
+            "KEYS:",
+            f"- {component_config.asf_keys_url}",
+            "",
+            "Release verification guide:",
+            f"- {component_config.release_verification_guide_url}",
+            "",
+            "## GitHub Release",
+            "",
+            "This GitHub Release is provided as convenience metadata only. "
+            "GitHub release assets are convenience artifacts and are not the authoritative ASF release.",
         ]
     )
     return "\n".join(lines)
@@ -79,7 +151,9 @@ def render_finalized_draft_github_release_body(
     ]
     _append_optional_section(
         lines,
-        incubator_disclaimer_section(incubator_disclaimer, heading="## Incubating Disclaimer"),
+        incubator_disclaimer_section(
+            incubator_disclaimer, heading="## Incubating Disclaimer"
+        ),
     )
     lines.extend(
         [
