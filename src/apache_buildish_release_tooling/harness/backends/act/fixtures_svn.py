@@ -30,7 +30,7 @@ from apache_buildish_release_tooling.harness.models import (
     WorkspaceFile,
     WorkflowScenario,
 )
-from apache_buildish_release_tooling.harness.runtime import HarnessWorkspace
+from apache_buildish_release_tooling.harness.runtime import HarnessWorkspace, resolve_workspace_relative_path
 
 from .workflow_yaml import _load_github_actions_yaml
 
@@ -223,10 +223,7 @@ def _apply_svn_repository_file_fixtures(
     working_copy_dir = workspace.svn_working_copy_dir
     added_any = False
     for file_fixture in file_fixtures:
-        relative_path = Path(file_fixture.path)
-        if relative_path.is_absolute():
-            raise ValueError(f"SVN fixture paths must be repository-relative: {file_fixture.path}")
-        destination = working_copy_dir / relative_path
+        destination = resolve_workspace_relative_path(working_copy_dir, file_fixture.path)
         if destination.exists():
             continue
         destination.parent.mkdir(parents=True, exist_ok=True)

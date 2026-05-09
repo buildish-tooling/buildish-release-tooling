@@ -17,8 +17,8 @@
 from __future__ import annotations
 
 import unittest
-from typing import ClassVar
 from typing import Any, cast
+from typing import ClassVar
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     _RepositoryFile,
@@ -53,7 +53,7 @@ class _FakePoolManager:
     queued_responses: ClassVar[list[_FakeHTTPResponse]] = []
 
     def __init__(self) -> None:
-        self.requests: list[tuple[str, str, bool]] = []
+        self.requests: list[tuple[str, str, dict[str, object]]] = []
         self.issued_responses: list[_FakeHTTPResponse] = []
         self.cleared = False
         self.__class__.instances.append(self)
@@ -64,8 +64,7 @@ class _FakePoolManager:
         cls.queued_responses = list(responses)
 
     def request(self, method: str, url: str, **kwargs: object) -> _FakeHTTPResponse:
-        preload_content = bool(kwargs.get("preload_content", True))
-        self.requests.append((method, url, preload_content))
+        self.requests.append((method, url, kwargs))
         response = self.__class__.queued_responses.pop(0)
         self.issued_responses.append(response)
         return response
@@ -145,13 +144,45 @@ class MavenRepositoryRegistrationUnitTest(unittest.TestCase):
         self.assertEqual(1, len(_FakePoolManager.instances))
         self.assertEqual(
             [
-                ("GET", "https://repository.apache.org/content/repositories/orgapachebeam-1427/one", True),
-                ("GET", "https://repository.apache.org/content/repositories/orgapachebeam-1427/two", True),
+                ("GET", "https://repository.apache.org/content/repositories/orgapachebeam-1427/one"),
+                ("GET", "https://repository.apache.org/content/repositories/orgapachebeam-1427/two"),
             ],
-            pool_manager.requests,
+            [(method, url) for method, url, _kwargs in pool_manager.requests],
+        )
+        self.assertTrue(
+            all(
+                request_kwargs["preload_content"] is True and request_kwargs["timeout"] is not None
+                for _method, _url, request_kwargs in pool_manager.requests
+            )
         )
         self.assertTrue(pool_manager.cleared)
         self.assertTrue(all(response.released for response in pool_manager.issued_responses))
+
+    def test_parse_nexus_index_rejects_cross_origin_links(self) -> None:
+        base_url = "https://repository.apache.org/content/repositories/orgapachebeam-1427/"
+        html_text = (
+            "<table><tr>"
+            "<td><a href=\"https://example.invalid/content/repositories/orgapachebeam-1427/app.jar\">app.jar</a></td>"
+            "<td>Mon Apr 27 13:17:21 UTC 2026</td>"
+            "<td align=\"right\">25</td>"
+            "</tr></table>"
+        )
+
+        with self.assertRaisesRegex(ValueError, "outside the repository root"):
+            _parse_nexus_index(base_url, base_url, html_text)
+
+    def test_parse_nexus_index_rejects_encoded_path_escapes(self) -> None:
+        base_url = "https://repository.apache.org/content/repositories/orgapachebeam-1427/"
+        html_text = (
+            "<table><tr>"
+            "<td><a href=\"%2e%2e/app.jar\">app.jar</a></td>"
+            "<td>Mon Apr 27 13:17:21 UTC 2026</td>"
+            "<td align=\"right\">25</td>"
+            "</tr></table>"
+        )
+
+        with self.assertRaisesRegex(ValueError, "not normalized|outside the repository root"):
+            _parse_nexus_index(base_url, base_url, html_text)
 
     def test_inventory_entry_sha512_rejects_mismatched_sidecar(self) -> None:
         repository_file = _RepositoryFile(

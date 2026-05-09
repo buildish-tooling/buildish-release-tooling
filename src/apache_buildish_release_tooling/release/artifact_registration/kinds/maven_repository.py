@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import posixpath
 import re
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
 from argparse import Namespace
@@ -25,6 +26,7 @@ from dataclasses import dataclass
 from email.message import Message
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib3 import Timeout
 from typing import Any
 from urllib.error import HTTPError
 from urllib.parse import unquote, urljoin, urlparse
@@ -50,6 +52,7 @@ from apache_buildish_release_tooling.release.source_artifact import sha512
 _SHA512_PATTERN = re.compile(r"^[0-9a-fA-F]{128}$")
 _DEFAULT_INVENTORY_WORKERS = 16
 _DEFAULT_NEXUS_STAGING_BASE_URL_PREFIX = "https://repository.apache.org/content/repositories/"
+_DEFAULT_REMOTE_TIMEOUT = Timeout(connect=10.0, read=60.0)
 
 
 @dataclass(frozen=True)
@@ -78,6 +81,7 @@ class _RemoteHttpClient:
             pool_manager=urllib3.PoolManager(
                 maxsize=worker_count,
                 block=True,
+                timeout=_DEFAULT_REMOTE_TIMEOUT,
             )
         )
 
@@ -88,7 +92,7 @@ class _RemoteHttpClient:
         return self.read_bytes(url).decode("utf-8")
 
     def read_bytes(self, url: str) -> bytes:
-        response = self.pool_manager.request("GET", url, preload_content=True)
+        response = self.pool_manager.request("GET", url, preload_content=True, timeout=_DEFAULT_REMOTE_TIMEOUT)
         try:
             payload = response.data
             if response.status < 200 or response.status >= 300:
@@ -236,12 +240,9 @@ def _parse_nexus_index(listing_url: str, base_url: str, html_text: str) -> list[
     parser = _NexusIndexParser()
     parser.feed(html_text)
     entries: list[_NexusIndexEntry] = []
-    base_path = urlparse(base_url).path
     for entry in parser.entries:
         resolved_url = urljoin(listing_url, entry.href)
-        resolved_path = unquote(urlparse(resolved_url).path)
-        if not resolved_path.startswith(base_path):
-            raise ValueError(f"maven-repository listing escaped the repository root: {resolved_url}")
+        _relative_path_from_url(base_url, resolved_url)
         entries.append(
             _NexusIndexEntry(
                 href=resolved_url,
@@ -254,11 +255,28 @@ def _parse_nexus_index(listing_url: str, base_url: str, html_text: str) -> list[
 
 
 def _relative_path_from_url(base_url: str, entry_url: str) -> str:
-    base_path = urlparse(base_url).path
-    resolved_path = unquote(urlparse(entry_url).path)
+    base = urlparse(base_url)
+    entry = urlparse(entry_url)
+    if (entry.scheme.lower(), entry.hostname, entry.port) != (base.scheme.lower(), base.hostname, base.port):
+        raise ValueError(f"maven-repository entry is outside the repository root: {entry_url}")
+    base_path = _normalized_url_path(base.path, directory=True)
+    resolved_path = _normalized_url_path(entry.path, directory=entry.path.endswith("/"))
     if not resolved_path.startswith(base_path):
         raise ValueError(f"maven-repository entry is outside the repository root: {entry_url}")
-    return resolved_path.removeprefix(base_path)
+    relative_path = resolved_path.removeprefix(base_path)
+    if Path(relative_path).is_absolute() or ".." in Path(relative_path).parts:
+        raise ValueError(f"maven-repository entry is outside the repository root: {entry_url}")
+    return relative_path
+
+
+def _normalized_url_path(path: str, *, directory: bool) -> str:
+    decoded_path = unquote(path)
+    normalized_path = posixpath.normpath(decoded_path)
+    if directory and not normalized_path.endswith("/"):
+        normalized_path = f"{normalized_path}/"
+    if decoded_path != normalized_path:
+        raise ValueError(f"maven-repository URL path is not normalized: {path}")
+    return normalized_path
 
 
 def _fetch_remote_listing(

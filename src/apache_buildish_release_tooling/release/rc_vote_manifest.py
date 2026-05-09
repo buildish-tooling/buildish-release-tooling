@@ -49,6 +49,8 @@ from apache_buildish_release_tooling.release.contracts import (
 from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
 from apache_buildish_release_tooling.release.release_state import derive_specific_release_line
 
+DEFAULT_URI_READ_TIMEOUT_SECONDS = 60.0
+
 
 def _tooling_repo_root() -> Path:
     """Resolve the checked-out repository root of `buildish-release-tooling`."""
@@ -164,7 +166,7 @@ def read_uri_bytes(uri: str) -> bytes:
             raise ValueError(f"file URI could not be read: {uri}: {detail}") from exc
         return completed.stdout
     if parsed.scheme in {"http", "https"}:
-        with urlopen(uri) as response:  # noqa: S310
+        with urlopen(uri, timeout=DEFAULT_URI_READ_TIMEOUT_SECONDS) as response:  # noqa: S310
             return response.read()
     raise ValueError(f"unsupported URI scheme: {uri}")
 

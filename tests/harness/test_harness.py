@@ -21,6 +21,7 @@ import subprocess
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import yaml
 
@@ -28,10 +29,17 @@ from apache_buildish_release_tooling.harness.backend import (
     rerun_failed_jobs,
     run_scenario,
 )
-from apache_buildish_release_tooling.harness.models import HarnessCommandTraceEntry, HarnessShimState
-from apache_buildish_release_tooling.harness.runtime import (
-    summarize_trace,
+from apache_buildish_release_tooling.harness.models import (
+    FileWriteAction,
+    HarnessCommandTraceEntry,
+    HarnessShimState,
 )
+from apache_buildish_release_tooling.harness.runtime import (
+    resolve_workspace_relative_path,
+    summarize_trace,
+    write_workspace_file,
+)
+from apache_buildish_release_tooling.harness.shim_entrypoint import _perform_file_writes
 from apache_buildish_release_tooling.harness.scenario import load_scenario
 from tests.support import cleanup_sandbox, component_root, create_build_test_sandbox, tool_env
 
@@ -57,6 +65,36 @@ class HarnessIntegrationTest(unittest.TestCase):
         path = self.sandbox_dir / name
         path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
         return path
+
+    def test_workspace_file_writes_reject_workspace_escapes(self) -> None:
+        with self.assertRaisesRegex(ValueError, "must be relative"):
+            write_workspace_file(self.sandbox_dir, str(Path.cwd() / "outside.txt"), "bad\n", False)
+
+        with self.assertRaisesRegex(ValueError, "must not escape"):
+            write_workspace_file(self.sandbox_dir, "../outside.txt", "bad\n", False)
+
+        self.assertFalse((self.sandbox_dir.parent / "outside.txt").exists())
+
+    def test_shim_file_writes_reject_expanded_workspace_escapes(self) -> None:
+        state = HarnessShimState(
+            workspace_root=self.sandbox_dir.as_posix(),
+            trace_file=(self.sandbox_dir / "trace.jsonl").as_posix(),
+        )
+
+        with mock.patch.dict(os.environ, {"ESCAPE_PATH": "../outside.txt"}, clear=False):
+            with self.assertRaisesRegex(ValueError, "must not escape"):
+                _perform_file_writes(
+                    state,
+                    [FileWriteAction(path="$ESCAPE_PATH", content="bad\n")],
+                )
+
+        self.assertFalse((self.sandbox_dir.parent / "outside.txt").exists())
+
+    def test_workspace_relative_path_resolves_valid_paths(self) -> None:
+        self.assertEqual(
+            self.sandbox_dir / "nested" / "file.txt",
+            resolve_workspace_relative_path(self.sandbox_dir, "nested/file.txt"),
+        )
 
     def test_checked_in_example_scenarios_load(self) -> None:
         """The documented example scenarios should stay loadable."""

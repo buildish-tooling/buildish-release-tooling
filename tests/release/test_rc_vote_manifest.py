@@ -30,8 +30,10 @@ from apache_buildish_release_tooling.release.contracts import (
 )
 from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
 from apache_buildish_release_tooling.release.rc_vote_manifest import (
+    DEFAULT_URI_READ_TIMEOUT_SECONDS,
     build_rc_vote_manifest,
     derive_asf_keys_uri,
+    read_uri_bytes,
     trust_root_metadata,
 )
 
@@ -62,6 +64,22 @@ class RcVoteManifestTest(unittest.TestCase):
         self.assertEqual(
             hashlib.sha512(keys_payload).hexdigest(),
             asf_keys.known_prefix_sha512,
+        )
+
+    def test_read_uri_bytes_uses_default_timeout_for_http_uris(self) -> None:
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.return_value = b"payload"
+
+        with mock.patch(
+            "apache_buildish_release_tooling.release.rc_vote_manifest.urlopen",
+            return_value=response,
+        ) as urlopen_mock:
+            payload = read_uri_bytes("https://downloads.apache.org/example")
+
+        self.assertEqual(b"payload", payload)
+        urlopen_mock.assert_called_once_with(
+            "https://downloads.apache.org/example",
+            timeout=DEFAULT_URI_READ_TIMEOUT_SECONDS,
         )
 
     def test_build_rc_vote_manifest_emits_expected_shape(self) -> None:

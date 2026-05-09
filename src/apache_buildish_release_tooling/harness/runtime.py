@@ -184,11 +184,22 @@ def ensure_workspace_directories(workspace: HarnessWorkspace) -> None:
 def write_workspace_file(root: Path, relative_path: str, content: str, executable: bool) -> None:
     """Write one scenario-controlled file into the workspace."""
 
-    destination = root / relative_path
+    destination = resolve_workspace_relative_path(root, relative_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(content, encoding="utf-8")
     if executable:
         destination.chmod(destination.stat().st_mode | 0o111)
+
+
+def resolve_workspace_relative_path(root: Path, relative_path: str) -> Path:
+    """Resolve a scenario-controlled path while preventing workspace escapes."""
+
+    candidate = Path(relative_path)
+    if candidate.is_absolute():
+        raise ValueError(f"workspace file paths must be relative: {relative_path}")
+    if ".." in candidate.parts:
+        raise ValueError(f"workspace file paths must not escape the workspace: {relative_path}")
+    return root / candidate
 
 
 def init_git_repository(root: Path, repository: GitRepositoryFixture) -> None:

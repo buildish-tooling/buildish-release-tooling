@@ -30,6 +30,7 @@ from apache_buildish_release_tooling.harness.models import (
     InvocationMatch,
     ToolBehaviorResult,
 )
+from apache_buildish_release_tooling.harness.runtime import resolve_workspace_relative_path
 from apache_buildish_release_tooling.harness.shim_builtins import handle_builtin_tool
 from apache_buildish_release_tooling.harness.shim_summary import append_step_summary, summary_text
 
@@ -204,7 +205,7 @@ def _perform_file_writes(state: HarnessShimState, writes: list[FileWriteAction])
     workspace_root = Path(state.workspace_root)
     for write in writes:
         raw_path = os.path.expandvars(write.path)
-        destination = Path(raw_path) if Path(raw_path).is_absolute() else (workspace_root / raw_path)
+        destination = resolve_workspace_relative_path(workspace_root, raw_path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(write.content, encoding="utf-8")
         if write.executable:
