@@ -33,6 +33,8 @@ from apache_buildish_release_tooling.harness.backends.act import (
 from apache_buildish_release_tooling.harness.backends.act.workflow import (
     _rewrite_workflow,
 )
+from apache_buildish_release_tooling.harness.backends.act.workflow_helpers import _step_identifier
+from apache_buildish_release_tooling.harness.backends.act.workflow_yaml import _load_job_definitions
 from apache_buildish_release_tooling.harness import runtime
 from apache_buildish_release_tooling.harness.config import (
     ResolvedReleaseHarnessConfig,
@@ -215,6 +217,26 @@ class ActWorkflowRewriteUnitTest(unittest.TestCase):
             ),
             rewritten_path.read_text(encoding="utf-8"),
         )
+
+    def test_workflow_job_and_step_identifiers_must_be_path_safe(self) -> None:
+        workflow_path = self.sandbox_dir / "workflow.yml"
+        workflow_path.write_text(
+            yaml.safe_dump(
+                {
+                    "name": "Example",
+                    "on": {"workflow_dispatch": {}},
+                    "jobs": {"../job": {"steps": []}},
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+        with self.assertRaisesRegex(ValueError, "workflow job id"):
+            _load_job_definitions(workflow_path)
+
+        with self.assertRaisesRegex(ValueError, "workflow step id"):
+            _step_identifier({"id": "../step", "run": "true"}, 1)
 
     def test_render_uv_shim_script_routes_selected_commands_to_real_cli(self) -> None:
         """The generated uv shim should route configured commands to the real CLI module."""

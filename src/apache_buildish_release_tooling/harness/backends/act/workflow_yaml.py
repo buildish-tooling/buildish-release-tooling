@@ -23,6 +23,7 @@ from pathlib import Path
 
 import yaml
 
+from apache_buildish_release_tooling.harness.models import validate_harness_identifier
 from apache_buildish_release_tooling.harness.yaml_types import YamlMapping, require_yaml_mapping
 
 
@@ -91,11 +92,12 @@ def _load_job_definitions(workflow_path: Path) -> list[WorkflowJobDefinition]:
         raise ValueError(f"workflow {workflow_path} does not define a jobs mapping")
     definitions: list[WorkflowJobDefinition] = []
     for job_id, job_payload in jobs.items():
+        normalized_job_id = validate_harness_identifier(str(job_id), field_name="workflow job id")
         if not isinstance(job_payload, dict):
             raise ValueError(f"workflow job {job_id} must be a mapping")
         definitions.append(
             WorkflowJobDefinition(
-                id=str(job_id),
+                id=normalized_job_id,
                 needs=_normalize_needs(job_payload.get("needs")),
             )
         )

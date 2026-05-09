@@ -19,6 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from apache_buildish_release_tooling.harness.config import ResolvedReleaseHarnessConfig
+from apache_buildish_release_tooling.harness.models import validate_harness_identifier
 from apache_buildish_release_tooling.harness.runtime import HarnessWorkspace
 from apache_buildish_release_tooling.harness.yaml_types import YamlMapping, YamlValue, require_yaml_mapping
 from apache_buildish_release_tooling.harness.backends.act.workflow_helpers import (
@@ -83,6 +84,7 @@ def _rewrite_workflow(
     if not isinstance(jobs, dict):
         raise ValueError(f"workflow {workflow_path} does not define a jobs mapping")
     for job_id, job_payload in jobs.items():
+        normalized_job_id = validate_harness_identifier(str(job_id), field_name="workflow job id")
         if not isinstance(job_payload, dict):
             raise ValueError(f"workflow job {job_id} must be a mapping")
         raw_steps = job_payload.get("steps")
@@ -103,7 +105,7 @@ def _rewrite_workflow(
         for index, step_payload in enumerate(original_steps, start=1):
             rewritten_steps.append(
                 _rewrite_step(
-                    job_id=str(job_id),
+                    job_id=normalized_job_id,
                     step_payload=step_payload,
                     step_index=index,
                     bindings=bindings,
@@ -112,7 +114,7 @@ def _rewrite_workflow(
                     generated_gpg_fixture=generated_gpg_fixture,
                 )
             )
-        rewritten_steps.append(_job_status_step(str(job_id)))
+        rewritten_steps.append(_job_status_step(normalized_job_id))
         job_payload["steps"] = rewritten_steps
     destination = workspace.root / ".github" / "workflows" / workflow_path.name
     destination.parent.mkdir(parents=True, exist_ok=True)

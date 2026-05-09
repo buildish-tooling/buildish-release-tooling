@@ -32,6 +32,7 @@ from apache_buildish_release_tooling.harness.backend import (
 from apache_buildish_release_tooling.harness.models import (
     FileWriteAction,
     HarnessCommandTraceEntry,
+    HarnessScenario,
     HarnessShimState,
 )
 from apache_buildish_release_tooling.harness.runtime import (
@@ -95,6 +96,32 @@ class HarnessIntegrationTest(unittest.TestCase):
             self.sandbox_dir / "nested" / "file.txt",
             resolve_workspace_relative_path(self.sandbox_dir, "nested/file.txt"),
         )
+
+    def test_scenario_rejects_unsafe_tool_job_and_step_identifiers(self) -> None:
+        with self.assertRaisesRegex(ValueError, "tool behavior name"):
+            HarnessScenario.model_validate(
+                {
+                    "name": "bad-tool",
+                    "tool_behaviors": {"../gh": []},
+                    "jobs": [{"id": "job", "steps": [{"id": "step", "run": "true"}]}],
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "job id"):
+            HarnessScenario.model_validate(
+                {
+                    "name": "bad-job",
+                    "jobs": [{"id": "../job", "steps": [{"id": "step", "run": "true"}]}],
+                }
+            )
+
+        with self.assertRaisesRegex(ValueError, "step id"):
+            HarnessScenario.model_validate(
+                {
+                    "name": "bad-step",
+                    "jobs": [{"id": "job", "steps": [{"id": "../step", "run": "true"}]}],
+                }
+            )
 
     def test_checked_in_example_scenarios_load(self) -> None:
         """The documented example scenarios should stay loadable."""

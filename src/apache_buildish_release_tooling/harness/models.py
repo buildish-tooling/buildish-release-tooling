@@ -16,10 +16,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import re
+from collections.abc import Mapping, Sequence
 from typing import Literal
 
-from pydantic import ConfigDict, Field, RootModel, model_validator
+from pydantic import ConfigDict, Field, RootModel, field_validator, model_validator
 
 from apache_buildish_release_tooling.docs.documentation import (
     ConsumerOwnedAuthoredModel,
@@ -30,6 +31,7 @@ from apache_buildish_release_tooling.docs.documentation import (
 HarnessBackendName = Literal["custom", "act"]
 GpgFixtureMode = Literal["disabled", "generated-signing-key"]
 HarnessJobStatus = Literal["success", "failed", "blocked"]
+_SAFE_HARNESS_IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 SvnInitialState = Literal[
     "absent",
     "empty",
@@ -38,6 +40,21 @@ SvnInitialState = Literal[
     "preexisting-future-rc",
     "preexisting-other-version",
 ]
+
+
+def validate_harness_identifier(value: str, *, field_name: str) -> str:
+    """Validate a harness-controlled identifier before using it in paths or shell snippets."""
+
+    if not _SAFE_HARNESS_IDENTIFIER.fullmatch(value):
+        raise ValueError(
+            f"{field_name} must contain only ASCII letters, digits, dots, underscores, or hyphens"
+        )
+    return value
+
+
+def _validate_tool_behavior_names(value: Mapping[str, object]) -> None:
+    for tool_name in value:
+        validate_harness_identifier(tool_name, field_name="tool behavior name")
 
 
 class WorkspaceFile(ConsumerOwnedAuthoredModel):
@@ -190,6 +207,12 @@ class HarnessShimState(RuntimeDerivedModel):
     counts: dict[str, int] = Field(description="Per-tool or per-key invocation counts retained in harness runtime state.", default_factory=dict)
     gh_tag_objects: dict[str, HarnessBuiltinGhTagObject] = Field(description="Synthetic GitHub annotated-tag payloads persisted in harness shim state for later ref mutation handling.", default_factory=dict)
 
+    @field_validator("tool_behaviors", mode="after")
+    @classmethod
+    def validate_tool_behavior_names(cls, value: dict[str, list[ToolBehavior]]) -> dict[str, list[ToolBehavior]]:
+        _validate_tool_behavior_names(value)
+        return value
+
 
 class StepScenario(ConsumerOwnedAuthoredModel):
     """A single shell step in a harness job."""
@@ -202,6 +225,11 @@ class StepScenario(ConsumerOwnedAuthoredModel):
     env: dict[str, str] = Field(description="Environment-variable mapping supplied to the related build, scenario, or command step.", default_factory=dict)
     shell: str = Field(default="bash", description="Shell executable name or mode that the harness should use for the related step.")
 
+    @field_validator("id")
+    @classmethod
+    def validate_id(cls, value: str) -> str:
+        return validate_harness_identifier(value, field_name="step id")
+
 
 class JobScenario(ConsumerOwnedAuthoredModel):
     """A job in the harness scenario."""
@@ -212,6 +240,11 @@ class JobScenario(ConsumerOwnedAuthoredModel):
     needs: list[str] = Field(description="Job ids that must complete successfully before the related harness job is allowed to run.", default_factory=list)
     env: dict[str, str] = Field(description="Environment-variable mapping supplied to the related build, scenario, or command step.", default_factory=dict)
     steps: list[StepScenario] = Field(description="Ordered shell steps that the harness should run for the related custom job.")
+
+    @field_validator("id")
+    @classmethod
+    def validate_id(cls, value: str) -> str:
+        return validate_harness_identifier(value, field_name="job id")
 
 
 class WorkflowScenario(ConsumerOwnedAuthoredModel):
@@ -244,6 +277,12 @@ class HarnessScenario(ConsumerOwnedAuthoredModel):
     tool_behaviors: dict[str, list[ToolBehavior]] = Field(description="Scripted intercepted-tool behaviors keyed by tool name in the related harness scenario or runtime state.", default_factory=dict)
     jobs: list[JobScenario] = Field(description="Jobs that the harness should execute for the related custom scenario.", default_factory=list)
     workflow: WorkflowScenario | None = Field(default=None, description="Nested workflow block for an `act` harness scenario, or the workflow name recorded in provenance.")
+
+    @field_validator("tool_behaviors", mode="after")
+    @classmethod
+    def validate_tool_behavior_names(cls, value: dict[str, list[ToolBehavior]]) -> dict[str, list[ToolBehavior]]:
+        _validate_tool_behavior_names(value)
+        return value
 
     @model_validator(mode="after")
     def validate_job_graph(self) -> HarnessScenario:

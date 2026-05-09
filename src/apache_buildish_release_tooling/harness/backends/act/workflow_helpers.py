@@ -25,7 +25,7 @@ from apache_buildish_release_tooling.harness.config import (
     ResolvedReleaseHarnessConfig,
     ResolvedRepositoryBinding,
 )
-from apache_buildish_release_tooling.harness.models import HarnessScenario
+from apache_buildish_release_tooling.harness.models import HarnessScenario, validate_harness_identifier
 from apache_buildish_release_tooling.harness.runtime import HarnessWorkspace
 from apache_buildish_release_tooling.harness.uv_shim import render_uv_shim_script, uv_shim_config
 from apache_buildish_release_tooling.harness.yaml_types import YamlMapping, require_yaml_mapping
@@ -163,7 +163,7 @@ def _step_identifier(step_payload: YamlMapping, step_index: int) -> str:
 
     raw_identifier = step_payload.get("id")
     if isinstance(raw_identifier, str) and raw_identifier:
-        return raw_identifier
+        return validate_harness_identifier(raw_identifier, field_name="workflow step id")
     raw_name = step_payload.get("name")
     if isinstance(raw_name, str) and raw_name:
         normalized = re.sub(r"[^A-Za-z0-9]+", "-", raw_name).strip("-").lower()
@@ -343,6 +343,7 @@ def _write_generic_tool_shims(workspace: HarnessWorkspace, scenario: HarnessScen
 
     tools = sorted(set(scenario.tool_behaviors) | {"gh", "docker", "java", "javac"})
     for tool in tools:
+        validate_harness_identifier(tool, field_name="tool behavior name")
         script_path = workspace.shims_dir / tool
         script_path.write_text(
             "\n".join(

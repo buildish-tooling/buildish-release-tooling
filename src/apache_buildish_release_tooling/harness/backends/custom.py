@@ -24,7 +24,7 @@ from pathlib import Path
 
 from apache_buildish_release_tooling.harness.backends.base import Backend
 from apache_buildish_release_tooling.harness.job_selection import rerunnable_job_ids
-from apache_buildish_release_tooling.harness.models import HarnessScenario, JobScenario
+from apache_buildish_release_tooling.harness.models import HarnessScenario, JobScenario, validate_harness_identifier
 from apache_buildish_release_tooling.harness.runtime import (
     HarnessRunResult,
     HarnessWorkspace,
@@ -110,6 +110,7 @@ def _write_tool_shims(workspace: HarnessWorkspace, scenario: HarnessScenario) ->
 
     tools = sorted(set(scenario.tool_behaviors) | {"docker", "gh", "gpg", "java", "javac", "uv"})
     for tool in tools:
+        validate_harness_identifier(tool, field_name="tool behavior name")
         script_path = workspace.shims_dir / tool
         if tool == "uv":
             script_path.write_text(
