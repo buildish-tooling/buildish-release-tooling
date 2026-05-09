@@ -32,7 +32,7 @@ class EmailTemplatesTest(unittest.TestCase):
     """Verify the built-in email templates render the expected ASF-style content."""
 
     @staticmethod
-    def _component_config(*, incubator_vote_enabled: bool) -> ComponentConfig:
+    def _component_config(*, project_status: str) -> ComponentConfig:
         """Return a reusable component config for template tests."""
 
         return ComponentConfig.model_validate(
@@ -47,7 +47,7 @@ class EmailTemplatesTest(unittest.TestCase):
                 "secondary_targets": ["github-action", "github-release"],
                 "final_tag_mode": "detached-materialization-commit",
                 "vote_release_name": "Apache Buildish Example",
-                "incubator_vote_enabled": incubator_vote_enabled,
+                "project_status": project_status,
                 "release_summary_include_final_tag_mode": False,
                 "release_verification_guide_url": "https://buildish.apache.org/buildish-example/release-verification/",
                 "verify_rc_instructions": "verify",
@@ -168,7 +168,7 @@ class EmailTemplatesTest(unittest.TestCase):
         )
 
     def test_render_project_rc_vote_email_includes_rc_inventory_and_verification_guide(self) -> None:
-        component_config = self._component_config(incubator_vote_enabled=True)
+        component_config = self._component_config(project_status="incubating")
         state = self._prepare_rc_state()
         rendered = render_project_rc_vote_email(
             component_config=component_config,
@@ -192,12 +192,14 @@ class EmailTemplatesTest(unittest.TestCase):
         self.assertIn("https://downloads.apache.org/incubator/buildish/KEYS", rendered.body)
         self.assertIn("https://buildish.apache.org/buildish-example/release-verification/", rendered.body)
         self.assertIn("buildish-example.zip", rendered.body)
+        self.assertIn("Incubating disclaimer:", rendered.body)
+        self.assertIn("Apache Buildish Example is an effort undergoing incubation", rendered.body)
         self.assertIn("Verification bootstrap convenience:", rendered.body)
         self.assertIn("verify-rc-bootstrap.sh", rendered.body)
 
     def test_render_incubator_rc_vote_email_uses_thread_placeholders(self) -> None:
         rendered = render_incubator_rc_vote_email(
-            component_config=self._component_config(incubator_vote_enabled=True),
+            component_config=self._component_config(project_status="incubating"),
             state=self._prepare_rc_state(),
             manifest_payload=self._manifest_payload(),
         )
@@ -207,11 +209,12 @@ class EmailTemplatesTest(unittest.TestCase):
         )
         self.assertIn("<TODO: add the project vote thread URL>", rendered.body)
         self.assertIn("<TODO: add the project vote result thread URL>", rendered.body)
+        self.assertIn("Incubating disclaimer:", rendered.body)
         self.assertIn("Only IPMC members have binding votes", rendered.body)
 
     def test_render_project_vote_result_email_emits_human_fill_placeholders(self) -> None:
         rendered = render_project_vote_result_email(
-            component_config=self._component_config(incubator_vote_enabled=False),
+            component_config=self._component_config(project_status="tlp"),
             version="1.2.3",
             rc_number=2,
         )
@@ -224,9 +227,10 @@ class EmailTemplatesTest(unittest.TestCase):
 
     def test_render_announce_email_uses_human_fill_placeholder(self) -> None:
         rendered = render_announce_email(
-            component_config=self._component_config(incubator_vote_enabled=False),
+            component_config=self._component_config(project_status="tlp"),
             version="1.2.3",
         )
         self.assertEqual("[ANNOUNCE] Apache Buildish Example 1.2.3", rendered.subject)
         self.assertIn("The Apache Buildish Example team is pleased to announce", rendered.body)
         self.assertIn("<TODO: add release-specific announcement content>", rendered.body)
+        self.assertNotIn("Incubating disclaimer:", rendered.body)

@@ -41,6 +41,7 @@ from apache_buildish_release_tooling.release.github_release_selection import (
     selected_github_release,
     upsert_draft_release,
 )
+from apache_buildish_release_tooling.release.github_release_text import render_draft_github_release_body
 from apache_buildish_release_tooling.release.github_releases import (
     delete_release,
     delete_release_asset,
@@ -74,18 +75,9 @@ from apache_buildish_release_tooling.release.commands._shared import (
 def _draft_release_body(context: CommandContext, state: PrepareRcState) -> str:
     """Render the body used for the draft GitHub Release placeholder."""
 
-    return "\n".join(
-        [
-            f"Draft GitHub Release placeholder for {context.component_config.vote_release_name} {state.final_tag.removeprefix('v')}.",
-            "",
-            f"RC tag: {state.rc_tag}",
-            f"Final tag: {state.final_tag}",
-            f"Resolved source ref: {state.resolved_source_ref}",
-            f"ASF SVN staging URL: {state.staging_url}",
-            f"Final tag mode: {context.component_config.final_tag_mode}",
-            "",
-            "This draft release is convenience metadata only and must remain unpublished until the ASF vote passes.",
-        ]
+    return render_draft_github_release_body(
+        context.component_config,
+        state=state,
     )
 
 

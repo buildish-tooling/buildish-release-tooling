@@ -78,6 +78,8 @@ class LoadComponentConfigTest(unittest.TestCase):
         )
         loaded = load_component_config(str(config_path))
         self.assertEqual("buildish-example", loaded.component_id)
+        self.assertEqual("asf", loaded.release_program)
+        self.assertEqual("tlp", loaded.project_status)
         self.assertEqual(["github-action"], loaded.secondary_targets)
         self.assertEqual(
             "https://buildish.apache.org/buildish-example/release-verification/",

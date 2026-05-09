@@ -443,11 +443,24 @@
       "title": "Final Tag Mode",
       "type": "string"
     },
-    "incubator_vote_enabled": {
-      "default": false,
-      "description": "Whether the component's vote materials should include Apache Incubator-specific voting language and process guidance.",
-      "title": "Incubator Vote Enabled",
-      "type": "boolean"
+    "incubator_disclaimer": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional approved incubating disclaimer text. When omitted, Buildish renders the standard Apache Incubator disclaimer from the component release name and sponsor name.",
+      "title": "Incubator Disclaimer"
+    },
+    "incubator_sponsor_name": {
+      "default": "Apache Incubator",
+      "description": "Apache Incubator sponsor name used when rendering the default incubating disclaimer.",
+      "title": "Incubator Sponsor Name",
+      "type": "string"
     },
     "latest_tag_enabled": {
       "description": "Whether this component publishes a moving `latest` tag in addition to line-specific moving tags.",
@@ -465,11 +478,28 @@
       "title": "Prepare Rc Runs Tests",
       "type": "boolean"
     },
+    "project_status": {
+      "default": "tlp",
+      "description": "Project lifecycle status within the configured release program.",
+      "enum": [
+        "tlp",
+        "incubating"
+      ],
+      "title": "Project Status",
+      "type": "string"
+    },
     "release_branch_ci_required": {
       "default": false,
       "description": "Whether this component requires a green release-branch CI signal before final publication can proceed.",
       "title": "Release Branch Ci Required",
       "type": "boolean"
+    },
+    "release_program": {
+      "const": "asf",
+      "default": "asf",
+      "description": "Release-governance program whose policy model Buildish should apply to this component.",
+      "title": "Release Program",
+      "type": "string"
     },
     "release_summary_include_final_tag_mode": {
       "default": false,

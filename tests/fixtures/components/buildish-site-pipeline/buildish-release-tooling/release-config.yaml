@@ -24,7 +24,7 @@ secondary_targets:
   - dockerhub
 final_tag_mode: rc-source-commit
 vote_release_name: Apache Buildish Site Pipeline
-incubator_vote_enabled: false
+project_status: tlp
 release_summary_include_final_tag_mode: false
 release_verification_guide_url: https://buildish.apache.org/buildish-site-pipeline/release-verification/
 verify_rc_instructions: |

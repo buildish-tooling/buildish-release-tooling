@@ -71,7 +71,7 @@ Relevant code:
 
 ### 1. No incubating disclaimer on GitHub release pages
 
-`incubator_vote_enabled` exists, but today it is used for vote/mail behavior, not for GitHub release title/body generation.
+`release_program` and `project_status` exist, but today `project_status=incubating` is used for vote/mail behavior, not for GitHub release title/body generation.
 
 That is insufficient for podlings.
 
@@ -181,7 +181,7 @@ At minimum:
 
 Do not guess. Make this explicit in one renderer.
 
-### Task D: Use `incubator_vote_enabled` for GitHub release content too
+### Task D: Use `project_status=incubating` for GitHub release content too
 
 Current behavior:
 
@@ -254,7 +254,7 @@ For a non-incubating component:
 
 ### Incubating project acceptance
 
-For `incubator_vote_enabled=true`:
+For `release_program=asf` and `project_status=incubating`:
 
 - draft GitHub release body includes incubating disclaimer
 - final public GitHub release body includes incubating disclaimer
@@ -319,7 +319,7 @@ Add or update tests for:
 
 If the follow-up work must be scoped narrowly, the minimum acceptable compliance improvement is:
 
-1. add incubating disclaimer to GitHub release bodies when `incubator_vote_enabled=true`
+1. add incubating disclaimer to GitHub release bodies when `release_program=asf` and `project_status=incubating`
 2. make final public GitHub release body distinct from the draft body
 3. keep explicit "convenience only" language and authoritative ASF links in final public body
 

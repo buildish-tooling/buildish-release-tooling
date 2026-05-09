@@ -180,6 +180,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             component_id=component_id,
             dev_base_url=dev_base_url,
             release_base_url=release_base_url,
+            project_status="incubating",
             verify_rc_lines=(
                 "verify_rc:",
                 "  source:",
@@ -358,6 +359,8 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         update_release_request = json.loads(
             (gh_state_dir / "update-release-request.json").read_text(encoding="utf-8")
         )
+        self.assertIn("## Incubating Disclaimer", update_release_request["body"])
+        self.assertIn("Apache Buildish Example is an effort undergoing incubation", update_release_request["body"])
         self.assertIn("Verify RC bootstrap one-liner:", update_release_request["body"])
         self.assertIn("verify-rc-bootstrap.sh", update_release_request["body"])
         summary_text = finalize_manifest_path.with_suffix(".summary.md").read_text(encoding="utf-8")
@@ -367,6 +370,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         self.assertIn("### Verification bootstrap one-liner", summary_text)
         self.assertIn('"manifest_type": "rc-vote"', summary_text)
         self.assertIn("Project vote subject", summary_text)
+        self.assertIn("Incubating disclaimer:", summary_text)
         self.assertIn("Verification bootstrap convenience:", summary_text)
         self.assertIn("Please vote in the next 72 hours.", summary_text)
         self.assertIn(f"{release_base_url.rsplit('/', 1)[0]}/KEYS", summary_text)

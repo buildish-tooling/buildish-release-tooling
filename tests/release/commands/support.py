@@ -231,6 +231,8 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
         latest_tag_enabled: bool = False,
         secondary_targets: tuple[str, ...] = ("github-action",),
         final_tag_mode: str = "rc-source-commit",
+        project_status: str = "tlp",
+        incubator_disclaimer: str | None = None,
         atr_lines: tuple[str, ...] = (),
         verify_rc_lines: tuple[str, ...] = (),
     ) -> None:
@@ -250,6 +252,12 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
                     *[f"  - {target}" for target in secondary_targets],
                     f"final_tag_mode: {final_tag_mode}",
                     f"vote_release_name: {vote_release_name}",
+                    f"project_status: {project_status}",
+                    *(
+                        ["incubator_disclaimer: |", *[f"  {line}" for line in incubator_disclaimer.splitlines()]]
+                        if incubator_disclaimer is not None
+                        else []
+                    ),
                     "release_verification_guide_url: https://buildish.apache.org/buildish-example/release-verification/",
                     "verify_rc_instructions: verify",
                     "prepare_rc_runs_tests: false",

@@ -33,6 +33,7 @@ from apache_buildish_release_tooling.release.contracts import (
     SourceArtifactContract,
 )
 from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
+from apache_buildish_release_tooling.release.release_text import incubator_disclaimer_section
 
 
 @dataclass(frozen=True)
@@ -46,7 +47,7 @@ class RenderedEmail:
 def _display_version(component_config: ComponentConfig, version: str) -> str:
     """Render the human-facing release version label for one component."""
 
-    if component_config.incubator_vote_enabled:
+    if component_config.is_incubating:
         return f"{version}-incubating"
     return version
 
@@ -201,7 +202,7 @@ def _verification_bootstrap_block(
 def _project_vote_binding_text(component_config: ComponentConfig) -> str:
     """Render the binding-vote guidance for a project vote email."""
 
-    if component_config.incubator_vote_enabled:
+    if component_config.is_incubating:
         return (
             "Only PPMC members and mentors have binding votes, but other community\n"
             "members are encouraged to cast non-binding votes. This vote will pass if\n"
@@ -222,6 +223,12 @@ def _incubator_vote_binding_text() -> str:
         "members are encouraged to cast non-binding votes. This vote will pass if\n"
         "there are 3 binding +1 votes and more binding +1 votes than -1 votes."
     )
+
+
+def _incubator_disclaimer_email_block(component_config: ComponentConfig) -> str:
+    """Render the incubator disclaimer block for human email templates."""
+
+    return incubator_disclaimer_section(component_config, heading="Incubating disclaimer:")
 
 
 def render_project_rc_vote_email(
@@ -250,6 +257,8 @@ def render_project_rc_vote_email(
         Hi all,
 
         I propose that we release the following RC as the official ${release_display_name} release.
+
+        ${incubator_disclaimer_block}
 
         Provenance information:
         * Git tag: ${rc_tag}
@@ -291,6 +300,7 @@ def render_project_rc_vote_email(
         """,
         {
             "release_display_name": release_display_name,
+            "incubator_disclaimer_block": _incubator_disclaimer_email_block(component_config),
             "rc_tag": state.rc_tag,
             "source_commit_lines": "\n".join(source_commit_lines),
             "release_branch": state.resolved_release_branch,
@@ -340,6 +350,8 @@ def render_incubator_rc_vote_email(
         The ${project_name} community has voted and approved the release of
         ${release_display_name} (${rc_label}). We now kindly request the IPMC members to review and vote for this release.
 
+        ${incubator_disclaimer_block}
+
         ${project_name} community vote thread:
         * <TODO: add the project vote thread URL>
 
@@ -369,6 +381,7 @@ def render_incubator_rc_vote_email(
             "project_name": component_config.vote_release_name,
             "release_display_name": release_display_name,
             "rc_label": _rc_label(state.rc_number),
+            "incubator_disclaimer_block": _incubator_disclaimer_email_block(component_config),
             "manifest_url": authoritative_manifest.uri,
             "verification_bootstrap_block": _verification_bootstrap_block(
                 bootstrap_script_url=bootstrap_script_url,
@@ -436,11 +449,14 @@ def render_announce_email(
 
         The ${project_name} team is pleased to announce ${release_display_name}.
 
+        ${incubator_disclaimer_block}
+
         <TODO: add release-specific announcement content>
         """,
         {
             "project_name": component_config.vote_release_name,
             "release_display_name": release_display_name,
+            "incubator_disclaimer_block": _incubator_disclaimer_email_block(component_config),
         },
     )
     return RenderedEmail(

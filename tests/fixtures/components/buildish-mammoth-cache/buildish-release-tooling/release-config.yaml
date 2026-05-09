@@ -24,7 +24,7 @@ secondary_targets:
   - github-release
 final_tag_mode: detached-materialization-commit
 vote_release_name: Apache Buildish Mammoth Cache
-incubator_vote_enabled: true
+project_status: incubating
 release_summary_include_final_tag_mode: true
 release_verification_guide_url: https://buildish.apache.org/buildish-mammoth-cache/release-verification/
 verify_rc_instructions: |

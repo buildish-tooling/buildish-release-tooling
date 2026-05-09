@@ -28,6 +28,9 @@ from apache_buildish_release_tooling.docs.documentation import (
     SchemaExportSpecification,
 )
 
+ReleaseProgram = Literal["asf"]
+ProjectStatus = Literal["tlp", "incubating"]
+
 
 class AtrConfig(ComponentOwnedAuthoredModel):
     """Validated optional ATR integration policy and release coordinates."""
@@ -339,7 +342,10 @@ class ComponentConfig(ComponentOwnedAuthoredModel):
     secondary_targets: list[str] = Field(description="Configured secondary target families that the component publishes in addition to the source artifact.")
     final_tag_mode: str = Field(description="Configured or recorded policy describing how the final immutable release tag should be created for this component or release run.")
     vote_release_name: str = Field(description="Human-facing release name that Buildish should use in vote mails, release summaries, and other user-visible output.")
-    incubator_vote_enabled: bool = Field(default=False, description="Whether the component's vote materials should include Apache Incubator-specific voting language and process guidance.")
+    release_program: ReleaseProgram = Field(default="asf", description="Release-governance program whose policy model Buildish should apply to this component.")
+    project_status: ProjectStatus = Field(default="tlp", description="Project lifecycle status within the configured release program.")
+    incubator_sponsor_name: str = Field(default="Apache Incubator", description="Apache Incubator sponsor name used when rendering the default incubating disclaimer.")
+    incubator_disclaimer: str | None = Field(default=None, description="Optional approved incubating disclaimer text. When omitted, Buildish renders the standard Apache Incubator disclaimer from the component release name and sponsor name.")
     release_summary_include_final_tag_mode: bool = Field(default=False, description="Whether release summary output should explicitly include the configured final-tag mode.")
     release_verification_guide_url: str = Field(description="User-facing guide URL that Buildish should include when pointing verifiers at the release verification instructions.")
     verify_rc_instructions: str = Field(description="Human-facing verification instructions that Buildish should include for this component's RC vote materials.")
@@ -347,6 +353,12 @@ class ComponentConfig(ComponentOwnedAuthoredModel):
     release_branch_ci_required: bool = Field(default=False, description="Whether this component requires a green release-branch CI signal before final publication can proceed.")
     atr: AtrConfig | None = Field(default=None, description="Nested ATR integration configuration for this component.")
     verify_rc: VerifyRcConfig | None = Field(default=None, description="Nested verify-rc configuration block for the component or local override file.")
+
+    @property
+    def is_incubating(self) -> bool:
+        """Return whether ASF incubating release policy applies."""
+
+        return self.release_program == "asf" and self.project_status == "incubating"
 
     @field_validator("secondary_targets", mode="before")
     @classmethod
@@ -356,6 +368,24 @@ class ComponentConfig(ComponentOwnedAuthoredModel):
         if isinstance(value, list):
             return [str(item) for item in value]
         raise TypeError("secondary_targets must be a whitespace-separated string or a list")
+
+    @field_validator("incubator_sponsor_name")
+    @classmethod
+    def _validate_incubator_sponsor_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("incubator_sponsor_name must not be empty")
+        return normalized
+
+    @field_validator("incubator_disclaimer")
+    @classmethod
+    def _validate_incubator_disclaimer(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("incubator_disclaimer must not be empty when configured")
+        return normalized
 
     @model_validator(mode="after")
     def _validate_ci_policy(self) -> ComponentConfig:

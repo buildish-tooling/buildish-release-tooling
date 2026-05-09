@@ -105,7 +105,10 @@ Validated component policy and release-target configuration.
 | <a id="componentconfig-secondary-targets"></a>`secondary_targets` | list[str] | yes | Configured secondary target families that the component publishes in addition to the source artifact. |
 | <a id="componentconfig-final-tag-mode"></a>`final_tag_mode` | str | yes | Configured or recorded policy describing how the final immutable release tag should be created for this component or release run. |
 | <a id="componentconfig-vote-release-name"></a>`vote_release_name` | str | yes | Human-facing release name that Buildish should use in vote mails, release summaries, and other user-visible output. |
-| <a id="componentconfig-incubator-vote-enabled"></a>`incubator_vote_enabled` | bool | no | Whether the component's vote materials should include Apache Incubator-specific voting language and process guidance. |
+| <a id="componentconfig-release-program"></a>`release_program` | ReleaseProgram | no | Release-governance program whose policy model Buildish should apply to this component. |
+| <a id="componentconfig-project-status"></a>`project_status` | ProjectStatus | no | Project lifecycle status within the configured release program. |
+| <a id="componentconfig-incubator-sponsor-name"></a>`incubator_sponsor_name` | str | no | Apache Incubator sponsor name used when rendering the default incubating disclaimer. |
+| <a id="componentconfig-incubator-disclaimer"></a>`incubator_disclaimer` | str | no | Optional approved incubating disclaimer text. When omitted, Buildish renders the standard Apache Incubator disclaimer from the component release name and sponsor name. |
 | <a id="componentconfig-release-summary-include-final-tag-mode"></a>`release_summary_include_final_tag_mode` | bool | no | Whether release summary output should explicitly include the configured final-tag mode. |
 | <a id="componentconfig-release-verification-guide-url"></a>`release_verification_guide_url` | str | yes | User-facing guide URL that Buildish should include when pointing verifiers at the release verification instructions. |
 | <a id="componentconfig-verify-rc-instructions"></a>`verify_rc_instructions` | str | yes | Human-facing verification instructions that Buildish should include for this component's RC vote materials. |

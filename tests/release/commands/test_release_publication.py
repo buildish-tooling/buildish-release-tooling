@@ -134,6 +134,7 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
             component_id="buildish-example",
             dev_base_url="https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
             release_base_url="https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+            project_status="incubating",
         )
         gh_path, gh_state_dir = create_fake_gh_launcher(
             sandbox_dir,
@@ -199,6 +200,8 @@ class ReleasePublicationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSu
         self.assertEqual("v1.2.3-rc3", create_request["tag_name"])
         self.assertEqual(expected_commit, create_request["target_commitish"])
         self.assertEqual("Apache Buildish Example 1.2.3", create_request["name"])
+        self.assertIn("## Incubating Disclaimer", create_request["body"])
+        self.assertIn("Apache Buildish Example is an effort undergoing incubation", create_request["body"])
         self.assertIn("RC tag: v1.2.3-rc3", create_request["body"])
         self.assertIn(
             "ASF SVN staging URL: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc3/",

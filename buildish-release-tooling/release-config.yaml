@@ -22,7 +22,8 @@ latest_tag_enabled: false
 secondary_targets: []
 final_tag_mode: rc-source-commit
 vote_release_name: Apache Buildish Release Tooling
-incubator_vote_enabled: true
+release_program: asf
+project_status: incubating
 release_summary_include_final_tag_mode: false
 release_verification_guide_url: https://buildish.apache.org/buildish-release-tooling/release-verification/
 verify_rc_instructions: |

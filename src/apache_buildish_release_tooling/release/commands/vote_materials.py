@@ -33,6 +33,7 @@ from apache_buildish_release_tooling.release.email_templates import (
 )
 from apache_buildish_release_tooling.release.git_repo import GitRepository
 from apache_buildish_release_tooling.release.github_release_selection import SelectedGitHubRelease, selected_github_release
+from apache_buildish_release_tooling.release.github_release_text import render_finalized_draft_github_release_body
 from apache_buildish_release_tooling.release.github_releases import update_release, upload_release_assets
 from apache_buildish_release_tooling.release.gpg_signing import (
     detached_ascii_sign,
@@ -369,34 +370,12 @@ def _draft_release_body(
     """Render the finalized draft GitHub Release body with verification bootstrap details."""
 
     bootstrap_script_url = f"{state.staging_url.rstrip('/')}/{artifacts.bootstrap_artifacts.script_path.name}"
-    return "\n".join(
-        [
-            f"Draft GitHub Release placeholder for {context.component_config.vote_release_name} {state.final_tag.removeprefix('v')}.",
-            "",
-            f"RC tag: {state.rc_tag}",
-            f"Final tag: {state.final_tag}",
-            f"Resolved source ref: {state.resolved_source_ref}",
-            f"ASF SVN staging URL: {state.staging_url}",
-            f"Final tag mode: {context.component_config.final_tag_mode}",
-            "",
-            "Authoritative RC vote manifest:",
-            f"- {authoritative_manifest_url}",
-            f"- {authoritative_manifest_url}.sha512",
-            f"- {authoritative_manifest_url}.asc",
-            "",
-            "Verification bootstrap convenience:",
-            f"- {bootstrap_script_url}",
-            f"- {bootstrap_script_url}.sha512",
-            f"- {bootstrap_script_url}.asc",
-            "",
-            "Verify RC bootstrap one-liner:",
-            "",
-            "```sh",
-            artifacts.bootstrap_artifacts.invoker_snippet,
-            "```",
-            "",
-            "This draft release is convenience metadata only and must remain unpublished until the ASF vote passes.",
-        ]
+    return render_finalized_draft_github_release_body(
+        context.component_config,
+        state=state,
+        authoritative_manifest_url=authoritative_manifest_url,
+        bootstrap_script_url=bootstrap_script_url,
+        bootstrap_invoker=artifacts.bootstrap_artifacts.invoker_snippet,
     )
 
 
@@ -534,7 +513,7 @@ def run_finalize_rc_vote_materials(args: Namespace) -> Path:
         bootstrap_invoker=artifacts.bootstrap_artifacts.invoker_snippet,
     )
     incubator_vote_email = None
-    if context.component_config.incubator_vote_enabled:
+    if context.component_config.is_incubating:
         incubator_vote_email = render_incubator_rc_vote_email(
             component_config=context.component_config,
             state=state,
