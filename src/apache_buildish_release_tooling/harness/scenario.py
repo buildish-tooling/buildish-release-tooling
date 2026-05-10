@@ -29,15 +29,28 @@ from apache_buildish_release_tooling.shared.parsing import (
 def load_scenario(path: Path) -> HarnessScenario:
     """Load a YAML scenario file into a validated harness model."""
 
+    scenario_dir = path.parent.resolve(strict=False)
     payload = require_yaml_mapping(
         read_yaml_mapping_file_bounded(path, max_bytes=DEFAULT_CONFIG_PARSE_MAX_BYTES),
         source=str(path),
     )
-    _resolve_workflow_paths(payload, path.parent.resolve(strict=False))
+    _resolve_workflow_paths(payload, scenario_dir, _scenario_path_root(scenario_dir))
     return HarnessScenario.model_validate(payload)
 
 
-def _resolve_workflow_paths(payload: YamlMapping, scenario_dir: Path) -> None:
+def _scenario_path_root(scenario_dir: Path) -> Path:
+    """Return the root that scenario-owned workflow paths may reference."""
+
+    if (
+        scenario_dir.name == "scenarios"
+        and scenario_dir.parent.name == "harness"
+        and scenario_dir.parent.parent.name == "buildish-release-tooling"
+    ):
+        return scenario_dir.parent.parent.parent.resolve(strict=False)
+    return scenario_dir
+
+
+def _resolve_workflow_paths(payload: YamlMapping, scenario_dir: Path, scenario_path_root: Path) -> None:
     """Resolve workflow-related file paths relative to the scenario file."""
 
     workflow = payload.get("workflow")
@@ -49,6 +62,10 @@ def _resolve_workflow_paths(payload: YamlMapping, scenario_dir: Path) -> None:
             continue
         raw_path = Path(raw_value)
         if raw_path.is_absolute():
-            workflow[key] = str(raw_path)
-        else:
-            workflow[key] = str((scenario_dir / raw_path).resolve(strict=False))
+            raise ValueError(f"workflow {key} must be relative to the scenario file: {raw_value}")
+        resolved_path = (scenario_dir / raw_path).resolve(strict=False)
+        if not resolved_path.is_relative_to(scenario_path_root):
+            raise ValueError(
+                f"workflow {key} must not escape the scenario path root: {raw_value}"
+            )
+        workflow[key] = str(resolved_path)

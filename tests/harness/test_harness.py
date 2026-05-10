@@ -129,6 +129,39 @@ class HarnessIntegrationTest(unittest.TestCase):
                 }
             )
 
+    def test_scenario_workflow_paths_must_stay_under_scenario_directory(self) -> None:
+        outside_workflow = self.sandbox_dir.parent / "outside.yml"
+        outside_workflow.write_text("name: outside\n", encoding="utf-8")
+        self.addCleanup(outside_workflow.unlink, missing_ok=True)
+
+        escaping_scenario_path = self._write_scenario(
+            "escaping-workflow.yaml",
+            {
+                "name": "escaping-workflow",
+                "backend": "act",
+                "workflow": {
+                    "path": "../outside.yml",
+                    "harness_config": "release-harness.yaml",
+                },
+            },
+        )
+        with self.assertRaisesRegex(ValueError, "must not escape"):
+            load_scenario(escaping_scenario_path)
+
+        absolute_scenario_path = self._write_scenario(
+            "absolute-workflow.yaml",
+            {
+                "name": "absolute-workflow",
+                "backend": "act",
+                "workflow": {
+                    "path": str(self.sandbox_dir / "workflow.yml"),
+                    "harness_config": "release-harness.yaml",
+                },
+            },
+        )
+        with self.assertRaisesRegex(ValueError, "must be relative"):
+            load_scenario(absolute_scenario_path)
+
     def test_checked_in_example_scenarios_load(self) -> None:
         """The documented example scenarios should stay loadable."""
 
