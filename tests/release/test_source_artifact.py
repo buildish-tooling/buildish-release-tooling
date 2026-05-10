@@ -46,7 +46,8 @@ class SourceArtifactIntegrationTest(unittest.TestCase):
             def __init__(self, stdout: object) -> None:
                 self.stdout = io.BytesIO() if stdout == subprocess.PIPE else None
 
-            def wait(self) -> int:
+            def wait(self, timeout: float | None = None) -> int:
+                del timeout
                 return 0
 
         def fake_popen(_command: list[str], **kwargs: object) -> FakeProcess:
@@ -72,6 +73,95 @@ class SourceArtifactIntegrationTest(unittest.TestCase):
         self.assertEqual(2, len(popen_calls))
         self.assertIsNot(popen_calls[0]["stderr"], subprocess.PIPE)
         self.assertIsNot(popen_calls[1]["stderr"], subprocess.PIPE)
+
+    def test_create_from_git_waits_for_pipeline_with_timeout(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        class FakeProcess:
+            def __init__(self, stdout: object) -> None:
+                self.stdout = io.BytesIO() if stdout == subprocess.PIPE else None
+                self.wait_timeouts: list[float | None] = []
+
+            def wait(self, timeout: float | None = None) -> int:
+                self.wait_timeouts.append(timeout)
+                return 0
+
+        processes: list[FakeProcess] = []
+
+        def fake_popen(_command: list[str], **kwargs: object) -> FakeProcess:
+            process = FakeProcess(kwargs.get("stdout"))
+            processes.append(process)
+            return process
+
+        with mock.patch(
+            "apache_buildish_release_tooling.release.source_artifact.subprocess.Popen",
+            side_effect=fake_popen,
+        ):
+            create_from_git(
+                sandbox_dir,
+                "HEAD",
+                "apache-buildish-example-1.2.3-incubating-src/",
+                sandbox_dir / "artifact.tar.gz",
+                log_commands=False,
+                timeout_seconds=7,
+            )
+
+        self.assertEqual(2, len(processes))
+        self.assertEqual([7], processes[0].wait_timeouts)
+        self.assertEqual(1, len(processes[1].wait_timeouts))
+        self.assertIsNotNone(processes[1].wait_timeouts[0])
+        self.assertLessEqual(processes[1].wait_timeouts[0] or 0, 7)
+
+    def test_create_from_git_cleans_up_pipeline_when_wait_times_out(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+
+        class FakeProcess:
+            def __init__(self, stdout: object, *, timed_out: bool = False) -> None:
+                self.stdout = io.BytesIO() if stdout == subprocess.PIPE else None
+                self.timed_out = timed_out
+                self.terminated = False
+                self.killed = False
+                self.wait_calls = 0
+
+            def terminate(self) -> None:
+                self.terminated = True
+
+            def kill(self) -> None:
+                self.killed = True
+
+            def wait(self, timeout: float | None = None) -> int:
+                self.wait_calls += 1
+                if self.timed_out and self.wait_calls == 1:
+                    raise subprocess.TimeoutExpired(["git", "archive"], timeout or 0)
+                return 0
+
+        archive_process = FakeProcess(subprocess.PIPE, timed_out=True)
+        gzip_process = FakeProcess(None)
+        processes = [archive_process, gzip_process]
+
+        def fake_popen(_command: list[str], **_kwargs: object) -> FakeProcess:
+            return processes.pop(0)
+
+        with mock.patch(
+            "apache_buildish_release_tooling.release.source_artifact.subprocess.Popen",
+            side_effect=fake_popen,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "timed out"):
+                create_from_git(
+                    sandbox_dir,
+                    "HEAD",
+                    "apache-buildish-example-1.2.3-incubating-src/",
+                    sandbox_dir / "artifact.tar.gz",
+                    log_commands=False,
+                    timeout_seconds=1,
+                )
+
+        self.assertTrue(archive_process.terminated)
+        self.assertTrue(gzip_process.terminated)
+        self.assertFalse(archive_process.killed)
+        self.assertFalse(gzip_process.killed)
 
     def test_create_from_git_cleans_up_archive_process_when_gzip_start_fails(self) -> None:
         sandbox_dir = create_build_test_sandbox()

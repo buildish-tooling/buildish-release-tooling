@@ -19,12 +19,14 @@ from __future__ import annotations
 import hashlib
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 from apache_buildish_release_tooling.release.command_logging import log_command_output, print_command
 
 _SUPPORTED_CHECKSUM_ALGORITHMS = frozenset({"sha256", "sha512"})
 _PIPE_STARTUP_CLEANUP_TIMEOUT_SECONDS = 5.0
+DEFAULT_SOURCE_ARTIFACT_TIMEOUT_SECONDS = 20 * 60
 
 
 def fixed_mtime() -> str:
@@ -40,6 +42,7 @@ def create_from_git(
     output_path: Path,
     *,
     log_commands: bool = True,
+    timeout_seconds: float = DEFAULT_SOURCE_ARTIFACT_TIMEOUT_SECONDS,
 ) -> None:
     """Build a reproducible source tarball from Git using a fixed mtime and gzip settings."""
 
@@ -81,8 +84,11 @@ def create_from_git(
             raise
         if archive_process.stdout is not None:
             archive_process.stdout.close()
-        archive_return_code = archive_process.wait()
-        gzip_return_code = gzip_process.wait()
+        archive_return_code, gzip_return_code = _wait_for_archive_pipeline(
+            archive_process,
+            gzip_process,
+            timeout_seconds=timeout_seconds,
+        )
         archive_stderr_file.seek(0)
         gzip_stderr_file.seek(0)
         archive_stderr = archive_stderr_file.read().decode("utf-8", errors="replace")
@@ -93,6 +99,25 @@ def create_from_git(
         raise RuntimeError("git archive failed while creating the source artifact")
     if gzip_return_code != 0:
         raise RuntimeError("gzip failed while creating the source artifact")
+
+
+def _wait_for_archive_pipeline(
+    archive_process: subprocess.Popen[bytes],
+    gzip_process: subprocess.Popen[bytes],
+    *,
+    timeout_seconds: float,
+) -> tuple[int, int]:
+    """Wait for the streaming archive pipeline with one overall timeout."""
+
+    deadline = time.monotonic() + timeout_seconds
+    try:
+        archive_return_code = archive_process.wait(timeout=timeout_seconds)
+        gzip_return_code = gzip_process.wait(timeout=max(0.0, deadline - time.monotonic()))
+    except subprocess.TimeoutExpired as exc:
+        _terminate_process(archive_process)
+        _terminate_process(gzip_process)
+        raise RuntimeError("timed out while creating the source artifact") from exc
+    return archive_return_code, gzip_return_code
 
 
 def _terminate_process(process: subprocess.Popen[bytes]) -> None:
