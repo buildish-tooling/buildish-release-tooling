@@ -545,6 +545,21 @@ class VerificationRebuildTest(unittest.TestCase):
                 collect_profile_output_paths(project_root, ("dist/*",)),
             )
 
+    def test_collect_profile_output_paths_rejects_symlinked_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            project_root = Path(tmp_dir)
+            (project_root / "dist").mkdir()
+            outside_artifact = project_root / "outside.zip"
+            outside_artifact.write_text("zip bytes\n", encoding="utf-8")
+            symlink_path = project_root / "dist" / "artifact.zip"
+            try:
+                symlink_path.symlink_to(outside_artifact)
+            except OSError as exc:
+                self.skipTest(f"symlink creation is not supported: {exc}")
+
+            with self.assertRaisesRegex(ValueError, "symlink"):
+                collect_profile_output_paths(project_root, ("dist/*",))
+
 
 if __name__ == "__main__":
     unittest.main()

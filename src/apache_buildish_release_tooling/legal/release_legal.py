@@ -872,13 +872,19 @@ def collect_distribution_legal_files(
 
     name = _metadata_value(distribution.metadata, "Name") or "unknown"
     dist_key = normalize_distribution_name(name)
+    distribution_root = Path(str(distribution.locate_file(""))).resolve(strict=False)
     captured: dict[str, CapturedLegalFile] = {}
     for relative_path in distribution.files or ():
         pure_relative_path = PurePosixPath(str(relative_path))
         capture_kind = _captured_legal_file_kind(pure_relative_path)
         if capture_kind is None:
             continue
+        if pure_relative_path.is_absolute() or ".." in pure_relative_path.parts:
+            raise ValueError(f"distribution legal file path must stay under distribution root: {relative_path}")
         absolute_path = Path(str(distribution.locate_file(relative_path)))
+        resolved_path = absolute_path.resolve(strict=False)
+        if absolute_path.is_symlink() or not resolved_path.is_relative_to(distribution_root):
+            raise ValueError(f"distribution legal file path must stay under distribution root: {relative_path}")
         if not absolute_path.is_file():
             continue
         file_bytes = absolute_path.read_bytes()
@@ -896,7 +902,7 @@ def collect_distribution_legal_files(
         captured[output_relative_path] = CapturedLegalFile(
             kind=capture_kind,
             original_relative_path=pure_relative_path.as_posix(),
-            installed_path=absolute_path.resolve().as_posix(),
+            installed_path=resolved_path.as_posix(),
             output_relative_path=output_relative_path,
             sha256=hashlib.sha256(file_bytes).hexdigest(),
             decode_warning=decode_warning,
@@ -939,7 +945,10 @@ def write_release_legal_output(
 
     for entry in report.entries:
         for legal_file in entry.captured_legal_files:
-            destination = resolved_details_output_dir / legal_file.output_relative_path
+            destination = _resolve_legal_output_path(
+                resolved_details_output_dir,
+                legal_file.output_relative_path,
+            )
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_text(legal_file.text, encoding="utf-8")
 
@@ -1255,8 +1264,19 @@ def _managed_output_relative_path(
 
 
 def _safe_relative_subpath(path: PurePosixPath) -> PurePosixPath:
-    safe_parts = tuple(part for part in path.parts if part not in {"", ".", ".."})
+    safe_parts = tuple(part for part in path.parts if part not in {"", ".", "..", "/"})
     return PurePosixPath(*safe_parts) if safe_parts else PurePosixPath("legal.txt")
+
+
+def _resolve_legal_output_path(root: Path, relative_path: str) -> Path:
+    raw_path = Path(relative_path)
+    if raw_path.is_absolute() or ".." in raw_path.parts:
+        raise ValueError(f"generated legal output path must stay under output root: {relative_path}")
+    resolved_root = root.resolve(strict=False)
+    resolved_path = (resolved_root / raw_path).resolve(strict=False)
+    if not resolved_path.is_relative_to(resolved_root):
+        raise ValueError(f"generated legal output path must stay under output root: {relative_path}")
+    return resolved_path
 
 
 def _review_flags(

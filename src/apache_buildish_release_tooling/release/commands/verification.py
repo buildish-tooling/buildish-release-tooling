@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 import tempfile
 from argparse import Namespace
@@ -59,6 +60,8 @@ from apache_buildish_release_tooling.release.verification.rebuild import (
 from apache_buildish_release_tooling.release.verification.schemas import VerifyRcReportV1
 
 from apache_buildish_release_tooling.release.commands._shared import _append_github_outputs
+
+_SAFE_REPORT_COMPONENT_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 def run_verify_rc(args: Namespace) -> None:
@@ -245,10 +248,20 @@ def _work_dir(args: Namespace) -> Path:
 
 def _report_base_name(component_id: str | None, version: str | None, rc_tag: str | None) -> str:
     if component_id is not None and rc_tag is not None:
-        return f"verify-rc-report-{component_id}-{rc_tag.replace('/', '-')}"
+        return (
+            "verify-rc-report-"
+            f"{_safe_report_component(component_id)}-{_safe_report_component(rc_tag)}"
+        )
     if component_id is None or version is None:
         return "verify-rc-report"
-    return f"verify-rc-report-{component_id}-{version}"
+    return f"verify-rc-report-{_safe_report_component(component_id)}-{_safe_report_component(version)}"
+
+
+def _safe_report_component(value: str) -> str:
+    raw_parts = re.split(r"[/\\]+", value.strip())
+    path_safe_value = "-".join(part for part in raw_parts if part not in {"", ".", ".."})
+    normalized = _SAFE_REPORT_COMPONENT_PATTERN.sub("-", path_safe_value).strip(".-")
+    return normalized or "unknown"
 
 
 def _report_json_path(args: Namespace, result: VerifyRcPhase1Result) -> Path:

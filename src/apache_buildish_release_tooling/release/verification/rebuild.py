@@ -358,6 +358,8 @@ def collect_profile_output_paths(project_root: Path, output_globs: Collection[st
     matches: set[Path] = set()
     for pattern in output_globs:
         for path in project_root.glob(pattern):
+            if path.is_symlink():
+                raise ValueError(f"rebuild output path must not be a symlink: {path}")
             if path.is_file():
                 matches.add(path.resolve())
     return tuple(sorted(matches))
