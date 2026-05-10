@@ -159,6 +159,31 @@ def read_text_bounded(
     )
 
 
+def read_bytes_file_bounded(path: Path, *, max_bytes: int) -> bytes:
+    """Read one local file into memory, failing if the limit is exceeded."""
+
+    with path.open("rb") as handle:
+        return read_bytes_bounded(handle, max_bytes=max_bytes)
+
+
+def read_text_file_bounded(
+    path: Path,
+    *,
+    max_bytes: int,
+    encoding: str = "utf-8",
+    errors: str = "strict",
+) -> str:
+    """Read one local file as text, failing if the byte limit is exceeded."""
+
+    with path.open("rb") as handle:
+        return read_text_bounded(
+            handle,
+            max_bytes=max_bytes,
+            encoding=encoding,
+            errors=errors,
+        )
+
+
 def files_equal(
     left: Path,
     right: Path,

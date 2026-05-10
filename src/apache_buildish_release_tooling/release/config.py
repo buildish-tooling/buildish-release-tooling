@@ -19,12 +19,14 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import urlparse
 
-import yaml
-
 from apache_buildish_release_tooling.release.models import (
     ComponentConfig,
     VerifyRcOverrideConfig,
     VerifyRcOverrideFileConfig,
+)
+from apache_buildish_release_tooling.shared.parsing import (
+    DEFAULT_CONFIG_PARSE_MAX_BYTES,
+    read_yaml_mapping_file_bounded,
 )
 
 _DIST_DEV_PREFIX = "https://dist.apache.org/repos/dist/dev/"
@@ -35,8 +37,7 @@ def load_component_config(component_config_path: str) -> ComponentConfig:
     """Load component configuration from a required YAML file."""
 
     path = Path(component_config_path)
-    with path.open("r", encoding="utf-8") as handle:
-        payload = yaml.safe_load(handle) or {}
+    payload = read_yaml_mapping_file_bounded(path, max_bytes=DEFAULT_CONFIG_PARSE_MAX_BYTES)
     return ComponentConfig.model_validate(payload)
 
 
@@ -44,8 +45,7 @@ def load_verify_rc_override_config(override_config_path: str) -> VerifyRcOverrid
     """Load one local non-canonical reproducibility override file from YAML."""
 
     path = Path(override_config_path)
-    with path.open("r", encoding="utf-8") as handle:
-        payload = yaml.safe_load(handle) or {}
+    payload = read_yaml_mapping_file_bounded(path, max_bytes=DEFAULT_CONFIG_PARSE_MAX_BYTES)
     return VerifyRcOverrideFileConfig.model_validate(payload).verify_rc
 
 
@@ -79,7 +79,7 @@ def _validate_release_target_base_url(
 ) -> None:
     """Validate one configured ASF dist base URL against the CLI security mode."""
 
-    if configured_url.startswith(production_prefix):
+    if _uses_production_prefix(configured_url, production_prefix):
         return
     parsed = urlparse(configured_url)
     if allow_non_production_release_targets and parsed.scheme in {"file", "http"}:
@@ -94,3 +94,14 @@ def _validate_release_target_base_url(
         "--allow-non-production-release-targets only for local file:// or http:// test targets: "
         f"{configured_url}"
     )
+
+
+def _uses_production_prefix(configured_url: str, production_prefix: str) -> bool:
+    configured = urlparse(configured_url)
+    production = urlparse(production_prefix)
+    if configured.scheme != production.scheme or configured.netloc != production.netloc:
+        return False
+    production_path = production.path
+    if not production_path.endswith("/"):
+        production_path = f"{production_path}/"
+    return configured.path.startswith(production_path)

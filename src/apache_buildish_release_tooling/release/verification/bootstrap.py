@@ -140,6 +140,8 @@ def render_verify_rc_bootstrap_script() -> str:
         from pathlib import Path
 
         manifest_path, expected_keys_url = sys.argv[1:3]
+        if Path(manifest_path).stat().st_size > 25 * 1024 * 1024:
+            raise SystemExit(f"manifest file is unexpectedly large: {manifest_path}")
         data = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
 
         manifest_keys_url = data["trust_roots"]["asf_keys"]["uri"]

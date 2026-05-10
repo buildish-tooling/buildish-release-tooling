@@ -92,9 +92,7 @@ def retain_evidence_file(
         / safe_path_component(label_directory)
         / source_path.name
     )
-    target_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(source_path, target_path)
-    return str(target_path.relative_to(bundle_root))
+    return _copy_unique_evidence_file(bundle_root, source_path=source_path, target_path=target_path)
 
 
 def retain_source_artifact_evidence_file(
@@ -110,7 +108,15 @@ def retain_source_artifact_evidence_file(
         / safe_path_component(label_directory)
         / source_path.name
     )
+    return _copy_unique_evidence_file(bundle_root, source_path=source_path, target_path=target_path)
+
+
+def _copy_unique_evidence_file(bundle_root: Path, *, source_path: Path, target_path: Path) -> str:
+    """Copy one evidence file and reject accidental bundle-path collisions."""
+
     target_path.parent.mkdir(parents=True, exist_ok=True)
+    if target_path.exists():
+        raise ValueError(f"inspection bundle evidence path already exists: {target_path}")
     shutil.copyfile(source_path, target_path)
     return str(target_path.relative_to(bundle_root))
 

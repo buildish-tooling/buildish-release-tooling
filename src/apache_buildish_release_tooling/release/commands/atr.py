@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import re
+import subprocess
 from argparse import Namespace
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,7 +35,10 @@ from apache_buildish_release_tooling.release.git_repo import GitRepository
 from apache_buildish_release_tooling.release.manifest import write_manifest
 from apache_buildish_release_tooling.release.models import AtrConfig, CommandContext, PrepareRcState
 from apache_buildish_release_tooling.release.process import run_logged_command
-from apache_buildish_release_tooling.release.rc_vote_manifest import download_uri_to_path
+from apache_buildish_release_tooling.release.rc_vote_manifest import (
+    DEFAULT_MANIFEST_MAX_BYTES,
+    download_uri_to_path,
+)
 from apache_buildish_release_tooling.release.rc_vote_verification import (
     required_rc_vote_manifest_file_names,
     required_source_release_file_names,
@@ -86,13 +90,9 @@ def _required_atr_config(context: CommandContext) -> AtrConfig:
 
 def _atr_host_from_base_url(base_url: str) -> str:
     parsed = urlparse(base_url)
-    if parsed.scheme:
-        if not parsed.netloc:
-            raise ValueError(f"ATR base_url must include a network location: {base_url}")
-        return parsed.netloc
-    if "/" in base_url.strip("/"):
-        raise ValueError(f"ATR base_url must be an https:// URL or a bare host: {base_url}")
-    return base_url.strip()
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError(f"ATR base_url must be an https:// URL with a network location: {base_url}")
+    return parsed.netloc
 
 
 def _resolve_atr_runtime_config(context: CommandContext) -> AtrRuntimeConfig:
@@ -130,7 +130,11 @@ def _write_atr_client_config(config_path: Path, runtime: AtrRuntimeConfig) -> No
             "pat": runtime.pat,
         },
     }
-    config_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+    encoded = yaml.safe_dump(payload, sort_keys=False).encode("utf-8")
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "wb") as handle:
+        handle.write(encoded)
 
 
 def _atr_env(config_path: Path) -> dict[str, str]:
@@ -143,6 +147,23 @@ def _parse_json_output(stdout: str, *, source: str) -> dict[str, object]:
     return parse_json_object(stdout, source=source)
 
 
+def _run_atr_command(
+    runtime: AtrRuntimeConfig,
+    command: list[str],
+    *,
+    env: dict[str, str],
+    check: bool = True,
+    capture_output: bool = True,
+) -> subprocess.CompletedProcess[str]:
+    return run_logged_command(
+        command,
+        env=env,
+        check=check,
+        capture_output=capture_output,
+        extra_secret_values=[runtime.pat],
+    )
+
+
 def _atr_release_start_or_reuse(
     runtime: AtrRuntimeConfig,
     *,
@@ -150,14 +171,15 @@ def _atr_release_start_or_reuse(
     env: dict[str, str],
 ) -> tuple[dict[str, object], str]:
     command = ["atr", "release", "start", runtime.project_key, version]
-    start_completed = run_logged_command(command, env=env, check=False)
+    start_completed = _run_atr_command(runtime, command, env=env, check=False)
     if start_completed.returncode == 0:
         return (
             _parse_json_output(start_completed.stdout, source="atr release start"),
             "created",
         )
 
-    info_completed = run_logged_command(
+    info_completed = _run_atr_command(
+        runtime,
         ["atr", "release", "info", runtime.project_key, version],
         env=env,
         check=False,
@@ -183,7 +205,8 @@ def _atr_release_info(
     version: str,
     env: dict[str, str],
 ) -> dict[str, object]:
-    completed = run_logged_command(
+    completed = _run_atr_command(
+        runtime,
         ["atr", "release", "info", runtime.project_key, version],
         env=env,
     )
@@ -198,7 +221,8 @@ def _atr_upload_file(
     local_path: Path,
     env: dict[str, str],
 ) -> dict[str, object]:
-    completed = run_logged_command(
+    completed = _run_atr_command(
+        runtime,
         [
             "atr",
             "upload",
@@ -234,7 +258,7 @@ def _atr_wait_for_checks(
     ]
     if revision is not None:
         command.extend(["--revision", revision])
-    run_logged_command(command, env=env, capture_output=True)
+    _run_atr_command(runtime, command, env=env, capture_output=True)
 
 
 def _atr_check_status(
@@ -256,7 +280,7 @@ def _atr_check_status(
         command.extend(["--revision", revision])
     if verbose:
         command.append("--verbose")
-    completed = run_logged_command(command, env=env)
+    completed = _run_atr_command(runtime, command, env=env)
     output = completed.stdout.strip()
     total_checks = 0
     counts: dict[str, int] = {}
@@ -294,9 +318,13 @@ def _download_staged_candidate_files(
 ) -> list[Path]:
     download_root.mkdir(parents=True, exist_ok=True)
     local_paths: list[Path] = []
+    vote_manifest_file_names = set(required_rc_vote_manifest_file_names())
     for file_name, file_url in _staged_candidate_file_urls(context, state, version):
         local_path = download_root / file_name
-        download_uri_to_path(file_url, local_path)
+        if file_name in vote_manifest_file_names:
+            download_uri_to_path(file_url, local_path, max_bytes=DEFAULT_MANIFEST_MAX_BYTES)
+        else:
+            download_uri_to_path(file_url, local_path)
         local_paths.append(local_path)
     return local_paths
 

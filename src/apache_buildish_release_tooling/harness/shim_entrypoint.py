@@ -34,6 +34,10 @@ from apache_buildish_release_tooling.harness.process import run_harness_command
 from apache_buildish_release_tooling.harness.runtime import resolve_workspace_relative_path
 from apache_buildish_release_tooling.harness.shim_builtins import handle_builtin_tool
 from apache_buildish_release_tooling.harness.shim_summary import append_step_summary, summary_text
+from apache_buildish_release_tooling.shared.parsing import (
+    DEFAULT_CONFIG_PARSE_MAX_BYTES,
+    read_pydantic_json_file_bounded,
+)
 
 
 def main() -> None:
@@ -44,7 +48,11 @@ def main() -> None:
     tool_name = sys.argv[1]
     argv = sys.argv[2:]
     state_path = Path(os.environ["BUILDISH_HARNESS_STATE_FILE"])
-    state = HarnessShimState.model_validate_json(state_path.read_text(encoding="utf-8"))
+    state = read_pydantic_json_file_bounded(
+        HarnessShimState,
+        state_path,
+        max_bytes=DEFAULT_CONFIG_PARSE_MAX_BYTES,
+    )
     behavior_index, result = _resolve_behavior(state, tool_name, argv)
     if result is None:
         builtin_result = handle_builtin_tool(tool_name, argv, state)

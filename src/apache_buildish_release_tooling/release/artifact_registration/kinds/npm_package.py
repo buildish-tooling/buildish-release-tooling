@@ -111,8 +111,8 @@ def _optional_text(raw_value: str | None, *, option_name: str) -> str | None:
 def _normalized_registry_url(raw_value: str | None, *, option_name: str) -> str:
     normalized = _required_text(raw_value, option_name=option_name).rstrip("/")
     parsed = urlparse(normalized)
-    if not parsed.scheme or not parsed.netloc:
-        raise ValueError(f"npm-package {option_name} must be an absolute registry URL")
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError(f"npm-package {option_name} must be an https:// registry URL")
     return f"{normalized}/"
 
 
@@ -162,7 +162,7 @@ def _canonical_publication_uri(registry_url: str, package_name: str, version: st
 
 def _parsed_canonical_publication(uri: str) -> _NpmPublication:
     parsed = urlparse(uri)
-    if not parsed.scheme or not parsed.netloc or parsed.query or parsed.fragment:
+    if parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment:
         raise ValueError(
             "npm-package --uri must use a canonical npm tarball URL to derive registry and package metadata"
         )
@@ -243,6 +243,8 @@ def _resolved_publication(
         if explicit_version is not None and explicit_version != parsed_publication.version:
             raise ValueError("npm-package --package-version does not match the canonical version encoded in --uri")
     uri = explicit_uri or _canonical_publication_uri(registry_url, package_name, version)
+    if urlparse(uri).scheme != "https" or not urlparse(uri).netloc:
+        raise ValueError("npm-package --uri must be an https:// URI")
     return _NpmPublication(
         uri=uri,
         registry_url=registry_url,
@@ -353,6 +355,10 @@ def build_npm_package_registration(args: Namespace, bundle_dir: Path) -> Artifac
         getattr(args, f"{algorithm}_uri", None),
         option_name=f"--{algorithm}-uri",
     )
+    if checksum_uri is not None:
+        parsed_checksum_uri = urlparse(checksum_uri)
+        if parsed_checksum_uri.scheme != "https" or not parsed_checksum_uri.netloc:
+            raise ValueError(f"npm-package --{algorithm}-uri must be an https:// URI")
     attestation_repository = _optional_text(
         getattr(args, "attestation_repository", None),
         option_name="--attestation-repository",

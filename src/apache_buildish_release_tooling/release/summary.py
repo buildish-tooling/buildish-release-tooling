@@ -23,6 +23,10 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from apache_buildish_release_tooling.release.rc_vote_manifest import DEFAULT_SIGNATURE_MAX_BYTES
+from apache_buildish_release_tooling.shared.io import read_text_file_bounded
+
+
 class SummaryWriter:
     """Markdown writer for GitHub workflow summaries."""
 
@@ -120,7 +124,10 @@ class SummaryWriter:
     def append_signature_block(self, artifact_name: str, signature_file: Path) -> None:
         """Append a detached ASCII-armored signature block from a `.asc` file."""
 
-        self.append_signature_text_block(artifact_name, signature_file.read_text(encoding="utf-8"))
+        self.append_signature_text_block(
+            artifact_name,
+            read_text_file_bounded(signature_file, max_bytes=DEFAULT_SIGNATURE_MAX_BYTES),
+        )
 
     def append_email_template_blocks(self, label: str, subject: str, body: str) -> None:
         """Append a subject/body pair for one human-sent email template."""

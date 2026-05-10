@@ -355,13 +355,17 @@ def ensure_detached_source_checkout(project_root: Path, commit_sha: str) -> None
 def collect_profile_output_paths(project_root: Path, output_globs: Collection[str]) -> tuple[Path, ...]:
     """Resolve one profile's configured output globs relative to the verified project root."""
 
+    resolved_project_root = project_root.resolve()
     matches: set[Path] = set()
     for pattern in output_globs:
         for path in project_root.glob(pattern):
             if path.is_symlink():
                 raise ValueError(f"rebuild output path must not be a symlink: {path}")
             if path.is_file():
-                matches.add(path.resolve())
+                resolved_path = path.resolve()
+                if not resolved_path.is_relative_to(resolved_project_root):
+                    raise ValueError(f"rebuild output path must not escape the project root: {path}")
+                matches.add(resolved_path)
     return tuple(sorted(matches))
 
 

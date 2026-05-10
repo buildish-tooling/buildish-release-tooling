@@ -78,6 +78,10 @@ class RcVoteManifestTest(unittest.TestCase):
 
         self.assertEqual(b"payload\n", read_uri_bytes(payload_path.as_uri()))
 
+    def test_read_uri_bytes_rejects_non_local_file_authorities(self) -> None:
+        with self.assertRaisesRegex(ValueError, "non-local authority"):
+            read_uri_bytes("file://example.invalid/tmp/payload")
+
     def test_download_uri_to_path_streams_local_file_uri(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)

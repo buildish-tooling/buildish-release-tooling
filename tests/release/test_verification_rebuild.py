@@ -560,6 +560,22 @@ class VerificationRebuildTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "symlink"):
                 collect_profile_output_paths(project_root, ("dist/*",))
 
+    def test_collect_profile_output_paths_rejects_files_under_symlinked_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            temp_root = Path(tmp_dir)
+            project_root = temp_root / "project"
+            outside_dir = temp_root / "outside"
+            project_root.mkdir()
+            outside_dir.mkdir()
+            (outside_dir / "artifact.zip").write_text("zip bytes\n", encoding="utf-8")
+            try:
+                (project_root / "dist").symlink_to(outside_dir, target_is_directory=True)
+            except OSError as exc:
+                self.skipTest(f"symlink creation is not supported: {exc}")
+
+            with self.assertRaisesRegex(ValueError, "escape"):
+                collect_profile_output_paths(project_root, ("dist/*",))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -32,7 +32,13 @@ from apache_buildish_release_tooling.release.models import ComponentConfig, Veri
 from apache_buildish_release_tooling.release.path_validation import validate_simple_filename
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.process import run_logged_command
-from apache_buildish_release_tooling.release.rc_vote_manifest import download_uri_to_path
+from apache_buildish_release_tooling.release.rc_vote_manifest import (
+    DEFAULT_CHECKSUM_SIDECAR_MAX_BYTES,
+    DEFAULT_KEYS_MAX_BYTES,
+    DEFAULT_MANIFEST_MAX_BYTES,
+    DEFAULT_SIGNATURE_MAX_BYTES,
+    download_uri_to_path,
+)
 from apache_buildish_release_tooling.release.source_artifact import create_from_git, sha512
 from apache_buildish_release_tooling.release.verification.common import (
     GpgVerifier,
@@ -63,6 +69,7 @@ from apache_buildish_release_tooling.release.verification.rebuild import (
     ensure_detached_source_checkout,
 )
 from apache_buildish_release_tooling.shared.io import files_equal
+from apache_buildish_release_tooling.shared.parsing import read_pydantic_json_file_bounded
 
 _report_markdown = phase1_reporting._report_markdown
 
@@ -134,13 +141,21 @@ def verify_rc_phase1(
     emit_info(progress_reporter, "Downloading signed RC vote manifest and sidecars")
     try:
         manifest_path = work_dir / "rc-vote-manifest.json"
-        download_uri_to_path(manifest_url, manifest_path)
+        download_uri_to_path(manifest_url, manifest_path, max_bytes=DEFAULT_MANIFEST_MAX_BYTES)
         manifest_sha512_path = work_dir / "rc-vote-manifest.json.sha512"
-        download_uri_to_path(f"{manifest_url}.sha512", manifest_sha512_path)
+        download_uri_to_path(
+            f"{manifest_url}.sha512",
+            manifest_sha512_path,
+            max_bytes=DEFAULT_CHECKSUM_SIDECAR_MAX_BYTES,
+        )
         manifest_signature_path = work_dir / "rc-vote-manifest.json.asc"
-        download_uri_to_path(f"{manifest_url}.asc", manifest_signature_path)
+        download_uri_to_path(
+            f"{manifest_url}.asc",
+            manifest_signature_path,
+            max_bytes=DEFAULT_SIGNATURE_MAX_BYTES,
+        )
         keys_path = work_dir / "KEYS"
-        download_uri_to_path(keys_url, keys_path)
+        download_uri_to_path(keys_url, keys_path, max_bytes=DEFAULT_KEYS_MAX_BYTES)
         emit_success(progress_reporter, "Downloaded manifest, checksum sidecar, signature, and KEYS")
         manifest_sha512 = verify_checksum_sidecar(
             manifest_path,
@@ -349,7 +364,11 @@ def verify_rc_phase1(
                     purpose="Source artifact checksum sidecar URL",
                 )
                 source_sha512_sidecar_path = work_dir / f"{source_artifact_filename}.sha512"
-                download_uri_to_path(checksum_uri, source_sha512_sidecar_path)
+                download_uri_to_path(
+                    checksum_uri,
+                    source_sha512_sidecar_path,
+                    max_bytes=DEFAULT_CHECKSUM_SIDECAR_MAX_BYTES,
+                )
                 verify_checksum_sidecar(
                     source_artifact_path,
                     source_sha512_sidecar_path,
@@ -377,7 +396,11 @@ def verify_rc_phase1(
                 purpose="Source artifact signature URL",
             )
             source_signature_path = work_dir / f"{source_artifact_filename}.asc"
-            download_uri_to_path(source_signature_uri, source_signature_path)
+            download_uri_to_path(
+                source_signature_uri,
+                source_signature_path,
+                max_bytes=DEFAULT_SIGNATURE_MAX_BYTES,
+            )
             source_artifact_signature = verifier.verify_detached(
                 target_path=source_artifact_path,
                 signature_path=source_signature_path,
@@ -570,8 +593,12 @@ def _append_failure(
 
 def _rc_vote_manifest_payload(manifest_path: Path) -> RcVoteManifestReadV1:
     try:
-        return RcVoteManifestReadV1.model_validate_json(manifest_path.read_text(encoding="utf-8"))
-    except ValidationError as exc:
+        return read_pydantic_json_file_bounded(
+            RcVoteManifestReadV1,
+            manifest_path,
+            max_bytes=DEFAULT_MANIFEST_MAX_BYTES,
+        )
+    except (ValidationError, ValueError) as exc:
         raise ValueError(f"RC vote manifest is invalid: {manifest_path}") from exc
 
 

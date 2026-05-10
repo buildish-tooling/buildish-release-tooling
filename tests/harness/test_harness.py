@@ -36,6 +36,7 @@ from apache_buildish_release_tooling.harness.models import (
     HarnessShimState,
 )
 from apache_buildish_release_tooling.harness.runtime import (
+    remove_workspace,
     resolve_workspace_relative_path,
     summarize_trace,
     write_workspace_file,
@@ -75,6 +76,11 @@ class HarnessIntegrationTest(unittest.TestCase):
             write_workspace_file(self.sandbox_dir, "../outside.txt", "bad\n", False)
 
         self.assertFalse((self.sandbox_dir.parent / "outside.txt").exists())
+
+    def test_remove_workspace_rejects_non_harness_workspace_path(self) -> None:
+        with self.assertRaisesRegex(ValueError, "non-harness"):
+            remove_workspace(self.sandbox_dir)
+        self.assertTrue(self.sandbox_dir.exists())
 
     def test_shim_file_writes_reject_expanded_workspace_escapes(self) -> None:
         state = HarnessShimState(

@@ -20,10 +20,12 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
+from apache_buildish_release_tooling.release.rc_vote_manifest import DEFAULT_CHECKSUM_SIDECAR_MAX_BYTES
 from apache_buildish_release_tooling.release.contracts import SignatureVerificationPayload
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.process import run_logged_command
 from apache_buildish_release_tooling.release.source_artifact import checksum
+from apache_buildish_release_tooling.shared.io import read_text_file_bounded
 
 _GPG_ALGORITHM_NAMES = {
     "1": "rsa",
@@ -181,7 +183,10 @@ def verify_checksum_sidecar(
     if expected_length is None:
         raise ValueError(f"unsupported checksum algorithm for sidecar verification: {algorithm}")
     actual_digest = checksum(target_path, normalized_algorithm)
-    sidecar_text = sidecar_path.read_text(encoding="utf-8")
+    sidecar_text = read_text_file_bounded(
+        sidecar_path,
+        max_bytes=DEFAULT_CHECKSUM_SIDECAR_MAX_BYTES,
+    )
     fields = sidecar_text.strip().split()
     if not fields or not fields[0]:
         raise ValueError(f"invalid .{normalized_algorithm} sidecar contents for {purpose}: {sidecar_path}")

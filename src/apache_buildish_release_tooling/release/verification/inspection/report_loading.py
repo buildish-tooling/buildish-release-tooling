@@ -16,8 +16,6 @@
 
 from __future__ import annotations
 
-import json
-from json import JSONDecodeError
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -26,12 +24,16 @@ from apache_buildish_release_tooling.release.verification.schemas import (
     InspectionBundleManifestV1,
     VerifyRcReportV1,
 )
+from apache_buildish_release_tooling.shared.parsing import (
+    DEFAULT_MANIFEST_PARSE_MAX_BYTES,
+    read_json_file_bounded,
+)
 
 
 def _load_json_object(path: Path, *, payload_label: str) -> dict[str, object]:
     try:
-        raw_payload = json.loads(path.read_text(encoding="utf-8"))
-    except JSONDecodeError as exc:
+        raw_payload = read_json_file_bounded(path, max_bytes=DEFAULT_MANIFEST_PARSE_MAX_BYTES)
+    except ValueError as exc:
         raise ValueError(f"{payload_label} is not valid JSON: {path}") from exc
     if not isinstance(raw_payload, dict):
         raise ValueError(f"{payload_label} is not a JSON object: {path}")

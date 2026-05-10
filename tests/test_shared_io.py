@@ -29,6 +29,7 @@ from apache_buildish_release_tooling.shared.io import (
     first_differing_byte,
     hash_file,
     read_bytes_bounded,
+    read_text_file_bounded,
 )
 
 
@@ -66,6 +67,14 @@ class SharedIoTest(unittest.TestCase):
     def test_read_bytes_bounded_rejects_oversized_streams(self) -> None:
         with self.assertRaises(ByteLimitExceededError):
             read_bytes_bounded(io.BytesIO(b"payload"), max_bytes=3)
+
+    def test_read_text_file_bounded_rejects_oversized_files(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "payload.txt"
+            path.write_text("payload\n", encoding="utf-8")
+
+            with self.assertRaises(ByteLimitExceededError):
+                read_text_file_bounded(path, max_bytes=3)
 
     def test_file_comparison_helpers_stream_local_files(self) -> None:
         with TemporaryDirectory() as temp_dir:

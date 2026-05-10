@@ -17,8 +17,6 @@
 from __future__ import annotations
 
 import difflib
-import json
-from json import JSONDecodeError
 from pathlib import Path
 from typing import TypeVar
 
@@ -26,6 +24,10 @@ from pydantic import BaseModel, ValidationError
 
 from apache_buildish_release_tooling.release.contracts import InspectionEvidenceReference
 from apache_buildish_release_tooling.shared.io import read_bytes_bounded
+from apache_buildish_release_tooling.shared.parsing import (
+    DEFAULT_MANIFEST_PARSE_MAX_BYTES,
+    read_json_file_bounded,
+)
 
 _MAX_INLINE_TEXT_DIFF_LINES = 12
 _MAX_INLINE_TEXT_BYTES = 65536
@@ -120,8 +122,11 @@ def load_inspection_metadata_model(
     """Load one retained inspection metadata document with a direct fail-closed error."""
 
     try:
-        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
-    except JSONDecodeError as exc:
+        payload = read_json_file_bounded(
+            metadata_path,
+            max_bytes=DEFAULT_MANIFEST_PARSE_MAX_BYTES,
+        )
+    except ValueError as exc:
         raise ValueError(f"{payload_label} is not valid JSON: {metadata_path}") from exc
     if not isinstance(payload, dict):
         raise ValueError(f"{payload_label} is not a JSON object: {metadata_path}")

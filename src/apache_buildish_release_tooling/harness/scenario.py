@@ -18,17 +18,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import yaml
-
 from apache_buildish_release_tooling.harness.models import HarnessScenario
 from apache_buildish_release_tooling.harness.yaml_types import YamlMapping, require_yaml_mapping
+from apache_buildish_release_tooling.shared.parsing import (
+    DEFAULT_CONFIG_PARSE_MAX_BYTES,
+    read_yaml_mapping_file_bounded,
+)
 
 
 def load_scenario(path: Path) -> HarnessScenario:
     """Load a YAML scenario file into a validated harness model."""
 
     payload = require_yaml_mapping(
-        yaml.safe_load(path.read_text(encoding="utf-8")),
+        read_yaml_mapping_file_bounded(path, max_bytes=DEFAULT_CONFIG_PARSE_MAX_BYTES),
         source=str(path),
     )
     _resolve_workflow_paths(payload, path.parent.resolve(strict=False))

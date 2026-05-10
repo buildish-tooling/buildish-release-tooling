@@ -35,7 +35,11 @@ from apache_buildish_release_tooling.release.contracts import (
 from apache_buildish_release_tooling.release.external_json import validate_json_object_model_text
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.path_validation import validate_simple_filename
-from apache_buildish_release_tooling.release.rc_vote_manifest import download_uri_to_path, read_uri_bytes
+from apache_buildish_release_tooling.release.rc_vote_manifest import (
+    DEFAULT_CHECKSUM_SIDECAR_MAX_BYTES,
+    download_uri_to_path,
+    read_uri_bytes,
+)
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.common import (
     validate_fetch_uri,
@@ -172,7 +176,11 @@ def verify_python_distribution(
                 purpose=f"python distribution checksum sidecar URL for {artifact_id}",
             )
             sidecar_path = work_dir / f"{filename}.{checksum_algorithm}"
-            download_uri_to_path(checksum_uri, sidecar_path)
+            download_uri_to_path(
+                checksum_uri,
+                sidecar_path,
+                max_bytes=DEFAULT_CHECKSUM_SIDECAR_MAX_BYTES,
+            )
             verify_checksum_sidecar(
                 artifact_path,
                 sidecar_path,

@@ -19,6 +19,7 @@ from __future__ import annotations
 import re
 from argparse import Namespace
 from pathlib import Path
+from urllib.parse import urlparse
 
 from apache_buildish_release_tooling.release.artifact_registration.common import (
     common_artifact_metadata,
@@ -35,6 +36,16 @@ from apache_buildish_release_tooling.release.path_validation import validate_sim
 from apache_buildish_release_tooling.release.source_artifact import sha512
 
 _SHA512_PATTERN = re.compile(r"^[0-9a-fA-F]{128}$")
+
+
+def _required_https_uri(raw_value: str, *, option_name: str) -> str:
+    uri = raw_value.strip()
+    if not uri:
+        raise ValueError(f"generic-file requires {option_name}")
+    parsed = urlparse(uri)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise ValueError(f"generic-file {option_name} must be an https:// URI")
+    return uri
 
 
 def _resolved_local_file(path_text: str | None) -> Path | None:
@@ -77,9 +88,7 @@ def build_generic_file_registration(args: Namespace, bundle_dir: Path) -> Artifa
     """Build one typed secondary-artifact fragment for the `generic-file` kind."""
 
     del bundle_dir  # reserved for future inventory-producing variants
-    uri = args.uri.strip()
-    if not uri:
-        raise ValueError("generic-file requires --uri")
+    uri = _required_https_uri(args.uri, option_name="--uri")
     local_file = _resolved_local_file(getattr(args, "file", None))
     digest_value = _normalized_sha512(local_file, getattr(args, "sha512", None))
     filename = _resolved_filename(local_file, getattr(args, "filename", None))
@@ -96,7 +105,11 @@ def build_generic_file_registration(args: Namespace, bundle_dir: Path) -> Artifa
             checksums=Sha512Checksums(
                 sha512=Sha512ChecksumPayload(
                     value=digest_value,
-                    uri=args.sha512_uri.strip() if args.sha512_uri else None,
+                    uri=(
+                        _required_https_uri(args.sha512_uri, option_name="--sha512-uri")
+                        if args.sha512_uri
+                        else None
+                    ),
                 )
             ),
             signatures=[],

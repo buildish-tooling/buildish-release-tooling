@@ -24,7 +24,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO
-from urllib.parse import unquote, urlparse
+from urllib.parse import ParseResult, unquote, urlparse
 
 from apache_buildish_release_tooling.shared.downloader import ResourceDownloader
 from apache_buildish_release_tooling.shared.io import (
@@ -63,6 +63,10 @@ DEFAULT_URI_READ_TIMEOUT_SECONDS = 60.0
 DEFAULT_SVN_CAT_TIMEOUT_SECONDS = 60.0
 DEFAULT_URI_READ_MAX_BYTES = 25 * 1024 * 1024
 DEFAULT_URI_DOWNLOAD_MAX_BYTES = 2 * 1024 * 1024 * 1024
+DEFAULT_MANIFEST_MAX_BYTES = 25 * 1024 * 1024
+DEFAULT_KEYS_MAX_BYTES = 25 * 1024 * 1024
+DEFAULT_SIGNATURE_MAX_BYTES = 1024 * 1024
+DEFAULT_CHECKSUM_SIDECAR_MAX_BYTES = 1024 * 1024
 _DEFAULT_DOWNLOADER = ResourceDownloader.create(
     timeout=DEFAULT_URI_READ_TIMEOUT_SECONDS,
 )
@@ -167,7 +171,7 @@ def read_uri_bytes(uri: str, *, max_bytes: int = DEFAULT_URI_READ_MAX_BYTES) -> 
 
     parsed = urlparse(uri)
     if parsed.scheme == "file":
-        local_path = Path(unquote(parsed.path))
+        local_path = _local_file_uri_path(parsed, uri)
         if local_path.exists():
             with local_path.open("rb") as handle:
                 return read_bytes_bounded(handle, max_bytes=max_bytes)
@@ -185,7 +189,7 @@ def read_uri_text(uri: str, *, max_bytes: int = DEFAULT_URI_READ_MAX_BYTES) -> s
 
     parsed = urlparse(uri)
     if parsed.scheme == "file":
-        local_path = Path(unquote(parsed.path))
+        local_path = _local_file_uri_path(parsed, uri)
         if local_path.exists():
             with local_path.open("rb") as handle:
                 return read_text_bounded(handle, max_bytes=max_bytes)
@@ -208,7 +212,7 @@ def download_uri_to_path(
 
     parsed = urlparse(uri)
     if parsed.scheme == "file":
-        local_path = Path(unquote(parsed.path))
+        local_path = _local_file_uri_path(parsed, uri)
         if local_path.exists():
             with local_path.open("rb") as handle:
                 return copy_stream_to_path(handle, destination, max_bytes=max_bytes)
@@ -231,7 +235,7 @@ def uri_sha512(uri: str) -> str:
 
     parsed = urlparse(uri)
     if parsed.scheme == "file":
-        local_path = Path(unquote(parsed.path))
+        local_path = _local_file_uri_path(parsed, uri)
         if local_path.exists():
             return hash_file(local_path, algorithm="sha512")
         with tempfile.TemporaryFile() as stdout_file:
@@ -241,6 +245,12 @@ def uri_sha512(uri: str) -> str:
     if parsed.scheme in {"http", "https"}:
         return _DEFAULT_DOWNLOADER.hash_uri(uri, algorithm="sha512")
     raise ValueError(f"unsupported URI scheme: {uri}")
+
+
+def _local_file_uri_path(parsed_uri: ParseResult, uri: str) -> Path:
+    if parsed_uri.netloc not in {"", "localhost"}:
+        raise ValueError(f"file URI must not include a non-local authority: {uri}")
+    return Path(unquote(parsed_uri.path))
 
 
 def _svn_cat_to_file(uri: str, stdout_file: IO[bytes]) -> None:

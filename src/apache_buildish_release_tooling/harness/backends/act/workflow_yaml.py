@@ -25,6 +25,8 @@ import yaml
 
 from apache_buildish_release_tooling.harness.models import validate_harness_identifier
 from apache_buildish_release_tooling.harness.yaml_types import YamlMapping, require_yaml_mapping
+from apache_buildish_release_tooling.shared.io import read_text_file_bounded
+from apache_buildish_release_tooling.shared.parsing import DEFAULT_CONFIG_PARSE_MAX_BYTES
 
 
 @dataclass(frozen=True)
@@ -76,7 +78,7 @@ def _load_github_actions_yaml(path: Path) -> YamlMapping:
 
     return require_yaml_mapping(
         yaml.load(  # noqa: S506
-            path.read_text(encoding="utf-8"),
+            read_text_file_bounded(path, max_bytes=DEFAULT_CONFIG_PARSE_MAX_BYTES),
             Loader=_GithubActionsYamlLoader,  # noqa: S506
         ),
         source=f"workflow {path}",

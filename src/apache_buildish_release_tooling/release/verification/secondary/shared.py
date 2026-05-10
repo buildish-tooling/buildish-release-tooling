@@ -34,7 +34,11 @@ from apache_buildish_release_tooling.release.contracts import (
     SupplementalInventoryReference,
 )
 from apache_buildish_release_tooling.release.path_validation import validate_simple_filename
-from apache_buildish_release_tooling.release.rc_vote_manifest import download_uri_to_path
+from apache_buildish_release_tooling.release.rc_vote_manifest import (
+    DEFAULT_MANIFEST_MAX_BYTES,
+    DEFAULT_SIGNATURE_MAX_BYTES,
+    download_uri_to_path,
+)
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.common import (
     GpgVerifier,
@@ -42,6 +46,7 @@ from apache_buildish_release_tooling.release.verification.common import (
     validate_fetch_uri,
 )
 from apache_buildish_release_tooling.release.verification.secondary.readers import _RawInventoryRead
+from apache_buildish_release_tooling.shared.parsing import read_pydantic_json_file_bounded
 
 SUPPORTED_CHECKSUMS = ("sha512", "sha256")
 CHECKSUM_LENGTHS = {
@@ -148,7 +153,11 @@ def verified_openpgp_signatures(
             purpose=f"secondary artifact signature URL for {artifact_id}",
         )
         signature_path = work_dir / f"{artifact_path.name}.{index}.asc"
-        download_uri_to_path(signature_uri, signature_path)
+        download_uri_to_path(
+            signature_uri,
+            signature_path,
+            max_bytes=DEFAULT_SIGNATURE_MAX_BYTES,
+        )
         verifications.append(
             verifier.verify_detached(
                 target_path=artifact_path,
@@ -186,15 +195,17 @@ def downloaded_inventory(
     )
     work_dir.mkdir(parents=True, exist_ok=True)
     inventory_path = work_dir / filename
-    download_uri_to_path(inventory_uri, inventory_path)
+    download_uri_to_path(inventory_uri, inventory_path, max_bytes=DEFAULT_MANIFEST_MAX_BYTES)
     actual_inventory_sha512 = checksum(inventory_path, "sha512")
     if actual_inventory_sha512 != inventory_sha512:
         raise ValueError(
             "secondary artifact inventory checksum does not match the signed manifest: "
             f"{artifact_id} {actual_inventory_sha512} != {inventory_sha512}"
         )
-    inventory_payload = _RawInventoryRead.model_validate_json(
-        inventory_path.read_text(encoding="utf-8")
+    inventory_payload = read_pydantic_json_file_bounded(
+        _RawInventoryRead,
+        inventory_path,
+        max_bytes=DEFAULT_MANIFEST_MAX_BYTES,
     )
     return DownloadedInventory(
         path=inventory_path,

@@ -44,6 +44,8 @@ from apache_buildish_release_tooling.harness.backends.act.workflow_yaml import (
     _render_rewritten_workflow_yaml,
     _topological_job_ids,
 )
+from apache_buildish_release_tooling.shared.io import read_text_file_bounded
+from apache_buildish_release_tooling.shared.parsing import DEFAULT_CONFIG_PARSE_MAX_BYTES
 
 __all__ = [
     "WorkflowJobDefinition",
@@ -119,7 +121,10 @@ def _rewrite_workflow(
     destination = workspace.root / ".github" / "workflows" / workflow_path.name
     destination.parent.mkdir(parents=True, exist_ok=True)
     original_copy = destination.with_name(f"{destination.stem}.original{destination.suffix}")
-    original_copy.write_text(workflow_path.read_text(encoding="utf-8"), encoding="utf-8")
+    original_copy.write_text(
+        read_text_file_bounded(workflow_path, max_bytes=DEFAULT_CONFIG_PARSE_MAX_BYTES),
+        encoding="utf-8",
+    )
     destination.write_text(
         _render_rewritten_workflow_yaml(
             payload,

@@ -20,9 +20,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-import yaml
 from pydantic import ConfigDict, Field
 
+from apache_buildish_release_tooling.shared.parsing import (
+    DEFAULT_CONFIG_PARSE_MAX_BYTES,
+    read_yaml_mapping_file_bounded,
+)
 from apache_buildish_release_tooling.docs.documentation import (
     ConsumerOwnedAuthoredModel,
     RuntimeDerivedModel,
@@ -186,7 +189,7 @@ def _load_yaml_mapping(path: Path) -> YamlMapping:
     """Load one YAML document and require a mapping payload."""
 
     return require_yaml_mapping(
-        yaml.safe_load(path.read_text(encoding="utf-8")),
+        read_yaml_mapping_file_bounded(path, max_bytes=DEFAULT_CONFIG_PARSE_MAX_BYTES),
         source=str(path),
     )
 

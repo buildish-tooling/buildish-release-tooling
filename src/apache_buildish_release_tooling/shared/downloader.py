@@ -145,6 +145,8 @@ class ResourceDownloader:
     def _open_uri(self, uri: str) -> Iterator[BinaryReadable]:
         parsed = urlparse(uri)
         if parsed.scheme == "file":
+            if parsed.netloc not in {"", "localhost"}:
+                raise ValueError(f"file URI must not include a non-local authority: {uri}")
             with Path(unquote(parsed.path)).open("rb") as handle:
                 yield handle
             return
@@ -154,6 +156,7 @@ class ResourceDownloader:
                 uri,
                 preload_content=False,
                 timeout=self.timeout,
+                redirect=False,
             )
             try:
                 if response.status < 200 or response.status >= 300:

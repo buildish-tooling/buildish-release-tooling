@@ -33,6 +33,11 @@ from apache_buildish_release_tooling.harness.models import (
     HarnessShimState,
 )
 from apache_buildish_release_tooling.harness.process import run_harness_command
+from apache_buildish_release_tooling.shared.io import read_text_file_bounded
+from apache_buildish_release_tooling.shared.parsing import (
+    DEFAULT_CONFIG_PARSE_MAX_BYTES,
+    read_pydantic_json_file_bounded,
+)
 
 
 @dataclass(frozen=True)
@@ -286,8 +291,10 @@ def load_job_statuses(workspace: HarnessWorkspace) -> dict[str, HarnessJobStatus
 
     if not workspace.job_status_file.exists():
         return {}
-    payload = HarnessJobStatusesFile.model_validate_json(
-        workspace.job_status_file.read_text(encoding="utf-8")
+    payload = read_pydantic_json_file_bounded(
+        HarnessJobStatusesFile,
+        workspace.job_status_file,
+        max_bytes=DEFAULT_CONFIG_PARSE_MAX_BYTES,
     )
     return dict(payload.root)
 
@@ -308,7 +315,10 @@ def summarize_trace(workspace: HarnessWorkspace) -> list[HarnessCommandTraceEntr
     if not workspace.trace_file.exists():
         return []
     entries: list[HarnessCommandTraceEntry] = []
-    for line in workspace.trace_file.read_text(encoding="utf-8").splitlines():
+    for line in read_text_file_bounded(
+        workspace.trace_file,
+        max_bytes=DEFAULT_CONFIG_PARSE_MAX_BYTES,
+    ).splitlines():
         if line.strip():
             entries.append(HarnessCommandTraceEntry.model_validate_json(line))
     return entries
@@ -327,7 +337,10 @@ def write_job_summaries(
             summary_path = workspace.summaries_dir / f"{job_id}__{step_id}.md"
             if not summary_path.exists():
                 continue
-            content = summary_path.read_text(encoding="utf-8").strip()
+            content = read_text_file_bounded(
+                summary_path,
+                max_bytes=DEFAULT_CONFIG_PARSE_MAX_BYTES,
+            ).strip()
             if not content:
                 continue
             rendered_parts.append(content)
@@ -343,4 +356,9 @@ def write_job_summaries(
 def remove_workspace(workspace_root: Path) -> None:
     """Delete a disposable harness workspace."""
 
-    shutil.rmtree(workspace_root, ignore_errors=True)
+    resolved_workspace_root = workspace_root.resolve(strict=False)
+    if not resolved_workspace_root.name.startswith("scenario."):
+        raise ValueError(f"refusing to delete non-harness workspace path: {workspace_root}")
+    if resolved_workspace_root.parent == resolved_workspace_root:
+        raise ValueError(f"refusing to delete filesystem root: {workspace_root}")
+    shutil.rmtree(resolved_workspace_root, ignore_errors=True)

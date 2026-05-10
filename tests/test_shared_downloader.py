@@ -80,6 +80,7 @@ class SharedDownloaderTest(unittest.TestCase):
             self.assertEqual(hashlib.sha256(b"payload\n").hexdigest(), downloaded.hashes["sha256"])
             self.assertEqual(hashlib.sha512(b"payload\n").hexdigest(), downloaded.hashes["sha512"])
             self.assertFalse(pool.requests[0][2]["preload_content"])
+            self.assertFalse(pool.requests[0][2]["redirect"])
             self.assertTrue(pool.requests[0][2]["timeout"] is not None)
 
     def test_download_to_path_releases_response_after_limit_failure(self) -> None:
@@ -136,3 +137,10 @@ class SharedDownloaderTest(unittest.TestCase):
             downloader.read_bytes("https://downloads.example.invalid/missing", max_bytes=100)
 
         self.assertTrue(response.released)
+
+    def test_file_uri_rejects_non_local_authority(self) -> None:
+        pool = _FakePoolManager()
+        downloader = ResourceDownloader(pool_manager=pool)  # type: ignore[arg-type]
+
+        with self.assertRaisesRegex(ValueError, "non-local authority"):
+            downloader.read_bytes("file://example.invalid/etc/passwd", max_bytes=100)

@@ -21,6 +21,7 @@ import unittest
 from apache_buildish_release_tooling.release.config import (
     load_component_config,
     load_verify_rc_override_config,
+    validate_release_target_base_urls,
 )
 
 from tests.support import cleanup_sandbox, create_build_test_sandbox, fixture_component_config_path
@@ -98,6 +99,13 @@ class LoadComponentConfigTest(unittest.TestCase):
     def test_load_component_config_requires_explicit_yaml_path(self) -> None:
         with self.assertRaises(TypeError):
             load_component_config(None)  # type: ignore[arg-type]
+
+    def test_validate_release_target_base_urls_uses_parsed_production_url(self) -> None:
+        loaded = load_component_config(str(fixture_component_config_path("buildish-site-pipeline")))
+        validate_release_target_base_urls(
+            loaded,
+            allow_non_production_release_targets=False,
+        )
 
     def test_load_component_config_rejects_incomplete_enabled_atr_config(self) -> None:
         sandbox_dir = create_build_test_sandbox()

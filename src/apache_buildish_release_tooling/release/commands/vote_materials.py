@@ -60,6 +60,10 @@ from apache_buildish_release_tooling.release.verification.bootstrap import (
     VerifyRcBootstrapArtifacts,
     build_verify_rc_bootstrap_artifacts,
 )
+from apache_buildish_release_tooling.shared.parsing import (
+    DEFAULT_MANIFEST_PARSE_MAX_BYTES,
+    read_pydantic_json_file_bounded,
+)
 
 from apache_buildish_release_tooling.release.commands._shared import (
     _artifact_output_dir,
@@ -155,8 +159,10 @@ def _load_secondary_artifacts(manifest_paths: Iterable[str]) -> list[LoadedSecon
         manifest_path = Path(manifest_argument)
         if not manifest_path.is_file():
             raise ValueError(f"secondary artifact manifest does not exist: {manifest_path}")
-        payload = SecondaryArtifactManifestV1.model_validate_json(
-            manifest_path.read_text(encoding="utf-8")
+        payload = read_pydantic_json_file_bounded(
+            SecondaryArtifactManifestV1,
+            manifest_path,
+            max_bytes=DEFAULT_MANIFEST_PARSE_MAX_BYTES,
         )
         for manifest_entry in payload.secondary_artifacts:
             secondary_artifacts.append(
