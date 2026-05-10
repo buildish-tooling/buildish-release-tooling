@@ -22,6 +22,7 @@ import tempfile
 
 from apache_buildish_release_tooling.legal.release_legal import (
     LockedPackage,
+    collect_curated_legal_files,
     curated_container_image_bundles_by_ref,
     generate_release_legal_artifacts,
 )
@@ -32,6 +33,21 @@ from tests.release_legal_support import ReleaseLegalTestBase
 
 class ReleaseLegalGenerationTests(ReleaseLegalTestBase):
     """Release-legal artifact generation tests."""
+
+    def test_curated_legal_file_collection_rejects_oversized_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            license_path = root / "LICENSE"
+            with license_path.open("wb") as handle:
+                handle.truncate((25 * 1024 * 1024) + 1)
+
+            with self.assertRaisesRegex(RuntimeError, "too large"):
+                collect_curated_legal_files(
+                    component_key="demo-image",
+                    component_kind="container-base-image",
+                    license_paths=(license_path,),
+                    notice_paths=(),
+                )
 
     def test_curated_container_bundle_manifest_rejects_path_escapes(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

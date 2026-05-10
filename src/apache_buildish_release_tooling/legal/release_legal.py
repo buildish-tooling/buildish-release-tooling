@@ -60,6 +60,7 @@ _LICENSE_FILE_NAMES = ("license", "licence", "copying")
 _NOTICE_FILE_NAMES = ("notice", "notices")
 _HOMEPAGE_LABELS = {"homepage", "home", "repository", "source"}
 _REPOSITORY_URL_LABELS = {"repository", "source", "github"}
+_MAX_LEGAL_FILE_BYTES = 25 * 1024 * 1024
 _PRELIMINARY_WARNING = (
     "This file is PRELIMINARY and generated from dependency metadata plus "
     "bundled legal files. Human review is required before using it in any "
@@ -834,7 +835,7 @@ def collect_curated_legal_files(
                 raise RuntimeError(
                     f"Missing curated {kind} file for {component_kind}: {source_path.as_posix()}"
                 )
-            file_bytes = source_path.read_bytes()
+            file_bytes = _read_legal_file_bytes(source_path)
             try:
                 file_text = file_bytes.decode("utf-8")
                 decode_warning = None
@@ -887,7 +888,7 @@ def collect_distribution_legal_files(
             raise ValueError(f"distribution legal file path must stay under distribution root: {relative_path}")
         if not absolute_path.is_file():
             continue
-        file_bytes = absolute_path.read_bytes()
+        file_bytes = _read_legal_file_bytes(absolute_path)
         try:
             file_text = file_bytes.decode("utf-8")
             decode_warning = None
@@ -909,6 +910,16 @@ def collect_distribution_legal_files(
             text=_ensure_trailing_newline(file_text),
         )
     return tuple(sorted(captured.values(), key=lambda file: file.output_relative_path))
+
+
+def _read_legal_file_bytes(path: Path) -> bytes:
+    file_size = path.stat().st_size
+    if file_size > _MAX_LEGAL_FILE_BYTES:
+        raise RuntimeError(
+            f"Legal file is too large to capture: {path.as_posix()} "
+            f"({file_size} bytes exceeds {_MAX_LEGAL_FILE_BYTES} bytes)"
+        )
+    return path.read_bytes()
 
 
 def write_release_legal_output(

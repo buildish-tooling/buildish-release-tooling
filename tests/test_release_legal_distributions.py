@@ -21,6 +21,7 @@ import tempfile
 
 from apache_buildish_release_tooling.legal.release_legal import (
     LockedPackage,
+    collect_distribution_legal_files,
     installed_distributions_by_name,
     locked_runtime_packages_from_pylock_text,
 )
@@ -31,6 +32,38 @@ from tests.release_legal_support import ReleaseLegalTestBase
 
 class ReleaseLegalDistributionTests(ReleaseLegalTestBase):
     """Release-legal distribution discovery tests."""
+
+    def test_distribution_legal_file_collection_rejects_oversized_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            self._write_distribution(
+                root=root,
+                name="demo-runtime",
+                version="2.3.4",
+                metadata_lines=(
+                    "Metadata-Version: 2.4",
+                    "Name: demo-runtime",
+                    "Version: 2.3.4",
+                    "License-File: LICENSE",
+                ),
+                record_entries=(
+                    "demo_runtime/__init__.py,,",
+                    "demo_runtime-2.3.4.dist-info/METADATA,,",
+                    "demo_runtime-2.3.4.dist-info/RECORD,,",
+                    "demo_runtime-2.3.4.dist-info/licenses/LICENSE,,",
+                ),
+                file_contents={
+                    "demo_runtime/__init__.py": "",
+                    "demo_runtime-2.3.4.dist-info/licenses/LICENSE": "",
+                },
+            )
+            license_path = root / "demo_runtime-2.3.4.dist-info" / "licenses" / "LICENSE"
+            with license_path.open("wb") as handle:
+                handle.truncate((25 * 1024 * 1024) + 1)
+            distributions = installed_distributions_by_name((root,))
+
+            with self.assertRaisesRegex(RuntimeError, "too large"):
+                collect_distribution_legal_files(distributions["demo-runtime"])
 
     def test_locked_runtime_packages_from_pylock_text_reads_index_and_directory_entries(
         self,

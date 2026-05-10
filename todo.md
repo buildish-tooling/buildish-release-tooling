@@ -25,4 +25,3 @@ limitations under the License.
 7. Medium verification/secondary/maven_repository_repro.py:313 reads each ZIP member fully for normalized Maven comparison, similar to archive_shallow_analysis.
 8. Medium verification/secondary/file_reproducibility.py:158 compares rebuilt and staged single-file artifacts with read_bytes() on both paths. Large artifacts are loaded twice.
 9. Low/Medium source_artifact.py:88 and source_artifact.py:89 read full child stderr temp files into memory. Usually stderr is small, but a noisy or stuck child can grow these files before failure handling.
-10. Low/Medium legal/release_legal.py:837 and legal/release_legal.py:890 read curated/distribution legal files fully into memory. Usually legal files are small, but a malformed distribution can point at a very large legal-looking file.
