@@ -20,6 +20,7 @@ import os
 import subprocess
 import unittest
 from unittest import mock
+from typing import BinaryIO, cast
 
 from apache_buildish_release_tooling.release.process import CommandExecutionError, run_logged_command
 
@@ -36,35 +37,40 @@ class ProcessTest(unittest.TestCase):
 
         self.addCleanup(restore_env)
         os.environ["BUILDISH_COMMAND_CAPTURE_OUTPUT"] = "1"
-        completed = subprocess.CompletedProcess(["svn", "info"], 0, "", "")
+
+        def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            stdout = cast(BinaryIO, kwargs["stdout"])
+            stdout.write(b"svn output\n")
+            return subprocess.CompletedProcess(command, 0)
+
         with (
             mock.patch(
                 "apache_buildish_release_tooling.release.process.subprocess.run",
-                return_value=completed,
+                side_effect=fake_run,
             ) as run_mock,
             mock.patch("apache_buildish_release_tooling.release.process.print_command"),
-            mock.patch("apache_buildish_release_tooling.release.process.log_command_output"),
+            mock.patch("apache_buildish_release_tooling.release.process.log_command_output_file"),
         ):
             result = run_logged_command(["svn", "info"], capture_output=False)
 
-        self.assertIs(result, completed)
-        self.assertTrue(run_mock.call_args.kwargs["capture_output"])
+        self.assertEqual("svn output\n", result.stdout)
+        self.assertIn("stdout", run_mock.call_args.kwargs)
+        self.assertIn("stderr", run_mock.call_args.kwargs)
         self.assertEqual(3600, run_mock.call_args.kwargs["timeout"])
 
     def test_run_logged_command_redacts_failure_details(self) -> None:
-        completed = subprocess.CompletedProcess(
-            ["gh", "auth", "status"],
-            1,
-            "",
-            "failed for token secret-token\n",
-        )
+        def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            stderr = cast(BinaryIO, kwargs["stderr"])
+            stderr.write(b"failed for token secret-token\n")
+            return subprocess.CompletedProcess(command, 1)
+
         with (
             mock.patch(
                 "apache_buildish_release_tooling.release.process.subprocess.run",
-                return_value=completed,
+                side_effect=fake_run,
             ),
             mock.patch("apache_buildish_release_tooling.release.process.print_command"),
-            mock.patch("apache_buildish_release_tooling.release.process.log_command_output"),
+            mock.patch("apache_buildish_release_tooling.release.process.log_command_output_file"),
         ):
             with self.assertRaisesRegex(CommandExecutionError, r"\*\*\*") as context:
                 run_logged_command(
@@ -75,15 +81,15 @@ class ProcessTest(unittest.TestCase):
         self.assertNotIn("secret-token", str(context.exception))
 
     def test_run_logged_command_raises_sanitized_timeout(self) -> None:
-        timeout = subprocess.TimeoutExpired(
-            ["deploy", "secret-token"],
-            timeout=2,
-            stderr="waiting on secret-token\n",
-        )
+        def fake_run(_command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            stderr = cast(BinaryIO, kwargs["stderr"])
+            stderr.write(b"waiting on secret-token\n")
+            raise subprocess.TimeoutExpired(["deploy", "secret-token"], timeout=2)
+
         with (
             mock.patch(
                 "apache_buildish_release_tooling.release.process.subprocess.run",
-                side_effect=timeout,
+                side_effect=fake_run,
             ) as run_mock,
             mock.patch("apache_buildish_release_tooling.release.process.print_command"),
         ):
@@ -96,3 +102,20 @@ class ProcessTest(unittest.TestCase):
 
         self.assertEqual(2, run_mock.call_args.kwargs["timeout"])
         self.assertNotIn("secret-token", str(context.exception))
+
+    def test_run_logged_command_rejects_oversized_captured_output(self) -> None:
+        def fake_run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            stdout = cast(BinaryIO, kwargs["stdout"])
+            stdout.write(b"x" * 6)
+            return subprocess.CompletedProcess(command, 0)
+
+        with (
+            mock.patch(
+                "apache_buildish_release_tooling.release.process.subprocess.run",
+                side_effect=fake_run,
+            ),
+            mock.patch("apache_buildish_release_tooling.release.process.MAX_CAPTURED_OUTPUT_BYTES", 5),
+            mock.patch("apache_buildish_release_tooling.release.process.print_command"),
+        ):
+            with self.assertRaisesRegex(CommandExecutionError, "captured stdout exceeded"):
+                run_logged_command(["tool"])

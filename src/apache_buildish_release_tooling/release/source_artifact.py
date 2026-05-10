@@ -22,7 +22,7 @@ import tempfile
 import time
 from pathlib import Path
 
-from apache_buildish_release_tooling.release.command_logging import log_command_output, print_command
+from apache_buildish_release_tooling.release.command_logging import log_command_output_file, print_command
 
 _SUPPORTED_CHECKSUM_ALGORITHMS = frozenset({"sha256", "sha512"})
 _PIPE_STARTUP_CLEANUP_TIMEOUT_SECONDS = 5.0
@@ -91,10 +91,8 @@ def create_from_git(
         )
         archive_stderr_file.seek(0)
         gzip_stderr_file.seek(0)
-        archive_stderr = archive_stderr_file.read().decode("utf-8", errors="replace")
-        gzip_stderr = gzip_stderr_file.read().decode("utf-8", errors="replace")
-    log_command_output("stderr", archive_stderr)
-    log_command_output("stderr", gzip_stderr)
+        log_command_output_file("stderr", archive_stderr_file)
+        log_command_output_file("stderr", gzip_stderr_file)
     if archive_return_code != 0:
         raise RuntimeError("git archive failed while creating the source artifact")
     if gzip_return_code != 0:

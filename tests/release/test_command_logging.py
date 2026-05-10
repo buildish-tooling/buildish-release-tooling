@@ -24,6 +24,7 @@ import unittest
 from apache_buildish_release_tooling.release.command_logging import (
     command_log_sink,
     format_command,
+    log_command_output_file,
     print_command,
 )
 
@@ -91,3 +92,20 @@ class CommandLoggingTest(unittest.TestCase):
             print_command(["git", "status"])
         self.assertIn("+ git status\n", stderr_buffer.getvalue())
         self.assertIn("+ git status\n", log_buffer.getvalue())
+
+    def test_log_command_output_file_streams_and_truncates(self) -> None:
+        log_buffer = io.StringIO()
+        output_file = io.BytesIO(b"alpha\nsecret-token\nomega\n")
+
+        with command_log_sink(log_buffer, echo_to_stderr=False):
+            truncated = log_command_output_file(
+                "stderr",
+                output_file,
+                max_bytes=19,
+                extra_secret_values=("secret-token",),
+            )
+
+        self.assertTrue(truncated)
+        self.assertIn("stderr | alpha\n", log_buffer.getvalue())
+        self.assertIn("stderr | ***\n", log_buffer.getvalue())
+        self.assertIn("stderr | ... output truncated after 19 bytes\n", log_buffer.getvalue())

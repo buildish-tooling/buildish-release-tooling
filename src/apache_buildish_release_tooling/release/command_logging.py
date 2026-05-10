@@ -19,11 +19,12 @@ from __future__ import annotations
 import os
 import shlex
 import sys
+import codecs
 from contextlib import contextmanager
 from dataclasses import dataclass
 from collections.abc import Iterable, Iterator, Sequence
 from threading import local
-from typing import TextIO
+from typing import BinaryIO, TextIO
 
 _SECRET_ENV_NAMES = (
     "BUILDISH_GIT_ASKPASS_TOKEN",
@@ -38,6 +39,8 @@ _SECRET_ENV_NAMES = (
 )
 _REDACTED_OPTION_NAMES = {"--username", "--password", "--passphrase", "--token", "--oauth-token"}
 _STDERR_CONTROL_ENV_NAME = "BUILDISH_COMMAND_LOG_STDERR"
+DEFAULT_LOG_OUTPUT_FILE_LIMIT_BYTES = 4 * 1024 * 1024
+_LOG_OUTPUT_CHUNK_BYTES = 64 * 1024
 _LOG_STATE = local()
 
 
@@ -134,23 +137,65 @@ def print_command(
     )
 
 
-def log_command_output(
+def log_command_output_file(
     stream_name: str,
-    text: str,
+    file: BinaryIO,
     *,
+    max_bytes: int = DEFAULT_LOG_OUTPUT_FILE_LIMIT_BYTES,
     extra_secret_values: Iterable[str] | None = None,
-) -> None:
-    """Emit one sanitized captured subprocess output block."""
+) -> bool:
+    """Emit sanitized subprocess output from a file without loading it all."""
 
-    normalized_text = text.rstrip("\n")
-    if not normalized_text:
-        return
-    for line in sanitize_text(normalized_text, extra_secret_values).splitlines():
+    file.seek(0)
+    remaining = max_bytes
+    pending = ""
+    decoder = codecs.getincrementaldecoder("utf-8")("replace")
+    while remaining > 0:
+        chunk = file.read(min(_LOG_OUTPUT_CHUNK_BYTES, remaining))
+        if not chunk:
+            break
+        remaining -= len(chunk)
+        text = decoder.decode(chunk, final=False)
+        pending = _write_complete_output_lines(
+            stream_name,
+            pending + text,
+            extra_secret_values=extra_secret_values,
+        )
+    pending += decoder.decode(b"", final=True)
+    if pending:
         _write_log_line(
-            f"{stream_name} | {line}",
+            f"{stream_name} | {sanitize_text(pending.rstrip(chr(10)).rstrip(chr(13)), extra_secret_values)}",
             extra_secret_values=extra_secret_values,
             stderr_enabled=False,
         )
+    truncated = bool(file.read(1)) if remaining == 0 else False
+    if truncated:
+        _write_log_line(
+            f"{stream_name} | ... output truncated after {max_bytes} bytes",
+            extra_secret_values=extra_secret_values,
+            stderr_enabled=False,
+        )
+    return truncated
+
+
+def _write_complete_output_lines(
+    stream_name: str,
+    text: str,
+    *,
+    extra_secret_values: Iterable[str] | None,
+) -> str:
+    lines = text.splitlines(keepends=True)
+    if lines and not lines[-1].endswith(("\n", "\r")):
+        pending = lines.pop()
+    else:
+        pending = ""
+    for line in lines:
+        _write_log_line(
+            f"{stream_name} | {sanitize_text(line.rstrip(chr(10)).rstrip(chr(13)), extra_secret_values)}",
+            extra_secret_values=extra_secret_values,
+            stderr_enabled=False,
+        )
+    return pending
 
 
 def _write_log_line(
