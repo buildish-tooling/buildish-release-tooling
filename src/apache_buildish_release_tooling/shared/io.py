@@ -69,6 +69,27 @@ def hash_stream(
     return digest.hexdigest()
 
 
+def hash_stream_bounded(
+    stream: BinaryReadable,
+    *,
+    max_bytes: int,
+    algorithm: str = "sha512",
+    chunk_size: int = DEFAULT_STREAM_CHUNK_BYTES,
+) -> str:
+    """Compute one digest while failing if the stream exceeds the byte limit."""
+
+    if max_bytes < 0:
+        raise ValueError("max_bytes must be non-negative")
+    digest = hashlib.new(normalized_hash_algorithm(algorithm))
+    bytes_read = 0
+    while chunk := stream.read(min(chunk_size, max_bytes + 1 - bytes_read)):
+        bytes_read += len(chunk)
+        if bytes_read > max_bytes:
+            raise ByteLimitExceededError(f"hash input exceeded {max_bytes} bytes")
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
 def hash_file(
     path: Path,
     *,

@@ -16,12 +16,11 @@
 
 from __future__ import annotations
 
-import hashlib
 import re
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Literal
+from typing import Literal
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     _RepositoryFile,
@@ -33,9 +32,8 @@ from apache_buildish_release_tooling.release.contracts import (
 )
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.verification.common import emit_info, update_info
+from apache_buildish_release_tooling.shared.archive import read_zip_entries
 from apache_buildish_release_tooling.shared.io import files_equal, hash_file
-
-_HASH_CHUNK_BYTES = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -278,31 +276,17 @@ def _normalized_zip_entries_from_path(
     compare_permissions: bool,
 ) -> dict[str, _NormalizedZipEntry]:
     try:
-        archive = zipfile.ZipFile(path)
+        bounded_entries = read_zip_entries(path)
     except zipfile.BadZipFile as exc:
         raise ValueError("comparison requires ZIP-like archives") from exc
-    with archive:
-        return _normalized_zip_entries_from_archive(archive, compare_permissions=compare_permissions)
-
-
-def _normalized_zip_entries_from_archive(
-    archive: zipfile.ZipFile,
-    *,
-    compare_permissions: bool,
-) -> dict[str, _NormalizedZipEntry]:
     entries: dict[str, _NormalizedZipEntry] = {}
-    for info in archive.infolist():
-        if info.filename in entries:
-            raise ValueError(f"archive member is duplicated: {info.filename}")
-        if info.is_dir():
-            sha512 = None
-        else:
-            with archive.open(info) as member_file:
-                sha512 = _stream_sha512(member_file)
-        entries[info.filename] = _NormalizedZipEntry(
-            is_dir=info.is_dir(),
-            mode=((info.external_attr >> 16) & 0o777) if compare_permissions else None,
-            sha512=sha512,
+    for entry in bounded_entries:
+        if entry.name in entries:
+            raise ValueError(f"archive member is duplicated: {entry.name}")
+        entries[entry.name] = _NormalizedZipEntry(
+            is_dir=entry.is_dir,
+            mode=((entry.external_attr >> 16) & 0o777) if compare_permissions else None,
+            sha512=entry.content_sha512,
         )
     return entries
 
@@ -317,10 +301,3 @@ def _local_file_sha512(path: Path | None) -> str:
     if path is None:
         raise ValueError("repository file has no local path")
     return hash_file(path)
-
-
-def _stream_sha512(stream: IO[bytes]) -> str:
-    digest = hashlib.sha512()
-    while chunk := stream.read(_HASH_CHUNK_BYTES):
-        digest.update(chunk)
-    return digest.hexdigest()

@@ -18,8 +18,6 @@ limitations under the License.
 
 ### Larger or Policy-Heavy
 
-- Code 1 / Security 1: archive resource budgets need careful limits and tests across tar/zip and
-  Maven ZIP comparison.
 - Code 2: bounded subprocess capture in the harness needs API/design work.
 - Code 3: streaming or tailing harness logs is moderate because output behavior may change.
 - Code 4 / Code 7: legal module bounded-read cleanup is broad.
@@ -30,12 +28,6 @@ limitations under the License.
 ## Code Review Findings
 
 ### High
-
-1. `release/verification/inspection/archive_shallow_analysis.py` and
-   `release/verification/secondary/maven_repository_repro.py` inspect archives without resource
-   budgets. Both paths can iterate attacker-controlled tar/zip members, hash full decompressed
-   member contents, and retain per-entry metadata without entry-count, per-file, total
-   decompressed-byte, or compression-ratio limits.
 
 2. `harness/process.py::run_harness_command` still allows unbounded in-memory capture whenever
    callers pass `capture_output=True` or stdout/stderr pipes. Harness fixture/setup commands use this
@@ -76,13 +68,6 @@ limitations under the License.
    adding an explicit retention size budget if this becomes an operational issue.
 
 ## Security Review Findings
-
-### High
-
-1. Archive inspection in `release/verification/inspection/archive_shallow_analysis.py` and normalized
-   Maven ZIP comparison in `release/verification/secondary/maven_repository_repro.py` are susceptible
-   to resource-exhaustion archives. A crafted source or Maven artifact can force excessive CPU, memory,
-   or disk reads during verification without needing filesystem extraction.
 
 ### Medium
 

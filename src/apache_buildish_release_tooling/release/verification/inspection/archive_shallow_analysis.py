@@ -17,15 +17,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import hashlib
 from pathlib import Path
-import stat
 import tarfile
-from typing import IO
 from typing import Literal
 import zipfile
 
 from apache_buildish_release_tooling.release.contracts import ShallowArchiveAnalysisReport
+from apache_buildish_release_tooling.shared.archive import read_tar_entries, read_zip_entries
 
 _ArchiveFormat = Literal["tar", "zip"]
 _HASH_CHUNK_BYTES = 1024 * 1024
@@ -224,77 +222,57 @@ def _describe_archive_path(path: Path) -> ShallowArchiveDescription | None:
 
 def _describe_tar_archive(path: Path) -> ShallowArchiveDescription | None:
     try:
-        with tarfile.open(path, mode="r:*") as archive:
-            entries: dict[str, ArchiveEntry] = {}
-            entry_order: list[str] = []
-            for member in archive.getmembers():
-                if member.name in entries:
-                    raise ValueError(f"archive member is duplicated: {member.name}")
-                entry_order.append(member.name)
-                content_sha512: str | None = None
-                if member.isfile():
-                    member_file = archive.extractfile(member)
-                    content_sha512 = (
-                        _hash_stream(member_file)
-                        if member_file is not None
-                        else hashlib.sha512(b"").hexdigest()
-                    )
-                entries[member.name] = ArchiveEntry(
-                    path=member.name,
-                    entry_type=_tar_entry_type(member),
-                    size_bytes=member.size,
-                    mtime=str(int(member.mtime)) if member.mtime is not None else None,
-                    mode=f"{member.mode:o}",
-                    owner_uid=member.uid,
-                    owner_gid=member.gid,
-                    owner_user=member.uname or None,
-                    owner_group=member.gname or None,
-                    symlink_target=member.linkname or None,
-                    content_sha512=content_sha512,
-                )
+        bounded_entries = read_tar_entries(path)
     except tarfile.TarError:
         return None
+    entries: dict[str, ArchiveEntry] = {}
+    entry_order: list[str] = []
+    for entry in bounded_entries:
+        if entry.name in entries:
+            raise ValueError(f"archive member is duplicated: {entry.name}")
+        entry_order.append(entry.name)
+        entries[entry.name] = ArchiveEntry(
+            path=entry.name,
+            entry_type=entry.entry_type,
+            size_bytes=entry.size_bytes,
+            mtime=str(entry.mtime) if entry.mtime is not None else None,
+            mode=f"{entry.mode:o}",
+            owner_uid=entry.owner_uid,
+            owner_gid=entry.owner_gid,
+            owner_user=entry.owner_user,
+            owner_group=entry.owner_group,
+            symlink_target=entry.link_target,
+            content_sha512=entry.content_sha512,
+        )
     return ShallowArchiveDescription(archive_format="tar", entries=entries, entry_order=entry_order)
 
 
 def _describe_zip_archive(path: Path) -> ShallowArchiveDescription | None:
     try:
-        with zipfile.ZipFile(path) as archive:
-            entries: dict[str, ArchiveEntry] = {}
-            entry_order: list[str] = []
-            for info in archive.infolist():
-                if info.filename in entries:
-                    raise ValueError(f"archive member is duplicated: {info.filename}")
-                entry_order.append(info.filename)
-                content_sha512: str | None = None
-                if not info.is_dir():
-                    with archive.open(info) as member_file:
-                        content_sha512 = _hash_stream(member_file)
-                unix_mode = (info.external_attr >> 16) & 0o7777
-                entry_type = _zip_entry_type(info)
-                entries[info.filename] = ArchiveEntry(
-                    path=info.filename,
-                    entry_type=entry_type,
-                    size_bytes=info.file_size,
-                    mtime=_zip_mtime(info),
-                    mode=(f"{unix_mode:o}" if unix_mode else None),
-                    owner_uid=None,
-                    owner_gid=None,
-                    owner_user=None,
-                    owner_group=None,
-                    symlink_target=None,
-                    content_sha512=content_sha512,
-                )
+        bounded_entries = read_zip_entries(path)
     except zipfile.BadZipFile:
         return None
+    entries: dict[str, ArchiveEntry] = {}
+    entry_order: list[str] = []
+    for entry in bounded_entries:
+        if entry.name in entries:
+            raise ValueError(f"archive member is duplicated: {entry.name}")
+        entry_order.append(entry.name)
+        unix_mode = (entry.external_attr >> 16) & 0o7777
+        entries[entry.name] = ArchiveEntry(
+            path=entry.name,
+            entry_type=entry.entry_type,
+            size_bytes=entry.size_bytes,
+            mtime=_zip_mtime(entry.date_time),
+            mode=(f"{unix_mode:o}" if unix_mode else None),
+            owner_uid=None,
+            owner_gid=None,
+            owner_user=None,
+            owner_group=None,
+            symlink_target=None,
+            content_sha512=entry.content_sha512,
+        )
     return ShallowArchiveDescription(archive_format="zip", entries=entries, entry_order=entry_order)
-
-
-def _hash_stream(stream: IO[bytes]) -> str:
-    digest = hashlib.sha512()
-    while chunk := stream.read(_HASH_CHUNK_BYTES):
-        digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _file_bytes_equal(left: Path, right: Path) -> bool:
@@ -320,27 +298,6 @@ def _entry_order_mismatch_detail(staged_order: list[str], rebuilt_order: list[st
     return "entry ordering differs"
 
 
-def _tar_entry_type(member: tarfile.TarInfo) -> str:
-    if member.isdir():
-        return "directory"
-    if member.issym():
-        return "symlink"
-    if member.islnk():
-        return "hardlink"
-    if member.isfile():
-        return "file"
-    return "other"
-
-
-def _zip_entry_type(info: zipfile.ZipInfo) -> str:
-    if info.is_dir():
-        return "directory"
-    unix_mode = (info.external_attr >> 16) & 0o170000
-    if unix_mode == stat.S_IFLNK:
-        return "symlink"
-    return "file"
-
-
-def _zip_mtime(info: zipfile.ZipInfo) -> str | None:
-    year, month, day, hour, minute, second = info.date_time
+def _zip_mtime(date_time: tuple[int, int, int, int, int, int]) -> str | None:
+    year, month, day, hour, minute, second = date_time
     return f"{year:04d}-{month:02d}-{day:02d}T{hour:02d}:{minute:02d}:{second:02d}"
