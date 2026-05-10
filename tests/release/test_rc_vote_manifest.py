@@ -37,6 +37,7 @@ from apache_buildish_release_tooling.release.rc_vote_manifest import (
     derive_asf_keys_uri,
     read_uri_bytes,
     trust_root_metadata,
+    uri_sha512,
 )
 
 from tests.support import cleanup_sandbox, create_build_test_sandbox
@@ -75,6 +76,34 @@ class RcVoteManifestTest(unittest.TestCase):
         payload_path.write_bytes(b"payload\n")
 
         self.assertEqual(b"payload\n", read_uri_bytes(payload_path.as_uri()))
+
+    def test_uri_sha512_streams_local_file_uri(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        payload_path = sandbox_dir / "artifact.tar.gz"
+        payload = b"payload\n"
+        payload_path.write_bytes(payload)
+
+        with mock.patch.object(type(payload_path), "read_bytes", side_effect=AssertionError("unexpected read_bytes")):
+            actual = uri_sha512(payload_path.as_uri())
+
+        self.assertEqual(hashlib.sha512(payload).hexdigest(), actual)
+
+    def test_uri_sha512_streams_http_uri(self) -> None:
+        response = mock.MagicMock()
+        response.__enter__.return_value.read.side_effect = [b"pay", b"load", b""]
+
+        with mock.patch(
+            "apache_buildish_release_tooling.release.rc_vote_manifest.urlopen",
+            return_value=response,
+        ) as urlopen_mock:
+            actual = uri_sha512("https://downloads.apache.org/example")
+
+        self.assertEqual(hashlib.sha512(b"payload").hexdigest(), actual)
+        urlopen_mock.assert_called_once_with(
+            "https://downloads.apache.org/example",
+            timeout=DEFAULT_URI_READ_TIMEOUT_SECONDS,
+        )
 
     def test_read_uri_bytes_uses_timeout_for_svn_cat_fallback(self) -> None:
         completed = subprocess.CompletedProcess(

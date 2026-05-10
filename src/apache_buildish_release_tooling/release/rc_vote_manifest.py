@@ -19,9 +19,11 @@ from __future__ import annotations
 import hashlib
 import os
 import subprocess
+import tempfile
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import IO
 from urllib.parse import unquote, urlparse
 from urllib.request import urlopen
 
@@ -51,6 +53,7 @@ from apache_buildish_release_tooling.release.release_state import derive_specifi
 
 DEFAULT_URI_READ_TIMEOUT_SECONDS = 60.0
 DEFAULT_SVN_CAT_TIMEOUT_SECONDS = 60.0
+_HASH_CHUNK_BYTES = 1024 * 1024
 
 
 def _tooling_repo_root() -> Path:
@@ -179,6 +182,45 @@ def read_uri_text(uri: str) -> str:
     """Read UTF-8 text from a supported URI."""
 
     return read_uri_bytes(uri).decode("utf-8")
+
+
+def uri_sha512(uri: str) -> str:
+    """Compute the SHA512 digest for a supported URI without loading it all."""
+
+    parsed = urlparse(uri)
+    if parsed.scheme == "file":
+        local_path = Path(unquote(parsed.path))
+        if local_path.exists():
+            with local_path.open("rb") as handle:
+                return _stream_sha512(handle)
+        with tempfile.TemporaryFile() as stdout_file:
+            try:
+                subprocess.run(
+                    ["svn", "cat", uri],
+                    check=True,
+                    stdout=stdout_file,
+                    stderr=subprocess.PIPE,
+                    timeout=DEFAULT_SVN_CAT_TIMEOUT_SECONDS,
+                )
+            except subprocess.CalledProcessError as exc:
+                stderr_text = (exc.stderr or b"").decode("utf-8", errors="replace").strip()
+                detail = stderr_text or f"svn cat returned exit status {exc.returncode}"
+                raise ValueError(f"file URI could not be read: {uri}: {detail}") from exc
+            except subprocess.TimeoutExpired as exc:
+                raise ValueError(f"file URI could not be read before timeout: {uri}") from exc
+            stdout_file.seek(0)
+            return _stream_sha512(stdout_file)
+    if parsed.scheme in {"http", "https"}:
+        with urlopen(uri, timeout=DEFAULT_URI_READ_TIMEOUT_SECONDS) as response:  # noqa: S310
+            return _stream_sha512(response)
+    raise ValueError(f"unsupported URI scheme: {uri}")
+
+
+def _stream_sha512(stream: IO[bytes]) -> str:
+    digest = hashlib.sha512()
+    while chunk := stream.read(_HASH_CHUNK_BYTES):
+        digest.update(chunk)
+    return digest.hexdigest()
 
 
 def trust_root_metadata(keys_uri: str) -> ManifestTrustRoots:

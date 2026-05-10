@@ -16,8 +16,6 @@
 
 from __future__ import annotations
 
-import hashlib
-
 from pydantic import ValidationError
 
 from apache_buildish_release_tooling.release.github_releases import (
@@ -30,7 +28,7 @@ from apache_buildish_release_tooling.release.contracts import (
 )
 from apache_buildish_release_tooling.release.models import CommandContext
 from apache_buildish_release_tooling.release.prepare_rc_state import prepare_rc_source_artifact_name
-from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes, read_uri_text
+from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_text, uri_sha512
 from apache_buildish_release_tooling.release.release_state import derive_final_tag
 
 
@@ -58,7 +56,7 @@ def required_rc_vote_manifest_file_names() -> list[str]:
 def verified_staged_source_artifact_sha512(source_artifact_url: str) -> str:
     """Recompute one staged source-artifact digest and verify the `.sha512` sidecar."""
 
-    actual_sha512 = hashlib.sha512(read_uri_bytes(source_artifact_url)).hexdigest()
+    actual_sha512 = uri_sha512(source_artifact_url)
     sidecar_url = f"{source_artifact_url}.sha512"
     staged_sha512 = _sha512_sidecar_digest(read_uri_text(sidecar_url), source=sidecar_url)
     if staged_sha512 != actual_sha512:
