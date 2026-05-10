@@ -18,13 +18,17 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
 from apache_buildish_release_tooling.harness.backends.base import Backend
 from apache_buildish_release_tooling.harness.job_selection import rerunnable_job_ids
 from apache_buildish_release_tooling.harness.models import HarnessScenario, JobScenario, validate_harness_identifier
+from apache_buildish_release_tooling.harness.process import (
+    LONG_HARNESS_COMMAND_TIMEOUT_SECONDS,
+    harness_command_timeout_seconds,
+    run_harness_command,
+)
 from apache_buildish_release_tooling.harness.runtime import (
     HarnessRunResult,
     HarnessWorkspace,
@@ -246,13 +250,14 @@ def _run_step(
         command = ["bash", "-e", "-u", "-o", "pipefail", str(script_path)]
     else:
         command = [shell, str(script_path)]
-    completed = subprocess.run(  # noqa: S603
+    completed = run_harness_command(
         command,
         cwd=str(workspace.root / cwd) if cwd is not None else str(workspace.root),
         env=step_env,
         text=True,
         capture_output=True,
         check=False,
+        timeout=harness_command_timeout_seconds(LONG_HARNESS_COMMAND_TIMEOUT_SECONDS),
     )
     if completed.stdout:
         with (workspace.harness_dir / "step-stdout.log").open("a", encoding="utf-8") as handle:

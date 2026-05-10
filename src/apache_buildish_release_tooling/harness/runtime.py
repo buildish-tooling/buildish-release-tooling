@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import re
 import shutil
-import subprocess
 import tempfile
 from datetime import UTC, datetime
 from dataclasses import dataclass
@@ -33,6 +32,7 @@ from apache_buildish_release_tooling.harness.models import (
     HarnessScenario,
     HarnessShimState,
 )
+from apache_buildish_release_tooling.harness.process import run_harness_command
 
 
 @dataclass(frozen=True)
@@ -207,19 +207,19 @@ def init_git_repository(root: Path, repository: GitRepositoryFixture) -> None:
 
     repo_dir = root / repository.path
     repo_dir.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
+    run_harness_command(
         ["git", "init", f"--initial-branch={repository.default_branch}", str(repo_dir)],
         check=True,
         capture_output=True,
         text=True,
     )
-    subprocess.run(
+    run_harness_command(
         ["git", "-C", str(repo_dir), "config", "user.name", "Buildish Harness"],
         check=True,
         capture_output=True,
         text=True,
     )
-    subprocess.run(
+    run_harness_command(
         ["git", "-C", str(repo_dir), "config", "user.email", "buildish-harness@example.invalid"],
         check=True,
         capture_output=True,
@@ -232,8 +232,8 @@ def init_git_repository(root: Path, repository: GitRepositoryFixture) -> None:
             file_fixture.content,
             file_fixture.executable,
         )
-    subprocess.run(["git", "-C", str(repo_dir), "add", "."], check=True, capture_output=True, text=True)
-    subprocess.run(
+    run_harness_command(["git", "-C", str(repo_dir), "add", "."], check=True, capture_output=True, text=True)
+    run_harness_command(
         ["git", "-C", str(repo_dir), "commit", "-m", repository.commit_message],
         check=True,
         capture_output=True,

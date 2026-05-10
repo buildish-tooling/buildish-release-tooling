@@ -44,6 +44,23 @@ import yaml
 
 os.environ.setdefault("BUILDISH_COMMAND_LOG_STDERR", "0")
 os.environ.setdefault("BUILDISH_COMMAND_CAPTURE_OUTPUT", "1")
+_TEST_TIMEOUT_ENV_NAME = "BUILDISH_TEST_COMMAND_TIMEOUT_SECONDS"
+_DEFAULT_TEST_COMMAND_TIMEOUT_SECONDS = 5 * 60
+
+
+def test_command_timeout_seconds() -> float:
+    """Return the default timeout for subprocesses launched by tests."""
+
+    raw_value = os.environ.get(_TEST_TIMEOUT_ENV_NAME)
+    if raw_value is None:
+        return _DEFAULT_TEST_COMMAND_TIMEOUT_SECONDS
+    try:
+        timeout = float(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{_TEST_TIMEOUT_ENV_NAME} must be a number of seconds") from exc
+    if timeout <= 0:
+        raise ValueError(f"{_TEST_TIMEOUT_ENV_NAME} must be greater than zero")
+    return timeout
 
 
 def run_quiet(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
@@ -52,6 +69,7 @@ def run_quiet(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[
     if "capture_output" not in kwargs and "stdout" not in kwargs and "stderr" not in kwargs:
         kwargs["capture_output"] = True
     kwargs.setdefault("text", True)
+    kwargs.setdefault("timeout", test_command_timeout_seconds())
     return cast(subprocess.CompletedProcess[str], subprocess.run(command, **kwargs))
 
 
@@ -1011,6 +1029,7 @@ def run_cli_subprocess(
         text=True,
         capture_output=True,
         check=False,
+        timeout=test_command_timeout_seconds(),
     )
 
 

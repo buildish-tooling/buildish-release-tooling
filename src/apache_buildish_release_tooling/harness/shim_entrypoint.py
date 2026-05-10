@@ -30,6 +30,7 @@ from apache_buildish_release_tooling.harness.models import (
     InvocationMatch,
     ToolBehaviorResult,
 )
+from apache_buildish_release_tooling.harness.process import run_harness_command
 from apache_buildish_release_tooling.harness.runtime import resolve_workspace_relative_path
 from apache_buildish_release_tooling.harness.shim_builtins import handle_builtin_tool
 from apache_buildish_release_tooling.harness.shim_summary import append_step_summary, summary_text
@@ -189,7 +190,7 @@ def _delegate_to_real_tool(tool_name: str, argv: list[str]) -> subprocess.Comple
         return subprocess.CompletedProcess([tool_name, *argv], 127, "", f"real tool not found: {tool_name}\n")
     child_env = dict(os.environ)
     child_env["PATH"] = real_path
-    return subprocess.run(  # noqa: S603
+    return run_harness_command(
         [resolved, *argv],
         env=child_env,
         cwd=str(Path.cwd()),

@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import shutil
-import subprocess
 from collections.abc import Iterable
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -30,6 +29,7 @@ from apache_buildish_release_tooling.harness.models import (
     WorkspaceFile,
     WorkflowScenario,
 )
+from apache_buildish_release_tooling.harness.process import run_harness_command
 from apache_buildish_release_tooling.harness.runtime import HarnessWorkspace, resolve_workspace_relative_path
 
 from .workflow_yaml import _load_github_actions_yaml
@@ -53,7 +53,7 @@ def prepare_local_svn_fixture(
     if working_copy_dir.exists():
         shutil.rmtree(working_copy_dir)
     if not repository_dir.exists():
-        subprocess.run(
+        run_harness_command(
             ["svnadmin", "create", str(repository_dir)],
             check=True,
             capture_output=True,
@@ -168,7 +168,7 @@ def _svn_mkdir_url(repo_url: str, relative_directory: Path) -> None:
     directory_url = f"{repo_url.rstrip('/')}/{relative_directory.as_posix().lstrip('/')}"
     if _svn_url_exists(directory_url):
         return
-    subprocess.run(
+    run_harness_command(
         ["svn", "mkdir", "-m", f"create {relative_directory.as_posix()}", directory_url],
         check=True,
         capture_output=True,
@@ -179,7 +179,7 @@ def _svn_mkdir_url(repo_url: str, relative_directory: Path) -> None:
 def _svn_url_exists(target_url: str) -> bool:
     """Return whether one SVN repository URL currently exists."""
 
-    completed = subprocess.run(
+    completed = run_harness_command(
         ["svn", "info", target_url],
         check=False,
         capture_output=True,
@@ -197,14 +197,14 @@ def _refresh_svn_working_copy(workspace: HarnessWorkspace) -> None:
     working_copy_dir = workspace.svn_working_copy_dir
     repo_url = repository_dir.as_uri()
     if working_copy_dir.exists():
-        subprocess.run(
+        run_harness_command(
             ["svn", "update", str(working_copy_dir)],
             check=True,
             capture_output=True,
             text=True,
         )
         return
-    subprocess.run(
+    run_harness_command(
         ["svn", "checkout", repo_url, str(working_copy_dir)],
         check=True,
         capture_output=True,
@@ -228,7 +228,7 @@ def _apply_svn_repository_file_fixtures(
             continue
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(file_fixture.content, encoding="utf-8")
-        subprocess.run(
+        run_harness_command(
             ["svn", "add", "--parents", "--force", str(destination)],
             check=True,
             capture_output=True,
@@ -237,13 +237,13 @@ def _apply_svn_repository_file_fixtures(
         added_any = True
     if not added_any:
         return
-    subprocess.run(
+    run_harness_command(
         ["svn", "commit", "-m", "seed harness SVN repository files", str(working_copy_dir)],
         check=True,
         capture_output=True,
         text=True,
     )
-    subprocess.run(
+    run_harness_command(
         ["svn", "update", str(working_copy_dir)],
         check=True,
         capture_output=True,

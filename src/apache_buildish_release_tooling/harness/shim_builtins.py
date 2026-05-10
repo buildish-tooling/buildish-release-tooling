@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -30,6 +29,7 @@ from apache_buildish_release_tooling.harness.models import (
     HarnessShimState,
     ToolBehaviorResult,
 )
+from apache_buildish_release_tooling.harness.process import run_harness_command
 
 
 class HarnessBuiltinGhRefMutationPayload(RuntimeDerivedModel):
@@ -147,7 +147,7 @@ def _apply_builtin_gh_tag_ref(
         if force:
             command.append("-f")
         command.extend(["-a", tag_name, "-m", message, target_commit])
-        subprocess.run(command, check=True, capture_output=True, text=True)
+        run_harness_command(command, check=True, capture_output=True, text=True)
 
 
 def builtin_gh_mutated_repositories(state: HarnessShimState) -> list[Path]:

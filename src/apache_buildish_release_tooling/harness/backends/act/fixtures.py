@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import os
 import shutil
-import subprocess
 from pathlib import Path
 
 from apache_buildish_release_tooling.harness.config import ResolvedReleaseHarnessConfig
 from apache_buildish_release_tooling.harness.models import HarnessScenario, WorkflowScenario
+from apache_buildish_release_tooling.harness.process import run_harness_command
 from apache_buildish_release_tooling.harness.runtime import (
     HarnessWorkspace,
     create_workspace_root,
@@ -147,7 +147,7 @@ def _generated_gpg_private_key(workspace: HarnessWorkspace) -> str:
     source_home.chmod(0o700)
     gpg_env = {**os.environ, "GNUPGHOME": str(source_home)}
     identity = "Buildish Release Harness <buildish-release-harness@example.invalid>"
-    subprocess.run(
+    run_harness_command(
         [
             "gpg",
             "--batch",
@@ -167,7 +167,7 @@ def _generated_gpg_private_key(workspace: HarnessWorkspace) -> str:
         text=True,
     )
     private_key_path.write_text(
-        subprocess.run(
+        run_harness_command(
             ["gpg", "--armor", "--export-secret-keys", identity],
             env=gpg_env,
             check=True,
@@ -177,7 +177,7 @@ def _generated_gpg_private_key(workspace: HarnessWorkspace) -> str:
         encoding="utf-8",
     )
     public_key_path.write_text(
-        subprocess.run(
+        run_harness_command(
             ["gpg", "--armor", "--export", identity],
             env=gpg_env,
             check=True,

@@ -17,11 +17,11 @@
 from __future__ import annotations
 
 import shutil
-import subprocess
 from pathlib import Path
 
 from apache_buildish_release_tooling.harness.config import ResolvedReleaseHarnessConfig
 from apache_buildish_release_tooling.harness.models import HarnessScenario
+from apache_buildish_release_tooling.harness.process import run_harness_command
 from apache_buildish_release_tooling.harness.runtime import HarnessWorkspace
 
 from .workflow import _repository_slug
@@ -52,7 +52,7 @@ def stage_repository_sources(
         shutil.rmtree(self_source_dir)
     materialize_git_checkout(bindings.self_repository.local_path, self_source_dir)
     github_origin_url = f"https://github.com/{bindings.self_repository.repository_id}.git"
-    subprocess.run(
+    run_harness_command(
         [
             "git",
             "-C",
@@ -65,7 +65,7 @@ def stage_repository_sources(
         capture_output=True,
         text=True,
     )
-    subprocess.run(
+    run_harness_command(
         [
             "git",
             "-C",
@@ -99,7 +99,7 @@ def apply_workflow_repository_fixture(
         raise ValueError("act scenarios must define a workflow block")
     fixture = workflow.repository_fixture
     for branch in fixture.branches:
-        existing_branch = subprocess.run(
+        existing_branch = run_harness_command(
             [
                 "git",
                 "-C",
@@ -115,7 +115,7 @@ def apply_workflow_repository_fixture(
         )
         if existing_branch.returncode == 0:
             continue
-        subprocess.run(
+        run_harness_command(
             [
                 "git",
                 "-C",
@@ -129,7 +129,7 @@ def apply_workflow_repository_fixture(
             text=True,
         )
     for tag in fixture.tags:
-        existing_tag = subprocess.run(
+        existing_tag = run_harness_command(
             [
                 "git",
                 "-C",
@@ -156,7 +156,7 @@ def apply_workflow_repository_fixture(
             command.extend(["-a", tag.name, "-m", message, tag.target])
         else:
             command.extend([tag.name, tag.target])
-        subprocess.run(
+        run_harness_command(
             command,
             check=True,
             capture_output=True,
@@ -167,7 +167,7 @@ def apply_workflow_repository_fixture(
 def materialize_git_checkout(source_root: Path, destination_root: Path) -> None:
     """Clone one local Git repository and overlay the current working-tree files on top."""
 
-    subprocess.run(
+    run_harness_command(
         ["git", "clone", "--local", str(source_root), str(destination_root)],
         check=True,
         capture_output=True,
@@ -180,7 +180,7 @@ def materialize_git_checkout(source_root: Path, destination_root: Path) -> None:
 def materialize_git_repository_state(source_root: Path, destination_root: Path) -> None:
     """Clone one local Git repository without copying untracked working-tree files."""
 
-    subprocess.run(
+    run_harness_command(
         ["git", "clone", "--local", str(source_root), str(destination_root)],
         check=True,
         capture_output=True,
@@ -199,13 +199,13 @@ def materialize_source_tree(source_root: Path, destination_root: Path) -> None:
 def _configure_git_identity(repository_root: Path) -> None:
     """Ensure annotated-tag operations have a deterministic local Git identity."""
 
-    subprocess.run(
+    run_harness_command(
         ["git", "-C", str(repository_root), "config", "user.name", "Buildish Release Harness"],
         check=True,
         capture_output=True,
         text=True,
     )
-    subprocess.run(
+    run_harness_command(
         [
             "git",
             "-C",

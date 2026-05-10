@@ -35,6 +35,7 @@ from apache_buildish_release_tooling.harness.models import (
     HarnessScenario,
     WorkflowScenario,
 )
+from apache_buildish_release_tooling.harness.process import wait_for_harness_process
 from apache_buildish_release_tooling.harness.runtime import (
     HarnessRunResult,
     HarnessWorkspace,
@@ -215,9 +216,11 @@ def _run_act(
         )
         stdout_thread = _start_stream_thread(process.stdout, stdout_handle)
         stderr_thread = _start_stream_thread(process.stderr, stderr_handle)
-        return_code = process.wait()
-        stdout_thread.join()
-        stderr_thread.join()
+        try:
+            return_code = wait_for_harness_process(process)
+        finally:
+            stdout_thread.join()
+            stderr_thread.join()
     return return_code
 
 
