@@ -37,10 +37,10 @@ from apache_buildish_release_tooling.release.verification.inspection.archive_sha
 )
 from apache_buildish_release_tooling.release.verification.inspection.shared import (
     evidence_path,
-    first_differing_byte,
     load_inspection_metadata_model,
-    text_diff,
+    text_diff_paths,
 )
+from apache_buildish_release_tooling.shared.io import files_equal, first_differing_byte
 
 
 def inspect_source_artifact_reproducibility(
@@ -94,16 +94,14 @@ def inspect_source_artifact_reproducibility(
     emit_detail(progress_reporter, "Source artifact", verification.filename or "n/a")
     emit_detail(progress_reporter, "Staged artifact", str(staged_path))
     emit_detail(progress_reporter, "Rebuilt artifact", str(rebuilt_path))
-    staged_bytes = staged_path.read_bytes()
-    rebuilt_bytes = rebuilt_path.read_bytes()
-    if staged_bytes == rebuilt_bytes:
+    if files_equal(staged_path, rebuilt_path):
         emit_success(progress_reporter, "Retained staged and rebuilt source-artifact copies are identical")
         return
     emit_failure(progress_reporter, "Retained staged and rebuilt source-artifact copies differ")
     emit_detail(
         progress_reporter,
         "First differing byte",
-        str(first_differing_byte(staged_bytes, rebuilt_bytes)),
+        str(first_differing_byte(staged_path, rebuilt_path)),
     )
     archive_analysis = metadata.archive_analysis
     if not emit_shallow_archive_analysis(
@@ -140,7 +138,7 @@ def inspect_source_artifact_reproducibility(
             progress_reporter,
             "Source artifact hint: more than one source archive dimension changed; start with member metadata before payload drift",
         )
-    inline_diff = text_diff(staged_bytes, rebuilt_bytes)
+    inline_diff = text_diff_paths(staged_path, rebuilt_path)
     if inline_diff:
         emit_info(progress_reporter, "Unified text diff")
         for line in inline_diff:

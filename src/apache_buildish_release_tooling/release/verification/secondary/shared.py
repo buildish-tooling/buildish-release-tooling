@@ -34,7 +34,7 @@ from apache_buildish_release_tooling.release.contracts import (
     SupplementalInventoryReference,
 )
 from apache_buildish_release_tooling.release.path_validation import validate_simple_filename
-from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
+from apache_buildish_release_tooling.release.rc_vote_manifest import download_uri_to_path
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.common import (
     GpgVerifier,
@@ -148,7 +148,7 @@ def verified_openpgp_signatures(
             purpose=f"secondary artifact signature URL for {artifact_id}",
         )
         signature_path = work_dir / f"{artifact_path.name}.{index}.asc"
-        signature_path.write_bytes(read_uri_bytes(signature_uri))
+        download_uri_to_path(signature_uri, signature_path)
         verifications.append(
             verifier.verify_detached(
                 target_path=artifact_path,
@@ -186,7 +186,7 @@ def downloaded_inventory(
     )
     work_dir.mkdir(parents=True, exist_ok=True)
     inventory_path = work_dir / filename
-    inventory_path.write_bytes(read_uri_bytes(inventory_uri))
+    download_uri_to_path(inventory_uri, inventory_path)
     actual_inventory_sha512 = checksum(inventory_path, "sha512")
     if actual_inventory_sha512 != inventory_sha512:
         raise ValueError(

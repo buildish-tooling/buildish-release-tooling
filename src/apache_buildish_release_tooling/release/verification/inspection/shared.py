@@ -25,6 +25,7 @@ from typing import TypeVar
 from pydantic import BaseModel, ValidationError
 
 from apache_buildish_release_tooling.release.contracts import InspectionEvidenceReference
+from apache_buildish_release_tooling.shared.io import read_bytes_bounded
 
 _MAX_INLINE_TEXT_DIFF_LINES = 12
 _MAX_INLINE_TEXT_BYTES = 65536
@@ -96,6 +97,18 @@ def text_diff(left: bytes, right: bytes) -> list[str]:
         )
     )
     return diff_lines[:_MAX_INLINE_TEXT_DIFF_LINES]
+
+
+def text_diff_paths(left: Path, right: Path) -> list[str]:
+    """Return a small text diff for two paths without reading large files."""
+
+    if left.stat().st_size > _MAX_INLINE_TEXT_BYTES or right.stat().st_size > _MAX_INLINE_TEXT_BYTES:
+        return []
+    with left.open("rb") as left_file, right.open("rb") as right_file:
+        return text_diff(
+            read_bytes_bounded(left_file, max_bytes=_MAX_INLINE_TEXT_BYTES),
+            read_bytes_bounded(right_file, max_bytes=_MAX_INLINE_TEXT_BYTES),
+        )
 
 
 def load_inspection_metadata_model(

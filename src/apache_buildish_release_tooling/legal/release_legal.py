@@ -35,11 +35,12 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 import re
 import shutil
-import subprocess
 import sys
 import tempfile
 import tomllib
 from typing import Any
+
+from apache_buildish_release_tooling.release.process import run_logged_command
 
 _PYLOCK_FILENAME = "pylock.release-legal.toml"
 _LOCK_SELECTION_COMMAND = (
@@ -381,13 +382,13 @@ def export_locked_runtime_packages(project_dir: Path) -> tuple[LockedPackage, ..
         # Security note: this command is intentionally fixed to the repo's trusted
         # `uv export` workflow, with no shell interpolation and no user-controlled
         # executable or arguments.
-        completed = subprocess.run(  # noqa: S603
+        completed = run_logged_command(
             [*_LOCK_SELECTION_COMMAND, "--output-file", output_path.as_posix()],
             cwd=project_dir,
             check=True,
             capture_output=True,
-            text=True,
-            timeout=_LOCK_SELECTION_TIMEOUT_SECONDS,
+            log_command=False,
+            timeout_seconds=_LOCK_SELECTION_TIMEOUT_SECONDS,
         )
         if completed.stderr:
             # The command succeeded, so stderr is only advisory noise from tooling.

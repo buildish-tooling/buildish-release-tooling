@@ -19,9 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
-    _RemoteHttpClient,
     _RepositoryFile,
-    _repository_file_bytes,
 )
 from apache_buildish_release_tooling.release.contracts import (
     MavenRepositoryInventoryEntry,
@@ -74,8 +72,6 @@ def maven_inventory_entries(
 def verified_maven_repository_signatures(
     files_by_relative_path: dict[str, _RepositoryFile],
     *,
-    cache: dict[str, bytes],
-    remote_http_client: _RemoteHttpClient | None,
     verifier: GpgVerifier,
     work_dir: Path,
 ) -> tuple[tuple[tuple[str, str, SignatureVerification], ...], list[str]]:
@@ -95,24 +91,10 @@ def verified_maven_repository_signatures(
             continue
         signature_file = files_by_relative_path[relative_path]
         target_local_path = work_dir / target_relative_path
-        target_local_path.parent.mkdir(parents=True, exist_ok=True)
-        target_local_path.write_bytes(
-            _repository_file_bytes(
-                target_file,
-                cache=cache,
-                remote_http_client=remote_http_client,
-            )
-        )
         signature_local_path = work_dir / relative_path
-        signature_local_path.parent.mkdir(parents=True, exist_ok=True)
-        signature_local_path.write_bytes(
-            _repository_file_bytes(
-                signature_file,
-                cache=cache,
-                remote_http_client=remote_http_client,
-            )
-        )
         try:
+            _copy_local_repository_file(target_file, target_local_path)
+            _copy_local_repository_file(signature_file, signature_local_path)
             verifications.append(
                 (
                     relative_path,
@@ -126,3 +108,12 @@ def verified_maven_repository_signatures(
         except Exception as exc:
             issues.append(str(exc))
     return tuple(verifications), issues
+
+
+def _copy_local_repository_file(repository_file: _RepositoryFile, destination: Path) -> None:
+    if repository_file.local_path is None:
+        raise ValueError(f"repository file has no local path: {repository_file.relative_path}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with repository_file.local_path.open("rb") as source, destination.open("wb") as target:
+        while chunk := source.read(1024 * 1024):
+            target.write(chunk)

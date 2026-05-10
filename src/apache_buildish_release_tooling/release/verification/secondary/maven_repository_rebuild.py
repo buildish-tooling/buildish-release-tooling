@@ -70,7 +70,6 @@ def verify_maven_repository_reproducibility(
     inspection_bundle_root: Path | None,
     inventory_payload: MavenRepositoryInventoryV1 | None,
     staged_by_path: dict[str, _RepositoryFile],
-    staged_cache: dict[str, bytes],
     progress_reporter: ProgressReporter,
     profile_overrides: VerifyRcOverrideConfig | None,
 ) -> ArtifactReproducibilityReport:
@@ -178,7 +177,6 @@ def verify_maven_repository_reproducibility(
             path_results, comparison_issues, matches_remote_bytes = compare_maven_repository_trees(
                 artifact_id=artifact_id,
                 staged_by_path=staged_by_path,
-                staged_cache=staged_cache,
                 rebuilt_repository_path=rebuilt_repository_path,
                 path_rules=path_rules,
                 require_signatures=require_signatures,

@@ -32,7 +32,7 @@ from apache_buildish_release_tooling.release.models import ComponentConfig, Veri
 from apache_buildish_release_tooling.release.path_validation import validate_simple_filename
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.process import run_logged_command
-from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
+from apache_buildish_release_tooling.release.rc_vote_manifest import download_uri_to_path
 from apache_buildish_release_tooling.release.source_artifact import create_from_git, sha512
 from apache_buildish_release_tooling.release.verification.common import (
     GpgVerifier,
@@ -62,6 +62,7 @@ from apache_buildish_release_tooling.release.verification.rebuild import (
     decide_reproducibility_mode,
     ensure_detached_source_checkout,
 )
+from apache_buildish_release_tooling.shared.io import files_equal
 
 _report_markdown = phase1_reporting._report_markdown
 
@@ -133,13 +134,13 @@ def verify_rc_phase1(
     emit_info(progress_reporter, "Downloading signed RC vote manifest and sidecars")
     try:
         manifest_path = work_dir / "rc-vote-manifest.json"
-        manifest_path.write_bytes(read_uri_bytes(manifest_url))
+        download_uri_to_path(manifest_url, manifest_path)
         manifest_sha512_path = work_dir / "rc-vote-manifest.json.sha512"
-        manifest_sha512_path.write_bytes(read_uri_bytes(f"{manifest_url}.sha512"))
+        download_uri_to_path(f"{manifest_url}.sha512", manifest_sha512_path)
         manifest_signature_path = work_dir / "rc-vote-manifest.json.asc"
-        manifest_signature_path.write_bytes(read_uri_bytes(f"{manifest_url}.asc"))
+        download_uri_to_path(f"{manifest_url}.asc", manifest_signature_path)
         keys_path = work_dir / "KEYS"
-        keys_path.write_bytes(read_uri_bytes(keys_url))
+        download_uri_to_path(keys_url, keys_path)
         emit_success(progress_reporter, "Downloaded manifest, checksum sidecar, signature, and KEYS")
         manifest_sha512 = verify_checksum_sidecar(
             manifest_path,
@@ -318,7 +319,7 @@ def verify_rc_phase1(
         try:
             emit_info(progress_reporter, "Downloading staged source artifact")
             downloaded_source_artifact_path = work_dir / source_artifact_filename
-            downloaded_source_artifact_path.write_bytes(read_uri_bytes(source_artifact_url))
+            download_uri_to_path(source_artifact_url, downloaded_source_artifact_path)
             source_artifact_path = downloaded_source_artifact_path
             emit_success(progress_reporter, "Downloaded staged source artifact")
             declared_source_sha512 = _required_sha512_from_source_artifact(source_artifact, source=manifest_url)
@@ -348,7 +349,7 @@ def verify_rc_phase1(
                     purpose="Source artifact checksum sidecar URL",
                 )
                 source_sha512_sidecar_path = work_dir / f"{source_artifact_filename}.sha512"
-                source_sha512_sidecar_path.write_bytes(read_uri_bytes(checksum_uri))
+                download_uri_to_path(checksum_uri, source_sha512_sidecar_path)
                 verify_checksum_sidecar(
                     source_artifact_path,
                     source_sha512_sidecar_path,
@@ -376,7 +377,7 @@ def verify_rc_phase1(
                 purpose="Source artifact signature URL",
             )
             source_signature_path = work_dir / f"{source_artifact_filename}.asc"
-            source_signature_path.write_bytes(read_uri_bytes(source_signature_uri))
+            download_uri_to_path(source_signature_uri, source_signature_path)
             source_artifact_signature = verifier.verify_detached(
                 target_path=source_artifact_path,
                 signature_path=source_signature_path,
@@ -412,8 +413,9 @@ def verify_rc_phase1(
             )
             rebuilt_source_sha512 = sha512(rebuilt_source_artifact_path)
             emit_success(progress_reporter, f"Rebuilt source artifact SHA512: {rebuilt_source_sha512}")
-            source_artifact_matches_source_commit = (
-                rebuilt_source_artifact_path.read_bytes() == source_artifact_path.read_bytes()
+            source_artifact_matches_source_commit = files_equal(
+                rebuilt_source_artifact_path,
+                source_artifact_path,
             )
             if not source_artifact_matches_source_commit:
                 raise ValueError(

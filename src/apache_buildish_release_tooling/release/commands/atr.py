@@ -34,7 +34,7 @@ from apache_buildish_release_tooling.release.git_repo import GitRepository
 from apache_buildish_release_tooling.release.manifest import write_manifest
 from apache_buildish_release_tooling.release.models import AtrConfig, CommandContext, PrepareRcState
 from apache_buildish_release_tooling.release.process import run_logged_command
-from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
+from apache_buildish_release_tooling.release.rc_vote_manifest import download_uri_to_path
 from apache_buildish_release_tooling.release.rc_vote_verification import (
     required_rc_vote_manifest_file_names,
     required_source_release_file_names,
@@ -296,7 +296,7 @@ def _download_staged_candidate_files(
     local_paths: list[Path] = []
     for file_name, file_url in _staged_candidate_file_urls(context, state, version):
         local_path = download_root / file_name
-        local_path.write_bytes(read_uri_bytes(file_url))
+        download_uri_to_path(file_url, local_path)
         local_paths.append(local_path)
     return local_paths
 

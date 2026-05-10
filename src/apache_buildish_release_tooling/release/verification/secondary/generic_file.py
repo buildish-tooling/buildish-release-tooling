@@ -28,7 +28,7 @@ from apache_buildish_release_tooling.release.contracts import (
 )
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.path_validation import validate_simple_filename
-from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
+from apache_buildish_release_tooling.release.rc_vote_manifest import download_uri_to_path
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.common import (
     GpgVerifier,
@@ -83,7 +83,7 @@ def verify_generic_file(
             purpose=f"secondary artifact URL for {artifact_id}",
         )
         downloaded_artifact_path = work_dir / filename
-        downloaded_artifact_path.write_bytes(read_uri_bytes(artifact_uri))
+        download_uri_to_path(artifact_uri, downloaded_artifact_path)
         artifact_path = downloaded_artifact_path
     except Exception as exc:
         issues.append(str(exc))
@@ -106,7 +106,7 @@ def verify_generic_file(
                 purpose=f"secondary artifact checksum sidecar URL for {artifact_id}",
             )
             sidecar_path = work_dir / f"{filename}.{checksum_algorithm}"
-            sidecar_path.write_bytes(read_uri_bytes(checksum_uri))
+            download_uri_to_path(checksum_uri, sidecar_path)
             verify_checksum_sidecar(
                 artifact_path,
                 sidecar_path,
@@ -229,7 +229,7 @@ def _signature_verifications_with_issues(
                 purpose=f"secondary artifact signature URL for {artifact_id}",
             )
             signature_path = work_dir / f"{artifact_path.name}.{index}.asc"
-            signature_path.write_bytes(read_uri_bytes(signature_uri))
+            download_uri_to_path(signature_uri, signature_path)
             verifications.append(
                 verifier.verify_detached(
                     target_path=artifact_path,

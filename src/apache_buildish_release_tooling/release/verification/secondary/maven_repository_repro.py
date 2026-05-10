@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import re
 import zipfile
 from dataclasses import dataclass
@@ -34,6 +33,7 @@ from apache_buildish_release_tooling.release.contracts import (
 )
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.verification.common import emit_info, update_info
+from apache_buildish_release_tooling.shared.io import files_equal, hash_file
 
 _HASH_CHUNK_BYTES = 1024 * 1024
 
@@ -51,7 +51,6 @@ def compare_maven_repository_trees(
     *,
     artifact_id: str,
     staged_by_path: dict[str, _RepositoryFile],
-    staged_cache: dict[str, bytes],
     rebuilt_repository_path: Path,
     path_rules: tuple[MavenRepositoryPathRuleReport, ...],
     require_signatures: bool,
@@ -72,7 +71,6 @@ def compare_maven_repository_trees(
         )
     return _compare_repository_path_sets(
         staged_by_path=staged_by_path,
-        staged_cache=staged_cache,
         rebuilt_repository_path=rebuilt_repository_path,
         path_rules=path_rules,
         progress_reporter=progress_reporter,
@@ -102,7 +100,6 @@ def _path_mode_for_repository_entry(
 def _compare_repository_path_sets(
     *,
     staged_by_path: dict[str, _RepositoryFile],
-    staged_cache: dict[str, bytes],
     rebuilt_repository_path: Path,
     path_rules: tuple[MavenRepositoryPathRuleReport, ...],
     progress_reporter: ProgressReporter,
@@ -147,11 +144,8 @@ def _compare_repository_path_sets(
                 )
             )
             continue
-        staged_payload = _cached_staged_repository_bytes(
-            staged_by_path[relative_path],
-            cache=staged_cache,
-        )
-        raw_bytes_equal = _cached_payload_matches_local_file(staged_payload, rebuilt_repository_file.local_path)
+        staged_repository_file = staged_by_path[relative_path]
+        raw_bytes_equal = _repository_files_equal(staged_repository_file, rebuilt_repository_file)
         normalized_match: bool | None = None
         detail = "raw bytes matched exactly"
         verdict: Literal["verified", "failed", "skipped"] = "verified"
@@ -164,8 +158,8 @@ def _compare_repository_path_sets(
                     f"{relative_path}"
                 )
             elif mode == "content-only":
-                normalized_match, detail = _compare_zip_payloads(
-                    staged_payload,
+                normalized_match, detail = _compare_zip_paths(
+                    staged_repository_file.local_path,
                     rebuilt_repository_file.local_path,
                     compare_permissions=False,
                 )
@@ -176,8 +170,8 @@ def _compare_repository_path_sets(
                         f"{relative_path}"
                     )
             elif mode == "zip-normalized":
-                normalized_match, detail = _compare_zip_payloads(
-                    staged_payload,
+                normalized_match, detail = _compare_zip_paths(
+                    staged_repository_file.local_path,
                     rebuilt_repository_file.local_path,
                     compare_permissions=True,
                 )
@@ -202,7 +196,7 @@ def _compare_repository_path_sets(
                 detail=detail,
                 raw_bytes_equal=raw_bytes_equal,
                 normalized_match=normalized_match,
-                staged_sha512=hashlib.sha512(staged_payload).hexdigest(),
+                staged_sha512=_local_file_sha512(staged_repository_file.local_path),
                 rebuilt_sha512=_local_file_sha512(rebuilt_repository_file.local_path),
             )
         )
@@ -228,36 +222,24 @@ def _rebuilt_repository_file(
     )
 
 
-def _cached_staged_repository_bytes(
-    repository_file: _RepositoryFile,
-    *,
-    cache: dict[str, bytes],
-) -> bytes:
-    payload = cache.get(repository_file.relative_path)
-    if payload is None:
-        raise ValueError(
-            "staged maven repository snapshot is missing cached bytes for reproducibility comparison: "
-            f"{repository_file.relative_path}"
-        )
-    return payload
-
-
 def _is_default_remote_only_repository_entry(relative_path: str) -> bool:
     lowered = relative_path.lower()
     return lowered.endswith((".asc", ".sha512", ".sha256", ".sha1", ".md5"))
 
 
-def _compare_zip_payloads(
-    staged_payload: bytes,
+def _compare_zip_paths(
+    staged_path: Path | None,
     rebuilt_path: Path | None,
     *,
     compare_permissions: bool,
 ) -> tuple[bool, str]:
+    if staged_path is None:
+        return False, "staged repository file has no local path"
     if rebuilt_path is None:
         return False, "rebuilt repository file has no local path"
     try:
-        staged_entries = _normalized_zip_entries_from_payload(
-            staged_payload,
+        staged_entries = _normalized_zip_entries_from_path(
+            staged_path,
             compare_permissions=compare_permissions,
         )
         rebuilt_entries = _normalized_zip_entries_from_path(
@@ -288,19 +270,6 @@ def _compare_zip_payloads(
     if compare_permissions:
         return True, "archives matched after zip-normalized comparison"
     return True, "archives matched after content-only comparison"
-
-
-def _normalized_zip_entries_from_payload(
-    payload: bytes,
-    *,
-    compare_permissions: bool,
-) -> dict[str, _NormalizedZipEntry]:
-    try:
-        archive = zipfile.ZipFile(io.BytesIO(payload))
-    except zipfile.BadZipFile as exc:
-        raise ValueError("comparison requires ZIP-like archives") from exc
-    with archive:
-        return _normalized_zip_entries_from_archive(archive, compare_permissions=compare_permissions)
 
 
 def _normalized_zip_entries_from_path(
@@ -338,24 +307,16 @@ def _normalized_zip_entries_from_archive(
     return entries
 
 
-def _cached_payload_matches_local_file(payload: bytes, path: Path | None) -> bool:
-    if path is None or len(payload) != path.stat().st_size:
+def _repository_files_equal(staged_file: _RepositoryFile, rebuilt_file: _RepositoryFile) -> bool:
+    if staged_file.local_path is None or rebuilt_file.local_path is None:
         return False
-    offset = 0
-    with path.open("rb") as handle:
-        while chunk := handle.read(_HASH_CHUNK_BYTES):
-            next_offset = offset + len(chunk)
-            if payload[offset:next_offset] != chunk:
-                return False
-            offset = next_offset
-    return offset == len(payload)
+    return files_equal(staged_file.local_path, rebuilt_file.local_path)
 
 
 def _local_file_sha512(path: Path | None) -> str:
     if path is None:
         raise ValueError("repository file has no local path")
-    with path.open("rb") as handle:
-        return _stream_sha512(handle)
+    return hash_file(path)
 
 
 def _stream_sha512(stream: IO[bytes]) -> str:

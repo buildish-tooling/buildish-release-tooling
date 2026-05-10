@@ -25,8 +25,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import IO
 from urllib.parse import unquote, urlparse
-from urllib.request import urlopen
 
+from apache_buildish_release_tooling.shared.downloader import ResourceDownloader
+from apache_buildish_release_tooling.shared.io import (
+    CopiedResource,
+    copy_stream_to_path,
+    hash_file,
+    hash_stream,
+    read_bytes_bounded,
+    read_text_bounded,
+)
 from apache_buildish_release_tooling.release.git_repo import GitRepository
 from apache_buildish_release_tooling.release.github_checks import resolve_repository_slug
 from apache_buildish_release_tooling.release.contracts import (
@@ -53,7 +61,11 @@ from apache_buildish_release_tooling.release.release_state import derive_specifi
 
 DEFAULT_URI_READ_TIMEOUT_SECONDS = 60.0
 DEFAULT_SVN_CAT_TIMEOUT_SECONDS = 60.0
-_HASH_CHUNK_BYTES = 1024 * 1024
+DEFAULT_URI_READ_MAX_BYTES = 25 * 1024 * 1024
+DEFAULT_URI_DOWNLOAD_MAX_BYTES = 2 * 1024 * 1024 * 1024
+_DEFAULT_DOWNLOADER = ResourceDownloader.create(
+    timeout=DEFAULT_URI_READ_TIMEOUT_SECONDS,
+)
 
 
 def _tooling_repo_root() -> Path:
@@ -150,38 +162,68 @@ def derive_asf_keys_uri(release_base_url: str) -> str:
     return f"{release_parent}/KEYS"
 
 
-def read_uri_bytes(uri: str) -> bytes:
+def read_uri_bytes(uri: str, *, max_bytes: int = DEFAULT_URI_READ_MAX_BYTES) -> bytes:
     """Read bytes from a `file://`, `http://`, or `https://` URI."""
 
     parsed = urlparse(uri)
     if parsed.scheme == "file":
         local_path = Path(unquote(parsed.path))
         if local_path.exists():
-            return local_path.read_bytes()
-        try:
-            completed = subprocess.run(
-                ["svn", "cat", uri],
-                check=True,
-                capture_output=True,
-                timeout=DEFAULT_SVN_CAT_TIMEOUT_SECONDS,
-            )
-        except subprocess.CalledProcessError as exc:
-            stderr_text = exc.stderr.decode("utf-8", errors="replace").strip()
-            detail = stderr_text or f"svn cat returned exit status {exc.returncode}"
-            raise ValueError(f"file URI could not be read: {uri}: {detail}") from exc
-        except subprocess.TimeoutExpired as exc:
-            raise ValueError(f"file URI could not be read before timeout: {uri}") from exc
-        return completed.stdout
+            with local_path.open("rb") as handle:
+                return read_bytes_bounded(handle, max_bytes=max_bytes)
+        with tempfile.TemporaryFile() as stdout_file:
+            _svn_cat_to_file(uri, stdout_file)
+            stdout_file.seek(0)
+            return read_bytes_bounded(stdout_file, max_bytes=max_bytes)
     if parsed.scheme in {"http", "https"}:
-        with urlopen(uri, timeout=DEFAULT_URI_READ_TIMEOUT_SECONDS) as response:  # noqa: S310
-            return response.read()
+        return _DEFAULT_DOWNLOADER.read_bytes(uri, max_bytes=max_bytes)
     raise ValueError(f"unsupported URI scheme: {uri}")
 
 
-def read_uri_text(uri: str) -> str:
+def read_uri_text(uri: str, *, max_bytes: int = DEFAULT_URI_READ_MAX_BYTES) -> str:
     """Read UTF-8 text from a supported URI."""
 
-    return read_uri_bytes(uri).decode("utf-8")
+    parsed = urlparse(uri)
+    if parsed.scheme == "file":
+        local_path = Path(unquote(parsed.path))
+        if local_path.exists():
+            with local_path.open("rb") as handle:
+                return read_text_bounded(handle, max_bytes=max_bytes)
+        with tempfile.TemporaryFile() as stdout_file:
+            _svn_cat_to_file(uri, stdout_file)
+            stdout_file.seek(0)
+            return read_text_bounded(stdout_file, max_bytes=max_bytes)
+    if parsed.scheme in {"http", "https"}:
+        return _DEFAULT_DOWNLOADER.read_text(uri, max_bytes=max_bytes)
+    raise ValueError(f"unsupported URI scheme: {uri}")
+
+
+def download_uri_to_path(
+    uri: str,
+    destination: Path,
+    *,
+    max_bytes: int = DEFAULT_URI_DOWNLOAD_MAX_BYTES,
+) -> CopiedResource:
+    """Download a supported URI to disk while enforcing a maximum size."""
+
+    parsed = urlparse(uri)
+    if parsed.scheme == "file":
+        local_path = Path(unquote(parsed.path))
+        if local_path.exists():
+            with local_path.open("rb") as handle:
+                return copy_stream_to_path(handle, destination, max_bytes=max_bytes)
+        with tempfile.TemporaryFile() as stdout_file:
+            _svn_cat_to_file(uri, stdout_file)
+            stdout_file.seek(0)
+            return copy_stream_to_path(stdout_file, destination, max_bytes=max_bytes)
+    if parsed.scheme in {"http", "https"}:
+        downloaded = _DEFAULT_DOWNLOADER.download_to_path(uri, destination, max_bytes=max_bytes)
+        return CopiedResource(
+            path=downloaded.path,
+            size_bytes=downloaded.size_bytes,
+            hashes=downloaded.hashes,
+        )
+    raise ValueError(f"unsupported URI scheme: {uri}")
 
 
 def uri_sha512(uri: str) -> str:
@@ -191,36 +233,39 @@ def uri_sha512(uri: str) -> str:
     if parsed.scheme == "file":
         local_path = Path(unquote(parsed.path))
         if local_path.exists():
-            with local_path.open("rb") as handle:
-                return _stream_sha512(handle)
+            return hash_file(local_path, algorithm="sha512")
         with tempfile.TemporaryFile() as stdout_file:
-            try:
-                subprocess.run(
-                    ["svn", "cat", uri],
-                    check=True,
-                    stdout=stdout_file,
-                    stderr=subprocess.PIPE,
-                    timeout=DEFAULT_SVN_CAT_TIMEOUT_SECONDS,
-                )
-            except subprocess.CalledProcessError as exc:
-                stderr_text = (exc.stderr or b"").decode("utf-8", errors="replace").strip()
-                detail = stderr_text or f"svn cat returned exit status {exc.returncode}"
-                raise ValueError(f"file URI could not be read: {uri}: {detail}") from exc
-            except subprocess.TimeoutExpired as exc:
-                raise ValueError(f"file URI could not be read before timeout: {uri}") from exc
+            _svn_cat_to_file(uri, stdout_file)
             stdout_file.seek(0)
-            return _stream_sha512(stdout_file)
+            return hash_stream(stdout_file, algorithm="sha512")
     if parsed.scheme in {"http", "https"}:
-        with urlopen(uri, timeout=DEFAULT_URI_READ_TIMEOUT_SECONDS) as response:  # noqa: S310
-            return _stream_sha512(response)
+        return _DEFAULT_DOWNLOADER.hash_uri(uri, algorithm="sha512")
     raise ValueError(f"unsupported URI scheme: {uri}")
 
 
-def _stream_sha512(stream: IO[bytes]) -> str:
-    digest = hashlib.sha512()
-    while chunk := stream.read(_HASH_CHUNK_BYTES):
-        digest.update(chunk)
-    return digest.hexdigest()
+def _svn_cat_to_file(uri: str, stdout_file: IO[bytes]) -> None:
+    with tempfile.TemporaryFile() as stderr_file:
+        try:
+            completed = subprocess.run(
+                ["svn", "cat", uri],
+                check=True,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                timeout=DEFAULT_SVN_CAT_TIMEOUT_SECONDS,
+            )
+        except subprocess.CalledProcessError as exc:
+            stderr_file.seek(0)
+            stderr_text = read_text_bounded(
+                stderr_file,
+                max_bytes=DEFAULT_URI_READ_MAX_BYTES,
+                errors="replace",
+            ).strip()
+            detail = stderr_text or f"svn cat returned exit status {exc.returncode}"
+            raise ValueError(f"file URI could not be read: {uri}: {detail}") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise ValueError(f"file URI could not be read before timeout: {uri}") from exc
+        if completed.returncode != 0:
+            raise ValueError(f"file URI could not be read: {uri}: svn cat returned exit status {completed.returncode}")
 
 
 def trust_root_metadata(keys_uri: str) -> ManifestTrustRoots:

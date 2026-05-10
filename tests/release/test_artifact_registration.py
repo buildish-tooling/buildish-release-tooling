@@ -30,7 +30,6 @@ from apache_buildish_release_tooling.release.artifact_registration.kinds.generic
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     _RepositoryFile,
     _inventory_entry_sha512,
-    _RemoteHttpClient,
     _normalized_base_url,
     _parse_nexus_index,
     _repository_files,
@@ -41,6 +40,7 @@ from apache_buildish_release_tooling.release.artifact_registration.kinds.npm_pac
 from apache_buildish_release_tooling.release.artifact_registration.kinds.python_distribution import (
     _resolved_filename as _python_distribution_resolved_filename,
 )
+from apache_buildish_release_tooling.shared.downloader import ResourceDownloader
 
 
 class _FakeHTTPResponse:
@@ -158,17 +158,23 @@ class MavenRepositoryRegistrationUnitTest(unittest.TestCase):
         self.assertFalse(entries[1].is_directory)
         self.assertEqual(25, entries[1].size_bytes)
 
-    def test_remote_http_client_reuses_shared_pool_manager(self) -> None:
+    def test_resource_downloader_reuses_shared_pool_manager(self) -> None:
         _FakePoolManager.reset(
             _FakeHTTPResponse(b"alpha"),
             _FakeHTTPResponse(b"beta"),
         )
         pool_manager = _FakePoolManager()
-        client = _RemoteHttpClient(pool_manager=cast(Any, pool_manager))
+        downloader = ResourceDownloader(pool_manager=cast(Any, pool_manager))
 
-        first = client.read_bytes("https://repository.apache.org/content/repositories/orgapachebeam-1427/one")
-        second = client.read_bytes("https://repository.apache.org/content/repositories/orgapachebeam-1427/two")
-        client.close()
+        first = downloader.read_bytes(
+            "https://repository.apache.org/content/repositories/orgapachebeam-1427/one",
+            max_bytes=25 * 1024 * 1024,
+        )
+        second = downloader.read_bytes(
+            "https://repository.apache.org/content/repositories/orgapachebeam-1427/two",
+            max_bytes=25 * 1024 * 1024,
+        )
+        downloader.close()
 
         self.assertEqual(b"alpha", first)
         self.assertEqual(b"beta", second)
@@ -182,19 +188,19 @@ class MavenRepositoryRegistrationUnitTest(unittest.TestCase):
         )
         self.assertTrue(
             all(
-                request_kwargs["preload_content"] is True and request_kwargs["timeout"] is not None
+                request_kwargs["preload_content"] is False and request_kwargs["timeout"] is not None
                 for _method, _url, request_kwargs in pool_manager.requests
             )
         )
         self.assertTrue(pool_manager.cleared)
         self.assertTrue(all(response.released for response in pool_manager.issued_responses))
 
-    def test_remote_http_client_streams_sha512_without_preloading_content(self) -> None:
+    def test_resource_downloader_streams_sha512_without_preloading_content(self) -> None:
         _FakePoolManager.reset(_FakeHTTPResponse(b"jar\n"))
         pool_manager = _FakePoolManager()
-        client = _RemoteHttpClient(pool_manager=cast(Any, pool_manager))
+        downloader = ResourceDownloader(pool_manager=cast(Any, pool_manager))
 
-        actual = client.sha512("https://repository.apache.org/content/repositories/orgapachebeam-1427/app.jar")
+        actual = downloader.hash_uri("https://repository.apache.org/content/repositories/orgapachebeam-1427/app.jar")
 
         self.assertEqual(hashlib.sha512(b"jar\n").hexdigest(), actual)
         self.assertFalse(pool_manager.requests[0][2]["preload_content"])
@@ -226,39 +232,39 @@ class MavenRepositoryRegistrationUnitTest(unittest.TestCase):
             _parse_nexus_index(base_url, base_url, html_text)
 
     def test_inventory_entry_sha512_rejects_mismatched_sidecar(self) -> None:
-        repository_file = _RepositoryFile(
-            relative_path="org/example/app-1.0.0.jar",
-            size_bytes=4,
-            local_path=None,
-            source_url="https://repository.apache.org/content/repositories/orgapachebeam-1427/org/example/app-1.0.0.jar",
-        )
-        sidecar_file = _RepositoryFile(
-            relative_path="org/example/app-1.0.0.jar.sha512",
-            size_bytes=129,
-            local_path=None,
-            source_url="https://repository.apache.org/content/repositories/orgapachebeam-1427/org/example/app-1.0.0.jar.sha512",
-        )
-        files_by_relative_path = {
-            repository_file.relative_path: repository_file,
-            sidecar_file.relative_path: sidecar_file,
-        }
-        jar_bytes = b"jar\n"
-        wrong_digest = ("0" * 127) + "1"
-        cache = {
-            repository_file.relative_path: jar_bytes,
-            sidecar_file.relative_path: f"{wrong_digest}  app-1.0.0.jar\n".encode(),
-        }
-
-        with self.assertRaisesRegex(
-            ValueError,
-            "maven-repository SHA512 sidecar does not match file bytes",
-        ):
-            _inventory_entry_sha512(
-                repository_file,
-                files_by_relative_path=files_by_relative_path,
-                cache=cache,
-                remote_http_client=None,
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            artifact_path = root / "app.jar"
+            artifact_path.write_bytes(b"jar\n")
+            sidecar_path = root / "app.jar.sha512"
+            wrong_digest = ("0" * 127) + "1"
+            sidecar_path.write_text(f"{wrong_digest}  app-1.0.0.jar\n", encoding="utf-8")
+            repository_file = _RepositoryFile(
+                relative_path="org/example/app-1.0.0.jar",
+                size_bytes=4,
+                local_path=artifact_path,
             )
+            sidecar_file = _RepositoryFile(
+                relative_path="org/example/app-1.0.0.jar.sha512",
+                size_bytes=sidecar_path.stat().st_size,
+                local_path=sidecar_path,
+            )
+            files_by_relative_path = {
+                repository_file.relative_path: repository_file,
+                sidecar_file.relative_path: sidecar_file,
+            }
+
+            with self.assertRaisesRegex(
+                ValueError,
+                "maven-repository SHA512 sidecar does not match file bytes",
+            ):
+                _inventory_entry_sha512(
+                    repository_file,
+                    files_by_relative_path=files_by_relative_path,
+                    sha512_by_relative_path={},
+                    sha512_sidecars_by_relative_path={},
+                    remote_http_client=None,
+                )
 
     def test_inventory_entry_sha512_hashes_local_file_without_reading_it_fully(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -275,11 +281,64 @@ class MavenRepositoryRegistrationUnitTest(unittest.TestCase):
                 actual = _inventory_entry_sha512(
                     repository_file,
                     files_by_relative_path={repository_file.relative_path: repository_file},
-                    cache={},
+                    sha512_by_relative_path={},
+                    sha512_sidecars_by_relative_path={},
                     remote_http_client=None,
                 )
 
         self.assertEqual(hashlib.sha512(b"jar\n").hexdigest(), actual)
+
+    def test_inventory_entry_sha512_reuses_derived_remote_sidecar_metadata(self) -> None:
+        jar_bytes = b"jar\n"
+        jar_digest = hashlib.sha512(jar_bytes).hexdigest()
+        sidecar_bytes = f"{jar_digest}  app-1.0.0.jar\n".encode()
+        _FakePoolManager.reset(
+            _FakeHTTPResponse(sidecar_bytes),
+            _FakeHTTPResponse(jar_bytes),
+        )
+        pool_manager = _FakePoolManager()
+        downloader = ResourceDownloader(pool_manager=cast(Any, pool_manager))
+        repository_file = _RepositoryFile(
+            relative_path="org/example/app-1.0.0.jar",
+            size_bytes=len(jar_bytes),
+            source_url="https://repository.apache.org/content/repositories/orgapachebeam-1427/org/example/app-1.0.0.jar",
+        )
+        sidecar_file = _RepositoryFile(
+            relative_path="org/example/app-1.0.0.jar.sha512",
+            size_bytes=len(sidecar_bytes),
+            source_url="https://repository.apache.org/content/repositories/orgapachebeam-1427/org/example/app-1.0.0.jar.sha512",
+        )
+        files_by_relative_path = {
+            repository_file.relative_path: repository_file,
+            sidecar_file.relative_path: sidecar_file,
+        }
+        sha512_by_relative_path: dict[str, str] = {}
+        sha512_sidecars_by_relative_path: dict[str, Any] = {}
+
+        sidecar_actual = _inventory_entry_sha512(
+            sidecar_file,
+            files_by_relative_path=files_by_relative_path,
+            sha512_by_relative_path=sha512_by_relative_path,
+            sha512_sidecars_by_relative_path=sha512_sidecars_by_relative_path,
+            remote_http_client=downloader,
+        )
+        artifact_actual = _inventory_entry_sha512(
+            repository_file,
+            files_by_relative_path=files_by_relative_path,
+            sha512_by_relative_path=sha512_by_relative_path,
+            sha512_sidecars_by_relative_path=sha512_sidecars_by_relative_path,
+            remote_http_client=downloader,
+        )
+
+        self.assertEqual(hashlib.sha512(sidecar_bytes).hexdigest(), sidecar_actual)
+        self.assertEqual(jar_digest, artifact_actual)
+        self.assertEqual(
+            [
+                "https://repository.apache.org/content/repositories/orgapachebeam-1427/org/example/app-1.0.0.jar.sha512",
+                "https://repository.apache.org/content/repositories/orgapachebeam-1427/org/example/app-1.0.0.jar",
+            ],
+            [url for _method, url, _kwargs in pool_manager.requests],
+        )
 
     def test_registration_filename_helpers_reject_path_components(self) -> None:
         with self.assertRaisesRegex(ValueError, "simple file name"):

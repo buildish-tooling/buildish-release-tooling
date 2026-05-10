@@ -18,12 +18,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import subprocess
 import tempfile
+from unittest import mock
 
 from apache_buildish_release_tooling.legal.release_legal import (
     LockedPackage,
     collect_curated_legal_files,
     curated_container_image_bundles_by_ref,
+    export_locked_runtime_packages,
     generate_release_legal_artifacts,
 )
 
@@ -33,6 +36,40 @@ from tests.release_legal_support import ReleaseLegalTestBase
 
 class ReleaseLegalGenerationTests(ReleaseLegalTestBase):
     """Release-legal artifact generation tests."""
+
+    def test_export_locked_runtime_packages_uses_bounded_logged_command_capture(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+
+            def fake_run_logged_command(command: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                output_path = Path(command[-1])
+                output_path.write_text(
+                    "\n".join(
+                        [
+                            "[[packages]]",
+                            'name = "demo-runtime"',
+                            'version = "1.2.3"',
+                            "",
+                        ]
+                    ),
+                    encoding="utf-8",
+                )
+                return subprocess.CompletedProcess(command, 0, "", "advisory warning\n")
+
+            with mock.patch(
+                "apache_buildish_release_tooling.legal.release_legal.run_logged_command",
+                side_effect=fake_run_logged_command,
+            ) as run_logged_command:
+                packages = export_locked_runtime_packages(root)
+
+        self.assertEqual(("demo-runtime",), tuple(package.name for package in packages))
+        run_logged_command.assert_called_once()
+        _command, kwargs = run_logged_command.call_args
+        self.assertEqual(root, kwargs["cwd"])
+        self.assertTrue(kwargs["check"])
+        self.assertTrue(kwargs["capture_output"])
+        self.assertFalse(kwargs["log_command"])
+        self.assertEqual(15 * 60, kwargs["timeout_seconds"])
 
     def test_curated_legal_file_collection_rejects_oversized_files(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

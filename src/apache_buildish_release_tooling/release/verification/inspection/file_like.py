@@ -40,11 +40,11 @@ from apache_buildish_release_tooling.release.verification.inspection.archive_sha
 )
 from apache_buildish_release_tooling.release.verification.inspection.shared import (
     evidence_path,
-    first_differing_byte,
     first_matching_evidence_path,
     load_inspection_metadata_model,
-    text_diff,
+    text_diff_paths,
 )
+from apache_buildish_release_tooling.shared.io import files_equal, first_differing_byte
 
 
 def inspect_file_like_reproducibility(
@@ -98,26 +98,26 @@ def inspect_file_like_reproducibility(
         return
     emit_detail(progress_reporter, "Staged artifact", str(staged_path))
     emit_detail(progress_reporter, "Rebuilt artifact", str(rebuilt_path))
-    staged_bytes = staged_path.read_bytes()
-    rebuilt_bytes = rebuilt_path.read_bytes()
-    if staged_bytes == rebuilt_bytes:
+    staged_size = staged_path.stat().st_size
+    rebuilt_size = rebuilt_path.stat().st_size
+    if files_equal(staged_path, rebuilt_path):
         emit_success(progress_reporter, "Retained staged and rebuilt artifact copies are identical")
         return
-    inline_diff = text_diff(staged_bytes, rebuilt_bytes)
+    inline_diff = text_diff_paths(staged_path, rebuilt_path)
     drift_classification = _classify_file_like_drift(
-        staged_bytes,
-        rebuilt_bytes,
+        staged_size,
+        rebuilt_size,
         inline_diff=inline_diff,
     )
     emit_failure(progress_reporter, "Retained staged and rebuilt artifact copies differ")
     emit_detail(progress_reporter, "Drift classification", drift_classification)
-    emit_detail(progress_reporter, "Staged byte count", str(len(staged_bytes)))
-    emit_detail(progress_reporter, "Rebuilt byte count", str(len(rebuilt_bytes)))
-    emit_detail(progress_reporter, "Size delta bytes", str(len(rebuilt_bytes) - len(staged_bytes)))
+    emit_detail(progress_reporter, "Staged byte count", str(staged_size))
+    emit_detail(progress_reporter, "Rebuilt byte count", str(rebuilt_size))
+    emit_detail(progress_reporter, "Size delta bytes", str(rebuilt_size - staged_size))
     emit_detail(
         progress_reporter,
         "First differing byte",
-        str(first_differing_byte(staged_bytes, rebuilt_bytes)),
+        str(first_differing_byte(staged_path, rebuilt_path)),
     )
     archive_analysis = metadata.archive_analysis
     if not emit_shallow_archive_analysis(
@@ -141,12 +141,12 @@ def inspect_file_like_reproducibility(
 
 
 def _classify_file_like_drift(
-    staged_bytes: bytes,
-    rebuilt_bytes: bytes,
+    staged_size: int,
+    rebuilt_size: int,
     *,
     inline_diff: list[str],
 ) -> str:
-    same_size = len(staged_bytes) == len(rebuilt_bytes)
+    same_size = staged_size == rebuilt_size
     if inline_diff:
         return "text-content-drift" if same_size else "size-and-text-drift"
     return "binary-content-drift" if same_size else "size-and-binary-drift"

@@ -16,14 +16,11 @@
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
-    _RemoteHttpClient,
     _RepositoryFile,
     _inventory_worker_count,
-    _repository_file_bytes,
     _repository_files,
     _validated_repository_root,
 )
@@ -40,6 +37,8 @@ from apache_buildish_release_tooling.release.contracts import (
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.verification.common import emit_info, emit_success, update_info
+from apache_buildish_release_tooling.shared.downloader import ResourceDownloader
+from apache_buildish_release_tooling.shared.io import hash_file
 from apache_buildish_release_tooling.release.verification.common import (
     GpgVerifier,
     SignatureVerification,
@@ -56,6 +55,7 @@ from .maven_repository_rebuild import verify_maven_repository_reproducibility
 from .shared import (
     downloaded_inventory,
 )
+
 
 def verify_maven_repository(
     artifact_entry: MavenRepositorySecondaryArtifact,
@@ -109,16 +109,15 @@ def verify_maven_repository(
         issues.append(str(exc))
 
     worker_count = _inventory_worker_count(None)
-    remote_http_client: _RemoteHttpClient | None = None
+    remote_http_client: ResourceDownloader | None = None
     if not issues and base_url.startswith(("http://", "https://")):
-        remote_http_client = _RemoteHttpClient.for_worker_count(worker_count)
+        remote_http_client = ResourceDownloader.create(max_connections=worker_count)
 
     expected_entries: dict[str, MavenRepositoryInventoryEntry] = {}
     total_size_bytes = 0
     signature_verifications: tuple[tuple[str, str, SignatureVerification], ...] = ()
     matches_signed_inventory = False
     staged_repository_files_by_path: dict[str, _RepositoryFile] = {}
-    staged_repository_cache: dict[str, bytes] = {}
     try:
         if not issues and inventory_payload is not None:
             emit_info(progress_reporter, f"Enumerating live repository from {base_url}")
@@ -132,7 +131,11 @@ def verify_maven_repository(
                 repository_file.relative_path: repository_file
                 for repository_file in repository_files
             }
-            staged_repository_files_by_path = dict(files_by_relative_path)
+            staged_repository_files_by_path = {
+                relative_path: repository_file
+                for relative_path, repository_file in files_by_relative_path.items()
+                if repository_file.local_path is not None
+            }
             total_size_bytes = sum(repository_file.size_bytes for repository_file in repository_files)
             expected_entries = maven_inventory_entries(inventory_payload)
             emit_info(
@@ -149,8 +152,6 @@ def verify_maven_repository(
                     f"missing={missing_paths} unexpected={unexpected_paths}"
                 )
 
-            cache: dict[str, bytes] = {}
-            staged_repository_cache = cache
             content_issues = 0
             common_paths = sorted(expected_paths & live_paths)
             for index, relative_path in enumerate(common_paths, start=1):
@@ -163,13 +164,15 @@ def verify_maven_repository(
                     )
                     content_issues += 1
                 try:
-                    actual_sha512 = hashlib.sha512(
-                        _repository_file_bytes(
-                            repository_file,
-                            cache=cache,
-                            remote_http_client=remote_http_client,
-                        )
-                    ).hexdigest()
+                    materialized_file = _materialized_repository_file(
+                        repository_file,
+                        work_dir=work_dir / "staged-repository",
+                        remote_http_client=remote_http_client,
+                    )
+                    staged_repository_files_by_path[relative_path] = materialized_file
+                    if materialized_file.local_path is None:
+                        raise ValueError(f"repository file has no local path: {relative_path}")
+                    actual_sha512 = hash_file(materialized_file.local_path)
                 except Exception as exc:
                     issues.append(str(exc))
                     content_issues += 1
@@ -187,9 +190,7 @@ def verify_maven_repository(
 
             emit_info(progress_reporter, "Verifying detached signatures present in the live repository")
             signature_verifications, signature_issues = verified_maven_repository_signatures(
-                files_by_relative_path,
-                cache=cache,
-                remote_http_client=remote_http_client,
+                staged_repository_files_by_path,
                 verifier=verifier,
                 work_dir=work_dir / "signatures",
             )
@@ -240,7 +241,6 @@ def verify_maven_repository(
                 for relative_path in sorted(expected_entries)
                 if relative_path in staged_repository_files_by_path
             },
-            staged_cache=dict(staged_repository_cache),
             progress_reporter=progress_reporter,
             profile_overrides=profile_overrides,
         )
@@ -267,4 +267,30 @@ def verify_maven_repository(
             ],
         ),
         reproducibility=reproducibility_verification,
+    )
+
+
+def _materialized_repository_file(
+    repository_file: _RepositoryFile,
+    *,
+    work_dir: Path,
+    remote_http_client: ResourceDownloader | None,
+) -> _RepositoryFile:
+    if repository_file.local_path is not None:
+        return repository_file
+    if repository_file.source_url is None:
+        raise ValueError(f"repository file has no readable source: {repository_file.relative_path}")
+    if remote_http_client is None:
+        raise ValueError(f"remote repository file requires an HTTP client: {repository_file.relative_path}")
+    local_path = work_dir / repository_file.relative_path
+    remote_http_client.download_to_path(
+        repository_file.source_url,
+        local_path,
+        max_bytes=repository_file.size_bytes,
+    )
+    return _RepositoryFile(
+        relative_path=repository_file.relative_path,
+        size_bytes=repository_file.size_bytes,
+        source_url=repository_file.source_url,
+        local_path=local_path,
     )

@@ -17,22 +17,18 @@
 from __future__ import annotations
 
 import hashlib
-import io
 import posixpath
 import re
-from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, as_completed, wait
+from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from argparse import Namespace
 from dataclasses import dataclass
-from email.message import Message
 from html.parser import HTMLParser
 from pathlib import Path
-from urllib3 import Timeout
-from typing import Any, BinaryIO
-from urllib.error import HTTPError
+from typing import BinaryIO
 from urllib.parse import unquote, urljoin, urlparse
 
-import urllib3
-
+from apache_buildish_release_tooling.shared.downloader import ResourceDownloader
+from apache_buildish_release_tooling.shared.io import read_bytes_bounded
 from apache_buildish_release_tooling.release.artifact_registration.common import (
     common_artifact_metadata,
 )
@@ -52,8 +48,8 @@ from apache_buildish_release_tooling.release.source_artifact import sha512
 _SHA512_PATTERN = re.compile(r"^[0-9a-fA-F]{128}$")
 _DEFAULT_INVENTORY_WORKERS = 16
 _DEFAULT_NEXUS_STAGING_BASE_URL_PREFIX = "https://repository.apache.org/content/repositories/"
-_DEFAULT_REMOTE_TIMEOUT = Timeout(connect=10.0, read=60.0)
 _HASH_CHUNK_BYTES = 1024 * 1024
+_MAX_REMOTE_METADATA_BYTES = 25 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -73,66 +69,9 @@ class _NexusIndexEntry:
 
 
 @dataclass(frozen=True)
-class _RemoteHttpClient:
-    pool_manager: urllib3.PoolManager
-
-    @classmethod
-    def for_worker_count(cls, worker_count: int) -> _RemoteHttpClient:
-        return cls(
-            pool_manager=urllib3.PoolManager(
-                maxsize=worker_count,
-                block=True,
-                timeout=_DEFAULT_REMOTE_TIMEOUT,
-            )
-        )
-
-    def close(self) -> None:
-        self.pool_manager.clear()
-
-    def read_text(self, url: str) -> str:
-        return self.read_bytes(url).decode("utf-8")
-
-    def read_bytes(self, url: str) -> bytes:
-        response = self.pool_manager.request("GET", url, preload_content=True, timeout=_DEFAULT_REMOTE_TIMEOUT)
-        try:
-            payload = response.data
-            if response.status < 200 or response.status >= 300:
-                raise HTTPError(
-                    url,
-                    response.status,
-                    "unexpected HTTP response",
-                    _http_error_headers(response.headers),
-                    io.BytesIO(payload),
-                )
-            return payload
-        finally:
-            response.release_conn()
-
-    def sha512(self, url: str) -> str:
-        response = self.pool_manager.request("GET", url, preload_content=False, timeout=_DEFAULT_REMOTE_TIMEOUT)
-        try:
-            if response.status < 200 or response.status >= 300:
-                payload = response.read()
-                raise HTTPError(
-                    url,
-                    response.status,
-                    "unexpected HTTP response",
-                    _http_error_headers(response.headers),
-                    io.BytesIO(payload),
-                )
-            digest = hashlib.sha512()
-            while chunk := response.read(_HASH_CHUNK_BYTES):
-                digest.update(chunk)
-            return digest.hexdigest()
-        finally:
-            response.release_conn()
-
-
-def _http_error_headers(headers: Any) -> Message[str, str]:
-    message: Message[str, str] = Message()
-    for name, value in headers.items():
-        message[name] = value
-    return message
+class _Sha512SidecarRecord:
+    file_sha512: str
+    declared_sha512: str
 
 
 class _NexusIndexParser(HTMLParser):
@@ -248,18 +187,6 @@ def _normalized_inventory_filename(artifact_id: str) -> str:
     return f"{artifact_id}-inventory.json"
 
 
-def _read_remote_text(url: str, *, remote_http_client: _RemoteHttpClient) -> str:
-    return remote_http_client.read_text(url)
-
-
-def _read_remote_bytes(url: str, *, remote_http_client: _RemoteHttpClient) -> bytes:
-    return remote_http_client.read_bytes(url)
-
-
-def _remote_sha512(url: str, *, remote_http_client: _RemoteHttpClient) -> str:
-    return remote_http_client.sha512(url)
-
-
 def _parse_nexus_index(listing_url: str, base_url: str, html_text: str) -> list[_NexusIndexEntry]:
     parser = _NexusIndexParser()
     parser.feed(html_text)
@@ -307,9 +234,12 @@ def _fetch_remote_listing(
     directory_url: str,
     base_url: str,
     *,
-    remote_http_client: _RemoteHttpClient,
+    remote_http_client: ResourceDownloader,
 ) -> tuple[str, list[_NexusIndexEntry]]:
-    listing_html = _read_remote_text(directory_url, remote_http_client=remote_http_client)
+    listing_html = remote_http_client.read_text(
+        directory_url,
+        max_bytes=_MAX_REMOTE_METADATA_BYTES,
+    )
     return directory_url, _parse_nexus_index(directory_url, base_url, listing_html)
 
 
@@ -317,7 +247,7 @@ def _enumerate_remote_repository(
     base_url: str,
     *,
     worker_count: int,
-    remote_http_client: _RemoteHttpClient,
+    remote_http_client: ResourceDownloader,
     progress_reporter: ProgressReporter,
 ) -> list[_RepositoryFile]:
     seen_directories: set[str] = set()
@@ -388,7 +318,7 @@ def _repository_files(
     base_url: str,
     *,
     worker_count: int,
-    remote_http_client: _RemoteHttpClient | None,
+    remote_http_client: ResourceDownloader | None,
     progress_reporter: ProgressReporter,
 ) -> list[_RepositoryFile]:
     parsed = urlparse(base_url)
@@ -407,91 +337,22 @@ def _repository_files(
     )
 
 
-def _planned_remote_fetches(
-    repository_files: list[_RepositoryFile],
-    *,
-    files_by_relative_path: dict[str, _RepositoryFile],
-) -> dict[str, _RepositoryFile]:
-    planned_fetches: dict[str, _RepositoryFile] = {}
-    for repository_file in repository_files:
-        if repository_file.source_url is None:
-            continue
-        if repository_file.relative_path.endswith(".sha512"):
-            planned_fetches[repository_file.relative_path] = repository_file
-    return planned_fetches
-
-
-def _fetch_remote_repository_file(
+def _repository_file_bytes_bounded(
     repository_file: _RepositoryFile,
     *,
-    remote_http_client: _RemoteHttpClient,
-) -> tuple[str, bytes]:
-    if repository_file.source_url is None:
-        raise ValueError(f"repository file has no remote source URL: {repository_file.relative_path}")
-    return repository_file.relative_path, _read_remote_bytes(
-        repository_file.source_url,
-        remote_http_client=remote_http_client,
-    )
-
-
-def _prefetched_remote_bytes(
-    repository_files: list[_RepositoryFile],
-    *,
-    files_by_relative_path: dict[str, _RepositoryFile],
-    worker_count: int,
-    remote_http_client: _RemoteHttpClient | None,
-    progress_reporter: ProgressReporter,
-) -> dict[str, bytes]:
-    planned_fetches = _planned_remote_fetches(
-        repository_files,
-        files_by_relative_path=files_by_relative_path,
-    )
-    if not planned_fetches:
-        return {}
-    if remote_http_client is None:
-        raise ValueError("remote repository prefetch requires an HTTP client")
-    progress_reporter.emit(f"prefetching maven repository files: 0/{len(planned_fetches)} completed")
-    payloads: dict[str, bytes] = {}
-    with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        future_to_path = {
-            executor.submit(
-                _fetch_remote_repository_file,
-                repository_file,
-                remote_http_client=remote_http_client,
-            ): relative_path
-            for relative_path, repository_file in planned_fetches.items()
-        }
-        for future in as_completed(future_to_path):
-            relative_path, payload = future.result()
-            payloads[relative_path] = payload
-            progress_reporter.update(
-                f"prefetching maven repository files: {len(payloads)}/{len(planned_fetches)} completed"
-            )
-    return payloads
-
-
-def _repository_file_bytes(
-    repository_file: _RepositoryFile,
-    *,
-    cache: dict[str, bytes],
-    remote_http_client: _RemoteHttpClient | None,
+    remote_http_client: ResourceDownloader | None,
 ) -> bytes:
-    cached = cache.get(repository_file.relative_path)
-    if cached is not None:
-        return cached
     if repository_file.local_path is not None:
-        payload = repository_file.local_path.read_bytes()
-    elif repository_file.source_url is not None:
+        with repository_file.local_path.open("rb") as handle:
+            return read_bytes_bounded(handle, max_bytes=_MAX_REMOTE_METADATA_BYTES)
+    if repository_file.source_url is not None:
         if remote_http_client is None:
             raise ValueError(f"remote repository file requires an HTTP client: {repository_file.relative_path}")
-        payload = _read_remote_bytes(
+        return remote_http_client.read_bytes(
             repository_file.source_url,
-            remote_http_client=remote_http_client,
+            max_bytes=_MAX_REMOTE_METADATA_BYTES,
         )
-    else:
-        raise ValueError(f"repository file has no readable source: {repository_file.relative_path}")
-    cache[repository_file.relative_path] = payload
-    return payload
+    raise ValueError(f"repository file has no readable source: {repository_file.relative_path}")
 
 
 def _parsed_sidecar_sha512(sidecar_bytes: bytes, *, relative_path: str) -> str:
@@ -506,27 +367,27 @@ def _inventory_entry_sha512(
     repository_file: _RepositoryFile,
     *,
     files_by_relative_path: dict[str, _RepositoryFile],
-    cache: dict[str, bytes],
-    remote_http_client: _RemoteHttpClient | None,
+    sha512_by_relative_path: dict[str, str],
+    sha512_sidecars_by_relative_path: dict[str, _Sha512SidecarRecord],
+    remote_http_client: ResourceDownloader | None,
 ) -> str:
     actual_sha512 = _repository_file_sha512(
         repository_file,
-        cache=cache,
+        sha512_by_relative_path=sha512_by_relative_path,
+        sha512_sidecars_by_relative_path=sha512_sidecars_by_relative_path,
         remote_http_client=remote_http_client,
     )
     sidecar_relative_path = f"{repository_file.relative_path}.sha512"
     if not repository_file.relative_path.endswith(".sha512"):
         sidecar_file = files_by_relative_path.get(sidecar_relative_path)
         if sidecar_file is not None:
-            declared_sha512 = _parsed_sidecar_sha512(
-                _repository_file_bytes(
-                    sidecar_file,
-                    cache=cache,
-                    remote_http_client=remote_http_client,
-                ),
-                relative_path=sidecar_relative_path,
+            sidecar_record = _sha512_sidecar_record(
+                sidecar_file,
+                sha512_by_relative_path=sha512_by_relative_path,
+                sha512_sidecars_by_relative_path=sha512_sidecars_by_relative_path,
+                remote_http_client=remote_http_client,
             )
-            if declared_sha512 != actual_sha512:
+            if sidecar_record.declared_sha512 != actual_sha512:
                 raise ValueError(
                     "maven-repository SHA512 sidecar does not match file bytes: "
                     f"{repository_file.relative_path}"
@@ -537,19 +398,57 @@ def _inventory_entry_sha512(
 def _repository_file_sha512(
     repository_file: _RepositoryFile,
     *,
-    cache: dict[str, bytes],
-    remote_http_client: _RemoteHttpClient | None,
+    sha512_by_relative_path: dict[str, str],
+    sha512_sidecars_by_relative_path: dict[str, _Sha512SidecarRecord],
+    remote_http_client: ResourceDownloader | None,
 ) -> str:
-    cached = cache.get(repository_file.relative_path)
+    cached = sha512_by_relative_path.get(repository_file.relative_path)
     if cached is not None:
-        return hashlib.sha512(cached).hexdigest()
+        return cached
+    if repository_file.relative_path.endswith(".sha512"):
+        return _sha512_sidecar_record(
+            repository_file,
+            sha512_by_relative_path=sha512_by_relative_path,
+            sha512_sidecars_by_relative_path=sha512_sidecars_by_relative_path,
+            remote_http_client=remote_http_client,
+        ).file_sha512
     if repository_file.local_path is not None:
-        return _local_file_sha512(repository_file.local_path)
+        digest = _local_file_sha512(repository_file.local_path)
+        sha512_by_relative_path[repository_file.relative_path] = digest
+        return digest
     if repository_file.source_url is not None:
         if remote_http_client is None:
             raise ValueError(f"remote repository file requires an HTTP client: {repository_file.relative_path}")
-        return _remote_sha512(repository_file.source_url, remote_http_client=remote_http_client)
+        digest = remote_http_client.hash_uri(repository_file.source_url)
+        sha512_by_relative_path[repository_file.relative_path] = digest
+        return digest
     raise ValueError(f"repository file has no readable source: {repository_file.relative_path}")
+
+
+def _sha512_sidecar_record(
+    repository_file: _RepositoryFile,
+    *,
+    sha512_by_relative_path: dict[str, str],
+    sha512_sidecars_by_relative_path: dict[str, _Sha512SidecarRecord],
+    remote_http_client: ResourceDownloader | None,
+) -> _Sha512SidecarRecord:
+    cached = sha512_sidecars_by_relative_path.get(repository_file.relative_path)
+    if cached is not None:
+        return cached
+    sidecar_bytes = _repository_file_bytes_bounded(
+        repository_file,
+        remote_http_client=remote_http_client,
+    )
+    record = _Sha512SidecarRecord(
+        file_sha512=hashlib.sha512(sidecar_bytes).hexdigest(),
+        declared_sha512=_parsed_sidecar_sha512(
+            sidecar_bytes,
+            relative_path=repository_file.relative_path,
+        ),
+    )
+    sha512_by_relative_path[repository_file.relative_path] = record.file_sha512
+    sha512_sidecars_by_relative_path[repository_file.relative_path] = record
+    return record
 
 
 def _local_file_sha512(path: Path) -> str:
@@ -570,18 +469,12 @@ def _inventory_payload(
     staging_repository_id: str,
     base_url: str,
     repository_files: list[_RepositoryFile],
-    worker_count: int,
-    remote_http_client: _RemoteHttpClient | None,
+    remote_http_client: ResourceDownloader | None,
     progress_reporter: ProgressReporter,
 ) -> tuple[MavenRepositoryInventoryV1, int]:
     files_by_relative_path = {entry.relative_path: entry for entry in repository_files}
-    cache = _prefetched_remote_bytes(
-        repository_files,
-        files_by_relative_path=files_by_relative_path,
-        worker_count=worker_count,
-        remote_http_client=remote_http_client,
-        progress_reporter=progress_reporter,
-    )
+    sha512_by_relative_path: dict[str, str] = {}
+    sha512_sidecars_by_relative_path: dict[str, _Sha512SidecarRecord] = {}
     progress_reporter.emit(f"building maven repository inventory: 0/{len(repository_files)} entries")
     entries: list[MavenRepositoryInventoryEntry] = []
     total_size_bytes = 0
@@ -594,7 +487,8 @@ def _inventory_payload(
                 sha512=_inventory_entry_sha512(
                     repository_file,
                     files_by_relative_path=files_by_relative_path,
-                    cache=cache,
+                    sha512_by_relative_path=sha512_by_relative_path,
+                    sha512_sidecars_by_relative_path=sha512_sidecars_by_relative_path,
                     remote_http_client=remote_http_client,
                 ),
             )
@@ -627,9 +521,9 @@ def build_maven_repository_registration(
     worker_count = _inventory_worker_count(getattr(args, "inventory_workers", None))
     progress_reporter = ProgressReporter.from_mode(getattr(args, "progress", "auto"))
     _validated_repository_root(base_url, staging_repository_id)
-    remote_http_client: _RemoteHttpClient | None = None
+    remote_http_client: ResourceDownloader | None = None
     if urlparse(base_url).scheme in {"http", "https"}:
-        remote_http_client = _RemoteHttpClient.for_worker_count(worker_count)
+        remote_http_client = ResourceDownloader.create(max_connections=worker_count)
     try:
         progress_reporter.emit(f"enumerating maven repository from {base_url}")
         repository_files = _repository_files(
@@ -645,7 +539,6 @@ def build_maven_repository_registration(
             staging_repository_id=staging_repository_id,
             base_url=base_url,
             repository_files=repository_files,
-            worker_count=worker_count,
             remote_http_client=remote_http_client,
             progress_reporter=progress_reporter,
         )

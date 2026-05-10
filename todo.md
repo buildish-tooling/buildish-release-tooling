@@ -14,7 +14,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-## URI and archive memory bounds
+## Process output capture bounds
 
-1. Medium rc_vote_manifest.py:173 reads remote URI bodies without a maximum byte limit. Verification downloads manifests, artifacts, sidecars, and KEYS through this helper, so a large response can cause memory/disk exhaustion before checksum validation.
-2. Medium verification/secondary/maven_repository.py:154 and verification/secondary/maven_repository_repro.py:150 keep staged Maven repository payloads in a dict[str, bytes] for local reproducibility comparison. With many or large staged files, memory can grow to the staged repository size.
+No open items.

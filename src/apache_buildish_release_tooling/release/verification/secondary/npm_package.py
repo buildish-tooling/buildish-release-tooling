@@ -34,12 +34,13 @@ from apache_buildish_release_tooling.release.contracts import (
 from apache_buildish_release_tooling.release.external_json import validate_json_object_model_text
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.path_validation import validate_simple_filename
-from apache_buildish_release_tooling.release.rc_vote_manifest import read_uri_bytes
+from apache_buildish_release_tooling.release.rc_vote_manifest import download_uri_to_path, read_uri_bytes
 from apache_buildish_release_tooling.release.source_artifact import checksum
 from apache_buildish_release_tooling.release.verification.common import (
     validate_fetch_uri,
     verify_checksum_sidecar,
 )
+from apache_buildish_release_tooling.shared.io import read_bytes_bounded
 
 from .file_reproducibility import verify_host_direct_single_file_reproducibility
 from .shared import url_without_fragment
@@ -163,7 +164,7 @@ def verify_npm_package(
             purpose=f"npm package URL for {artifact_id}",
         )
         downloaded_artifact_path = work_dir / filename
-        downloaded_artifact_path.write_bytes(read_uri_bytes(artifact_uri))
+        download_uri_to_path(artifact_uri, downloaded_artifact_path)
         artifact_path = downloaded_artifact_path
     except Exception as exc:
         issues.append(str(exc))
@@ -227,7 +228,7 @@ def verify_npm_package(
                 purpose=f"npm package checksum sidecar URL for {artifact_id}",
             )
             sidecar_path = work_dir / f"{filename}.{checksum_algorithm}"
-            sidecar_path.write_bytes(read_uri_bytes(checksum_uri))
+            download_uri_to_path(checksum_uri, sidecar_path)
             verify_checksum_sidecar(
                 artifact_path,
                 sidecar_path,
@@ -467,7 +468,8 @@ def _read_npm_registry_bytes(metadata_url: str) -> bytes:
         for candidate_name in ("index.json", "package.json"):
             candidate_path = local_path / candidate_name
             if candidate_path.is_file():
-                return candidate_path.read_bytes()
+                with candidate_path.open("rb") as handle:
+                    return read_bytes_bounded(handle, max_bytes=25 * 1024 * 1024)
         raise ValueError(f"npm-package registry directory has no metadata JSON file: {local_path}")
     return read_uri_bytes(metadata_url)
 

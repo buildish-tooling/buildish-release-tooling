@@ -20,6 +20,7 @@ import hashlib
 import subprocess
 import unittest
 from unittest import mock
+from typing import IO, cast
 
 from apache_buildish_release_tooling.release.contracts import (
     GenericFileSecondaryArtifact,
@@ -32,9 +33,9 @@ from apache_buildish_release_tooling.release.contracts import (
 from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
 from apache_buildish_release_tooling.release.rc_vote_manifest import (
     DEFAULT_SVN_CAT_TIMEOUT_SECONDS,
-    DEFAULT_URI_READ_TIMEOUT_SECONDS,
     build_rc_vote_manifest,
     derive_asf_keys_uri,
+    download_uri_to_path,
     read_uri_bytes,
     trust_root_metadata,
     uri_sha512,
@@ -77,6 +78,20 @@ class RcVoteManifestTest(unittest.TestCase):
 
         self.assertEqual(b"payload\n", read_uri_bytes(payload_path.as_uri()))
 
+    def test_download_uri_to_path_streams_local_file_uri(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        source_path = sandbox_dir / "artifact.tar.gz"
+        destination_path = sandbox_dir / "downloaded.tar.gz"
+        source_path.write_bytes(b"payload\n")
+
+        with mock.patch.object(type(source_path), "read_bytes", side_effect=AssertionError("unexpected read_bytes")):
+            downloaded = download_uri_to_path(source_path.as_uri(), destination_path)
+
+        self.assertEqual(destination_path, downloaded.path)
+        self.assertEqual(8, downloaded.size_bytes)
+        self.assertEqual(b"payload\n", destination_path.read_bytes())
+
     def test_uri_sha512_streams_local_file_uri(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
@@ -90,57 +105,53 @@ class RcVoteManifestTest(unittest.TestCase):
         self.assertEqual(hashlib.sha512(payload).hexdigest(), actual)
 
     def test_uri_sha512_streams_http_uri(self) -> None:
-        response = mock.MagicMock()
-        response.__enter__.return_value.read.side_effect = [b"pay", b"load", b""]
+        downloader = mock.MagicMock()
+        downloader.hash_uri.return_value = hashlib.sha512(b"payload").hexdigest()
 
         with mock.patch(
-            "apache_buildish_release_tooling.release.rc_vote_manifest.urlopen",
-            return_value=response,
-        ) as urlopen_mock:
+            "apache_buildish_release_tooling.release.rc_vote_manifest._DEFAULT_DOWNLOADER",
+            downloader,
+        ):
             actual = uri_sha512("https://downloads.apache.org/example")
 
         self.assertEqual(hashlib.sha512(b"payload").hexdigest(), actual)
-        urlopen_mock.assert_called_once_with(
+        downloader.hash_uri.assert_called_once_with(
             "https://downloads.apache.org/example",
-            timeout=DEFAULT_URI_READ_TIMEOUT_SECONDS,
+            algorithm="sha512",
         )
 
     def test_read_uri_bytes_uses_timeout_for_svn_cat_fallback(self) -> None:
-        completed = subprocess.CompletedProcess(
-            ["svn", "cat", "file:///missing"],
-            0,
-            stdout=b"payload\n",
-            stderr=b"",
-        )
+        def run_svn_cat(*_args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+            cast(IO[bytes], kwargs["stdout"]).write(b"payload\n")
+            return subprocess.CompletedProcess(["svn", "cat", "file:///missing"], 0)
 
         with mock.patch(
             "apache_buildish_release_tooling.release.rc_vote_manifest.subprocess.run",
-            return_value=completed,
+            side_effect=run_svn_cat,
         ) as run_mock:
             payload = read_uri_bytes("file:///missing")
 
         self.assertEqual(b"payload\n", payload)
-        run_mock.assert_called_once_with(
-            ["svn", "cat", "file:///missing"],
-            check=True,
-            capture_output=True,
-            timeout=DEFAULT_SVN_CAT_TIMEOUT_SECONDS,
-        )
+        self.assertEqual(["svn", "cat", "file:///missing"], run_mock.call_args.args[0])
+        self.assertTrue(run_mock.call_args.kwargs["check"])
+        self.assertEqual(DEFAULT_SVN_CAT_TIMEOUT_SECONDS, run_mock.call_args.kwargs["timeout"])
+        self.assertIn("stdout", run_mock.call_args.kwargs)
+        self.assertIn("stderr", run_mock.call_args.kwargs)
 
     def test_read_uri_bytes_uses_default_timeout_for_http_uris(self) -> None:
-        response = mock.MagicMock()
-        response.__enter__.return_value.read.return_value = b"payload"
+        downloader = mock.MagicMock()
+        downloader.read_bytes.return_value = b"payload"
 
         with mock.patch(
-            "apache_buildish_release_tooling.release.rc_vote_manifest.urlopen",
-            return_value=response,
-        ) as urlopen_mock:
+            "apache_buildish_release_tooling.release.rc_vote_manifest._DEFAULT_DOWNLOADER",
+            downloader,
+        ):
             payload = read_uri_bytes("https://downloads.apache.org/example")
 
         self.assertEqual(b"payload", payload)
-        urlopen_mock.assert_called_once_with(
+        downloader.read_bytes.assert_called_once_with(
             "https://downloads.apache.org/example",
-            timeout=DEFAULT_URI_READ_TIMEOUT_SECONDS,
+            max_bytes=25 * 1024 * 1024,
         )
 
     def test_build_rc_vote_manifest_emits_expected_shape(self) -> None:

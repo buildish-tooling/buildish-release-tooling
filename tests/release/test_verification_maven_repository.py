@@ -66,6 +66,14 @@ class MavenRepositoryReproducibilityTest(unittest.TestCase):
             staged_pom_payload = b"<project>stable</project>\n"
             staged_signature_payload = b"signature bytes\n"
             staged_sidecar_payload = (("0" * 128) + "  app-1.0.0.pom\n").encode("utf-8")
+            staged_root = Path(temp_dir) / "staged"
+            staged_pom_path = staged_root / "org/example/app/1.0.0/app-1.0.0.pom"
+            staged_signature_path = staged_root / "org/example/app/1.0.0/app-1.0.0.pom.asc"
+            staged_sidecar_path = staged_root / "org/example/app/1.0.0/app-1.0.0.pom.sha512"
+            staged_pom_path.parent.mkdir(parents=True)
+            staged_pom_path.write_bytes(staged_pom_payload)
+            staged_signature_path.write_bytes(staged_signature_payload)
+            staged_sidecar_path.write_bytes(staged_sidecar_payload)
             path_results, issues, matches = compare_maven_repository_trees(
                 artifact_id="maven-staging-main",
                 staged_by_path={
@@ -73,22 +81,20 @@ class MavenRepositoryReproducibilityTest(unittest.TestCase):
                         relative_path="org/example/app/1.0.0/app-1.0.0.pom",
                         size_bytes=len(staged_pom_payload),
                         source_url="https://example.invalid/org/example/app/1.0.0/app-1.0.0.pom",
+                        local_path=staged_pom_path,
                     ),
                     "org/example/app/1.0.0/app-1.0.0.pom.asc": _RepositoryFile(
                         relative_path="org/example/app/1.0.0/app-1.0.0.pom.asc",
                         size_bytes=len(staged_signature_payload),
                         source_url="https://example.invalid/org/example/app/1.0.0/app-1.0.0.pom.asc",
+                        local_path=staged_signature_path,
                     ),
                     "org/example/app/1.0.0/app-1.0.0.pom.sha512": _RepositoryFile(
                         relative_path="org/example/app/1.0.0/app-1.0.0.pom.sha512",
                         size_bytes=len(staged_sidecar_payload),
                         source_url="https://example.invalid/org/example/app/1.0.0/app-1.0.0.pom.sha512",
+                        local_path=staged_sidecar_path,
                     ),
-                },
-                staged_cache={
-                    "org/example/app/1.0.0/app-1.0.0.pom": staged_pom_payload,
-                    "org/example/app/1.0.0/app-1.0.0.pom.asc": staged_signature_payload,
-                    "org/example/app/1.0.0/app-1.0.0.pom.sha512": staged_sidecar_payload,
                 },
                 rebuilt_repository_path=Path(temp_dir) / "m2repo",
                 path_rules=(),
@@ -134,7 +140,6 @@ class MavenRepositoryReproducibilityTest(unittest.TestCase):
             info = zipfile.ZipInfo("example/App.class", (2026, 5, 2, 9, 0, 1))
             with zipfile.ZipFile(staged_jar_path, "w") as archive:
                 archive.writestr(info, b"bytecode\n")
-            staged_payload = staged_jar_path.read_bytes()
 
             with mock.patch.object(zipfile.ZipFile, "read", side_effect=AssertionError("unexpected ZipFile.read")):
                 path_results, issues, matches = compare_maven_repository_trees(
@@ -142,11 +147,11 @@ class MavenRepositoryReproducibilityTest(unittest.TestCase):
                     staged_by_path={
                         "org/example/app/1.0.0/app-1.0.0.jar": _RepositoryFile(
                             relative_path="org/example/app/1.0.0/app-1.0.0.jar",
-                            size_bytes=len(staged_payload),
+                            size_bytes=staged_jar_path.stat().st_size,
                             source_url="https://example.invalid/org/example/app/1.0.0/app-1.0.0.jar",
+                            local_path=staged_jar_path,
                         ),
                     },
-                    staged_cache={"org/example/app/1.0.0/app-1.0.0.jar": staged_payload},
                     rebuilt_repository_path=Path(temp_dir) / "m2repo",
                     path_rules=(
                         MavenRepositoryPathRuleReport(
