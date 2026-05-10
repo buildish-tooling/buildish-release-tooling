@@ -22,7 +22,8 @@ from tempfile import TemporaryDirectory
 import unittest
 from urllib.error import HTTPError
 
-from apache_buildish_release_tooling.shared.downloader import ResourceDownloader
+from apache_buildish_release_tooling.shared._downloader import _ResourceDownloader
+from apache_buildish_release_tooling.shared.downloader import DownloadPolicy, DownloadSession
 from apache_buildish_release_tooling.shared.io import ByteLimitExceededError
 
 
@@ -64,7 +65,7 @@ class SharedDownloaderTest(unittest.TestCase):
 
     def test_download_to_path_streams_http_response_with_hashes(self) -> None:
         pool = _FakePoolManager(_FakeResponse(b"payload\n"))
-        downloader = ResourceDownloader(pool_manager=pool)  # type: ignore[arg-type]
+        downloader = _ResourceDownloader(pool_manager=pool)  # type: ignore[arg-type]
         with TemporaryDirectory() as temp_dir:
             destination = Path(temp_dir) / "artifact.bin"
 
@@ -86,7 +87,7 @@ class SharedDownloaderTest(unittest.TestCase):
     def test_download_to_path_releases_response_after_limit_failure(self) -> None:
         response = _FakeResponse(b"payload\n")
         pool = _FakePoolManager(response)
-        downloader = ResourceDownloader(pool_manager=pool)  # type: ignore[arg-type]
+        downloader = _ResourceDownloader(pool_manager=pool)  # type: ignore[arg-type]
         with TemporaryDirectory() as temp_dir:
             destination = Path(temp_dir) / "artifact.bin"
 
@@ -102,7 +103,7 @@ class SharedDownloaderTest(unittest.TestCase):
 
     def test_hash_uri_streams_local_file_uri(self) -> None:
         pool = _FakePoolManager()
-        downloader = ResourceDownloader(pool_manager=pool)  # type: ignore[arg-type]
+        downloader = _ResourceDownloader(pool_manager=pool)  # type: ignore[arg-type]
         with TemporaryDirectory() as temp_dir:
             source = Path(temp_dir) / "artifact.bin"
             source.write_bytes(b"payload\n")
@@ -114,7 +115,7 @@ class SharedDownloaderTest(unittest.TestCase):
 
     def test_read_text_uses_bounded_http_response(self) -> None:
         pool = _FakePoolManager(_FakeResponse(b"hello\n"))
-        downloader = ResourceDownloader(pool_manager=pool)  # type: ignore[arg-type]
+        downloader = _ResourceDownloader(pool_manager=pool)  # type: ignore[arg-type]
 
         self.assertEqual(
             "hello\n",
@@ -123,7 +124,7 @@ class SharedDownloaderTest(unittest.TestCase):
 
     def test_read_text_rejects_oversized_http_response(self) -> None:
         pool = _FakePoolManager(_FakeResponse(b"hello\n"))
-        downloader = ResourceDownloader(pool_manager=pool)  # type: ignore[arg-type]
+        downloader = _ResourceDownloader(pool_manager=pool)  # type: ignore[arg-type]
 
         with self.assertRaises(ByteLimitExceededError):
             downloader.read_text("https://downloads.example.invalid/hello.txt", max_bytes=3)
@@ -131,7 +132,7 @@ class SharedDownloaderTest(unittest.TestCase):
     def test_http_errors_raise_http_error_and_release_connection(self) -> None:
         response = _FakeResponse(b"missing", status=404)
         pool = _FakePoolManager(response)
-        downloader = ResourceDownloader(pool_manager=pool)  # type: ignore[arg-type]
+        downloader = _ResourceDownloader(pool_manager=pool)  # type: ignore[arg-type]
 
         with self.assertRaises(HTTPError):
             downloader.read_bytes("https://downloads.example.invalid/missing", max_bytes=100)
@@ -140,7 +141,64 @@ class SharedDownloaderTest(unittest.TestCase):
 
     def test_file_uri_rejects_non_local_authority(self) -> None:
         pool = _FakePoolManager()
-        downloader = ResourceDownloader(pool_manager=pool)  # type: ignore[arg-type]
+        downloader = _ResourceDownloader(pool_manager=pool)  # type: ignore[arg-type]
 
         with self.assertRaisesRegex(ValueError, "non-local authority"):
             downloader.read_bytes("file://example.invalid/etc/passwd", max_bytes=100)
+
+    def test_download_session_rejects_disallowed_initial_scheme(self) -> None:
+        pool = _FakePoolManager()
+        session = DownloadSession(
+            policy=DownloadPolicy(allowed_schemes=frozenset({"https"})),
+            transport=_ResourceDownloader(pool_manager=pool),  # type: ignore[arg-type]
+        )
+
+        with self.assertRaisesRegex(ValueError, "URI scheme"):
+            session.read_bytes("http://downloads.example.invalid/payload", max_bytes=100)
+        self.assertEqual([], pool.requests)
+
+    def test_download_session_follows_redirects_with_policy(self) -> None:
+        redirect = _FakeResponse(b"", status=302)
+        redirect.headers["location"] = "/payload"
+        payload = _FakeResponse(b"payload\n")
+        pool = _FakePoolManager(redirect, payload)
+        session = DownloadSession(
+            policy=DownloadPolicy(allowed_schemes=frozenset({"https"}), max_redirects=2),
+            transport=_ResourceDownloader(pool_manager=pool),  # type: ignore[arg-type]
+        )
+
+        self.assertEqual(
+            b"payload\n",
+            session.read_bytes("https://downloads.example.invalid/start", max_bytes=100),
+        )
+        self.assertEqual(
+            [
+                "https://downloads.example.invalid/start",
+                "https://downloads.example.invalid/payload",
+            ],
+            [url for _method, url, _kwargs in pool.requests],
+        )
+        self.assertTrue(redirect.released)
+        self.assertTrue(payload.released)
+
+    def test_download_session_rejects_https_to_http_redirects_by_default(self) -> None:
+        redirect = _FakeResponse(b"", status=302)
+        redirect.headers["location"] = "http://downloads.example.invalid/payload"
+        pool = _FakePoolManager(redirect)
+        session = DownloadSession(
+            policy=DownloadPolicy(allowed_schemes=frozenset({"https", "http"}), max_redirects=2),
+            transport=_ResourceDownloader(pool_manager=pool),  # type: ignore[arg-type]
+        )
+
+        with self.assertRaisesRegex(ValueError, "must not redirect to HTTP"):
+            session.read_bytes("https://downloads.example.invalid/start", max_bytes=100)
+
+    def test_download_session_context_manager_closes_owned_transport(self) -> None:
+        pool = _FakePoolManager()
+        with DownloadSession(
+            policy=DownloadPolicy(allowed_schemes=frozenset({"https"})),
+            transport=_ResourceDownloader(pool_manager=pool),  # type: ignore[arg-type]
+        ):
+            pass
+
+        self.assertTrue(pool.cleared)

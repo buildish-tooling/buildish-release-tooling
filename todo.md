@@ -23,7 +23,7 @@ limitations under the License.
 - Code 2: bounded subprocess capture in the harness needs API/design work.
 - Code 3: inspection bundle quotas need an explicit policy decision.
 - Code 4: streaming or tailing harness logs is moderate because output behavior may change.
-- Code 5 / Code 8: legal module bounded-read cleanup is broad.
+- Code 5 / Code 7: legal module bounded-read cleanup is broad.
 - Security 2 / Security 3 / Security 4: these are trust-boundary or policy decisions more than local
   hardening patches.
 
@@ -65,15 +65,11 @@ limitations under the License.
 
 ### Low
 
-7. `shared/downloader.py::ResourceDownloader` is held as a module-global singleton through
-   `release/rc_vote_manifest.py` and is never explicitly closed. This is acceptable for CLI lifetime,
-   but the ownership model is unclear and could complicate long-lived embedding or tests.
-
-8. `release/process.py::run_logged_command` reads captured stdout/stderr back into memory when files
+7. `release/process.py::run_logged_command` reads captured stdout/stderr back into memory when files
    are below `MAX_CAPTURED_OUTPUT_BYTES`. That is bounded, but callers that only need to stream logs
    should be audited so they do not request captured output unnecessarily.
 
-9. `legal/release_legal.py::_read_legal_file_bytes` checks file size and then performs
+8. `legal/release_legal.py::_read_legal_file_bytes` checks file size and then performs
    `Path.read_bytes()`. For untrusted paths this has a size-check/read race; use an opened file handle
    or shared bounded read helper if these inputs become less trusted.
 

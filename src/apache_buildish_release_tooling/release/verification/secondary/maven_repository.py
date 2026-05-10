@@ -37,7 +37,7 @@ from apache_buildish_release_tooling.release.contracts import (
 from apache_buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.verification.common import emit_info, emit_success, update_info
-from apache_buildish_release_tooling.shared.downloader import ResourceDownloader
+from apache_buildish_release_tooling.shared.downloader import DownloadSession
 from apache_buildish_release_tooling.shared.io import hash_file
 from apache_buildish_release_tooling.release.verification.common import (
     GpgVerifier,
@@ -109,9 +109,9 @@ def verify_maven_repository(
         issues.append(str(exc))
 
     worker_count = _inventory_worker_count(None)
-    remote_http_client: ResourceDownloader | None = None
+    remote_http_client: DownloadSession | None = None
     if not issues and base_url.startswith(("http://", "https://")):
-        remote_http_client = ResourceDownloader.create(max_connections=worker_count)
+        remote_http_client = DownloadSession.non_production(max_connections=worker_count)
 
     expected_entries: dict[str, MavenRepositoryInventoryEntry] = {}
     total_size_bytes = 0
@@ -274,7 +274,7 @@ def _materialized_repository_file(
     repository_file: _RepositoryFile,
     *,
     work_dir: Path,
-    remote_http_client: ResourceDownloader | None,
+    remote_http_client: DownloadSession | None,
 ) -> _RepositoryFile:
     if repository_file.local_path is not None:
         return repository_file

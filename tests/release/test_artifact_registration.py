@@ -40,7 +40,8 @@ from apache_buildish_release_tooling.release.artifact_registration.kinds.npm_pac
 from apache_buildish_release_tooling.release.artifact_registration.kinds.python_distribution import (
     _resolved_filename as _python_distribution_resolved_filename,
 )
-from apache_buildish_release_tooling.shared.downloader import ResourceDownloader
+from apache_buildish_release_tooling.shared._downloader import _ResourceDownloader
+from apache_buildish_release_tooling.shared.downloader import DownloadPolicy, DownloadSession
 
 
 class _FakeHTTPResponse:
@@ -158,13 +159,16 @@ class MavenRepositoryRegistrationUnitTest(unittest.TestCase):
         self.assertFalse(entries[1].is_directory)
         self.assertEqual(25, entries[1].size_bytes)
 
-    def test_resource_downloader_reuses_shared_pool_manager(self) -> None:
+    def test_download_session_reuses_shared_pool_manager(self) -> None:
         _FakePoolManager.reset(
             _FakeHTTPResponse(b"alpha"),
             _FakeHTTPResponse(b"beta"),
         )
         pool_manager = _FakePoolManager()
-        downloader = ResourceDownloader(pool_manager=cast(Any, pool_manager))
+        downloader = DownloadSession(
+            policy=DownloadPolicy(allowed_schemes=frozenset({"https"})),
+            transport=_ResourceDownloader(pool_manager=cast(Any, pool_manager)),
+        )
 
         first = downloader.read_bytes(
             "https://repository.apache.org/content/repositories/orgapachebeam-1427/one",
@@ -195,10 +199,13 @@ class MavenRepositoryRegistrationUnitTest(unittest.TestCase):
         self.assertTrue(pool_manager.cleared)
         self.assertTrue(all(response.released for response in pool_manager.issued_responses))
 
-    def test_resource_downloader_streams_sha512_without_preloading_content(self) -> None:
+    def test_download_session_streams_sha512_without_preloading_content(self) -> None:
         _FakePoolManager.reset(_FakeHTTPResponse(b"jar\n"))
         pool_manager = _FakePoolManager()
-        downloader = ResourceDownloader(pool_manager=cast(Any, pool_manager))
+        downloader = DownloadSession(
+            policy=DownloadPolicy(allowed_schemes=frozenset({"https"})),
+            transport=_ResourceDownloader(pool_manager=cast(Any, pool_manager)),
+        )
 
         actual = downloader.hash_uri("https://repository.apache.org/content/repositories/orgapachebeam-1427/app.jar")
 
@@ -297,7 +304,10 @@ class MavenRepositoryRegistrationUnitTest(unittest.TestCase):
             _FakeHTTPResponse(jar_bytes),
         )
         pool_manager = _FakePoolManager()
-        downloader = ResourceDownloader(pool_manager=cast(Any, pool_manager))
+        downloader = DownloadSession(
+            policy=DownloadPolicy(allowed_schemes=frozenset({"https"})),
+            transport=_ResourceDownloader(pool_manager=cast(Any, pool_manager)),
+        )
         repository_file = _RepositoryFile(
             relative_path="org/example/app-1.0.0.jar",
             size_bytes=len(jar_bytes),

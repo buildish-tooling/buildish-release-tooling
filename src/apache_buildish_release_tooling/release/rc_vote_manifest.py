@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import IO
 from urllib.parse import ParseResult, unquote, urlparse
 
-from apache_buildish_release_tooling.shared.downloader import ResourceDownloader
+from apache_buildish_release_tooling.shared.downloader import DownloadSession
 from apache_buildish_release_tooling.shared.io import (
     CopiedResource,
     copy_stream_to_path,
@@ -67,9 +67,6 @@ DEFAULT_MANIFEST_MAX_BYTES = 25 * 1024 * 1024
 DEFAULT_KEYS_MAX_BYTES = 25 * 1024 * 1024
 DEFAULT_SIGNATURE_MAX_BYTES = 1024 * 1024
 DEFAULT_CHECKSUM_SIDECAR_MAX_BYTES = 1024 * 1024
-_DEFAULT_DOWNLOADER = ResourceDownloader.create(
-    timeout=DEFAULT_URI_READ_TIMEOUT_SECONDS,
-)
 
 
 def _tooling_repo_root() -> Path:
@@ -166,7 +163,12 @@ def derive_asf_keys_uri(release_base_url: str) -> str:
     return f"{release_parent}/KEYS"
 
 
-def read_uri_bytes(uri: str, *, max_bytes: int = DEFAULT_URI_READ_MAX_BYTES) -> bytes:
+def read_uri_bytes(
+    uri: str,
+    *,
+    max_bytes: int = DEFAULT_URI_READ_MAX_BYTES,
+    download_session: DownloadSession | None = None,
+) -> bytes:
     """Read bytes from a `file://`, `http://`, or `https://` URI."""
 
     parsed = urlparse(uri)
@@ -180,11 +182,19 @@ def read_uri_bytes(uri: str, *, max_bytes: int = DEFAULT_URI_READ_MAX_BYTES) -> 
             stdout_file.seek(0)
             return read_bytes_bounded(stdout_file, max_bytes=max_bytes)
     if parsed.scheme in {"http", "https"}:
-        return _DEFAULT_DOWNLOADER.read_bytes(uri, max_bytes=max_bytes)
+        if download_session is not None:
+            return download_session.read_bytes(uri, max_bytes=max_bytes)
+        with DownloadSession.non_production(timeout=DEFAULT_URI_READ_TIMEOUT_SECONDS) as session:
+            return session.read_bytes(uri, max_bytes=max_bytes)
     raise ValueError(f"unsupported URI scheme: {uri}")
 
 
-def read_uri_text(uri: str, *, max_bytes: int = DEFAULT_URI_READ_MAX_BYTES) -> str:
+def read_uri_text(
+    uri: str,
+    *,
+    max_bytes: int = DEFAULT_URI_READ_MAX_BYTES,
+    download_session: DownloadSession | None = None,
+) -> str:
     """Read UTF-8 text from a supported URI."""
 
     parsed = urlparse(uri)
@@ -198,7 +208,10 @@ def read_uri_text(uri: str, *, max_bytes: int = DEFAULT_URI_READ_MAX_BYTES) -> s
             stdout_file.seek(0)
             return read_text_bounded(stdout_file, max_bytes=max_bytes)
     if parsed.scheme in {"http", "https"}:
-        return _DEFAULT_DOWNLOADER.read_text(uri, max_bytes=max_bytes)
+        if download_session is not None:
+            return download_session.read_text(uri, max_bytes=max_bytes)
+        with DownloadSession.non_production(timeout=DEFAULT_URI_READ_TIMEOUT_SECONDS) as session:
+            return session.read_text(uri, max_bytes=max_bytes)
     raise ValueError(f"unsupported URI scheme: {uri}")
 
 
@@ -207,6 +220,7 @@ def download_uri_to_path(
     destination: Path,
     *,
     max_bytes: int = DEFAULT_URI_DOWNLOAD_MAX_BYTES,
+    download_session: DownloadSession | None = None,
 ) -> CopiedResource:
     """Download a supported URI to disk while enforcing a maximum size."""
 
@@ -221,7 +235,11 @@ def download_uri_to_path(
             stdout_file.seek(0)
             return copy_stream_to_path(stdout_file, destination, max_bytes=max_bytes)
     if parsed.scheme in {"http", "https"}:
-        downloaded = _DEFAULT_DOWNLOADER.download_to_path(uri, destination, max_bytes=max_bytes)
+        if download_session is not None:
+            downloaded = download_session.download_to_path(uri, destination, max_bytes=max_bytes)
+        else:
+            with DownloadSession.non_production(timeout=DEFAULT_URI_READ_TIMEOUT_SECONDS) as session:
+                downloaded = session.download_to_path(uri, destination, max_bytes=max_bytes)
         return CopiedResource(
             path=downloaded.path,
             size_bytes=downloaded.size_bytes,
@@ -230,7 +248,7 @@ def download_uri_to_path(
     raise ValueError(f"unsupported URI scheme: {uri}")
 
 
-def uri_sha512(uri: str) -> str:
+def uri_sha512(uri: str, *, download_session: DownloadSession | None = None) -> str:
     """Compute the SHA512 digest for a supported URI without loading it all."""
 
     parsed = urlparse(uri)
@@ -243,7 +261,10 @@ def uri_sha512(uri: str) -> str:
             stdout_file.seek(0)
             return hash_stream(stdout_file, algorithm="sha512")
     if parsed.scheme in {"http", "https"}:
-        return _DEFAULT_DOWNLOADER.hash_uri(uri, algorithm="sha512")
+        if download_session is not None:
+            return download_session.hash_uri(uri, algorithm="sha512")
+        with DownloadSession.non_production(timeout=DEFAULT_URI_READ_TIMEOUT_SECONDS) as session:
+            return session.hash_uri(uri, algorithm="sha512")
     raise ValueError(f"unsupported URI scheme: {uri}")
 
 

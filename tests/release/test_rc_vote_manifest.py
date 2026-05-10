@@ -109,17 +109,16 @@ class RcVoteManifestTest(unittest.TestCase):
         self.assertEqual(hashlib.sha512(payload).hexdigest(), actual)
 
     def test_uri_sha512_streams_http_uri(self) -> None:
-        downloader = mock.MagicMock()
-        downloader.hash_uri.return_value = hashlib.sha512(b"payload").hexdigest()
+        download_session = mock.MagicMock()
+        download_session.hash_uri.return_value = hashlib.sha512(b"payload").hexdigest()
 
-        with mock.patch(
-            "apache_buildish_release_tooling.release.rc_vote_manifest._DEFAULT_DOWNLOADER",
-            downloader,
-        ):
-            actual = uri_sha512("https://downloads.apache.org/example")
+        actual = uri_sha512(
+            "https://downloads.apache.org/example",
+            download_session=download_session,
+        )
 
         self.assertEqual(hashlib.sha512(b"payload").hexdigest(), actual)
-        downloader.hash_uri.assert_called_once_with(
+        download_session.hash_uri.assert_called_once_with(
             "https://downloads.apache.org/example",
             algorithm="sha512",
         )
@@ -143,17 +142,16 @@ class RcVoteManifestTest(unittest.TestCase):
         self.assertIn("stderr", run_mock.call_args.kwargs)
 
     def test_read_uri_bytes_uses_default_timeout_for_http_uris(self) -> None:
-        downloader = mock.MagicMock()
-        downloader.read_bytes.return_value = b"payload"
+        download_session = mock.MagicMock()
+        download_session.read_bytes.return_value = b"payload"
 
-        with mock.patch(
-            "apache_buildish_release_tooling.release.rc_vote_manifest._DEFAULT_DOWNLOADER",
-            downloader,
-        ):
-            payload = read_uri_bytes("https://downloads.apache.org/example")
+        payload = read_uri_bytes(
+            "https://downloads.apache.org/example",
+            download_session=download_session,
+        )
 
         self.assertEqual(b"payload", payload)
-        downloader.read_bytes.assert_called_once_with(
+        download_session.read_bytes.assert_called_once_with(
             "https://downloads.apache.org/example",
             max_bytes=25 * 1024 * 1024,
         )

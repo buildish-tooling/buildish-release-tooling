@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import BinaryIO
 from urllib.parse import unquote, urljoin, urlparse
 
-from apache_buildish_release_tooling.shared.downloader import ResourceDownloader
+from apache_buildish_release_tooling.shared.downloader import DownloadSession
 from apache_buildish_release_tooling.shared.io import read_bytes_bounded
 from apache_buildish_release_tooling.release.artifact_registration.common import (
     common_artifact_metadata,
@@ -234,7 +234,7 @@ def _fetch_remote_listing(
     directory_url: str,
     base_url: str,
     *,
-    remote_http_client: ResourceDownloader,
+    remote_http_client: DownloadSession,
 ) -> tuple[str, list[_NexusIndexEntry]]:
     listing_html = remote_http_client.read_text(
         directory_url,
@@ -247,7 +247,7 @@ def _enumerate_remote_repository(
     base_url: str,
     *,
     worker_count: int,
-    remote_http_client: ResourceDownloader,
+    remote_http_client: DownloadSession,
     progress_reporter: ProgressReporter,
 ) -> list[_RepositoryFile]:
     seen_directories: set[str] = set()
@@ -318,7 +318,7 @@ def _repository_files(
     base_url: str,
     *,
     worker_count: int,
-    remote_http_client: ResourceDownloader | None,
+    remote_http_client: DownloadSession | None,
     progress_reporter: ProgressReporter,
 ) -> list[_RepositoryFile]:
     parsed = urlparse(base_url)
@@ -340,7 +340,7 @@ def _repository_files(
 def _repository_file_bytes_bounded(
     repository_file: _RepositoryFile,
     *,
-    remote_http_client: ResourceDownloader | None,
+    remote_http_client: DownloadSession | None,
 ) -> bytes:
     if repository_file.local_path is not None:
         with repository_file.local_path.open("rb") as handle:
@@ -369,7 +369,7 @@ def _inventory_entry_sha512(
     files_by_relative_path: dict[str, _RepositoryFile],
     sha512_by_relative_path: dict[str, str],
     sha512_sidecars_by_relative_path: dict[str, _Sha512SidecarRecord],
-    remote_http_client: ResourceDownloader | None,
+    remote_http_client: DownloadSession | None,
 ) -> str:
     actual_sha512 = _repository_file_sha512(
         repository_file,
@@ -400,7 +400,7 @@ def _repository_file_sha512(
     *,
     sha512_by_relative_path: dict[str, str],
     sha512_sidecars_by_relative_path: dict[str, _Sha512SidecarRecord],
-    remote_http_client: ResourceDownloader | None,
+    remote_http_client: DownloadSession | None,
 ) -> str:
     cached = sha512_by_relative_path.get(repository_file.relative_path)
     if cached is not None:
@@ -430,7 +430,7 @@ def _sha512_sidecar_record(
     *,
     sha512_by_relative_path: dict[str, str],
     sha512_sidecars_by_relative_path: dict[str, _Sha512SidecarRecord],
-    remote_http_client: ResourceDownloader | None,
+    remote_http_client: DownloadSession | None,
 ) -> _Sha512SidecarRecord:
     cached = sha512_sidecars_by_relative_path.get(repository_file.relative_path)
     if cached is not None:
@@ -469,7 +469,7 @@ def _inventory_payload(
     staging_repository_id: str,
     base_url: str,
     repository_files: list[_RepositoryFile],
-    remote_http_client: ResourceDownloader | None,
+    remote_http_client: DownloadSession | None,
     progress_reporter: ProgressReporter,
 ) -> tuple[MavenRepositoryInventoryV1, int]:
     files_by_relative_path = {entry.relative_path: entry for entry in repository_files}
@@ -521,9 +521,9 @@ def build_maven_repository_registration(
     worker_count = _inventory_worker_count(getattr(args, "inventory_workers", None))
     progress_reporter = ProgressReporter.from_mode(getattr(args, "progress", "auto"))
     _validated_repository_root(base_url, staging_repository_id)
-    remote_http_client: ResourceDownloader | None = None
+    remote_http_client: DownloadSession | None = None
     if urlparse(base_url).scheme in {"http", "https"}:
-        remote_http_client = ResourceDownloader.create(max_connections=worker_count)
+        remote_http_client = DownloadSession.non_production(max_connections=worker_count)
     try:
         progress_reporter.emit(f"enumerating maven repository from {base_url}")
         repository_files = _repository_files(
