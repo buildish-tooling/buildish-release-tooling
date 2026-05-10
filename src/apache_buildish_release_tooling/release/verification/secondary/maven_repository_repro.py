@@ -22,11 +22,10 @@ import re
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import IO, Literal
 
 from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     _RepositoryFile,
-    _repository_file_bytes,
 )
 from apache_buildish_release_tooling.release.contracts import (
     MavenRepositoryPathMode,
@@ -35,6 +34,8 @@ from apache_buildish_release_tooling.release.contracts import (
 )
 from apache_buildish_release_tooling.release.progress import ProgressReporter
 from apache_buildish_release_tooling.release.verification.common import emit_info, update_info
+
+_HASH_CHUNK_BYTES = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -108,7 +109,6 @@ def _compare_repository_path_sets(
 ) -> tuple[list[MavenRepositoryPathResultReport], list[str], bool]:
     issues: list[str] = []
     path_results: list[MavenRepositoryPathResultReport] = []
-    rebuilt_cache: dict[str, bytes] = {}
     comparable_staged_paths = {
         relative_path
         for relative_path in staged_by_path
@@ -151,12 +151,7 @@ def _compare_repository_path_sets(
             staged_by_path[relative_path],
             cache=staged_cache,
         )
-        rebuilt_payload = _repository_file_bytes(
-            rebuilt_repository_file,
-            cache=rebuilt_cache,
-            remote_http_client=None,
-        )
-        raw_bytes_equal = staged_payload == rebuilt_payload
+        raw_bytes_equal = _cached_payload_matches_local_file(staged_payload, rebuilt_repository_file.local_path)
         normalized_match: bool | None = None
         detail = "raw bytes matched exactly"
         verdict: Literal["verified", "failed", "skipped"] = "verified"
@@ -171,7 +166,7 @@ def _compare_repository_path_sets(
             elif mode == "content-only":
                 normalized_match, detail = _compare_zip_payloads(
                     staged_payload,
-                    rebuilt_payload,
+                    rebuilt_repository_file.local_path,
                     compare_permissions=False,
                 )
                 if not normalized_match:
@@ -183,7 +178,7 @@ def _compare_repository_path_sets(
             elif mode == "zip-normalized":
                 normalized_match, detail = _compare_zip_payloads(
                     staged_payload,
-                    rebuilt_payload,
+                    rebuilt_repository_file.local_path,
                     compare_permissions=True,
                 )
                 if not normalized_match:
@@ -208,7 +203,7 @@ def _compare_repository_path_sets(
                 raw_bytes_equal=raw_bytes_equal,
                 normalized_match=normalized_match,
                 staged_sha512=hashlib.sha512(staged_payload).hexdigest(),
-                rebuilt_sha512=hashlib.sha512(rebuilt_payload).hexdigest(),
+                rebuilt_sha512=_local_file_sha512(rebuilt_repository_file.local_path),
             )
         )
         update_info(
@@ -254,17 +249,19 @@ def _is_default_remote_only_repository_entry(relative_path: str) -> bool:
 
 def _compare_zip_payloads(
     staged_payload: bytes,
-    rebuilt_payload: bytes,
+    rebuilt_path: Path | None,
     *,
     compare_permissions: bool,
 ) -> tuple[bool, str]:
+    if rebuilt_path is None:
+        return False, "rebuilt repository file has no local path"
     try:
-        staged_entries = _normalized_zip_entries(
+        staged_entries = _normalized_zip_entries_from_payload(
             staged_payload,
             compare_permissions=compare_permissions,
         )
-        rebuilt_entries = _normalized_zip_entries(
-            rebuilt_payload,
+        rebuilt_entries = _normalized_zip_entries_from_path(
+            rebuilt_path,
             compare_permissions=compare_permissions,
         )
     except ValueError as exc:
@@ -293,7 +290,7 @@ def _compare_zip_payloads(
     return True, "archives matched after content-only comparison"
 
 
-def _normalized_zip_entries(
+def _normalized_zip_entries_from_payload(
     payload: bytes,
     *,
     compare_permissions: bool,
@@ -302,14 +299,67 @@ def _normalized_zip_entries(
         archive = zipfile.ZipFile(io.BytesIO(payload))
     except zipfile.BadZipFile as exc:
         raise ValueError("comparison requires ZIP-like archives") from exc
-    entries: dict[str, _NormalizedZipEntry] = {}
     with archive:
-        for info in archive.infolist():
-            if info.filename in entries:
-                raise ValueError(f"archive member is duplicated: {info.filename}")
-            entries[info.filename] = _NormalizedZipEntry(
-                is_dir=info.is_dir(),
-                mode=((info.external_attr >> 16) & 0o777) if compare_permissions else None,
-                sha512=None if info.is_dir() else hashlib.sha512(archive.read(info)).hexdigest(),
-            )
+        return _normalized_zip_entries_from_archive(archive, compare_permissions=compare_permissions)
+
+
+def _normalized_zip_entries_from_path(
+    path: Path,
+    *,
+    compare_permissions: bool,
+) -> dict[str, _NormalizedZipEntry]:
+    try:
+        archive = zipfile.ZipFile(path)
+    except zipfile.BadZipFile as exc:
+        raise ValueError("comparison requires ZIP-like archives") from exc
+    with archive:
+        return _normalized_zip_entries_from_archive(archive, compare_permissions=compare_permissions)
+
+
+def _normalized_zip_entries_from_archive(
+    archive: zipfile.ZipFile,
+    *,
+    compare_permissions: bool,
+) -> dict[str, _NormalizedZipEntry]:
+    entries: dict[str, _NormalizedZipEntry] = {}
+    for info in archive.infolist():
+        if info.filename in entries:
+            raise ValueError(f"archive member is duplicated: {info.filename}")
+        if info.is_dir():
+            sha512 = None
+        else:
+            with archive.open(info) as member_file:
+                sha512 = _stream_sha512(member_file)
+        entries[info.filename] = _NormalizedZipEntry(
+            is_dir=info.is_dir(),
+            mode=((info.external_attr >> 16) & 0o777) if compare_permissions else None,
+            sha512=sha512,
+        )
     return entries
+
+
+def _cached_payload_matches_local_file(payload: bytes, path: Path | None) -> bool:
+    if path is None or len(payload) != path.stat().st_size:
+        return False
+    offset = 0
+    with path.open("rb") as handle:
+        while chunk := handle.read(_HASH_CHUNK_BYTES):
+            next_offset = offset + len(chunk)
+            if payload[offset:next_offset] != chunk:
+                return False
+            offset = next_offset
+    return offset == len(payload)
+
+
+def _local_file_sha512(path: Path | None) -> str:
+    if path is None:
+        raise ValueError("repository file has no local path")
+    with path.open("rb") as handle:
+        return _stream_sha512(handle)
+
+
+def _stream_sha512(stream: IO[bytes]) -> str:
+    digest = hashlib.sha512()
+    while chunk := stream.read(_HASH_CHUNK_BYTES):
+        digest.update(chunk)
+    return digest.hexdigest()

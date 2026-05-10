@@ -19,6 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest import mock
 from io import StringIO
 
 from apache_buildish_release_tooling.release.verification.inspection.archive_shallow import (
@@ -113,6 +114,31 @@ class ShallowArchiveAnalysisTest(unittest.TestCase):
                 ["example/__init__.py: mtime, mode"],
                 analysis.metadata_mismatches,
             )
+
+    def test_shallow_archive_analysis_does_not_read_outer_archives_into_memory(self) -> None:
+        with TemporaryDirectory() as temporary_directory:
+            temp_dir = Path(temporary_directory)
+            staged_path = temp_dir / "staged.zip"
+            rebuilt_path = temp_dir / "rebuilt.zip"
+            write_zip_archive(
+                staged_path,
+                members=[("example/__init__.py", b"payload\n", (2026, 5, 2, 9, 0, 1), 0o100644)],
+            )
+            write_zip_archive(
+                rebuilt_path,
+                members=[("example/__init__.py", b"payload\n", (2026, 5, 2, 9, 0, 1), 0o100644)],
+            )
+
+            with mock.patch.object(Path, "read_bytes", side_effect=AssertionError("unexpected read_bytes")):
+                analysis = build_shallow_archive_analysis(
+                    staged_path=staged_path,
+                    rebuilt_path=rebuilt_path,
+                )
+
+        self.assertIsNotNone(analysis)
+        if analysis is None:
+            self.fail("expected archive analysis")
+        self.assertEqual("entries-match", analysis.classification)
 
     def test_tar_entry_set_drift_is_classified_separately(self) -> None:
         with TemporaryDirectory() as temporary_directory:

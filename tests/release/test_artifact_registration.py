@@ -16,9 +16,11 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest import mock
 from typing import Any, cast
 from typing import ClassVar
 
@@ -54,7 +56,16 @@ class _FakeHTTPResponse:
         self.headers = headers or {}
         self.reason = reason
         self.data = payload
+        self._payload = payload
+        self._offset = 0
         self.released = False
+
+    def read(self, size: int | None = None) -> bytes:
+        if size is None:
+            size = len(self._payload) - self._offset
+        chunk = self._payload[self._offset : self._offset + size]
+        self._offset += len(chunk)
+        return chunk
 
     def release_conn(self) -> None:
         self.released = True
@@ -178,6 +189,16 @@ class MavenRepositoryRegistrationUnitTest(unittest.TestCase):
         self.assertTrue(pool_manager.cleared)
         self.assertTrue(all(response.released for response in pool_manager.issued_responses))
 
+    def test_remote_http_client_streams_sha512_without_preloading_content(self) -> None:
+        _FakePoolManager.reset(_FakeHTTPResponse(b"jar\n"))
+        pool_manager = _FakePoolManager()
+        client = _RemoteHttpClient(pool_manager=cast(Any, pool_manager))
+
+        actual = client.sha512("https://repository.apache.org/content/repositories/orgapachebeam-1427/app.jar")
+
+        self.assertEqual(hashlib.sha512(b"jar\n").hexdigest(), actual)
+        self.assertFalse(pool_manager.requests[0][2]["preload_content"])
+
     def test_parse_nexus_index_rejects_cross_origin_links(self) -> None:
         base_url = "https://repository.apache.org/content/repositories/orgapachebeam-1427/"
         html_text = (
@@ -238,6 +259,27 @@ class MavenRepositoryRegistrationUnitTest(unittest.TestCase):
                 cache=cache,
                 remote_http_client=None,
             )
+
+    def test_inventory_entry_sha512_hashes_local_file_without_reading_it_fully(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            artifact_path = root / "app.jar"
+            artifact_path.write_bytes(b"jar\n")
+            repository_file = _RepositoryFile(
+                relative_path="org/example/app-1.0.0.jar",
+                size_bytes=4,
+                local_path=artifact_path,
+            )
+
+            with mock.patch.object(Path, "read_bytes", side_effect=AssertionError("unexpected read_bytes")):
+                actual = _inventory_entry_sha512(
+                    repository_file,
+                    files_by_relative_path={repository_file.relative_path: repository_file},
+                    cache={},
+                    remote_http_client=None,
+                )
+
+        self.assertEqual(hashlib.sha512(b"jar\n").hexdigest(), actual)
 
     def test_registration_filename_helpers_reject_path_components(self) -> None:
         with self.assertRaisesRegex(ValueError, "simple file name"):

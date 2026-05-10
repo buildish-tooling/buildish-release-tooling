@@ -58,6 +58,7 @@ FileLikeSecondaryArtifact = (
     | PythonDistributionSecondaryArtifact
     | NpmPackageSecondaryArtifact
 )
+_COMPARE_CHUNK_BYTES = 1024 * 1024
 
 
 def verify_host_direct_single_file_reproducibility(
@@ -155,7 +156,7 @@ def verify_host_direct_single_file_reproducibility(
                 staged_path=artifact_path,
                 rebuilt_path=built_artifact_path,
             )
-            matches_remote_bytes = built_artifact_path.read_bytes() == artifact_path.read_bytes()
+            matches_remote_bytes = _file_bytes_equal(built_artifact_path, artifact_path)
             if not matches_remote_bytes:
                 failure_class = "byte-mismatch"
                 raise ValueError(
@@ -244,3 +245,16 @@ def verify_host_direct_single_file_reproducibility(
         evidence=evidence,
         issues=issues,
     )
+
+
+def _file_bytes_equal(left: Path, right: Path) -> bool:
+    if left.stat().st_size != right.stat().st_size:
+        return False
+    with left.open("rb") as left_file, right.open("rb") as right_file:
+        while True:
+            left_chunk = left_file.read(_COMPARE_CHUNK_BYTES)
+            right_chunk = right_file.read(_COMPARE_CHUNK_BYTES)
+            if left_chunk != right_chunk:
+                return False
+            if not left_chunk:
+                return True

@@ -18,16 +18,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import hashlib
-from io import BytesIO
 from pathlib import Path
 import stat
 import tarfile
+from typing import IO
 from typing import Literal
 import zipfile
 
 from apache_buildish_release_tooling.release.contracts import ShallowArchiveAnalysisReport
 
 _ArchiveFormat = Literal["tar", "zip"]
+_HASH_CHUNK_BYTES = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -69,15 +70,13 @@ def build_shallow_archive_analysis(
 ) -> ShallowArchiveAnalysisReport | None:
     """Return one durable shallow archive-analysis payload for a retained artifact pair."""
 
-    staged_bytes = staged_path.read_bytes()
-    rebuilt_bytes = rebuilt_path.read_bytes()
-    staged_description = _describe_archive_payload(staged_bytes)
-    rebuilt_description = _describe_archive_payload(rebuilt_bytes)
+    staged_description = _describe_archive_path(staged_path)
+    rebuilt_description = _describe_archive_path(rebuilt_path)
     if staged_description is None and rebuilt_description is None:
         return None
     staged_format = staged_description.archive_format if staged_description is not None else "non-archive"
     rebuilt_format = rebuilt_description.archive_format if rebuilt_description is not None else "non-archive"
-    raw_bytes_equal = staged_bytes == rebuilt_bytes
+    raw_bytes_equal = _file_bytes_equal(staged_path, rebuilt_path)
     staged_entry_count = len(staged_description.entries) if staged_description is not None else None
     rebuilt_entry_count = len(rebuilt_description.entries) if rebuilt_description is not None else None
     if staged_description is None or rebuilt_description is None:
@@ -101,7 +100,7 @@ def build_shallow_archive_analysis(
     comparison = _compare_archives(staged_description, rebuilt_description)
     if comparison is None:
         return ShallowArchiveAnalysisReport(
-            classification=("entries-match" if staged_bytes == rebuilt_bytes else "outer-container-drift"),
+            classification=("entries-match" if raw_bytes_equal else "outer-container-drift"),
             archive_format=staged_description.archive_format,
             raw_bytes_equal=raw_bytes_equal,
             staged_archive_format=staged_format,
@@ -216,16 +215,16 @@ def _classify_archive_drift(
     return "entry-content-drift"
 
 
-def _describe_archive_payload(payload: bytes) -> ShallowArchiveDescription | None:
-    tar_description = _describe_tar_archive(payload)
+def _describe_archive_path(path: Path) -> ShallowArchiveDescription | None:
+    tar_description = _describe_tar_archive(path)
     if tar_description is not None:
         return tar_description
-    return _describe_zip_archive(payload)
+    return _describe_zip_archive(path)
 
 
-def _describe_tar_archive(payload: bytes) -> ShallowArchiveDescription | None:
+def _describe_tar_archive(path: Path) -> ShallowArchiveDescription | None:
     try:
-        with tarfile.open(fileobj=BytesIO(payload), mode="r:*") as archive:
+        with tarfile.open(path, mode="r:*") as archive:
             entries: dict[str, ArchiveEntry] = {}
             entry_order: list[str] = []
             for member in archive.getmembers():
@@ -236,7 +235,7 @@ def _describe_tar_archive(payload: bytes) -> ShallowArchiveDescription | None:
                 if member.isfile():
                     member_file = archive.extractfile(member)
                     content_sha512 = (
-                        hashlib.sha512(member_file.read()).hexdigest()
+                        _hash_stream(member_file)
                         if member_file is not None
                         else hashlib.sha512(b"").hexdigest()
                     )
@@ -258,9 +257,9 @@ def _describe_tar_archive(payload: bytes) -> ShallowArchiveDescription | None:
     return ShallowArchiveDescription(archive_format="tar", entries=entries, entry_order=entry_order)
 
 
-def _describe_zip_archive(payload: bytes) -> ShallowArchiveDescription | None:
+def _describe_zip_archive(path: Path) -> ShallowArchiveDescription | None:
     try:
-        with zipfile.ZipFile(BytesIO(payload)) as archive:
+        with zipfile.ZipFile(path) as archive:
             entries: dict[str, ArchiveEntry] = {}
             entry_order: list[str] = []
             for info in archive.infolist():
@@ -269,7 +268,8 @@ def _describe_zip_archive(payload: bytes) -> ShallowArchiveDescription | None:
                 entry_order.append(info.filename)
                 content_sha512: str | None = None
                 if not info.is_dir():
-                    content_sha512 = hashlib.sha512(archive.read(info)).hexdigest()
+                    with archive.open(info) as member_file:
+                        content_sha512 = _hash_stream(member_file)
                 unix_mode = (info.external_attr >> 16) & 0o7777
                 entry_type = _zip_entry_type(info)
                 entries[info.filename] = ArchiveEntry(
@@ -288,6 +288,26 @@ def _describe_zip_archive(payload: bytes) -> ShallowArchiveDescription | None:
     except zipfile.BadZipFile:
         return None
     return ShallowArchiveDescription(archive_format="zip", entries=entries, entry_order=entry_order)
+
+
+def _hash_stream(stream: IO[bytes]) -> str:
+    digest = hashlib.sha512()
+    while chunk := stream.read(_HASH_CHUNK_BYTES):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _file_bytes_equal(left: Path, right: Path) -> bool:
+    if left.stat().st_size != right.stat().st_size:
+        return False
+    with left.open("rb") as left_file, right.open("rb") as right_file:
+        while True:
+            left_chunk = left_file.read(_HASH_CHUNK_BYTES)
+            right_chunk = right_file.read(_HASH_CHUNK_BYTES)
+            if left_chunk != right_chunk:
+                return False
+            if not left_chunk:
+                return True
 
 
 def _entry_order_mismatch_detail(staged_order: list[str], rebuilt_order: list[str]) -> str:

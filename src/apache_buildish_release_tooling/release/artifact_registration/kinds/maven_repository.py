@@ -27,7 +27,7 @@ from email.message import Message
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib3 import Timeout
-from typing import Any
+from typing import Any, BinaryIO
 from urllib.error import HTTPError
 from urllib.parse import unquote, urljoin, urlparse
 
@@ -53,6 +53,7 @@ _SHA512_PATTERN = re.compile(r"^[0-9a-fA-F]{128}$")
 _DEFAULT_INVENTORY_WORKERS = 16
 _DEFAULT_NEXUS_STAGING_BASE_URL_PREFIX = "https://repository.apache.org/content/repositories/"
 _DEFAULT_REMOTE_TIMEOUT = Timeout(connect=10.0, read=60.0)
+_HASH_CHUNK_BYTES = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -104,6 +105,25 @@ class _RemoteHttpClient:
                     io.BytesIO(payload),
                 )
             return payload
+        finally:
+            response.release_conn()
+
+    def sha512(self, url: str) -> str:
+        response = self.pool_manager.request("GET", url, preload_content=False, timeout=_DEFAULT_REMOTE_TIMEOUT)
+        try:
+            if response.status < 200 or response.status >= 300:
+                payload = response.read()
+                raise HTTPError(
+                    url,
+                    response.status,
+                    "unexpected HTTP response",
+                    _http_error_headers(response.headers),
+                    io.BytesIO(payload),
+                )
+            digest = hashlib.sha512()
+            while chunk := response.read(_HASH_CHUNK_BYTES):
+                digest.update(chunk)
+            return digest.hexdigest()
         finally:
             response.release_conn()
 
@@ -234,6 +254,10 @@ def _read_remote_text(url: str, *, remote_http_client: _RemoteHttpClient) -> str
 
 def _read_remote_bytes(url: str, *, remote_http_client: _RemoteHttpClient) -> bytes:
     return remote_http_client.read_bytes(url)
+
+
+def _remote_sha512(url: str, *, remote_http_client: _RemoteHttpClient) -> str:
+    return remote_http_client.sha512(url)
 
 
 def _parse_nexus_index(listing_url: str, base_url: str, html_text: str) -> list[_NexusIndexEntry]:
@@ -394,11 +418,6 @@ def _planned_remote_fetches(
             continue
         if repository_file.relative_path.endswith(".sha512"):
             planned_fetches[repository_file.relative_path] = repository_file
-            continue
-        sidecar_relative_path = f"{repository_file.relative_path}.sha512"
-        if sidecar_relative_path in files_by_relative_path:
-            continue
-        planned_fetches[repository_file.relative_path] = repository_file
     return planned_fetches
 
 
@@ -490,12 +509,11 @@ def _inventory_entry_sha512(
     cache: dict[str, bytes],
     remote_http_client: _RemoteHttpClient | None,
 ) -> str:
-    payload = _repository_file_bytes(
+    actual_sha512 = _repository_file_sha512(
         repository_file,
         cache=cache,
         remote_http_client=remote_http_client,
     )
-    actual_sha512 = hashlib.sha512(payload).hexdigest()
     sidecar_relative_path = f"{repository_file.relative_path}.sha512"
     if not repository_file.relative_path.endswith(".sha512"):
         sidecar_file = files_by_relative_path.get(sidecar_relative_path)
@@ -514,6 +532,36 @@ def _inventory_entry_sha512(
                     f"{repository_file.relative_path}"
                 )
     return actual_sha512
+
+
+def _repository_file_sha512(
+    repository_file: _RepositoryFile,
+    *,
+    cache: dict[str, bytes],
+    remote_http_client: _RemoteHttpClient | None,
+) -> str:
+    cached = cache.get(repository_file.relative_path)
+    if cached is not None:
+        return hashlib.sha512(cached).hexdigest()
+    if repository_file.local_path is not None:
+        return _local_file_sha512(repository_file.local_path)
+    if repository_file.source_url is not None:
+        if remote_http_client is None:
+            raise ValueError(f"remote repository file requires an HTTP client: {repository_file.relative_path}")
+        return _remote_sha512(repository_file.source_url, remote_http_client=remote_http_client)
+    raise ValueError(f"repository file has no readable source: {repository_file.relative_path}")
+
+
+def _local_file_sha512(path: Path) -> str:
+    with path.open("rb") as handle:
+        return _stream_sha512(handle)
+
+
+def _stream_sha512(stream: BinaryIO) -> str:
+    digest = hashlib.sha512()
+    while chunk := stream.read(_HASH_CHUNK_BYTES):
+        digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _inventory_payload(
