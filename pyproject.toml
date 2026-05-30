@@ -23,9 +23,9 @@ classifiers = [
 ]
 dependencies = [
     "mistletoe>=1.5.1,<2",
-    "pydantic>=2.13.2,<3",
+    "pydantic>=2.13.4,<3",
     "pyyaml>=6.0.3",
-    "urllib3>=2.5.0",
+    "urllib3>=2.7.0",
 ]
 license-files = [
     "dist-release-legal/LICENSE",
