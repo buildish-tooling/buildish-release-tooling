@@ -30,11 +30,11 @@ The pages below describe the current source tree for maintainers. They are inten
 descriptive, not contractual.
 
 - [Reference](reference/)
-- [GitHub Release Policy](github-release-policy.md)
-- [Codebase Layout](codebase-layout.md)
-- [Release-legal maintenance](release-legal.md)
-- [Test Suite Layout](test-suite.md)
-- [Verification Report and Bundle Contract](verification-contracts.md)
+- [GitHub Release Policy](github-release-policy/)
+- [Codebase Layout](codebase-layout/)
+- [Release-legal maintenance](release-legal/)
+- [Test Suite Layout](test-suite/)
+- [Verification Report and Bundle Contract](verification-contracts/)
 
 The public contract is intentionally narrow:
 
@@ -61,7 +61,7 @@ Verification-specific machine-readable contracts are now documented and supporte
 - inspection-bundle schema version `1`
 - `inspect-repro --json` schema version `1`
 
-See [Verification Report and Bundle Contract](verification-contracts.md) for the supported shapes.
+See [Verification Report and Bundle Contract](verification-contracts/) for the supported shapes.
 
 Release-critical workflows should pin:
 
@@ -508,7 +508,7 @@ Bundle-reading guide:
    - `staged-artifact`
    - `rebuilt-artifact` or rebuilt outputs
    - kind-specific retained evidence
-5. Use the schema reference in [Verification Report and Bundle Contract](verification-contracts.md)
+5. Use the schema reference in [Verification Report and Bundle Contract](verification-contracts/)
    when you need the machine-readable field-level contract rather than the human transcript.
 
 Typical transcript shape:
@@ -588,7 +588,7 @@ malformed contract or external payload data and continue with guessed semantics.
   stay pinned to an already-selected candidate tag
 - keeps GitHub candidate releases as convenience metadata only; final ASF source releases remain
   authoritative on ASF infrastructure
-- see [GitHub Release Policy](github-release-policy.md) for the candidate and final-release wording
+- see [GitHub Release Policy](github-release-policy/) for the candidate and final-release wording
   model
 
 ### `create-source-artifact`

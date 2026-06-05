@@ -38,7 +38,7 @@ The main recommendations are:
 
 Related planning:
 
-- [ATR Integration Assessment](atr-integration-assessment.md)
+- [ATR Integration Assessment](../atr-integration-assessment/)
 
 ## Current Status
 

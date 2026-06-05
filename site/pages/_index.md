@@ -25,15 +25,15 @@ repositories.
 The stable contract is the CLI plus `release-config.yaml`. The Python package layout is internal,
 but the docs tree includes maintainer guides for the current structure:
 
-- [CLI contract and compatibility notes](docs/_index.md)
-- [Production package layout](docs/codebase-layout.md)
-- [Test suite layout and layering](docs/test-suite.md)
+- [CLI contract and compatibility notes](development/)
+- [Production package layout](development/codebase-layout/)
+- [Test suite layout and layering](development/test-suite/)
 
 Use `make check` as the standard local and CI gate.
 
 Planning and assessment documents:
 
-- [GitHub Release policy](github-release-policy.md)
-- [Verify RC implementation plan](verify-rc-implementation-plan.md)
-- [ATR integration assessment](atr-integration-assessment.md)
-- [ASF project fit assessment](asf-project-fit-assessment.md)
+- [GitHub Release policy](github-release-policy/)
+- [Verify RC implementation plan](verify-rc-implementation-plan/)
+- [ATR integration assessment](atr-integration-assessment/)
+- [ASF project fit assessment](asf-project-fit-assessment/)
