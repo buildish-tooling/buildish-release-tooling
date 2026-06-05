@@ -87,3 +87,27 @@ Using the same group for both workflows prevents an accidental double-dispatch o
 against the same RC tags, SVN staging directories, GitHub Releases, or final publication state.
 `cancel-in-progress: false` is intentional: a later release run should wait rather than cancel a run
 that may already hold partially updated external release state.
+
+## GitHub Environment approval for release mutations
+
+Projects that require approval before release mutations should put the relevant GitHub Environment
+on every job that mutates release state, not only on jobs that read environment-scoped secrets. In
+Buildish release workflows this usually means reviewing all jobs with:
+
+```yaml
+permissions:
+  contents: write
+```
+
+If the project policy is "approval before all release mutations", those jobs should declare an
+appropriate `environment:` as well. This includes jobs that create or update RC tags, materialization
+tags, final tags, and GitHub Releases, even when they currently use `github.token` rather than an
+environment-scoped PAT.
+
+Projects may use one environment for all release writes or split the policy into clearer stages, for
+example `rc-staging-release-secrets` and `final-release-publication`. The important part is that the
+workflow YAML matches the intended approval boundary.
+
+The local `act` harness does not validate GitHub Environment protection semantics. Treat harness
+results as workflow-shape regression evidence only; review `environment:` declarations in workflow
+YAML and verify the actual approval rules in GitHub repository settings.

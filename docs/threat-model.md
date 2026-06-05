@@ -157,6 +157,9 @@ Reachability preconditions per component family:
   and tags before commands that inspect release refs. *(documented)*
 - Release credentials are supplied through environment variables or the platform credential store and
   are scoped to the intended release operation. *(documented)*
+- GitHub Environment protection, including required reviewers and environment-scoped secrets, is
+  enforced by GitHub. The local harness can exercise workflow shape but does not validate GitHub
+  Environment approval semantics. *(documented)*
 - Local filesystem paths passed to the tool are controlled by the caller or by trusted workflow
   configuration, except where a command explicitly reads a release artifact, manifest, or override
   file for verification. *(inferred)*
@@ -318,6 +321,9 @@ Explicitly out-of-scope actors:
   networks, package registries, or configured build commands. *(inferred)*
 - No guarantee that local harness results prove production release safety. The harness is a simulator
   for workflow behavior and regression testing. *(documented)*
+- No built-in guarantee that GitHub Environment approval gates every release mutation. Projects that
+  require approval before all GitHub release writes must declare the relevant `environment:` on every
+  write job and configure the environment in GitHub. *(documented)*
 
 False-friend properties:
 
@@ -365,6 +371,11 @@ Well-known attack classes left to callers or operators:
 - Keep Prepare RC and Release Version workflows on the same non-canceling concurrency group keyed by
   repository and exact version when copying or customizing the Buildish workflow pattern.
   *(documented)*
+- If project policy requires approval before all release mutations, declare an appropriate GitHub
+  `environment:` on every release job with `permissions.contents: write`, including tag and GitHub
+  Release update jobs that use `github.token`. *(documented)*
+- Verify GitHub Environment required-reviewer rules in GitHub repository settings; the local `act`
+  harness does not validate those protection semantics. *(documented)*
 - Treat harness output as test evidence, not as production release authorization. *(documented)*
 
 ## 11. Known Misuse Patterns
@@ -387,6 +398,10 @@ Well-known attack classes left to callers or operators:
   approved. *(inferred)*
 - Removing or splitting the shared release workflow concurrency group so Prepare RC and Release
   Version runs for the same repository and exact version can overlap. *(documented)*
+- Assuming that an environment-gated secret-consuming job also gates later GitHub write jobs that do
+  not declare an `environment:` themselves. *(documented)*
+- Treating a passing local `act` harness run as evidence that GitHub Environment required-reviewer
+  protection is configured or enforced. *(documented)*
 
 ## 11a. Known Non-Findings: Recurring False Positives
 
@@ -399,6 +414,7 @@ Well-known attack classes left to callers or operators:
 | Internal Python modules are importable | The supported public contract is the CLI, schemas, and documented file contracts; direct imports are not public API | [Scope and intended use](#2-scope-and-intended-use) |
 | Generated schema files lack independent validation logic | Schemas are generated documentation artifacts, not executable security enforcement points | [Out of scope](#3-out-of-scope-explicit-non-goals) |
 | Harness shims modify workflows or inject local variables | Harness behavior is intentionally a local simulator and is not production release behavior | [Scope and intended use](#2-scope-and-intended-use), [Security properties the project does not provide](#9-security-properties-the-project-does-not-provide) |
+| Local harness does not enforce GitHub Environment approvals | GitHub Environment required-reviewer semantics are service-side controls; harness tests cannot prove them | [Assumptions about the environment](#5-assumptions-about-the-environment), [Downstream responsibilities](#10-downstream-responsibilities) |
 
 ## 12. Conditions That Would Change This Model
 
