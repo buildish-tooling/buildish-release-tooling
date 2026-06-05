@@ -33,6 +33,7 @@ descriptive, not contractual.
 - [GitHub Release Policy](github-release-policy/)
 - [Codebase Layout](codebase-layout/)
 - [Release-legal maintenance](release-legal/)
+- [Threat Model](threat-model/)
 - [Test Suite Layout](test-suite/)
 - [Verification Report and Bundle Contract](verification-contracts/)
 
