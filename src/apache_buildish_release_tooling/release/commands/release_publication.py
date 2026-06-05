@@ -50,13 +50,11 @@ from apache_buildish_release_tooling.release.github_release_text import (
 from apache_buildish_release_tooling.release.github_releases import (
     delete_release,
     delete_release_asset,
-    download_release_asset_text,
     list_releases,
     release_asset_ids_by_names,
     update_release,
 )
 from apache_buildish_release_tooling.release.manifest import write_manifest
-from apache_buildish_release_tooling.release.contracts import RcVoteManifestV1
 from apache_buildish_release_tooling.release.models import (
     CommandContext,
     PrepareRcState,
@@ -64,6 +62,7 @@ from apache_buildish_release_tooling.release.models import (
 from apache_buildish_release_tooling.release.rc_vote_verification import (
     required_rc_vote_manifest_file_names,
     required_source_release_file_names,
+    verified_mirrored_rc_vote_manifest,
     verify_staged_source_release_against_vote_manifest,
 )
 from apache_buildish_release_tooling.release.release_state import derive_final_tag
@@ -103,23 +102,6 @@ def _draft_release_body(
         ),
         candidate_visibility=candidate_visibility,
     )
-
-
-def _selected_release_vote_manifest(
-    selected_release_payload: dict[str, object],
-    repository_slug: str,
-) -> RcVoteManifestV1 | None:
-    """Return the mirrored RC vote manifest from a selected GitHub Release when present."""
-
-    asset_ids = release_asset_ids_by_names(
-        selected_release_payload,
-        asset_names=["rc-vote-manifest.json"],
-    )
-    asset_id = asset_ids.get("rc-vote-manifest.json")
-    if asset_id is None:
-        return None
-    manifest_text = download_release_asset_text(repository_slug, asset_id)
-    return RcVoteManifestV1.model_validate_json(manifest_text)
 
 
 def run_sync_draft_github_release(args: Namespace) -> Path:
@@ -260,6 +242,7 @@ def run_publish_source_release_svn(args: Namespace) -> Path:
             version=version,
             selected_rc_tag=selected_release.selected_rc_tag,
             expected_source_artifact_name=required_source_release_files[0],
+            allow_non_production_release_targets=args.allow_non_production_release_targets,
         )
     )
     if svn_client.path_exists(target_url):
@@ -407,9 +390,11 @@ def run_finalize_draft_github_release(args: Namespace) -> Path:
     final_tag = derive_final_tag(version)
     final_tag_target_commit = repo.resolve_commit(selected_release.selected_rc_tag)
     release_id = selected_release.require_release_id(reference_tag=final_tag)
-    vote_manifest = _selected_release_vote_manifest(
-        selected_release.release_payload,
-        selected_release.repository_slug,
+    vote_manifest = verified_mirrored_rc_vote_manifest(
+        context,
+        repository_slug=selected_release.repository_slug,
+        release_payload=selected_release.release_payload,
+        allow_non_production_release_targets=args.allow_non_production_release_targets,
     )
     if vote_manifest is None:
         raise ValueError(

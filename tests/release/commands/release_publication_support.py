@@ -73,6 +73,7 @@ class ReleasePublicationCommandTestBase(ReleaseCommandsIntegrationTestSupport):
         *,
         source_commit_sha: str,
         incubator_disclaimer_text: str | None = None,
+        asf_keys_url: str = "https://dist.apache.org/repos/dist/release/incubator/buildish/KEYS",
     ) -> str:
         payload: dict[str, object] = {
             "schema_version": "1",
@@ -97,7 +98,7 @@ class ReleasePublicationCommandTestBase(ReleaseCommandsIntegrationTestSupport):
             },
             "trust_roots": {
                 "asf_keys": {
-                    "uri": "https://dist.apache.org/repos/dist/release/incubator/buildish/KEYS",
+                    "uri": asf_keys_url,
                     "known_length_bytes": 9,
                     "known_prefix_sha512": "a" * 128,
                 }

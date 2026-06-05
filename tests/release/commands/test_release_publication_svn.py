@@ -23,6 +23,7 @@ from tests.release.commands.support import (
     cli_env,
     command_available,
     create_fake_gh_launcher,
+    create_fake_gpg_launcher,
     fetch_git_origin_refs,
     git_create_annotated_tag,
     git_create_branch,
@@ -103,6 +104,7 @@ class SourceReleaseSvnPublicationCommandIntegrationTest(
             ],
             release_asset_text_by_id={700: manifest_text},
         )
+        gpg_path = create_fake_gpg_launcher(sandbox_dir)
         completed = run_cli(
             [
                 "publish-source-release-svn",
@@ -115,7 +117,7 @@ class SourceReleaseSvnPublicationCommandIntegrationTest(
             env=cli_env(
                 manifest_path,
                 extra_env={"FAKE_GH_STATE_DIR": str(gh_state_dir)},
-                prepend_dirs=(gh_path.parent,),
+                prepend_dirs=(gh_path.parent, gpg_path.parent),
             ),
         )
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
@@ -136,7 +138,7 @@ class SourceReleaseSvnPublicationCommandIntegrationTest(
             env=cli_env(
                 manifest_path,
                 extra_env={"FAKE_GH_STATE_DIR": str(gh_state_dir)},
-                prepend_dirs=(gh_path.parent,),
+                prepend_dirs=(gh_path.parent, gpg_path.parent),
             ),
         )
         self.assertEqual(0, rerun.returncode, msg=rerun.stderr)
@@ -290,6 +292,7 @@ class SourceReleaseSvnPublicationCommandIntegrationTest(
             ],
             release_asset_text_by_id={700: manifest_text},
         )
+        gpg_path = create_fake_gpg_launcher(sandbox_dir)
         completed = run_cli(
             [
                 "publish-source-release-svn",
@@ -302,7 +305,7 @@ class SourceReleaseSvnPublicationCommandIntegrationTest(
             env=cli_env(
                 manifest_path,
                 extra_env={"FAKE_GH_STATE_DIR": str(gh_state_dir)},
-                prepend_dirs=(gh_path.parent,),
+                prepend_dirs=(gh_path.parent, gpg_path.parent),
             ),
         )
         self.assertNotEqual(0, completed.returncode)

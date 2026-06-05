@@ -732,6 +732,47 @@ def create_fake_gh_launcher(
     return launcher_path, state_dir
 
 
+def create_fake_gpg_launcher(sandbox_dir: Path) -> Path:
+    """Create a lightweight `gpg` shim for deterministic signature-verification tests."""
+
+    launcher_dir = sandbox_dir / "gpg-bin"
+    launcher_path = launcher_dir / "gpg"
+    launcher_dir.mkdir(parents=True, exist_ok=True)
+    launcher_path.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                'for arg in "$@"; do',
+                '  if [[ "$arg" == "--import" ]]; then',
+                "    exit 0",
+                "  fi",
+                'done',
+                'for arg in "$@"; do',
+                '  if [[ "$arg" == "--verify" ]]; then',
+                '    printf "%s\\n" "[GNUPG:] GOODSIG 0123456789ABCDEF Test User <test@example.invalid>"',
+                '    printf "%s\\n" "[GNUPG:] VALIDSIG 0123456789ABCDEF0123456789ABCDEF01234567 2026-06-05 0 4 0 22 10 00 0123456789ABCDEF0123456789ABCDEF01234567"',
+                '    printf "%s\\n" "[GNUPG:] TRUST_FULLY 0 pgp"',
+                "    exit 0",
+                "  fi",
+                "done",
+                'for arg in "$@"; do',
+                '  if [[ "$arg" == "--list-keys" ]]; then',
+                '    printf "%s\\n" "pub:u:255:22:0123456789ABCDEF:1714132800::::::scESC:::::ed25519:::0:"',
+                "    exit 0",
+                "  fi",
+                "done",
+                'printf "unsupported fake gpg invocation: %s\\n" "$*" >&2',
+                "exit 2",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    launcher_path.chmod(0o755)
+    return launcher_path
+
+
 def create_fake_docker_launcher(sandbox_dir: Path) -> tuple[Path, Path]:
     """Create a lightweight `docker` shim for Docker Hub tagging integration tests."""
 

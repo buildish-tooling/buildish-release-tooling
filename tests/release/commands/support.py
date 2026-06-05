@@ -46,6 +46,7 @@ from tests.support import (
     copy_test_tree,
     command_available,
     create_build_test_sandbox,
+    create_fake_gpg_launcher,
     create_fake_atr_launcher,
     create_fake_docker_launcher,
     create_fake_gh_launcher,
@@ -80,6 +81,7 @@ __all__ = [
     "copy_test_tree",
     "command_available",
     "create_build_test_sandbox",
+    "create_fake_gpg_launcher",
     "create_fake_atr_launcher",
     "create_fake_docker_launcher",
     "create_fake_gh_launcher",
@@ -234,6 +236,7 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
         project_status: str = "tlp",
         incubator_disclaimer_file: str = "DISCLAIMER",
         candidate_start_number: int = 0,
+        asf_keys_url: str | None = None,
         atr_lines: tuple[str, ...] = (),
         verify_rc_lines: tuple[str, ...] = (),
     ) -> None:
@@ -246,7 +249,7 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
                     f"source_artifact_prefix: apache-{component_id}",
                     f"asf_dist_dev_base: {dev_base_url}",
                     f"asf_dist_release_base: {release_base_url}",
-                    f"asf_keys_url: {release_base_url.rsplit('/', 1)[0]}/KEYS",
+                    f"asf_keys_url: {asf_keys_url or release_base_url.rsplit('/', 1)[0] + '/KEYS'}",
                     f"moving_tags_enabled: {'true' if moving_tags_enabled else 'false'}",
                     f"latest_tag_enabled: {'true' if latest_tag_enabled else 'false'}",
                     "secondary_targets:",
@@ -450,6 +453,11 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
             path = manifest_dir / file_name
             path.write_text(content, encoding="utf-8")
             run_quiet(["svn", "add", "--force", str(path)], check=True)
+        keys_path = (
+            working_copy_dir / "dist" / "release" / "incubator" / "buildish" / "KEYS"
+        )
+        keys_path.write_text("test KEYS\n", encoding="utf-8")
+        run_quiet(["svn", "add", "--parents", "--force", str(keys_path)], check=True)
         AsfSvnClient().commit_working_copy(working_copy_dir, "stage rc vote manifest")
         return manifest_text
 

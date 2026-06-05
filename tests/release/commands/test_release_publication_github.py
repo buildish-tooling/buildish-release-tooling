@@ -21,10 +21,12 @@ from tests.release.commands.release_publication_support import (
 from tests.release.commands.support import (
     cli_env,
     create_fake_gh_launcher,
+    create_fake_gpg_launcher,
     fetch_git_origin_refs,
     git_create_annotated_tag,
     git_create_branch,
     git_rev_parse,
+    hashlib,
     json,
     run_cli,
     set_github_origin_url,
@@ -421,16 +423,27 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         fetch_git_origin_refs(clone_dir)
         set_github_origin_url(clone_dir, "apache/buildish-example")
         expected_commit = git_rev_parse(clone_dir, "v1.2.3-rc0^{commit}")
+        keys_path = sandbox_dir / "KEYS"
+        keys_path.write_text("test KEYS\n", encoding="utf-8")
         self._write_component_config(
             config_path,
             component_id="buildish-example",
             dev_base_url="https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
             release_base_url="https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
             project_status="incubating",
+            asf_keys_url=keys_path.as_uri(),
         )
         rc_vote_manifest_text = self._rc_vote_manifest_text(
             source_commit_sha=expected_commit,
             incubator_disclaimer_text="Apache Buildish Example is an effort undergoing incubation.",
+            asf_keys_url=keys_path.as_uri(),
+        )
+        rc_vote_manifest_sha512 = hashlib.sha512(
+            rc_vote_manifest_text.encode("utf-8")
+        ).hexdigest()
+        rc_vote_manifest_signature = (
+            "-----BEGIN PGP SIGNATURE-----\n<dummy manifest>\n"
+            "-----END PGP SIGNATURE-----\n"
         )
         gh_path, gh_state_dir = create_fake_gh_launcher(
             sandbox_dir,
@@ -451,6 +464,7 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
                     "assets": [
                         {"id": 201, "name": "rc-vote-manifest.json"},
                         {"id": 202, "name": "rc-vote-manifest.json.asc"},
+                        {"id": 204, "name": "rc-vote-manifest.json.sha512"},
                         {"id": 203, "name": "keep-me.txt"},
                     ],
                 }
@@ -462,20 +476,26 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
                 "name": "Apache Buildish Example 1.2.3",
                 "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3",
             },
-            release_asset_text_by_id={201: rc_vote_manifest_text},
+            release_asset_text_by_id={
+                201: rc_vote_manifest_text,
+                202: rc_vote_manifest_signature,
+                204: f"{rc_vote_manifest_sha512}  rc-vote-manifest.json\n",
+            },
         )
+        gpg_path = create_fake_gpg_launcher(sandbox_dir)
         completed = run_cli(
             [
                 "finalize-draft-github-release",
                 "--component-config",
                 str(config_path),
+                "--allow-non-production-release-targets",
                 "1.2.3",
             ],
             cwd=clone_dir,
             env=cli_env(
                 manifest_path,
                 extra_env={"FAKE_GH_STATE_DIR": str(gh_state_dir)},
-                prepend_dirs=(gh_path.parent,),
+                prepend_dirs=(gh_path.parent, gpg_path.parent),
             ),
         )
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
@@ -484,7 +504,11 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         self.assertEqual("v1.2.3", manifest["release_tag"])
         self.assertEqual("published-draft", manifest["finalize_mode"])
         self.assertEqual(
-            ["rc-vote-manifest.json", "rc-vote-manifest.json.asc"],
+            [
+                "rc-vote-manifest.json",
+                "rc-vote-manifest.json.asc",
+                "rc-vote-manifest.json.sha512",
+            ],
             manifest["deleted_asset_names"],
         )
         update_request = json.loads(
@@ -518,6 +542,7 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
             [
                 "repos/apache/buildish-example/releases/assets/201",
                 "repos/apache/buildish-example/releases/assets/202",
+                "repos/apache/buildish-example/releases/assets/204",
             ],
             (gh_state_dir / "deleted-asset-endpoints.log")
             .read_text(encoding="utf-8")
