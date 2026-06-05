@@ -71,3 +71,19 @@ final body:
 
 Final GitHub Releases are published with `prerelease=false`.
 
+## Release workflow concurrency
+
+Release workflows that mutate RC or final-release state should serialize by component repository and
+exact version. Use the same non-canceling concurrency group for both the Prepare RC workflow and the
+Release Version workflow:
+
+```yaml
+concurrency:
+  group: buildish-release-${{ github.repository }}-${{ inputs.version }}
+  cancel-in-progress: false
+```
+
+Using the same group for both workflows prevents an accidental double-dispatch or rerun from racing
+against the same RC tags, SVN staging directories, GitHub Releases, or final publication state.
+`cancel-in-progress: false` is intentional: a later release run should wait rather than cancel a run
+that may already hold partially updated external release state.

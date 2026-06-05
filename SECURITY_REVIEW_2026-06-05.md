@@ -26,11 +26,10 @@ Reviewed repository state:
 
 ## Executive Summary
 
-I found two lower-severity workflow-control hardening issues.
+I found one lower-severity workflow-control hardening issue.
 
 | Severity | Finding |
 | --- | --- |
-| Low | Manual release workflows do not serialize concurrent runs for the same release version |
 | Low | GitHub write jobs are not directly gated by GitHub Environment approval |
 
 I also confirmed that several issues from the older `SECURITY_REVIEW.md` appear to have been addressed in the current tree:
@@ -39,33 +38,11 @@ I also confirmed that several issues from the older `SECURITY_REVIEW.md` appear 
 - Production ASF dist base URLs are now validated against expected HTTPS ASF prefixes unless non-production mode is explicitly enabled.
 - RC vote-manifest finalization now recomputes the staged source artifact hash before signing the vote manifest.
 - Final publication now verifies the RC vote manifest checksum and detached signature before trusting manifest contents.
+- Manual Prepare RC and Release Version workflows now serialize by repository and exact version with non-canceling concurrency groups.
 
 ## Findings
 
-### 1. Low: Manual release workflows do not serialize concurrent runs for the same release version
-
-Affected workflow/code:
-
-- `.github/workflows/releasey-20-prepare-rc.yml:17`
-- `.github/workflows/releasey-30-release-version.yml:17`
-- `src/apache_buildish_release_tooling/release/commands/rc_preparation.py:102`
-- `src/apache_buildish_release_tooling/release/commands/rc_preparation.py:113`
-
-The manual release workflows are `workflow_dispatch` workflows without `concurrency` groups. `cleanup-dev-svn-rcs` deletes all matching staged RC directories for an exact version, and `build-source-rc` can also delete and recreate the selected staging directory.
-
-Impact:
-
-- Two manually dispatched Prepare RC runs for the same version can race while resolving the same next RC identity, deleting staging directories, writing artifacts, creating tags, and syncing draft releases.
-- Two Release Version runs for the same version can race while selecting the same RC, publishing SVN content, pruning older releases, creating the final tag, and finalizing the GitHub Release.
-- This is most likely an accidental double-dispatch or rerun hazard, but release workflows are integrity-sensitive enough that accidental concurrency should be blocked by the workflow definition rather than left to external service conflict behavior.
-
-Recommendation:
-
-- Add workflow-level or job-level `concurrency` groups keyed by workflow name and input version, for example `${{ github.workflow }}-${{ inputs.version }}`.
-- Prefer `cancel-in-progress: false` for release workflows so a second run queues or is rejected instead of canceling a release already holding staging or publication state.
-- Consider grouping Prepare RC and Release Version together by component and version if they must never overlap for the same version.
-
-### 2. Low: GitHub write jobs are not directly gated by GitHub Environment approval
+### 1. Low: GitHub write jobs are not directly gated by GitHub Environment approval
 
 Affected workflows:
 
@@ -107,4 +84,3 @@ Recommendation:
 ## Suggested Follow-Up Tests
 
 - Workflow lint or unit test asserting that every release job with `permissions.contents: write` declares an approved release environment when the project policy requires environment-gated release mutation.
-- Workflow lint or unit test asserting that manual release workflows have non-canceling concurrency groups keyed by release version.

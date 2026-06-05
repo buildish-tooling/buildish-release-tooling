@@ -162,9 +162,11 @@ Reachability preconditions per component family:
   file for verification. *(inferred)*
 - Subprocess execution is allowed in release workflows and harness runs. The project assumes the host
   allows these subprocesses to run with the caller's privileges. *(documented)*
-- Concurrent invocations that mutate the same release tags, SVN directories, GitHub releases, Docker
-  aliases, or output paths are not assumed safe unless the external service itself rejects conflicts.
-  *(inferred)*
+- The checked-in Prepare RC and Release Version workflows serialize by repository and exact version.
+  Direct local CLI invocations do not take a distributed release lock, so concurrent local commands
+  that mutate the same release tags, SVN directories, GitHub releases, Docker aliases, or output
+  paths are not assumed safe unless the caller serializes them or the external service itself rejects
+  conflicts. *(documented)*
 - Time and clocks matter for reproducibility through `SOURCE_DATE_EPOCH`, but the tool does not
   claim to secure the host clock against tampering. *(inferred)*
 - Network transport to production ASF dist targets uses the configured HTTPS production prefixes
@@ -287,6 +289,7 @@ Explicitly out-of-scope actors:
 | Rebuild output path collection rejects symlinks and paths escaping the project root | Outputs are collected through `collect_profile_output_paths` | Rebuild output glob causes files outside project root to be treated as candidate outputs | security-critical | documented |
 | Project-relative paths cannot escape the project root where shared validators are used | Code path uses `resolve_project_relative_path` or related validators | `..` or absolute paths escape the intended project root | security-critical | documented |
 | Final SVN publication revalidates staged RC directory against the mirrored vote manifest | Publication uses current final publication command flow | Final publication publishes bytes that do not match the approved mirrored manifest | security-critical | documented |
+| Checked-in release workflows serialize release mutations by repository and version | Downstream uses the provided Prepare RC and Release Version workflow pattern with the shared non-canceling concurrency group | Two production release workflows for the same repository and exact version mutate RC or final publication state concurrently | hardening | documented |
 | Harness `act` backend does not copy ambient GitHub tokens into generated secret files | Harness uses current workflow helper behavior | Local harness run leaks ambient `GITHUB_TOKEN` or `GH_TOKEN` into generated `act` secrets | security-critical | documented |
 | Python module layout is not a public API | Consumers invoke through CLI | Security or compatibility report depends only on direct import of internal modules | correctness-only | documented |
 
@@ -359,6 +362,9 @@ Well-known attack classes left to callers or operators:
   appropriate for that risk. *(documented)*
 - Verify release candidates on trusted hardware using the signed vote manifest, signatures,
   checksums, and configured release verification guide. *(documented)*
+- Keep Prepare RC and Release Version workflows on the same non-canceling concurrency group keyed by
+  repository and exact version when copying or customizing the Buildish workflow pattern.
+  *(documented)*
 - Treat harness output as test evidence, not as production release authorization. *(documented)*
 
 ## 11. Known Misuse Patterns
@@ -379,6 +385,8 @@ Well-known attack classes left to callers or operators:
   narrower subset. *(inferred)*
 - Publishing moving tags or aliases before the immutable final release state has been selected and
   approved. *(inferred)*
+- Removing or splitting the shared release workflow concurrency group so Prepare RC and Release
+  Version runs for the same repository and exact version can overlap. *(documented)*
 
 ## 11a. Known Non-Findings: Recurring False Positives
 
@@ -443,7 +451,7 @@ Wave 2:
 | Question | Proposed answer | Lands in |
 | --- | --- | --- |
 | Should the project claim no intentional locale, FPU, or signal-handler mutation? | Yes, unless maintainers know of a hidden side effect. | [Assumptions about the environment](#5-assumptions-about-the-environment) |
-| Are concurrent release invocations against the same tags/SVN paths/aliases unsupported unless external services reject conflicts? | Yes. Workflows should serialize release publication for a component/version. | [Assumptions about the environment](#5-assumptions-about-the-environment) |
+| Are concurrent release invocations against the same tags/SVN paths/aliases unsupported unless external services reject conflicts? | Yes for direct local CLI use. Checked-in workflows serialize release publication for a repository/version. | [Assumptions about the environment](#5-assumptions-about-the-environment), [Security properties the project provides](#8-security-properties-the-project-provides) |
 | Should reports against direct imports of internal Python modules be treated as out-of-contract unless reachable through CLI behavior? | Yes. The CLI and documented file contracts are the supported API. | [Scope and intended use](#2-scope-and-intended-use), [Known non-findings](#11a-known-non-findings-recurring-false-positives) |
 | Does the project want to claim all verifier-facing archive and parsing paths are bounded, or only the shared helper paths listed here? | Only the shared helper paths until a specific audit confirms every verifier path. | [Security properties the project provides](#8-security-properties-the-project-provides) |
 | Should `release_legal` be in this threat model at all? | Yes for local-file/resource safety, but not for release-publication integrity. | [Scope and intended use](#2-scope-and-intended-use), [Out of scope](#3-out-of-scope-explicit-non-goals) |
