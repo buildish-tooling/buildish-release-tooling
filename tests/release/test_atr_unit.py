@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest import mock
 
-from apache_buildish_release_tooling.release.commands.atr import (
+from buildish_release_tooling.release.commands.atr import (
     AtrRuntimeConfig,
     _atr_host_from_base_url,
     _parse_json_output,
@@ -85,7 +85,7 @@ class AtrJsonReaderTest(unittest.TestCase):
             strict_checking=True,
         )
         with mock.patch(
-            "apache_buildish_release_tooling.release.commands.atr.run_logged_command"
+            "buildish_release_tooling.release.commands.atr.run_logged_command"
         ) as run_logged_command:
             _run_atr_command(runtime, ["atr", "release", "info"], env={"ATR_CLIENT_CONFIG_PATH": "atr.yaml"})
 

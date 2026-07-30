@@ -1,5 +1,5 @@
 <!--
-Copyright 2026 The Apache Software Foundation
+Copyright 2026 The Buildish Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,12 +16,16 @@ limitations under the License.
 
 # GitHub Release Policy Alignment Plan
 
-This note is an implementation handoff for aligning Buildish GitHub release behavior with current ASF guidance for both:
+This note is an implementation handoff for the Release Tooling's optional ASF
+profile. It covers GitHub release behavior under current ASF guidance for both:
 
 - top-level ASF projects
 - Apache Incubator podlings
 
 It is written so another agent can pick it up and implement the changes directly.
+
+This is not the current Buildish release policy. That policy is TBD, and the
+retained Buildish release workflows must be adopted separately before use.
 
 ## Why this exists
 
@@ -60,12 +64,12 @@ These parts are already implemented:
 Relevant code:
 
 - draft body creation:
-  - [src/apache_buildish_release_tooling/release/commands/release_publication.py](src/apache_buildish_release_tooling/release/commands/release_publication.py)
-  - [src/apache_buildish_release_tooling/release/commands/vote_materials.py](src/apache_buildish_release_tooling/release/commands/vote_materials.py)
+  - [src/buildish_release_tooling/release/commands/release_publication.py](src/buildish_release_tooling/release/commands/release_publication.py)
+  - [src/buildish_release_tooling/release/commands/vote_materials.py](src/buildish_release_tooling/release/commands/vote_materials.py)
 - draft create/update:
-  - [src/apache_buildish_release_tooling/release/github_release_selection.py](src/apache_buildish_release_tooling/release/github_release_selection.py)
+  - [src/buildish_release_tooling/release/github_release_selection.py](src/buildish_release_tooling/release/github_release_selection.py)
 - final publication:
-  - [src/apache_buildish_release_tooling/release/commands/release_publication.py](src/apache_buildish_release_tooling/release/commands/release_publication.py)
+  - [src/buildish_release_tooling/release/commands/release_publication.py](src/buildish_release_tooling/release/commands/release_publication.py)
 - workflow orchestration:
   - [.github/workflows/releasey-20-prepare-rc.yml](.github/workflows/releasey-20-prepare-rc.yml)
   - [.github/workflows/releasey-30-release-version.yml](.github/workflows/releasey-30-release-version.yml)
@@ -148,7 +152,7 @@ Add dedicated helpers for GitHub release page content, instead of embedding stri
 
 Suggested new module:
 
-- `src/apache_buildish_release_tooling/release/github_release_text.py`
+- `src/buildish_release_tooling/release/github_release_text.py`
 
 Suggested functions:
 

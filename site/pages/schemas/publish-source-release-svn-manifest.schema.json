@@ -1,6 +1,6 @@
 {
   "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/publish-source-release-svn-manifest.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/publish-source-release-svn-manifest.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Action manifest emitted after promoting a verified source artifact into dist/release. This command manifest is internal Buildish workflow I/O and is not a supported external API.",

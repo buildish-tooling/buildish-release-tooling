@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ from __future__ import annotations
 import json
 import unittest
 
-from apache_buildish_release_tooling.release.command_manifests import CreateReleaseBranchManifest
-from apache_buildish_release_tooling.release.manifest import write_manifest
+from buildish_release_tooling.release.command_manifests import CreateReleaseBranchManifest
+from buildish_release_tooling.release.manifest import write_manifest
 
 from tests.support import cleanup_sandbox, create_build_test_sandbox
 

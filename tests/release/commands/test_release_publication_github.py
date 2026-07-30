@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,9 +46,9 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         git_create_branch(origin_dir, "release/1.2.x")
         git_create_annotated_tag(origin_dir, "v1.2.3-rc2")
         fetch_git_origin_refs(clone_dir)
-        set_github_origin_url(clone_dir, "apache/buildish-example")
+        set_github_origin_url(clone_dir, "buildish-tooling/buildish-example")
         (clone_dir / "DISCLAIMER").write_text(
-            "Apache Buildish Example is an effort undergoing incubation.\n",
+            "Buildish Example is an effort undergoing incubation.\n",
             encoding="utf-8",
         )
         expected_commit = git_rev_parse(
@@ -69,7 +69,7 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
                     "id": 11,
                     "draft": True,
                     "tag_name": "v1.2.3",
-                    "name": "Apache Buildish Example 1.2.3",
+                    "name": "Buildish Example 1.2.3",
                 },
                 {
                     "id": 12,
@@ -81,14 +81,14 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
                     "id": 99,
                     "draft": False,
                     "tag_name": "v1.2.2",
-                    "name": "Apache Buildish Example 1.2.2",
+                    "name": "Buildish Example 1.2.2",
                 },
             ],
             create_response={
                 "id": 42,
                 "tag_name": "v1.2.3-rc3",
-                "name": "Apache Buildish Example 1.2.3",
-                "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc3",
+                "name": "Buildish Example 1.2.3",
+                "html_url": "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc3",
             },
         )
         completed = run_cli(
@@ -107,7 +107,7 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         )
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        self.assertEqual("apache/buildish-example", manifest["repository_slug"])
+        self.assertEqual("buildish-tooling/buildish-example", manifest["repository_slug"])
         self.assertEqual(expected_commit, manifest["resolved_source_ref"])
         self.assertEqual("v1.2.3-rc3", manifest["rc_tag"])
         self.assertEqual("v1.2.3", manifest["final_tag"])
@@ -116,7 +116,7 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         self.assertEqual("42", manifest["release_id"])
         self.assertEqual("v1.2.3-rc3", manifest["release_tag"])
         self.assertEqual(
-            "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc3",
+            "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc3",
             manifest["release_url"],
         )
         create_request = json.loads(
@@ -125,10 +125,10 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         self.assertTrue(create_request["draft"])
         self.assertEqual("v1.2.3-rc3", create_request["tag_name"])
         self.assertEqual(expected_commit, create_request["target_commitish"])
-        self.assertEqual("Apache Buildish Example 1.2.3", create_request["name"])
+        self.assertEqual("Buildish Example 1.2.3", create_request["name"])
         self.assertIn("## Incubating Disclaimer", create_request["body"])
         self.assertIn(
-            "Apache Buildish Example is an effort undergoing incubation",
+            "Buildish Example is an effort undergoing incubation",
             create_request["body"],
         )
         self.assertIn("Candidate tag: v1.2.3-rc3", create_request["body"])
@@ -143,8 +143,8 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         )
         self.assertEqual(
             [
-                "repos/apache/buildish-example/releases/11",
-                "repos/apache/buildish-example/releases/12",
+                "repos/buildish-tooling/buildish-example/releases/11",
+                "repos/buildish-tooling/buildish-example/releases/12",
             ],
             deleted_endpoints,
         )
@@ -163,7 +163,7 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         git_create_branch(origin_dir, "release/1.x")
         git_create_branch(origin_dir, "release/1.2.x")
         fetch_git_origin_refs(clone_dir)
-        set_github_origin_url(clone_dir, "apache/buildish-example")
+        set_github_origin_url(clone_dir, "buildish-tooling/buildish-example")
         expected_commit = git_rev_parse(
             clone_dir, "refs/remotes/origin/release/1.2.x^{commit}"
         )
@@ -175,7 +175,7 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         )
         release_body = "\n".join(
             [
-                "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                "Candidate GitHub Release placeholder for Buildish Example 1.2.3.",
                 "",
                 "Candidate tag: v1.2.3-rc0",
                 "Final tag: v1.2.3",
@@ -193,9 +193,9 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
                     "id": 42,
                     "draft": True,
                     "tag_name": "v1.2.3-rc0",
-                    "name": "Apache Buildish Example 1.2.3",
+                    "name": "Buildish Example 1.2.3",
                     "body": release_body,
-                    "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+                    "html_url": "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc0",
                 }
             ],
         )
@@ -231,7 +231,7 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         git_create_branch(origin_dir, "release/1.x")
         git_create_branch(origin_dir, "release/1.2.x")
         fetch_git_origin_refs(clone_dir)
-        set_github_origin_url(clone_dir, "apache/buildish-example")
+        set_github_origin_url(clone_dir, "buildish-tooling/buildish-example")
         expected_commit = git_rev_parse(
             clone_dir, "refs/remotes/origin/release/1.2.x^{commit}"
         )
@@ -250,8 +250,8 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
                 "draft": False,
                 "prerelease": True,
                 "tag_name": "v1.2.3-alpha1",
-                "name": "Apache Buildish Example 1.2.3",
-                "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-alpha1",
+                "name": "Buildish Example 1.2.3",
+                "html_url": "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-alpha1",
             },
         )
         completed = run_cli(
@@ -293,7 +293,7 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         git_create_branch(origin_dir, "release/1.x")
         git_create_branch(origin_dir, "release/1.2.x")
         fetch_git_origin_refs(clone_dir)
-        set_github_origin_url(clone_dir, "apache/buildish-example")
+        set_github_origin_url(clone_dir, "buildish-tooling/buildish-example")
         expected_commit = git_rev_parse(
             clone_dir, "refs/remotes/origin/release/1.2.x^{commit}"
         )
@@ -305,7 +305,7 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         )
         release_body = "\n".join(
             [
-                "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                "Candidate GitHub Release placeholder for Buildish Example 1.2.3.",
                 "",
                 "Candidate tag: v1.2.3-rc0",
                 "Final tag: v1.2.3",
@@ -323,17 +323,17 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
                     "id": 42,
                     "draft": True,
                     "tag_name": "v1.2.3",
-                    "name": "Apache Buildish Example 1.2.3",
+                    "name": "Buildish Example 1.2.3",
                     "body": release_body,
-                    "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3",
+                    "html_url": "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3",
                 }
             ],
             update_release_response={
                 "id": 42,
                 "draft": True,
                 "tag_name": "v1.2.3-rc0",
-                "name": "Apache Buildish Example 1.2.3",
-                "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+                "name": "Buildish Example 1.2.3",
+                "html_url": "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc0",
             },
         )
         completed = run_cli(
@@ -367,7 +367,7 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         git_create_branch(origin_dir, "release/1.x")
         git_create_branch(origin_dir, "release/1.2.x")
         fetch_git_origin_refs(clone_dir)
-        set_github_origin_url(clone_dir, "apache/buildish-example")
+        set_github_origin_url(clone_dir, "buildish-tooling/buildish-example")
         self._write_component_config(
             config_path,
             component_id="buildish-example",
@@ -381,10 +381,10 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
                     "id": 42,
                     "draft": True,
                     "tag_name": "v1.2.3",
-                    "name": "Apache Buildish Example 1.2.3",
+                    "name": "Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
-                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Buildish Example 1.2.3.",
                             "",
                             "Candidate tag: v1.2.3-rc1",
                         ]
@@ -421,7 +421,7 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         git_create_branch(origin_dir, "release/1.2.x")
         git_create_annotated_tag(origin_dir, "v1.2.3-rc0", "release/1.2.x")
         fetch_git_origin_refs(clone_dir)
-        set_github_origin_url(clone_dir, "apache/buildish-example")
+        set_github_origin_url(clone_dir, "buildish-tooling/buildish-example")
         expected_commit = git_rev_parse(clone_dir, "v1.2.3-rc0^{commit}")
         keys_path = sandbox_dir / "KEYS"
         keys_path.write_text("test KEYS\n", encoding="utf-8")
@@ -435,7 +435,7 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         )
         rc_vote_manifest_text = self._rc_vote_manifest_text(
             source_commit_sha=expected_commit,
-            incubator_disclaimer_text="Apache Buildish Example is an effort undergoing incubation.",
+            incubator_disclaimer_text="Buildish Example is an effort undergoing incubation.",
             asf_keys_url=keys_path.as_uri(),
         )
         rc_vote_manifest_sha512 = hashlib.sha512(
@@ -452,10 +452,10 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
                     "id": 42,
                     "draft": True,
                     "tag_name": "v1.2.3",
-                    "name": "Apache Buildish Example 1.2.3",
+                    "name": "Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
-                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Buildish Example 1.2.3.",
                             "",
                             "Candidate tag: v1.2.3-rc0",
                             f"Resolved source ref: {expected_commit}",
@@ -473,8 +473,8 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
                 "id": 42,
                 "draft": False,
                 "tag_name": "v1.2.3",
-                "name": "Apache Buildish Example 1.2.3",
-                "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3",
+                "name": "Buildish Example 1.2.3",
+                "html_url": "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3",
             },
             release_asset_text_by_id={
                 201: rc_vote_manifest_text,
@@ -518,11 +518,11 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         self.assertFalse(update_request["prerelease"])
         self.assertEqual("v1.2.3", update_request["tag_name"])
         self.assertEqual(expected_commit, update_request["target_commitish"])
-        self.assertEqual("Apache Buildish Example 1.2.3", update_request["name"])
+        self.assertEqual("Buildish Example 1.2.3", update_request["name"])
         self.assertNotIn("Draft GitHub Release placeholder", update_request["body"])
         self.assertIn("## Incubating Disclaimer", update_request["body"])
         self.assertIn(
-            "Apache Buildish Example is an effort undergoing incubation.",
+            "Buildish Example is an effort undergoing incubation.",
             update_request["body"],
         )
         self.assertIn("## Authoritative Source Release", update_request["body"])
@@ -540,9 +540,9 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
         )
         self.assertEqual(
             [
-                "repos/apache/buildish-example/releases/assets/201",
-                "repos/apache/buildish-example/releases/assets/202",
-                "repos/apache/buildish-example/releases/assets/204",
+                "repos/buildish-tooling/buildish-example/releases/assets/201",
+                "repos/buildish-tooling/buildish-example/releases/assets/202",
+                "repos/buildish-tooling/buildish-example/releases/assets/204",
             ],
             (gh_state_dir / "deleted-asset-endpoints.log")
             .read_text(encoding="utf-8")

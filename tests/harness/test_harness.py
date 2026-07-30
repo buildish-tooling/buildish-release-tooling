@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,24 +25,24 @@ from unittest import mock
 
 import yaml
 
-from apache_buildish_release_tooling.harness.backend import (
+from buildish_release_tooling.harness.backend import (
     rerun_failed_jobs,
     run_scenario,
 )
-from apache_buildish_release_tooling.harness.models import (
+from buildish_release_tooling.harness.models import (
     FileWriteAction,
     HarnessCommandTraceEntry,
     HarnessScenario,
     HarnessShimState,
 )
-from apache_buildish_release_tooling.harness.runtime import (
+from buildish_release_tooling.harness.runtime import (
     remove_workspace,
     resolve_workspace_relative_path,
     summarize_trace,
     write_workspace_file,
 )
-from apache_buildish_release_tooling.harness.shim_entrypoint import _perform_file_writes
-from apache_buildish_release_tooling.harness.scenario import load_scenario
+from buildish_release_tooling.harness.shim_entrypoint import _perform_file_writes
+from buildish_release_tooling.harness.scenario import load_scenario
 from tests.support import cleanup_sandbox, component_root, create_build_test_sandbox, tool_env
 
 
@@ -409,7 +409,7 @@ class HarnessIntegrationTest(unittest.TestCase):
             [
                 sys.executable,
                 "-m",
-                "apache_buildish_release_tooling.harness.shim_entrypoint",
+                "buildish_release_tooling.harness.shim_entrypoint",
                 "buildish-release-tooling",
                 "verify-source-ref-checks",
                 "1.2.3",
@@ -466,7 +466,7 @@ class HarnessIntegrationTest(unittest.TestCase):
             [
                 sys.executable,
                 "-m",
-                "apache_buildish_release_tooling.harness.shim_entrypoint",
+                "buildish_release_tooling.harness.shim_entrypoint",
                 "gh",
                 "api",
                 "repos/demo",
@@ -578,12 +578,12 @@ class HarnessIntegrationTest(unittest.TestCase):
             [
                 sys.executable,
                 "-m",
-                "apache_buildish_release_tooling.harness.shim_entrypoint",
+                "buildish_release_tooling.harness.shim_entrypoint",
                 "gh",
                 "api",
                 "-X",
                 "POST",
-                "repos/apache/buildish-example/git/tags",
+                "repos/buildish-tooling/buildish-example/git/tags",
             ],
             cwd=str(self.sandbox_dir),
             env=tool_env({"BUILDISH_HARNESS_STATE_FILE": str(state_path)}),
@@ -605,12 +605,12 @@ class HarnessIntegrationTest(unittest.TestCase):
             [
                 sys.executable,
                 "-m",
-                "apache_buildish_release_tooling.harness.shim_entrypoint",
+                "buildish_release_tooling.harness.shim_entrypoint",
                 "gh",
                 "api",
                 "-X",
                 "POST",
-                "repos/apache/buildish-example/git/refs",
+                "repos/buildish-tooling/buildish-example/git/refs",
             ],
             cwd=str(self.sandbox_dir),
             env=tool_env({"BUILDISH_HARNESS_STATE_FILE": str(state_path)}),

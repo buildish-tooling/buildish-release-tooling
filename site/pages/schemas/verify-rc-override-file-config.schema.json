@@ -106,7 +106,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/verify-rc-override-file-config.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/verify-rc-override-file-config.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Validated local override file for non-canonical reproducibility runs.",

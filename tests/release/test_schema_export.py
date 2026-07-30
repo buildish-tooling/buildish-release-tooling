@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,9 +23,9 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 
-from apache_buildish_release_tooling.docs.documentation import DocumentedContractModel
-from apache_buildish_release_tooling.docs.reference_export import _build_anchor_index, _collect_reachable_models
-from apache_buildish_release_tooling.docs.schema_export import (
+from buildish_release_tooling.docs.documentation import DocumentedContractModel
+from buildish_release_tooling.docs.reference_export import _build_anchor_index, _collect_reachable_models
+from buildish_release_tooling.docs.schema_export import (
     _build_parser,
     authored_schema_exports,
     build_schema_document,
@@ -34,12 +34,12 @@ from apache_buildish_release_tooling.docs.schema_export import (
     write_reference_files,
     write_schema_files,
 )
-from apache_buildish_release_tooling.harness import config as harness_config_models
-from apache_buildish_release_tooling.harness import models as harness_models
-from apache_buildish_release_tooling.harness import shim_builtins as harness_shim_models
-from apache_buildish_release_tooling.release import command_manifests as release_command_manifests
-from apache_buildish_release_tooling.release import contracts as release_contracts
-from apache_buildish_release_tooling.release import models as release_models
+from buildish_release_tooling.harness import config as harness_config_models
+from buildish_release_tooling.harness import models as harness_models
+from buildish_release_tooling.harness import shim_builtins as harness_shim_models
+from buildish_release_tooling.release import command_manifests as release_command_manifests
+from buildish_release_tooling.release import contracts as release_contracts
+from buildish_release_tooling.release import models as release_models
 
 
 def _reference_model_roots() -> tuple[type[DocumentedContractModel], ...]:
@@ -90,7 +90,7 @@ class SchemaExportTests(unittest.TestCase):
         self.assertEqual(component_schema["$schema"], "https://json-schema.org/draft/2020-12/schema")
         self.assertEqual(
             component_schema["$id"],
-            "https://buildish.apache.org/components/buildish-release-tooling/schemas/component-config.schema.json",
+            "https://buildish.org/components/release-tooling/schemas/component-config.schema.json",
         )
         self.assertIn("Do not edit by hand", component_schema["$comment"])
         self.assertEqual(
@@ -163,7 +163,7 @@ class SchemaExportTests(unittest.TestCase):
                 generated_reference_dir / "release-manifests-and-verification-reference.md"
             ).read_text(encoding="utf-8")
             self.assertIn(
-                "[`verify-rc-report-v1.schema.json`](/components/buildish-release-tooling/schemas/verify-rc-report-v1.schema.json)",
+                "[`verify-rc-report-v1.schema.json`](/components/release-tooling/schemas/verify-rc-report-v1.schema.json)",
                 verification_reference_text,
             )
 

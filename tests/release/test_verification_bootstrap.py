@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import unittest
 
-from apache_buildish_release_tooling.release.verification.bootstrap import (
+from buildish_release_tooling.release.verification.bootstrap import (
     VERIFY_RC_BOOTSTRAP_SCRIPT_NAME,
     render_verify_rc_bootstrap_invoker,
     render_verify_rc_bootstrap_script,
@@ -34,7 +34,7 @@ class VerificationBootstrapTemplateTest(unittest.TestCase):
         self.assertIn("manifest provenance.tooling.git_commit_sha must be a full commit SHA", script)
         self.assertIn("git clone --quiet", script)
         self.assertIn("checkout --quiet --detach", script)
-        self.assertIn("-m apache_buildish_release_tooling.release verify-rc", script)
+        self.assertIn("-m buildish_release_tooling.release verify-rc", script)
         self.assertIn("--work-dir \"$work_dir/verify-rc\"", script)
 
     def test_render_verify_rc_bootstrap_invoker_references_expected_assets(self) -> None:

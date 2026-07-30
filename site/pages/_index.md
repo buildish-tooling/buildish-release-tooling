@@ -1,10 +1,10 @@
 ---
 title: "Release Tooling"
-description: "Shared release implementation component for Buildish and other ASF projects."
+description: "Shared release implementation component with an optional ASF profile."
 ---
 
 <!--
-Copyright 2026 The Apache Software Foundation
+Copyright 2026 The Buildish Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,6 +22,9 @@ limitations under the License.
 `buildish-release-tooling` is the shared release implementation component used by Buildish
 repositories.
 
+The Buildish release process is TBD. ASF-specific pages describe an optional
+tooling profile and do not define the current Buildish release policy.
+
 The stable contract is the CLI plus `release-config.yaml`. The Python package layout is internal,
 but the docs tree includes maintainer guides for the current structure:
 
@@ -33,7 +36,7 @@ Use `make check` as the standard local and CI gate.
 
 Planning and assessment documents:
 
-- [GitHub Release policy](github-release-policy/)
+- [ASF Profile GitHub Release policy](github-release-policy/)
 - [Verify RC implementation plan](verify-rc-implementation-plan/)
 - [ATR integration assessment](atr-integration-assessment/)
 - [ASF project fit assessment](asf-project-fit-assessment/)

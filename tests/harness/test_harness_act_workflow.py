@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,22 +25,22 @@ from pathlib import Path
 
 import yaml
 
-from apache_buildish_release_tooling.harness.backends.act import (
+from buildish_release_tooling.harness.backends.act import (
     _dump_workflow_yaml,
     _render_rewritten_workflow_yaml,
     _render_uv_shim_script,
 )
-from apache_buildish_release_tooling.harness.backends.act.workflow import (
+from buildish_release_tooling.harness.backends.act.workflow import (
     _rewrite_workflow,
 )
-from apache_buildish_release_tooling.harness.backends.act.workflow_helpers import _step_identifier
-from apache_buildish_release_tooling.harness.backends.act.workflow_yaml import _load_job_definitions
-from apache_buildish_release_tooling.harness import runtime
-from apache_buildish_release_tooling.harness.config import (
+from buildish_release_tooling.harness.backends.act.workflow_helpers import _step_identifier
+from buildish_release_tooling.harness.backends.act.workflow_yaml import _load_job_definitions
+from buildish_release_tooling.harness import runtime
+from buildish_release_tooling.harness.config import (
     ResolvedReleaseHarnessConfig,
     ResolvedRepositoryBinding,
 )
-from apache_buildish_release_tooling.harness.models import WorkflowScenario
+from buildish_release_tooling.harness.models import WorkflowScenario
 from tests.support import (
     cleanup_sandbox,
     cli_env,
@@ -250,10 +250,10 @@ class ActWorkflowRewriteUnitTest(unittest.TestCase):
             script,
         )
         self.assertIn(
-            'exec python3 -m apache_buildish_release_tooling.release "$@"', script
+            'exec python3 -m buildish_release_tooling.release "$@"', script
         )
         self.assertIn(
-            'exec python3 -m apache_buildish_release_tooling.harness.shim_entrypoint buildish-release-tooling "${filtered_args[@]}"',
+            'exec python3 -m buildish_release_tooling.harness.shim_entrypoint buildish-release-tooling "${filtered_args[@]}"',
             script,
         )
 

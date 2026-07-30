@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,11 +22,11 @@ import unittest
 from unittest import mock
 from io import StringIO
 
-from apache_buildish_release_tooling.release.verification.inspection.archive_shallow import (
+from buildish_release_tooling.release.verification.inspection.archive_shallow import (
     build_shallow_archive_analysis,
     emit_shallow_archive_analysis,
 )
-from apache_buildish_release_tooling.release.progress import ProgressReporter
+from buildish_release_tooling.release.progress import ProgressReporter
 from tests.release.archive_support import (
     write_gzip_wrapped_tar,
     write_tgz_archive,

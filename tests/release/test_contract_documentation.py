@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,12 +24,12 @@ import unittest
 
 from pydantic import BaseModel
 
-import apache_buildish_release_tooling as rootpkg
-from apache_buildish_release_tooling.harness.config import ReleaseHarnessConfig
-from apache_buildish_release_tooling.release.contracts import VerifyRcReportV1
+import buildish_release_tooling as rootpkg
+from buildish_release_tooling.harness.config import ReleaseHarnessConfig
+from buildish_release_tooling.release.contracts import VerifyRcReportV1
 
 _SKIPPED_MODEL_MODULE_PREFIXES = (
-    "apache_buildish_release_tooling.release.github_api_models",
+    "buildish_release_tooling.release.github_api_models",
 )
 
 

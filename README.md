@@ -1,5 +1,5 @@
 <!--
-Copyright 2026 The Apache Software Foundation
+Copyright 2026 The Buildish Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ uv run --project buildish-release-tooling buildish-release-tooling prepare-rc \
 ```
 
 ```bash
-uvx --from git+https://github.com/apache/buildish-release-tooling@v0.1.0 \
+uvx --from git+https://github.com/buildish-tooling/buildish-release-tooling@v0.1.0 \
   buildish-release-tooling prepare-rc \
   --component-config ./buildish-release-tooling/release-config.yaml \
   1.2.3

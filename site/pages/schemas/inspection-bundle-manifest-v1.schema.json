@@ -37,7 +37,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/inspection-bundle-manifest-v1.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/inspection-bundle-manifest-v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Top-level contract manifest for one curated verify-rc inspection bundle.",

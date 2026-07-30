@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,12 +22,12 @@ import unittest
 
 from pydantic import ValidationError
 
-from apache_buildish_release_tooling.release.contracts import (
+from buildish_release_tooling.release.contracts import (
     GenericFileSecondaryArtifact,
     RcVoteManifestReadV1,
     SecondaryArtifactEnvelopeRead,
 )
-from apache_buildish_release_tooling.release.verification.secondary.readers import (
+from buildish_release_tooling.release.verification.secondary.readers import (
     MalformedSecondaryArtifactEntry,
     secondary_artifact_entries,
 )
@@ -88,7 +88,7 @@ class SecondarySharedTest(unittest.TestCase):
                 "version": "1.2.3",
                 "release_line": "1.2.x",
                 "release_branch": "release/1.2.x",
-                "source_repository_url": "https://github.com/apache/buildish-example",
+                "source_repository_url": "https://github.com/buildish-tooling/buildish-example",
                 "source_commit_sha": "0123456789abcdef0123456789abcdef01234567",
                 "source_date_epoch": 1714032000,
                 "rc_tag": "v1.2.3-rc0",
@@ -96,7 +96,7 @@ class SecondarySharedTest(unittest.TestCase):
                 "final_tag_mode": "reuse-existing",
                 "provenance": {
                     "created_at": "2026-05-02T12:00:00Z",
-                    "tooling": {"repository_url": "https://github.com/apache/buildish-release-tooling"},
+                    "tooling": {"repository_url": "https://github.com/buildish-tooling/buildish-release-tooling"},
                 },
                 "trust_roots": {
                     "asf_keys": {
@@ -106,9 +106,9 @@ class SecondarySharedTest(unittest.TestCase):
                     }
                 },
                 "draft_github_release": {
-                    "repository": "apache/buildish-example",
+                    "repository": "buildish-tooling/buildish-example",
                     "tag": "v1.2.3-rc0",
-                    "url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+                    "url": "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc0",
                 },
                 "vote_materials": {
                     "source_artifacts": [

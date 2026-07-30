@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -84,7 +84,7 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
             check=True,
         )
         fetch_git_origin_refs(clone_dir)
-        set_github_origin_url(clone_dir, "apache/buildish-example")
+        set_github_origin_url(clone_dir, "buildish-tooling/buildish-example")
         expected_commit = git_rev_parse(clone_dir, "v1.2.3^{commit}")
         self._write_component_config(
             config_path,
@@ -129,10 +129,10 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         self.assertEqual("moving-tag-object-sha", update_ref_request["sha"])
         requests_log = (gh_state_dir / "requests.log").read_text(encoding="utf-8")
         self.assertIn(
-            "PATCH repos/apache/buildish-example/git/refs/tags/v1.2", requests_log
+            "PATCH repos/buildish-tooling/buildish-example/git/refs/tags/v1.2", requests_log
         )
         self.assertNotIn(
-            "PATCH repos/apache/buildish-example/git/refs/tags/v1\n", requests_log
+            "PATCH repos/buildish-tooling/buildish-example/git/refs/tags/v1\n", requests_log
         )
 
     def test_update_moving_image_aliases_command_emits_derived_aliases(self) -> None:
@@ -181,7 +181,7 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
                 "--component-config",
                 str(config_path),
                 "1.2.3",
-                "docker.io/apache/buildish-example:1.2.3",
+                "docker.io/buildish-tooling/buildish-example:1.2.3",
             ],
             cwd=sandbox_dir,
             env=cli_env(
@@ -197,15 +197,15 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         self.assertEqual(
-            "docker.io/apache/buildish-example:1.2.3", manifest["source_image"]
+            "docker.io/buildish-tooling/buildish-example:1.2.3", manifest["source_image"]
         )
         self.assertEqual(
-            "docker.io/apache/buildish-example", manifest["image_repository"]
+            "docker.io/buildish-tooling/buildish-example", manifest["image_repository"]
         )
         self.assertEqual(
             [
-                "docker.io/apache/buildish-example:1",
-                "docker.io/apache/buildish-example:1.2",
+                "docker.io/buildish-tooling/buildish-example:1",
+                "docker.io/buildish-tooling/buildish-example:1.2",
             ],
             manifest["published_alias_refs"],
         )
@@ -221,8 +221,8 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         )
         self.assertEqual(
             [
-                "docker.io/apache/buildish-example:1|docker.io/apache/buildish-example:1.2.3|false",
-                "docker.io/apache/buildish-example:1.2|docker.io/apache/buildish-example:1.2.3|false",
+                "docker.io/buildish-tooling/buildish-example:1|docker.io/buildish-tooling/buildish-example:1.2.3|false",
+                "docker.io/buildish-tooling/buildish-example:1.2|docker.io/buildish-tooling/buildish-example:1.2.3|false",
             ],
             (docker_state_dir / "imagetools-create.log")
             .read_text(encoding="utf-8")
@@ -249,7 +249,7 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         git_create_branch(origin_dir, "release/1.x")
         git_create_branch(origin_dir, "release/1.2.x")
         fetch_git_origin_refs(clone_dir)
-        set_github_origin_url(clone_dir, "apache/buildish-example")
+        set_github_origin_url(clone_dir, "buildish-tooling/buildish-example")
         self._write_component_config(
             config_path,
             component_id="buildish-example",
@@ -264,8 +264,8 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
                     "id": 42,
                     "draft": True,
                     "tag_name": "v1.2.3",
-                    "name": "Apache Buildish Example 1.2.3",
-                    "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3",
+                    "name": "Buildish Example 1.2.3",
+                    "html_url": "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3",
                 }
             ],
         )
@@ -361,7 +361,7 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
             .strip(),
         )
         self.assertEqual(
-            "apache/buildish-example",
+            "buildish-tooling/buildish-example",
             (gh_state_dir / "release-upload-repo.txt")
             .read_text(encoding="utf-8")
             .strip(),

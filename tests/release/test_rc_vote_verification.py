@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,11 +17,11 @@ from __future__ import annotations
 
 import unittest
 
-from apache_buildish_release_tooling.release.models import (
+from buildish_release_tooling.release.models import (
     CommandContext,
     ComponentConfig,
 )
-from apache_buildish_release_tooling.release.rc_vote_verification import (
+from buildish_release_tooling.release.rc_vote_verification import (
     verified_mirrored_rc_vote_manifest,
 )
 
@@ -43,7 +43,7 @@ class RcVotePublicationVerificationTest(unittest.TestCase):
                 latest_tag_enabled=False,
                 secondary_targets=[],
                 final_tag_mode="rc-source-commit",
-                vote_release_name="Apache Buildish Example",
+                vote_release_name="Buildish Example",
                 release_verification_guide_url="https://example.invalid/verify",
                 verify_rc_instructions="verify",
                 prepare_rc_runs_tests=True,
@@ -56,7 +56,7 @@ class RcVotePublicationVerificationTest(unittest.TestCase):
         ):
             verified_mirrored_rc_vote_manifest(
                 context,
-                repository_slug="apache/buildish-example",
+                repository_slug="buildish-tooling/buildish-example",
                 release_payload={
                     "assets": [
                         {"id": 201, "name": "rc-vote-manifest.json"},

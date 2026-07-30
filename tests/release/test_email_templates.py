@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,14 +18,14 @@ from __future__ import annotations
 
 import unittest
 
-from apache_buildish_release_tooling.release.contracts import RcVoteManifestV1
-from apache_buildish_release_tooling.release.email_templates import (
+from buildish_release_tooling.release.contracts import RcVoteManifestV1
+from buildish_release_tooling.release.email_templates import (
     render_announce_email,
     render_incubator_rc_vote_email,
     render_project_rc_vote_email,
     render_project_vote_result_email,
 )
-from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
+from buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
 
 
 class EmailTemplatesTest(unittest.TestCase):
@@ -46,10 +46,10 @@ class EmailTemplatesTest(unittest.TestCase):
                 "latest_tag_enabled": False,
                 "secondary_targets": ["github-action", "github-release"],
                 "final_tag_mode": "detached-materialization-commit",
-                "vote_release_name": "Apache Buildish Example",
+                "vote_release_name": "Buildish Example",
                 "project_status": project_status,
                 "release_summary_include_final_tag_mode": False,
-                "release_verification_guide_url": "https://buildish.apache.org/buildish-example/release-verification/",
+                "release_verification_guide_url": "https://buildish.org/buildish-example/release-verification/",
                 "verify_rc_instructions": "verify",
                 "prepare_rc_runs_tests": False,
                 "release_branch_ci_required": True,
@@ -87,7 +87,7 @@ class EmailTemplatesTest(unittest.TestCase):
                 "version": "1.2.3",
                 "release_line": "1.2.x",
                 "release_branch": "release/1.2.x",
-                "source_repository_url": "https://github.com/apache/buildish-example",
+                "source_repository_url": "https://github.com/buildish-tooling/buildish-example",
                 "source_commit_sha": "0123456789abcdef0123456789abcdef01234567",
                 "source_date_epoch": 1714032000,
                 "rc_tag": "v1.2.3-rc2",
@@ -96,8 +96,8 @@ class EmailTemplatesTest(unittest.TestCase):
                 "provenance": {
                     "created_at": "2026-04-23T10:15:30Z",
                     "tooling": {
-                        "repository": "apache/buildish-release-tooling",
-                        "repository_url": "https://github.com/apache/buildish-release-tooling",
+                        "repository": "buildish-tooling/buildish-release-tooling",
+                        "repository_url": "https://github.com/buildish-tooling/buildish-release-tooling",
                         "git_commit_sha": "fedcba9876543210fedcba9876543210fedcba98",
                     },
                 },
@@ -109,13 +109,13 @@ class EmailTemplatesTest(unittest.TestCase):
                     }
                 },
                 "draft_github_release": {
-                    "repository": "apache/buildish-example",
+                    "repository": "buildish-tooling/buildish-example",
                     "tag": "v1.2.3-rc2",
-                    "url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc2",
+                    "url": "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc2",
                 },
                 "incubator_disclaimer": {
                     "source_path": "DISCLAIMER",
-                    "text": "Apache Buildish Example is an effort undergoing incubation at The Apache Software Foundation (ASF).",
+                    "text": "Buildish Example is an effort undergoing incubation at The Apache Software Foundation (ASF).",
                     "sha512": "c" * 128,
                 },
                 "vote_materials": {
@@ -144,11 +144,11 @@ class EmailTemplatesTest(unittest.TestCase):
                             "artifact_id": "buildish-example-zip",
                             "kind": "generic-file",
                             "filename": "buildish-example.zip",
-                            "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example.zip",
+                            "uri": "https://github.com/buildish-tooling/buildish-example/releases/download/v1.2.3/buildish-example.zip",
                             "checksums": {
                                 "sha512": {
                                     "value": "b" * 128,
-                                    "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example.zip.sha512",
+                                    "uri": "https://github.com/buildish-tooling/buildish-example/releases/download/v1.2.3/buildish-example.zip.sha512",
                                 }
                             },
                             "signatures": [],
@@ -180,7 +180,7 @@ class EmailTemplatesTest(unittest.TestCase):
             state=state,
             rc_tag_target_commit="89abcdef0123456789abcdef0123456789abcdef",
             manifest_payload=self._manifest_payload(),
-            draft_release_url="https://github.com/apache/buildish-example/releases/tag/v1.2.3",
+            draft_release_url="https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3",
             bootstrap_script_url=(
                 "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/"
                 "verify-rc-bootstrap.sh"
@@ -188,17 +188,17 @@ class EmailTemplatesTest(unittest.TestCase):
             bootstrap_invoker="/bin/sh -eu -c '...'",
         )
         self.assertEqual(
-            "[VOTE] Release Apache Buildish Example 1.2.3-incubating (RC2)",
+            "[VOTE] Release Buildish Example 1.2.3-incubating (RC2)",
             rendered.subject,
         )
         self.assertIn("I propose that we release the following RC", rendered.body)
         self.assertIn("Git tag: v1.2.3-rc2", rendered.body)
         self.assertIn("Source commit SHA: 0123456789abcdef0123456789abcdef01234567", rendered.body)
         self.assertIn("https://downloads.apache.org/incubator/buildish/KEYS", rendered.body)
-        self.assertIn("https://buildish.apache.org/buildish-example/release-verification/", rendered.body)
+        self.assertIn("https://buildish.org/buildish-example/release-verification/", rendered.body)
         self.assertIn("buildish-example.zip", rendered.body)
         self.assertIn("Incubating disclaimer:", rendered.body)
-        self.assertIn("Apache Buildish Example is an effort undergoing incubation", rendered.body)
+        self.assertIn("Buildish Example is an effort undergoing incubation", rendered.body)
         self.assertIn("Verification bootstrap convenience:", rendered.body)
         self.assertIn("verify-rc-bootstrap.sh", rendered.body)
 
@@ -209,7 +209,7 @@ class EmailTemplatesTest(unittest.TestCase):
             manifest_payload=self._manifest_payload(),
         )
         self.assertEqual(
-            "[VOTE] Release Apache Buildish Example 1.2.3-incubating (RC2)",
+            "[VOTE] Release Buildish Example 1.2.3-incubating (RC2)",
             rendered.subject,
         )
         self.assertIn("<TODO: add the project vote thread URL>", rendered.body)
@@ -224,7 +224,7 @@ class EmailTemplatesTest(unittest.TestCase):
             rc_number=2,
         )
         self.assertEqual(
-            "[RESULT][VOTE] Release Apache Buildish Example 1.2.3 (RC2)",
+            "[RESULT][VOTE] Release Buildish Example 1.2.3 (RC2)",
             rendered.subject,
         )
         self.assertIn("<TODO: binding count>", rendered.body)
@@ -235,7 +235,7 @@ class EmailTemplatesTest(unittest.TestCase):
             component_config=self._component_config(project_status="tlp"),
             version="1.2.3",
         )
-        self.assertEqual("[ANNOUNCE] Apache Buildish Example 1.2.3", rendered.subject)
-        self.assertIn("The Apache Buildish Example team is pleased to announce", rendered.body)
+        self.assertEqual("[ANNOUNCE] Buildish Example 1.2.3", rendered.subject)
+        self.assertIn("The Buildish Example team is pleased to announce", rendered.body)
         self.assertIn("<TODO: add release-specific announcement content>", rendered.body)
         self.assertNotIn("Incubating disclaimer:", rendered.body)

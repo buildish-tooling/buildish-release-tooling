@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,9 +15,9 @@
 schema_version: "1"
 
 self_repository:
-  repository_id: apache/buildish-release-tooling
+  repository_id: buildish-tooling/buildish-release-tooling
   local_checkout_mode: when_repository_omitted
 
 repository_overrides:
-  apache/buildish-release-tooling:
+  buildish-tooling/buildish-release-tooling:
     local_checkout_mode: always

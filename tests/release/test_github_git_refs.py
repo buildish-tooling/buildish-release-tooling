@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import subprocess
 import unittest
 from unittest import mock
 
-from apache_buildish_release_tooling.release import github_git_refs
+from buildish_release_tooling.release import github_git_refs
 
 
 class GitHubGitRefsTest(unittest.TestCase):
@@ -29,7 +29,7 @@ class GitHubGitRefsTest(unittest.TestCase):
 
     def test_create_annotated_tag_object_rejects_non_object_payload(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.release.github_git_refs.run_logged_command",
+            "buildish_release_tooling.release.github_git_refs.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, "[]", ""),
         ):
             with self.assertRaisesRegex(
@@ -37,15 +37,15 @@ class GitHubGitRefsTest(unittest.TestCase):
                 "GitHub tag-object creation did not return a JSON object payload",
             ):
                 github_git_refs.create_annotated_tag_object(
-                    "apache/buildish-example",
+                    "buildish-tooling/buildish-example",
                     tag_name="v1.2.3",
                     target_commit="deadbeef",
-                    message="Release Apache Buildish Example 1.2.3",
+                    message="Release Buildish Example 1.2.3",
                 )
 
     def test_create_ref_rejects_invalid_object_payload(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.release.github_git_refs.run_logged_command",
+            "buildish_release_tooling.release.github_git_refs.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, json.dumps({"ref": []}), ""),
         ):
             with self.assertRaisesRegex(
@@ -53,14 +53,14 @@ class GitHubGitRefsTest(unittest.TestCase):
                 "GitHub ref creation returned a malformed GitHub Git object payload",
             ):
                 github_git_refs.create_ref(
-                    "apache/buildish-example",
+                    "buildish-tooling/buildish-example",
                     ref_name="refs/tags/v1.2.3",
                     target_sha="tag-object-sha",
                 )
 
     def test_update_ref_rejects_invalid_object_payload(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.release.github_git_refs.run_logged_command",
+            "buildish_release_tooling.release.github_git_refs.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, json.dumps({"sha": []}), ""),
         ):
             with self.assertRaisesRegex(
@@ -68,7 +68,7 @@ class GitHubGitRefsTest(unittest.TestCase):
                 "GitHub ref update returned a malformed GitHub Git object payload",
             ):
                 github_git_refs.update_ref(
-                    "apache/buildish-example",
+                    "buildish-tooling/buildish-example",
                     ref_name="refs/tags/v1",
                     target_sha="deadbeef",
                     force=True,
@@ -76,14 +76,14 @@ class GitHubGitRefsTest(unittest.TestCase):
 
     def test_create_annotated_tag_object_posts_expected_payload(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.release.github_git_refs.run_logged_command",
+            "buildish_release_tooling.release.github_git_refs.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, json.dumps({"sha": "tag-object-sha"}), ""),
         ) as run_command:
             actual = github_git_refs.create_annotated_tag_object(
-                "apache/buildish-example",
+                "buildish-tooling/buildish-example",
                 tag_name="v1.2.3",
                 target_commit="deadbeef",
-                message="Release Apache Buildish Example 1.2.3",
+                message="Release Buildish Example 1.2.3",
             )
         self.assertEqual({"sha": "tag-object-sha"}, actual)
         run_command.assert_called_once_with(
@@ -94,14 +94,14 @@ class GitHubGitRefsTest(unittest.TestCase):
                 "POST",
                 "-H",
                 "Accept: application/vnd.github+json",
-                "repos/apache/buildish-example/git/tags",
+                "repos/buildish-tooling/buildish-example/git/tags",
                 "--input",
                 "-",
             ],
             input_text=json.dumps(
                 {
                     "tag": "v1.2.3",
-                    "message": "Release Apache Buildish Example 1.2.3",
+                    "message": "Release Buildish Example 1.2.3",
                     "object": "deadbeef",
                     "type": "commit",
                 }
@@ -110,11 +110,11 @@ class GitHubGitRefsTest(unittest.TestCase):
 
     def test_create_ref_posts_expected_payload(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.release.github_git_refs.run_logged_command",
+            "buildish_release_tooling.release.github_git_refs.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, json.dumps({"ref": "refs/tags/v1.2.3"}), ""),
         ) as run_command:
             actual = github_git_refs.create_ref(
-                "apache/buildish-example",
+                "buildish-tooling/buildish-example",
                 ref_name="refs/tags/v1.2.3",
                 target_sha="tag-object-sha",
             )
@@ -127,7 +127,7 @@ class GitHubGitRefsTest(unittest.TestCase):
                 "POST",
                 "-H",
                 "Accept: application/vnd.github+json",
-                "repos/apache/buildish-example/git/refs",
+                "repos/buildish-tooling/buildish-example/git/refs",
                 "--input",
                 "-",
             ],
@@ -141,11 +141,11 @@ class GitHubGitRefsTest(unittest.TestCase):
 
     def test_update_ref_posts_expected_payload(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.release.github_git_refs.run_logged_command",
+            "buildish_release_tooling.release.github_git_refs.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, json.dumps({"ref": "refs/tags/v1"}), ""),
         ) as run_command:
             actual = github_git_refs.update_ref(
-                "apache/buildish-example",
+                "buildish-tooling/buildish-example",
                 ref_name="refs/tags/v1",
                 target_sha="deadbeef",
                 force=True,
@@ -159,7 +159,7 @@ class GitHubGitRefsTest(unittest.TestCase):
                 "PATCH",
                 "-H",
                 "Accept: application/vnd.github+json",
-                "repos/apache/buildish-example/git/refs/tags/v1",
+                "repos/buildish-tooling/buildish-example/git/refs/tags/v1",
                 "--input",
                 "-",
             ],

@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from apache_buildish_release_tooling.release.github_checks import (
+from buildish_release_tooling.release.github_checks import (
     assert_ref_ready,
     resolve_repository_slug,
     total_count,
@@ -109,22 +109,22 @@ class GitHubChecksTest(unittest.TestCase):
 
     def test_resolve_repository_slug_reads_origin_url(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.release.github_checks.run_logged_command",
+            "buildish_release_tooling.release.github_checks.run_logged_command",
             return_value=subprocess.CompletedProcess(
                 [],
                 0,
-                "https://github.com/apache/buildish-example.git\n",
+                "https://github.com/buildish-tooling/buildish-example.git\n",
                 "",
             ),
         ):
             self.assertEqual(
-                "apache/buildish-example",
+                "buildish-tooling/buildish-example",
                 resolve_repository_slug(Path("/workspace/repo")),
             )
 
     def test_resolve_repository_slug_rejects_non_github_origin(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.release.github_checks.run_logged_command",
+            "buildish_release_tooling.release.github_checks.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, "file:///tmp/repo\n", ""),
         ):
             with self.assertRaisesRegex(ValueError, "unable to resolve GitHub repository slug"):

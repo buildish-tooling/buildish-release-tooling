@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,9 +19,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 
-from apache_buildish_release_tooling.release.contracts import IncubatorDisclaimer
-from apache_buildish_release_tooling.release.models import ComponentConfig
-from apache_buildish_release_tooling.release.release_text import (
+from buildish_release_tooling.release.contracts import IncubatorDisclaimer
+from buildish_release_tooling.release.models import ComponentConfig
+from buildish_release_tooling.release.release_text import (
     incubator_disclaimer_section,
     resolved_incubator_disclaimer,
 )
@@ -42,10 +42,10 @@ class ReleaseTextTest(unittest.TestCase):
             "latest_tag_enabled": False,
             "secondary_targets": ["github-action"],
             "final_tag_mode": "rc-source-commit",
-            "vote_release_name": "Apache Buildish Example",
+            "vote_release_name": "Buildish Example",
             "project_status": "incubating",
             "release_summary_include_final_tag_mode": False,
-            "release_verification_guide_url": "https://buildish.apache.org/buildish-example/release-verification/",
+            "release_verification_guide_url": "https://buildish.org/buildish-example/release-verification/",
             "verify_rc_instructions": "verify",
             "prepare_rc_runs_tests": False,
             "release_branch_ci_required": True,

@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 """Generic-file artifact-registration command tests."""
 
-from apache_buildish_release_tooling.release.contracts import (
+from buildish_release_tooling.release.contracts import (
     SecondaryArtifactManifestV1,
 )
 
@@ -67,9 +67,9 @@ class GenericFileArtifactRegistrationCommandTest(ArtifactRegistrationCommandTest
                 "--file",
                 str(artifact_file_path),
                 "--uri",
-                "https://github.com/apache/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip",
+                "https://github.com/buildish-tooling/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip",
                 "--sha512-uri",
-                "https://github.com/apache/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip.sha512",
+                "https://github.com/buildish-tooling/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip.sha512",
                 "--git-commit-sha",
                 "0123456789abcdef0123456789abcdef01234567",
                 "--reproducibility-profile-id",
@@ -132,7 +132,7 @@ class GenericFileArtifactRegistrationCommandTest(ArtifactRegistrationCommandTest
                     "kind": "generic-file",
                     "role": "bootstrap-convenience-archive",
                     "filename": "buildish-example-bootstrap.zip",
-                    "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip",
+                    "uri": "https://github.com/buildish-tooling/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip",
                     "artifact_origin": "source-commit",
                     "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
                     "reproducibility": {
@@ -141,7 +141,7 @@ class GenericFileArtifactRegistrationCommandTest(ArtifactRegistrationCommandTest
                     "checksums": {
                         "sha512": {
                             "value": expected_sha512,
-                            "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip.sha512",
+                            "uri": "https://github.com/buildish-tooling/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip.sha512",
                         }
                     },
                     "signatures": [],
@@ -187,7 +187,7 @@ class GenericFileArtifactRegistrationCommandTest(ArtifactRegistrationCommandTest
                 "--file",
                 str(artifact_file_path),
                 "--uri",
-                "https://github.com/apache/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip",
+                "https://github.com/buildish-tooling/buildish-example/releases/download/v1.2.3-rc0/buildish-example-bootstrap.zip",
                 "--sha512",
                 "0" * 128,
             ],

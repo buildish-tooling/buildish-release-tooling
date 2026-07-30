@@ -562,7 +562,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/command-context.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/command-context.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Common runtime context passed into command handlers.",

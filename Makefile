@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ rat: ## Run Apache RAT license checks.
 release-legal-preliminary-check: ## Verify the checked-in preliminary release-legal artifacts are up to date.
 	@tmp_dir="$$(mktemp -d)"; \
 	trap 'rm -rf "$$tmp_dir"' EXIT; \
-	$(UV_RUN) python3 -m apache_buildish_release_tooling.legal.release_legal --output-dir "$$tmp_dir/tracked" --details-output-dir "$$tmp_dir/details" >/dev/null; \
+	$(UV_RUN) python3 -m buildish_release_tooling.legal.release_legal --output-dir "$$tmp_dir/tracked" --details-output-dir "$$tmp_dir/details" >/dev/null; \
 	if [ ! -d "$(RELEASE_LEGAL_OUT_DIR)" ]; then \
 		echo "Missing checked-in preliminary release-legal artifacts under $(RELEASE_LEGAL_OUT_DIR)." >&2; \
 		echo "Run 'make release-legal-preliminary' and commit the results." >&2; \
@@ -55,7 +55,7 @@ test: ## Run the Python unit and integration test suite.
 check: lint typecheck test rat release-legal-preliminary-check ## Run lint, type checks, tests, RAT, and legal-artifact verification.
 
 schemas: ## Regenerate checked-in JSON Schema files and the Markdown model reference.
-	$(UV_RUN) python -m apache_buildish_release_tooling.docs.schema_export --output-dir site/pages/schemas
+	$(UV_RUN) python -m buildish_release_tooling.docs.schema_export --output-dir site/pages/schemas
 
 release-legal-preliminary: ## Generate preliminary wheel legal drafts from the runtime dependency set.
-	$(UV_RUN) python3 -m apache_buildish_release_tooling.legal.release_legal --output-dir $(RELEASE_LEGAL_OUT_DIR) --details-output-dir $(RELEASE_LEGAL_DETAILS_OUT_DIR)
+	$(UV_RUN) python3 -m buildish_release_tooling.legal.release_legal --output-dir $(RELEASE_LEGAL_OUT_DIR) --details-output-dir $(RELEASE_LEGAL_DETAILS_OUT_DIR)

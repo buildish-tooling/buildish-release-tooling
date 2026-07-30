@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,12 +23,12 @@ import unittest
 from unittest import mock
 import zipfile
 
-from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
+from buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     _RepositoryFile,
 )
-from apache_buildish_release_tooling.release.contracts import MavenRepositoryPathRuleReport
-from apache_buildish_release_tooling.release.progress import ProgressReporter
-from apache_buildish_release_tooling.release.verification.secondary.maven_repository_repro import (
+from buildish_release_tooling.release.contracts import MavenRepositoryPathRuleReport
+from buildish_release_tooling.release.progress import ProgressReporter
+from buildish_release_tooling.release.verification.secondary.maven_repository_repro import (
     compare_maven_repository_trees,
 )
 

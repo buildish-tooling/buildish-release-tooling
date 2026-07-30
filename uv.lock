@@ -16,7 +16,7 @@ wheels = [
 ]
 
 [[package]]
-name = "apache-buildish-release-tooling"
+name = "buildish-release-tooling"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

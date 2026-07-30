@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import unittest
 
-from apache_buildish_release_tooling.release.config import (
+from buildish_release_tooling.release.config import (
     load_component_config,
     load_verify_rc_override_config,
     validate_release_target_base_urls,
@@ -47,8 +47,8 @@ class LoadComponentConfigTest(unittest.TestCase):
                     "secondary_targets:",
                     "  - github-action",
                     "final_tag_mode: rc-source-commit",
-                    "vote_release_name: Apache Buildish Example",
-                    "release_verification_guide_url: https://buildish.apache.org/buildish-example/release-verification/",
+                    "vote_release_name: Buildish Example",
+                    "release_verification_guide_url: https://buildish.org/buildish-example/release-verification/",
                     "verify_rc_instructions: |",
                     "  verify",
                     "prepare_rc_runs_tests: false",
@@ -83,7 +83,7 @@ class LoadComponentConfigTest(unittest.TestCase):
         self.assertEqual("tlp", loaded.project_status)
         self.assertEqual(["github-action"], loaded.secondary_targets)
         self.assertEqual(
-            "https://buildish.apache.org/buildish-example/release-verification/",
+            "https://buildish.org/buildish-example/release-verification/",
             loaded.release_verification_guide_url,
         )
         self.assertIsNotNone(loaded.verify_rc)
@@ -124,8 +124,8 @@ class LoadComponentConfigTest(unittest.TestCase):
                     "secondary_targets:",
                     "  - github-action",
                     "final_tag_mode: rc-source-commit",
-                    "vote_release_name: Apache Buildish Example",
-                    "release_verification_guide_url: https://buildish.apache.org/buildish-example/release-verification/",
+                    "vote_release_name: Buildish Example",
+                    "release_verification_guide_url: https://buildish.org/buildish-example/release-verification/",
                     "verify_rc_instructions: verify",
                     "prepare_rc_runs_tests: false",
                     "release_branch_ci_required: true",
@@ -157,8 +157,8 @@ class LoadComponentConfigTest(unittest.TestCase):
                     "secondary_targets:",
                     "  - github-action",
                     "final_tag_mode: rc-source-commit",
-                    "vote_release_name: Apache Buildish Example",
-                    "release_verification_guide_url: https://buildish.apache.org/buildish-example/release-verification/",
+                    "vote_release_name: Buildish Example",
+                    "release_verification_guide_url: https://buildish.org/buildish-example/release-verification/",
                     "verify_rc_instructions: verify",
                     "prepare_rc_runs_tests: false",
                     "release_branch_ci_required: true",
@@ -194,8 +194,8 @@ class LoadComponentConfigTest(unittest.TestCase):
             "secondary_targets:",
             "  - github-action",
             "final_tag_mode: rc-source-commit",
-            "vote_release_name: Apache Buildish Example",
-            "release_verification_guide_url: https://buildish.apache.org/buildish-example/release-verification/",
+            "vote_release_name: Buildish Example",
+            "release_verification_guide_url: https://buildish.org/buildish-example/release-verification/",
             "verify_rc_instructions: verify",
             "prepare_rc_runs_tests: false",
             "release_branch_ci_required: true",
@@ -214,7 +214,7 @@ class LoadComponentConfigTest(unittest.TestCase):
                 "source-artifact",
                 [
                     "        mode: platform-digest",
-                    "        image_ref: ghcr.io/apache/buildish-example:test",
+                    "        image_ref: ghcr.io/buildish-tooling/buildish-example:test",
                 ],
                 "source-artifact, generic-file, python-distribution, and npm-package profiles must use comparison.mode 'exact-bytes'",
             ),
@@ -238,7 +238,7 @@ class LoadComponentConfigTest(unittest.TestCase):
                 "npm-package",
                 [
                     "        mode: platform-digest",
-                    "        image_ref: ghcr.io/apache/buildish-example:test",
+                    "        image_ref: ghcr.io/buildish-tooling/buildish-example:test",
                 ],
                 "source-artifact, generic-file, python-distribution, and npm-package profiles must use comparison.mode 'exact-bytes'",
             ),
@@ -288,8 +288,8 @@ class LoadComponentConfigTest(unittest.TestCase):
                     "latest_tag_enabled: false",
                     "secondary_targets: []",
                     "final_tag_mode: rc-source-commit",
-                    "vote_release_name: Apache Buildish Example",
-                    "release_verification_guide_url: https://buildish.apache.org/buildish-example/release-verification/",
+                    "vote_release_name: Buildish Example",
+                    "release_verification_guide_url: https://buildish.org/buildish-example/release-verification/",
                     "verify_rc_instructions: verify",
                     "prepare_rc_runs_tests: false",
                     "release_branch_ci_required: true",

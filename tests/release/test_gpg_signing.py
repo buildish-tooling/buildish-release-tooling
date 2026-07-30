@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import os
 import subprocess
 import unittest
 
-from apache_buildish_release_tooling.release.gpg_signing import (
+from buildish_release_tooling.release.gpg_signing import (
     _effective_home,
     detached_ascii_sign,
     import_private_key_from_secret,

@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,19 +20,19 @@ from pathlib import Path
 from typing import cast
 import unittest
 
-from apache_buildish_release_tooling.release.contracts import (
+from buildish_release_tooling.release.contracts import (
     AnySecondaryArtifactVerification,
     ArtifactReproducibilityEffectiveBuildExecutionReport,
     ArtifactReproducibilityEffectiveExecutionReport,
     ArtifactReproducibilityReport,
     SourceArtifactContract,
 )
-from apache_buildish_release_tooling.release.verification.common import SignatureVerification
-from apache_buildish_release_tooling.release.verification.phase1 import (
+from buildish_release_tooling.release.verification.common import SignatureVerification
+from buildish_release_tooling.release.verification.phase1 import (
     _report_markdown,
     _source_artifact_reproducibility_payload,
 )
-from apache_buildish_release_tooling.release.verification.rebuild import ReproducibilityModeDecision
+from buildish_release_tooling.release.verification.rebuild import ReproducibilityModeDecision
 
 
 class VerifyRcPhase1ReportTest(unittest.TestCase):
@@ -122,7 +122,7 @@ class VerifyRcPhase1ReportTest(unittest.TestCase):
                 rc_tag="v1.2.3-rc0",
                 source_commit_sha="0123456789abcdef0123456789abcdef01234567",
                 source_date_epoch=1714032000,
-                source_repository_url="https://github.com/apache/buildish-example.git",
+                source_repository_url="https://github.com/buildish-tooling/buildish-example.git",
                 manifest_url="https://dist.apache.org/example/rc-vote-manifest.json",
                 keys_url="https://downloads.apache.org/incubator/buildish/KEYS",
                 verdict="verified",

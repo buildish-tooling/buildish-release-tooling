@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 import unittest
 
-from apache_buildish_release_tooling.release.summary import SummaryWriter
+from buildish_release_tooling.release.summary import SummaryWriter
 
 from tests.support import cleanup_sandbox, create_build_test_sandbox
 
@@ -62,7 +62,7 @@ class SummaryWriterTest(unittest.TestCase):
             "Technical details",
             [
                 ("Version", "`1.2.3`"),
-                ("Repository", "`apache/buildish-example`"),
+                ("Repository", "`buildish-tooling/buildish-example`"),
             ],
         )
         writer.append_bullet_list("Mirror assets", ["`rc-vote-manifest.json`", "`rc-vote-manifest.json.asc`"])

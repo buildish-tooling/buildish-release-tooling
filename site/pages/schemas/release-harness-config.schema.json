@@ -80,7 +80,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/release-harness-config.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/release-harness-config.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Committed `release-harness.yaml` plus optional local overrides.",

@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import subprocess
 import tempfile
 from unittest import mock
 
-from apache_buildish_release_tooling.legal.release_legal import (
+from buildish_release_tooling.legal.release_legal import (
     LockedPackage,
     collect_curated_legal_files,
     curated_container_image_bundles_by_ref,
@@ -57,7 +57,7 @@ class ReleaseLegalGenerationTests(ReleaseLegalTestBase):
                 return subprocess.CompletedProcess(command, 0, "", "advisory warning\n")
 
             with mock.patch(
-                "apache_buildish_release_tooling.legal.release_legal.run_logged_command",
+                "buildish_release_tooling.legal.release_legal.run_logged_command",
                 side_effect=fake_run_logged_command,
             ) as run_logged_command:
                 packages = export_locked_runtime_packages(root)
@@ -136,27 +136,27 @@ class ReleaseLegalGenerationTests(ReleaseLegalTestBase):
             details_output_dir = root / "dist" / "release-legal-preliminary"
             self._write_distribution(
                 root=root,
-                name="apache-buildish-release-tooling",
+                name="buildish-release-tooling",
                 version="0.1.0",
                 metadata_lines=(
                     "Metadata-Version: 2.4",
-                    "Name: apache-buildish-release-tooling",
+                    "Name: buildish-release-tooling",
                     "Version: 0.1.0",
                     "Requires-Dist: demo-runtime>=2",
                     "License-File: LICENSE",
                     "License-File: NOTICE",
                 ),
                 record_entries=(
-                    "apache_buildish_release_tooling/__init__.py,,",
-                    "apache_buildish_release_tooling-0.1.0.dist-info/METADATA,,",
-                    "apache_buildish_release_tooling-0.1.0.dist-info/RECORD,,",
-                    "apache_buildish_release_tooling-0.1.0.dist-info/licenses/LICENSE,,",
-                    "apache_buildish_release_tooling-0.1.0.dist-info/licenses/NOTICE,,",
+                    "buildish_release_tooling/__init__.py,,",
+                    "buildish_release_tooling-0.1.0.dist-info/METADATA,,",
+                    "buildish_release_tooling-0.1.0.dist-info/RECORD,,",
+                    "buildish_release_tooling-0.1.0.dist-info/licenses/LICENSE,,",
+                    "buildish_release_tooling-0.1.0.dist-info/licenses/NOTICE,,",
                 ),
                 file_contents={
-                    "apache_buildish_release_tooling/__init__.py": "",
-                    "apache_buildish_release_tooling-0.1.0.dist-info/licenses/LICENSE": "Project bundled license\n",
-                    "apache_buildish_release_tooling-0.1.0.dist-info/licenses/NOTICE": "Project bundled notice\n",
+                    "buildish_release_tooling/__init__.py": "",
+                    "buildish_release_tooling-0.1.0.dist-info/licenses/LICENSE": "Project bundled license\n",
+                    "buildish_release_tooling-0.1.0.dist-info/licenses/NOTICE": "Project bundled notice\n",
                 },
             )
             self._write_distribution(
@@ -189,7 +189,7 @@ class ReleaseLegalGenerationTests(ReleaseLegalTestBase):
                 distribution_search_paths=(root,),
                 locked_packages=(
                     LockedPackage(
-                        name="apache-buildish-release-tooling",
+                        name="buildish-release-tooling",
                         version=None,
                         source_kind="directory",
                         source_reference=".",
@@ -273,12 +273,12 @@ class ReleaseLegalGenerationTests(ReleaseLegalTestBase):
         self.assertNotIn("Copied license files:", license_text)
         self.assertNotIn("Source: index", license_text)
         self.assertNotIn(
-            "This product bundles apache-buildish-release-tooling.", license_text
+            "This product bundles buildish-release-tooling.", license_text
         )
         self.assertIn("Apache project notice", notice_text)
         self.assertNotIn("Generated at:", notice_text)
         self.assertNotIn(
-            "This product bundles apache-buildish-release-tooling with the following in its NOTICE file:",
+            "This product bundles buildish-release-tooling with the following in its NOTICE file:",
             notice_text,
         )
         self.assertIn("| `demo-runtime` | `index` |", inventory_markdown)

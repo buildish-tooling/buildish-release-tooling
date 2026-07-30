@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 """Python distribution artifact-registration command tests."""
 
-from apache_buildish_release_tooling.release.contracts import (
+from buildish_release_tooling.release.contracts import (
     SecondaryArtifactManifestV1,
 )
 
@@ -79,7 +79,7 @@ class PythonDistributionArtifactRegistrationCommandTest(
                 "--sha256-uri",
                 "https://test.pypi.org/packages/example-1.2.3-py3-none-any.whl.sha256",
                 "--attestation-repository",
-                "apache/buildish-example",
+                "buildish-tooling/buildish-example",
                 "--git-commit-sha",
                 "0123456789abcdef0123456789abcdef01234567",
             ],
@@ -155,7 +155,7 @@ class PythonDistributionArtifactRegistrationCommandTest(
                     },
                     "authenticity": {
                         "scheme": "pypi-attestation",
-                        "repository": "apache/buildish-example",
+                        "repository": "buildish-tooling/buildish-example",
                     },
                 }
             ],

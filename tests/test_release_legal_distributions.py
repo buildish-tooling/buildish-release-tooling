@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 
-from apache_buildish_release_tooling.legal.release_legal import (
+from buildish_release_tooling.legal.release_legal import (
     LockedPackage,
     collect_distribution_legal_files,
     installed_distributions_by_name,
@@ -78,7 +78,7 @@ version = "2.3.4"
 index = "https://pypi.org/simple"
 
 [[packages]]
-name = "apache-buildish-release-tooling"
+name = "buildish-release-tooling"
 directory = { path = ".", editable = true }
 """
         )
@@ -93,7 +93,7 @@ directory = { path = ".", editable = true }
                     source_reference="https://pypi.org/simple",
                 ),
                 LockedPackage(
-                    name="apache-buildish-release-tooling",
+                    name="buildish-release-tooling",
                     version=None,
                     source_kind="directory",
                     source_reference=".",

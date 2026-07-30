@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ from __future__ import annotations
 import subprocess
 import unittest
 
-from apache_buildish_release_tooling.release.asf_svn import AsfSvnClient, url_join
+from buildish_release_tooling.release.asf_svn import AsfSvnClient, url_join
 
 from tests.support import (
     cleanup_sandbox,
@@ -45,7 +45,7 @@ class AsfSvnIntegrationTest(unittest.TestCase):
         rc_url = url_join(dev_base_url, "1.2.3-rc0")
         old_release_url = url_join(release_base_url, "1.2.1")
         final_release_url = url_join(release_base_url, "1.2.3")
-        artifact_path = sandbox_dir / "apache-buildish-mammoth-cache-1.2.3-incubating-src.tar.gz"
+        artifact_path = sandbox_dir / "buildish-mammoth-cache-1.2.3-incubating-src.tar.gz"
         artifact_path.write_text("artifact\n", encoding="utf-8")
 
         client.mkdir_url(dev_base_url, "create dev component path")
@@ -59,7 +59,7 @@ class AsfSvnIntegrationTest(unittest.TestCase):
         client.working_copy_put_file(
             working_copy_dir,
             artifact_path,
-            f"dist/release/incubator/buildish/{component_id}/1.2.1/apache-buildish-mammoth-cache-1.2.1-incubating-src.tar.gz",
+            f"dist/release/incubator/buildish/{component_id}/1.2.1/buildish-mammoth-cache-1.2.1-incubating-src.tar.gz",
         )
         client.commit_working_copy(working_copy_dir, "stage draft release artifacts")
 

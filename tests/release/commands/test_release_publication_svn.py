@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ class SourceReleaseSvnPublicationCommandIntegrationTest(
         git_create_branch(origin_dir, "release/1.2.x")
         git_create_annotated_tag(origin_dir, "v1.2.3-rc2")
         fetch_git_origin_refs(clone_dir)
-        set_github_origin_url(clone_dir, "apache/buildish-example")
+        set_github_origin_url(clone_dir, "buildish-tooling/buildish-example")
         self._write_component_config(
             config_path,
             component_id=component_id,
@@ -90,10 +90,10 @@ class SourceReleaseSvnPublicationCommandIntegrationTest(
                     "id": 42,
                     "draft": True,
                     "tag_name": "v1.2.3-rc2",
-                    "name": "Apache Buildish Example 1.2.3",
+                    "name": "Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
-                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Buildish Example 1.2.3.",
                             "",
                             "Candidate tag: v1.2.3-rc2",
                             f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc2^{commit}')}",
@@ -163,7 +163,7 @@ class SourceReleaseSvnPublicationCommandIntegrationTest(
         git_create_branch(origin_dir, "release/1.2.x")
         git_create_annotated_tag(origin_dir, "v1.2.3-rc2")
         fetch_git_origin_refs(clone_dir)
-        set_github_origin_url(clone_dir, "apache/buildish-example")
+        set_github_origin_url(clone_dir, "buildish-tooling/buildish-example")
         self._write_component_config(
             config_path,
             component_id=component_id,
@@ -177,10 +177,10 @@ class SourceReleaseSvnPublicationCommandIntegrationTest(
                     "id": 42,
                     "draft": True,
                     "tag_name": "v1.2.3-rc2",
-                    "name": "Apache Buildish Example 1.2.3",
+                    "name": "Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
-                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Buildish Example 1.2.3.",
                             "",
                             "Candidate tag: v1.2.3-rc2",
                             f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc2^{commit}')}",
@@ -230,7 +230,7 @@ class SourceReleaseSvnPublicationCommandIntegrationTest(
         git_create_branch(origin_dir, "release/1.2.x")
         git_create_annotated_tag(origin_dir, "v1.2.3-rc2")
         fetch_git_origin_refs(clone_dir)
-        set_github_origin_url(clone_dir, "apache/buildish-example")
+        set_github_origin_url(clone_dir, "buildish-tooling/buildish-example")
         self._write_component_config(
             config_path,
             component_id=component_id,
@@ -278,10 +278,10 @@ class SourceReleaseSvnPublicationCommandIntegrationTest(
                     "id": 42,
                     "draft": True,
                     "tag_name": "v1.2.3-rc2",
-                    "name": "Apache Buildish Example 1.2.3",
+                    "name": "Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
-                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Buildish Example 1.2.3.",
                             "",
                             "Candidate tag: v1.2.3-rc2",
                             f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc2^{commit}')}",
@@ -332,7 +332,7 @@ class SourceReleaseSvnPublicationCommandIntegrationTest(
         git_create_annotated_tag(origin_dir, "v1.2.3-rc1")
         git_create_annotated_tag(origin_dir, "v1.2.3-rc2")
         fetch_git_origin_refs(clone_dir)
-        set_github_origin_url(clone_dir, "apache/buildish-example")
+        set_github_origin_url(clone_dir, "buildish-tooling/buildish-example")
         self._write_component_config(
             config_path,
             component_id=component_id,
@@ -346,10 +346,10 @@ class SourceReleaseSvnPublicationCommandIntegrationTest(
                     "id": 42,
                     "draft": True,
                     "tag_name": "v1.2.3-rc2",
-                    "name": "Apache Buildish Example 1.2.3",
+                    "name": "Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
-                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Buildish Example 1.2.3.",
                             "",
                             "Candidate tag: v1.2.3-rc2",
                             f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc2^{commit}')}",

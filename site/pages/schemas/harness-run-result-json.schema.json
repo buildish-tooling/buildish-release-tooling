@@ -112,7 +112,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/harness-run-result-json.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/harness-run-result-json.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Machine-readable JSON payload for one harness run or rerun.",

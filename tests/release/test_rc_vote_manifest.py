@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import unittest
 from unittest import mock
 from typing import IO, cast
 
-from apache_buildish_release_tooling.release.contracts import (
+from buildish_release_tooling.release.contracts import (
     GenericFileSecondaryArtifact,
     GithubWorkflowProvenance,
     ManifestTrustRoots,
@@ -30,8 +30,8 @@ from apache_buildish_release_tooling.release.contracts import (
     RcVoteManifestV1,
     ToolingProvenance,
 )
-from apache_buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
-from apache_buildish_release_tooling.release.rc_vote_manifest import (
+from buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
+from buildish_release_tooling.release.rc_vote_manifest import (
     DEFAULT_SVN_CAT_TIMEOUT_SECONDS,
     build_rc_vote_manifest,
     derive_asf_keys_uri,
@@ -129,7 +129,7 @@ class RcVoteManifestTest(unittest.TestCase):
             return subprocess.CompletedProcess(["svn", "cat", "file:///missing"], 0)
 
         with mock.patch(
-            "apache_buildish_release_tooling.release.rc_vote_manifest.subprocess.run",
+            "buildish_release_tooling.release.rc_vote_manifest.subprocess.run",
             side_effect=run_svn_cat,
         ) as run_mock:
             payload = read_uri_bytes("file:///missing")
@@ -168,8 +168,8 @@ class RcVoteManifestTest(unittest.TestCase):
                 "latest_tag_enabled": False,
                 "secondary_targets": ["github-action"],
                 "final_tag_mode": "detached-materialization-commit",
-                "vote_release_name": "Apache Buildish Example",
-                "release_verification_guide_url": "https://buildish.apache.org/buildish-example/release-verification/",
+                "vote_release_name": "Buildish Example",
+                "release_verification_guide_url": "https://buildish.org/buildish-example/release-verification/",
                 "verify_rc_instructions": "verify",
                 "prepare_rc_runs_tests": False,
                 "release_branch_ci_required": True,
@@ -211,27 +211,27 @@ class RcVoteManifestTest(unittest.TestCase):
         )
         with (
             mock.patch(
-                "apache_buildish_release_tooling.release.rc_vote_manifest.tooling_provenance",
+                "buildish_release_tooling.release.rc_vote_manifest.tooling_provenance",
                 return_value=ToolingProvenance(
-                    repository="apache/buildish-release-tooling",
-                    repository_url="https://github.com/apache/buildish-release-tooling",
+                    repository="buildish-tooling/buildish-release-tooling",
+                    repository_url="https://github.com/buildish-tooling/buildish-release-tooling",
                     git_commit_sha="fedcba9876543210fedcba9876543210fedcba98",
                     git_ref="refs/heads/main",
                 ),
             ),
             mock.patch(
-                "apache_buildish_release_tooling.release.rc_vote_manifest.github_workflow_provenance",
+                "buildish_release_tooling.release.rc_vote_manifest.github_workflow_provenance",
                 return_value=GithubWorkflowProvenance(
-                    repository="apache/buildish-example",
+                    repository="buildish-tooling/buildish-example",
                     workflow="Releasey Prepare RC",
-                    workflow_ref="apache/buildish-example/.github/workflows/releasey-20-prepare-rc.yml@refs/heads/main",
+                    workflow_ref="buildish-tooling/buildish-example/.github/workflows/releasey-20-prepare-rc.yml@refs/heads/main",
                     run_id=42,
                     run_attempt=1,
-                    run_url="https://github.com/apache/buildish-example/actions/runs/42",
+                    run_url="https://github.com/buildish-tooling/buildish-example/actions/runs/42",
                 ),
             ),
             mock.patch(
-                "apache_buildish_release_tooling.release.rc_vote_manifest.trust_root_metadata",
+                "buildish_release_tooling.release.rc_vote_manifest.trust_root_metadata",
                 return_value=ManifestTrustRoots.model_validate(
                     {
                         "asf_keys": {
@@ -243,17 +243,17 @@ class RcVoteManifestTest(unittest.TestCase):
                 ),
             ),
             mock.patch(
-                "apache_buildish_release_tooling.release.rc_vote_manifest.created_at_utc",
+                "buildish_release_tooling.release.rc_vote_manifest.created_at_utc",
                 return_value="2026-04-23T10:15:30Z",
             ),
         ):
             manifest = build_rc_vote_manifest(
                 component_config=component_config,
                 state=state,
-                repository_slug="apache/buildish-example",
-                source_repository_url="https://github.com/apache/buildish-example",
+                repository_slug="buildish-tooling/buildish-example",
+                source_repository_url="https://github.com/buildish-tooling/buildish-example",
                 draft_release_tag="v1.2.3-rc2",
-                draft_release_url="https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc2",
+                draft_release_url="https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc2",
                 rc_tag_target_commit="89abcdef0123456789abcdef0123456789abcdef",
                 source_artifact_sha512="b" * 128,
                 incubator_disclaimer=None,
@@ -264,7 +264,7 @@ class RcVoteManifestTest(unittest.TestCase):
                             "kind": "generic-file",
                             "role": "bootstrap-convenience-archive",
                             "filename": "buildish-example-bootstrap.zip",
-                            "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
+                            "uri": "https://github.com/buildish-tooling/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
                             "artifact_origin": "source-commit",
                             "git_commit_sha": "0123456789abcdef0123456789abcdef01234567",
                             "reproducibility": {
@@ -273,7 +273,7 @@ class RcVoteManifestTest(unittest.TestCase):
                             "checksums": {
                                 "sha512": {
                                     "value": "c" * 128,
-                                    "uri": "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip.sha512",
+                                    "uri": "https://github.com/buildish-tooling/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip.sha512",
                                 }
                             },
                             "signatures": [],
@@ -304,11 +304,11 @@ class RcVoteManifestTest(unittest.TestCase):
             manifest.verification.authoritative_manifest.uri,
         )
         self.assertEqual(
-            "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc2",
+            "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc2",
             manifest.draft_github_release.url,
         )
         self.assertEqual(
-            "https://github.com/apache/buildish-example",
+            "https://github.com/buildish-tooling/buildish-example",
             manifest.source_repository_url,
         )
         self.assertEqual(1714032000, manifest.source_date_epoch)
@@ -325,7 +325,7 @@ class RcVoteManifestTest(unittest.TestCase):
             secondary_artifact.reproducibility.profile_id,
         )
         self.assertEqual(
-            "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
+            "https://github.com/buildish-tooling/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
             secondary_artifact.uri,
         )
         self.assertEqual(
@@ -365,7 +365,7 @@ class RcVoteManifestTest(unittest.TestCase):
                 "version": "1.2.3",
                 "release_line": "1.2",
                 "release_branch": "release-1.2",
-                "source_repository_url": "https://github.com/apache/buildish-example.git",
+                "source_repository_url": "https://github.com/buildish-tooling/buildish-example.git",
                 "source_commit_sha": "0123456789abcdef0123456789abcdef01234567",
                 "source_date_epoch": "1714032000",
                 "final_tag": "v1.2.3",
@@ -373,7 +373,7 @@ class RcVoteManifestTest(unittest.TestCase):
                 "provenance": {
                     "created_at": "2026-05-02T12:00:00Z",
                     "tooling": {
-                        "repository_url": "https://github.com/apache/buildish-release-tooling",
+                        "repository_url": "https://github.com/buildish-tooling/buildish-release-tooling",
                     },
                 },
                 "trust_roots": {
@@ -384,9 +384,9 @@ class RcVoteManifestTest(unittest.TestCase):
                     }
                 },
                 "draft_github_release": {
-                    "repository": "apache/buildish-example",
+                    "repository": "buildish-tooling/buildish-example",
                     "tag": "v1.2.3-rc0",
-                    "url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+                    "url": "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc0",
                 },
                 "vote_materials": {
                     "source_artifacts": [
@@ -429,7 +429,7 @@ class RcVoteManifestTest(unittest.TestCase):
                     "version": "1.2.3",
                     "release_line": "1.2",
                     "release_branch": "release-1.2",
-                    "source_repository_url": "https://github.com/apache/buildish-example.git",
+                    "source_repository_url": "https://github.com/buildish-tooling/buildish-example.git",
                     "source_commit_sha": "0123456789abcdef0123456789abcdef01234567",
                     "source_date_epoch": 1714032000,
                     "final_tag": "v1.2.3",
@@ -445,9 +445,9 @@ class RcVoteManifestTest(unittest.TestCase):
                         }
                     },
                     "draft_github_release": {
-                        "repository": "apache/buildish-example",
+                        "repository": "buildish-tooling/buildish-example",
                         "tag": "v1.2.3-rc0",
-                        "url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+                        "url": "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc0",
                     },
                     "vote_materials": {
                         "source_artifacts": [],
@@ -465,7 +465,7 @@ class RcVoteManifestTest(unittest.TestCase):
             "version": "1.2.3",
             "release_line": "1.2.x",
             "release_branch": "release/1.2.x",
-            "source_repository_url": "https://github.com/apache/buildish-example",
+            "source_repository_url": "https://github.com/buildish-tooling/buildish-example",
             "source_commit_sha": "0123456789abcdef0123456789abcdef01234567",
             "source_date_epoch": 1714032000,
             "final_tag": "v1.2.3",
@@ -473,8 +473,8 @@ class RcVoteManifestTest(unittest.TestCase):
             "provenance": {
                 "created_at": "2026-04-23T10:15:30Z",
                 "tooling": {
-                    "repository": "apache/buildish-release-tooling",
-                    "repository_url": "https://github.com/apache/buildish-release-tooling",
+                    "repository": "buildish-tooling/buildish-release-tooling",
+                    "repository_url": "https://github.com/buildish-tooling/buildish-release-tooling",
                     "git_commit_sha": "fedcba9876543210fedcba9876543210fedcba98",
                     "future_field": "kept-tolerant",
                 },
@@ -491,9 +491,9 @@ class RcVoteManifestTest(unittest.TestCase):
                 }
             },
             "draft_github_release": {
-                "repository": "apache/buildish-example",
+                "repository": "buildish-tooling/buildish-example",
                 "tag": "v1.2.3-rc2",
-                "url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc2",
+                "url": "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc2",
                 "future_field": "kept-tolerant",
             },
             "vote_materials": {
@@ -540,7 +540,7 @@ class RcVoteManifestTest(unittest.TestCase):
         manifest = RcVoteManifestReadV1.model_validate(payload)
 
         self.assertEqual(
-            "https://github.com/apache/buildish-release-tooling",
+            "https://github.com/buildish-tooling/buildish-release-tooling",
             manifest.provenance.tooling.repository_url,
         )
         self.assertEqual(

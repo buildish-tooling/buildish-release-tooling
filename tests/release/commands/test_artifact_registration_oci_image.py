@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 """OCI image artifact-registration command tests."""
 
-from apache_buildish_release_tooling.release.contracts import (
+from buildish_release_tooling.release.contracts import (
     SecondaryArtifactManifestV1,
 )
 
@@ -64,7 +64,7 @@ class OciImageArtifactRegistrationCommandTest(ArtifactRegistrationCommandTestBas
                 "--registry",
                 "ghcr.io",
                 "--repository",
-                "apache/buildish-example",
+                "buildish-tooling/buildish-example",
                 "--digest",
                 digest,
                 "--platform-digest",
@@ -129,9 +129,9 @@ class OciImageArtifactRegistrationCommandTest(ArtifactRegistrationCommandTestBas
                     "artifact_id": artifact_id,
                     "kind": "oci-image",
                     "role": "container-image",
-                    "uri": f"oci://ghcr.io/apache/buildish-example@{digest.lower()}",
+                    "uri": f"oci://ghcr.io/buildish-tooling/buildish-example@{digest.lower()}",
                     "registry": "ghcr.io",
-                    "repository": "apache/buildish-example",
+                    "repository": "buildish-tooling/buildish-example",
                     "digest": digest.lower(),
                     "platform_digests": [
                         {
@@ -230,7 +230,7 @@ class OciImageArtifactRegistrationCommandTest(ArtifactRegistrationCommandTestBas
                 "--role",
                 "container-image",
                 "--image-ref",
-                "ghcr.io/apache/buildish-example:1.2.3",
+                "ghcr.io/buildish-tooling/buildish-example:1.2.3",
                 "--artifact-origin",
                 "source-commit",
                 "--git-commit-sha",
@@ -283,9 +283,9 @@ class OciImageArtifactRegistrationCommandTest(ArtifactRegistrationCommandTestBas
                     "artifact_id": artifact_id,
                     "kind": "oci-image",
                     "role": "container-image",
-                    "uri": f"oci://ghcr.io/apache/buildish-example@{top_level_digest}",
+                    "uri": f"oci://ghcr.io/buildish-tooling/buildish-example@{top_level_digest}",
                     "registry": "ghcr.io",
-                    "repository": "apache/buildish-example",
+                    "repository": "buildish-tooling/buildish-example",
                     "digest": top_level_digest,
                     "platform_digests": [
                         {
@@ -304,7 +304,7 @@ class OciImageArtifactRegistrationCommandTest(ArtifactRegistrationCommandTestBas
             payload["secondary_artifacts"],
         )
         self.assertEqual(
-            ["ghcr.io/apache/buildish-example:1.2.3|{{json .Manifest}}"],
+            ["ghcr.io/buildish-tooling/buildish-example:1.2.3|{{json .Manifest}}"],
             (docker_state_dir / "imagetools-inspect.log")
             .read_text(encoding="utf-8")
             .splitlines(),
@@ -349,7 +349,7 @@ class OciImageArtifactRegistrationCommandTest(ArtifactRegistrationCommandTestBas
                 "--artifact-id",
                 "dockerhub-single-platform",
                 "--image-ref",
-                "apache/buildish-example:1.2.3",
+                "buildish-tooling/buildish-example:1.2.3",
             ],
             cwd=sandbox_dir,
             env=cli_env(
@@ -390,9 +390,9 @@ class OciImageArtifactRegistrationCommandTest(ArtifactRegistrationCommandTestBas
                 {
                     "artifact_id": "dockerhub-single-platform",
                     "kind": "oci-image",
-                    "uri": f"oci://docker.io/apache/buildish-example@{top_level_digest}",
+                    "uri": f"oci://docker.io/buildish-tooling/buildish-example@{top_level_digest}",
                     "registry": "docker.io",
-                    "repository": "apache/buildish-example",
+                    "repository": "buildish-tooling/buildish-example",
                     "digest": top_level_digest,
                 }
             ],
@@ -423,7 +423,7 @@ class OciImageArtifactRegistrationCommandTest(ArtifactRegistrationCommandTestBas
                 "--artifact-id",
                 "ghcr-main-image",
                 "--image-ref",
-                "ghcr.io/apache/buildish-example:1.2.3",
+                "ghcr.io/buildish-tooling/buildish-example:1.2.3",
                 "--digest",
                 "sha256:" + ("0f" * 32),
             ],
@@ -460,7 +460,7 @@ class OciImageArtifactRegistrationCommandTest(ArtifactRegistrationCommandTestBas
                 "--registry",
                 "ghcr.io",
                 "--repository",
-                "apache/buildish-example",
+                "buildish-tooling/buildish-example",
                 "--digest",
                 "not-a-digest",
             ],

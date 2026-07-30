@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,26 +26,26 @@ from unittest import mock
 
 import yaml
 
-from apache_buildish_release_tooling.harness.backends.act import (
+from buildish_release_tooling.harness.backends.act import (
     _resolve_act_command,
     _write_secrets_file,
 )
-from apache_buildish_release_tooling.harness.backends.act import backend as act_backend
-from apache_buildish_release_tooling.harness.backends.act import (
+from buildish_release_tooling.harness.backends.act import backend as act_backend
+from buildish_release_tooling.harness.backends.act import (
     fixtures as act_fixtures,
 )
-from apache_buildish_release_tooling.harness import runtime
-from apache_buildish_release_tooling.harness.backend import (
+from buildish_release_tooling.harness import runtime
+from buildish_release_tooling.harness.backend import (
     rerun_failed_jobs,
     run_scenario,
 )
-from apache_buildish_release_tooling.harness.cli import main as harness_main
-from apache_buildish_release_tooling.harness.config import (
+from buildish_release_tooling.harness.cli import main as harness_main
+from buildish_release_tooling.harness.config import (
     load_release_harness_config,
 )
-from apache_buildish_release_tooling.harness.errors import HarnessExternalToolError
-from apache_buildish_release_tooling.harness.models import HarnessScenario
-from apache_buildish_release_tooling.harness.scenario import load_scenario
+from buildish_release_tooling.harness.errors import HarnessExternalToolError
+from buildish_release_tooling.harness.models import HarnessScenario
+from buildish_release_tooling.harness.scenario import load_scenario
 from tests.support import (
     cleanup_sandbox,
     component_root,
@@ -294,7 +294,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             / "buildish"
             / "buildish-release-tooling"
             / "1.2.3-rc1"
-            / "apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz"
+            / "buildish-release-tooling-1.2.3-incubating-src.tar.gz"
         )
         self.assertTrue(artifact_path.is_file())
         self.assertEqual(
@@ -597,7 +597,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         """The backend should prefer `act` and fall back to the installed gh-act binary."""
 
         with mock.patch(
-            "apache_buildish_release_tooling.harness.backends.act.backend.shutil.which"
+            "buildish_release_tooling.harness.backends.act.backend.shutil.which"
         ) as which_mock:
             which_mock.side_effect = lambda command: (
                 "/usr/bin/act" if command == "act" else None
@@ -606,10 +606,10 @@ class ActHarnessIntegrationTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "apache_buildish_release_tooling.harness.backends.act.backend.shutil.which"
+                "buildish_release_tooling.harness.backends.act.backend.shutil.which"
             ) as which_mock,
             mock.patch(
-                "apache_buildish_release_tooling.harness.backends.act.backend._find_gh_act_extension_binary"
+                "buildish_release_tooling.harness.backends.act.backend._find_gh_act_extension_binary"
             ) as find_extension_mock,
         ):
             which_mock.return_value = None
@@ -626,10 +626,10 @@ class ActHarnessIntegrationTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "apache_buildish_release_tooling.harness.backends.act.backend.shutil.which"
+                "buildish_release_tooling.harness.backends.act.backend.shutil.which"
             ) as which_mock,
             mock.patch(
-                "apache_buildish_release_tooling.harness.backends.act.backend._find_gh_act_extension_binary"
+                "buildish_release_tooling.harness.backends.act.backend._find_gh_act_extension_binary"
             ) as find_extension_mock,
         ):
             which_mock.return_value = None
@@ -743,7 +743,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "apache_buildish_release_tooling.harness.backends.act.backend._resolve_act_command",
+                "buildish_release_tooling.harness.backends.act.backend._resolve_act_command",
                 side_effect=HarnessExternalToolError("missing act test message"),
             ),
             mock.patch("sys.stderr", stderr),

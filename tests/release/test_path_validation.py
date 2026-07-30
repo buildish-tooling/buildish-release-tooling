@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 import unittest
 
-from apache_buildish_release_tooling.release.path_validation import (
+from buildish_release_tooling.release.path_validation import (
     validate_project_relative_path,
     validate_simple_filename,
 )

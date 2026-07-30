@@ -1118,7 +1118,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/secondary-artifact-manifest-v1.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/secondary-artifact-manifest-v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "A reusable secondary-artifact manifest fragment.",

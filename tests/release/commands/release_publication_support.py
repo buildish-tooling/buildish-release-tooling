@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -82,7 +82,7 @@ class ReleasePublicationCommandTestBase(ReleaseCommandsIntegrationTestSupport):
             "version": "1.2.3",
             "release_line": "1.2.x",
             "release_branch": "release/1.2.x",
-            "source_repository_url": "https://github.com/apache/buildish-example",
+            "source_repository_url": "https://github.com/buildish-tooling/buildish-example",
             "source_commit_sha": source_commit_sha,
             "source_date_epoch": 1714132800,
             "rc_tag": "v1.2.3-rc0",
@@ -91,8 +91,8 @@ class ReleasePublicationCommandTestBase(ReleaseCommandsIntegrationTestSupport):
             "provenance": {
                 "created_at": "2026-04-26T12:00:00Z",
                 "tooling": {
-                    "repository": "apache/buildish-release-tooling",
-                    "repository_url": "https://github.com/apache/buildish-release-tooling",
+                    "repository": "buildish-tooling/buildish-release-tooling",
+                    "repository_url": "https://github.com/buildish-tooling/buildish-release-tooling",
                     "git_commit_sha": "fedcba9876543210fedcba9876543210fedcba98",
                 },
             },
@@ -104,9 +104,9 @@ class ReleasePublicationCommandTestBase(ReleaseCommandsIntegrationTestSupport):
                 }
             },
             "draft_github_release": {
-                "repository": "apache/buildish-example",
+                "repository": "buildish-tooling/buildish-example",
                 "tag": "v1.2.3-rc0",
-                "url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+                "url": "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc0",
             },
             "vote_materials": {
                 "source_artifacts": [

@@ -36,7 +36,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/maven-repository-inventory-v1.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/maven-repository-inventory-v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "A signed Maven repository inventory attachment.",

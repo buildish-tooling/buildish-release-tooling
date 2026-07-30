@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -385,7 +385,7 @@ def create_fake_uv_launcher(sandbox_dir: Path) -> Path:
                 "        exit 2",
                 "      fi",
                 '      export PYTHONPATH="$project_dir/src${PYTHONPATH:+:$PYTHONPATH}"',
-                '      exec "${BUILDISH_TEST_PYTHON:?}" -m apache_buildish_release_tooling.release "$@"',
+                '      exec "${BUILDISH_TEST_PYTHON:?}" -m buildish_release_tooling.release "$@"',
                 "      ;;",
                 "    *)",
                 '      printf "unexpected fake uv arguments: %s\\n" "$*" >&2',
@@ -1064,7 +1064,7 @@ def run_cli_subprocess(
     """Run the CLI in a subprocess with the local source tree on `PYTHONPATH`."""
 
     return subprocess.run(
-        [sys.executable, "-m", "apache_buildish_release_tooling.release", *arguments],
+        [sys.executable, "-m", "buildish_release_tooling.release", *arguments],
         cwd=str(cwd),
         env=tool_env(env),
         text=True,
@@ -1086,7 +1086,7 @@ def run_cli_inprocess(
 ) -> subprocess.CompletedProcess[str]:
     """Run the release CLI in-process while emulating one isolated subprocess environment."""
 
-    from apache_buildish_release_tooling.release.cli import main
+    from buildish_release_tooling.release.cli import main
 
     effective_env = tool_env(env)
     stdin_stream = _TestCliStream(stdin_text, isatty=stdin_isatty)
@@ -1110,7 +1110,7 @@ def run_cli_inprocess(
             os.chdir(old_cwd)
 
     return subprocess.CompletedProcess(
-        [sys.executable, "-m", "apache_buildish_release_tooling.release", *arguments],
+        [sys.executable, "-m", "buildish_release_tooling.release", *arguments],
         returncode,
         stdout_stream.getvalue(),
         stderr_stream.getvalue(),

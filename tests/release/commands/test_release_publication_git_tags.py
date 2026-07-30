@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ class FinalTagPublicationCommandIntegrationTest(ReleasePublicationCommandTestBas
         git_create_annotated_tag(origin_dir, "v1.2.3-rc2")
         git_create_annotated_tag(origin_dir, "v1.2.3-rc3")
         fetch_git_origin_refs(clone_dir)
-        set_github_origin_url(clone_dir, "apache/buildish-example")
+        set_github_origin_url(clone_dir, "buildish-tooling/buildish-example")
         expected_commit = git_rev_parse(clone_dir, "v1.2.3-rc2^{commit}")
         self._write_component_config(
             config_path,
@@ -58,10 +58,10 @@ class FinalTagPublicationCommandIntegrationTest(ReleasePublicationCommandTestBas
                     "id": 42,
                     "draft": True,
                     "tag_name": "v1.2.3-rc2",
-                    "name": "Apache Buildish Example 1.2.3",
+                    "name": "Buildish Example 1.2.3",
                     "body": "\n".join(
                         [
-                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Buildish Example 1.2.3.",
                             "",
                             "Candidate tag: v1.2.3-rc2",
                             f"Resolved source ref: {expected_commit}",

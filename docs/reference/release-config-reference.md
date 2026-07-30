@@ -4,7 +4,7 @@ description: "Consumer-owned and component-owned authored configuration models, 
 ---
 
 <!--
-Copyright 2026 The Apache Software Foundation
+Copyright 2026 The Buildish Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -71,7 +71,7 @@ Common runtime context passed into command handlers.
 
 - category: `runtime`
 - ownership: `runtime-derived`
-- schema file: [`command-context.schema.json`](../../../schemas/command-context.schema.json)
+- schema file: [`command-context.schema.json`](/components/release-tooling/schemas/command-context.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -88,7 +88,7 @@ Validated component policy and release-target configuration.
 
 - category: `authored`
 - ownership: `component-owned`
-- schema file: [`component-config.schema.json`](../../../schemas/component-config.schema.json)
+- schema file: [`component-config.schema.json`](/components/release-tooling/schemas/component-config.schema.json)
 - audience: `supported`
 - stability: `stable`
 - file contract: `release-config.yaml`
@@ -124,7 +124,7 @@ Resolved source and artifact state for an RC workflow run.
 
 - category: `runtime`
 - ownership: `runtime-derived`
-- schema file: [`prepare-rc-state.schema.json`](../../../schemas/prepare-rc-state.schema.json)
+- schema file: [`prepare-rc-state.schema.json`](/components/release-tooling/schemas/prepare-rc-state.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -150,7 +150,7 @@ Resolved final-release state for a release workflow run.
 
 - category: `runtime`
 - ownership: `runtime-derived`
-- schema file: [`release-version-state.schema.json`](../../../schemas/release-version-state.schema.json)
+- schema file: [`release-version-state.schema.json`](/components/release-tooling/schemas/release-version-state.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -286,7 +286,7 @@ Validated local override file for non-canonical reproducibility runs.
 
 - category: `authored`
 - ownership: `consumer-owned`
-- schema file: [`verify-rc-override-file-config.schema.json`](../../../schemas/verify-rc-override-file-config.schema.json)
+- schema file: [`verify-rc-override-file-config.schema.json`](/components/release-tooling/schemas/verify-rc-override-file-config.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)

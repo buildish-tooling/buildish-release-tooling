@@ -5,7 +5,7 @@ weight: 120
 ---
 
 <!--
-Copyright 2026 The Apache Software Foundation
+Copyright 2026 The Buildish Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ limitations under the License.
 
 ## 1. Header
 
-- Project: `apache-buildish-release-tooling`
+- Project: `buildish-release-tooling`
 - Bound source revision: `e66582254e07cfb1eabe375474953e1f57180439`
 - Project version at this revision: `0.1.0`
 - Threat model date: `2026-06-05`
@@ -34,7 +34,7 @@ limitations under the License.
   version N should be triaged against the model as it stood at version N, not against later HEAD.
 - Reporting cross-reference: findings that violate claimed properties in [Security properties the
   project provides](#8-security-properties-the-project-provides) should be reported to
-  [security@apache.org](mailto:security@apache.org) per the repository `SECURITY.md`; findings that
+  [security@buildish.org](mailto:security@buildish.org) per the repository `SECURITY.md`; findings that
   fall under [Out of scope](#3-out-of-scope-explicit-non-goals) or
   [Security properties the project does not provide](#9-security-properties-the-project-does-not-provide)
   may be closed citing this document.
@@ -85,9 +85,9 @@ Component-family table:
 | Verification and inspection | `verify-rc`, `inspect-repro` | Downloads or reads release materials; may execute configured rebuild commands after explicit mode selection | yes |
 | Secondary artifact registration | `record-artifact` | Reads local files or external package registries; writes registration fragments | yes |
 | Local harness | `buildish-release-harness`, workflow shims, `act` backend | Creates local workspaces, rewrites workflows, invokes subprocesses, simulates external services | yes, as test tooling only |
-| Python modules | `apache_buildish_release_tooling.*` imports | Internal implementation modules | no public API; in model only when reachable through CLI or harness |
+| Python modules | `buildish_release_tooling.*` imports | Internal implementation modules | no public API; in model only when reachable through CLI or harness |
 | Site and documentation content | `docs/`, `site/pages/` | Static content consumed by the site pipeline | no security properties beyond docs correctness |
-| Release-legal helper | `python -m apache_buildish_release_tooling.legal.release_legal` | Reads dependency metadata and writes generated legal artifacts | yes for local-file safety; no release-publication guarantees |
+| Release-legal helper | `python -m buildish_release_tooling.legal.release_legal` | Reads dependency metadata and writes generated legal artifacts | yes for local-file safety; no release-publication guarantees |
 
 ## 3. Out Of Scope: Explicit Non-Goals
 

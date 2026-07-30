@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ import unittest
 from unittest import mock
 import zipfile
 
-from apache_buildish_release_tooling.shared.archive import (
+from buildish_release_tooling.shared.archive import (
     ArchiveLimitExceededError,
     ArchiveLimits,
     ArchiveReadBudget,

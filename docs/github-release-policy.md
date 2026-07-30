@@ -1,5 +1,5 @@
 <!--
-Copyright 2026 The Apache Software Foundation
+Copyright 2026 The Buildish Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,10 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# GitHub Release Policy
+# ASF Profile GitHub Release Policy
 
-Buildish treats GitHub Releases as convenience metadata and optional convenience asset mirrors.
-The authoritative ASF source release is the material published under ASF `dist/release`.
+This page documents the Release Tooling's optional ASF profile. It is not the
+current Buildish release policy, which is TBD.
+
+Under the ASF profile, GitHub Releases are convenience metadata and optional
+convenience asset mirrors. The authoritative ASF source release is the material
+published under ASF `dist/release`.
 
 ## Candidate releases
 

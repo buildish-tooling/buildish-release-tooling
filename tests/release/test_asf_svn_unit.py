@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from apache_buildish_release_tooling.release.asf_svn import AsfSvnClient, url_join
+from buildish_release_tooling.release.asf_svn import AsfSvnClient, url_join
 
 
 class AsfSvnUnitTest(unittest.TestCase):
@@ -40,7 +40,7 @@ class AsfSvnUnitTest(unittest.TestCase):
     def test_checkout_url_runs_expected_command(self) -> None:
         client = AsfSvnClient()
         with mock.patch(
-            "apache_buildish_release_tooling.release.asf_svn.run_logged_command",
+            "buildish_release_tooling.release.asf_svn.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, "", ""),
         ) as run_command:
             client.checkout_url(
@@ -57,7 +57,7 @@ class AsfSvnUnitTest(unittest.TestCase):
     def test_copy_url_runs_expected_command(self) -> None:
         client = AsfSvnClient()
         with mock.patch(
-            "apache_buildish_release_tooling.release.asf_svn.run_logged_command",
+            "buildish_release_tooling.release.asf_svn.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, "", ""),
         ) as run_command:
             client.copy_url(
@@ -83,7 +83,7 @@ class AsfSvnUnitTest(unittest.TestCase):
         secret_value = "".join(["super", "-secret"])
         client = AsfSvnClient(username="release-user", password=secret_value)
         with mock.patch(
-            "apache_buildish_release_tooling.release.asf_svn.run_logged_command",
+            "buildish_release_tooling.release.asf_svn.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, "", ""),
         ) as run_command:
             client.copy_url(
@@ -114,7 +114,7 @@ class AsfSvnUnitTest(unittest.TestCase):
     def test_delete_url_runs_expected_command(self) -> None:
         client = AsfSvnClient()
         with mock.patch(
-            "apache_buildish_release_tooling.release.asf_svn.run_logged_command",
+            "buildish_release_tooling.release.asf_svn.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, "", ""),
         ) as run_command:
             client.delete_url("https://example.invalid/release/1.2.1", "prune old release")
@@ -128,7 +128,7 @@ class AsfSvnUnitTest(unittest.TestCase):
     def test_require_working_copy_root_uses_svn_info(self) -> None:
         client = AsfSvnClient()
         with mock.patch(
-            "apache_buildish_release_tooling.release.asf_svn.run_logged_command",
+            "buildish_release_tooling.release.asf_svn.run_logged_command",
             return_value=subprocess.CompletedProcess([], 0, "/sandbox/svnwc\n", ""),
         ) as run_command:
             actual = client.require_working_copy_root(Path("/sandbox/svnwc/nested/path"))

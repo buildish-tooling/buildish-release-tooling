@@ -4,7 +4,7 @@ description: "Harness scenario inputs, mocked tool behavior contracts, and machi
 ---
 
 <!--
-Copyright 2026 The Apache Software Foundation
+Copyright 2026 The Buildish Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -100,7 +100,7 @@ One persisted command-trace entry recorded by harness tool shims.
 
 - category: `runtime`
 - ownership: `runtime-derived`
-- schema file: [`harness-command-trace-entry.schema.json`](../../../schemas/harness-command-trace-entry.schema.json)
+- schema file: [`harness-command-trace-entry.schema.json`](/components/release-tooling/schemas/harness-command-trace-entry.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -151,7 +151,7 @@ Machine-readable JSON payload for one harness run or rerun.
 
 - category: `runtime`
 - ownership: `runtime-derived`
-- schema file: [`harness-run-result-json.schema.json`](../../../schemas/harness-run-result-json.schema.json)
+- schema file: [`harness-run-result-json.schema.json`](/components/release-tooling/schemas/harness-run-result-json.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -172,7 +172,7 @@ A runner-agnostic integration-test scenario.
 
 - category: `authored`
 - ownership: `consumer-owned`
-- schema file: [`harness-scenario.schema.json`](../../../schemas/harness-scenario.schema.json)
+- schema file: [`harness-scenario.schema.json`](/components/release-tooling/schemas/harness-scenario.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: `harness/scenarios/*.yaml`
@@ -216,7 +216,7 @@ Machine-readable JSON payload for one harness sequence run.
 
 - category: `runtime`
 - ownership: `runtime-derived`
-- schema file: [`harness-sequence-run-result-json.schema.json`](../../../schemas/harness-sequence-run-result-json.schema.json)
+- schema file: [`harness-sequence-run-result-json.schema.json`](/components/release-tooling/schemas/harness-sequence-run-result-json.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)
@@ -233,7 +233,7 @@ Persisted subprocess-facing harness shim state.
 
 - category: `runtime`
 - ownership: `runtime-derived`
-- schema file: [`harness-shim-state.schema.json`](../../../schemas/harness-shim-state.schema.json)
+- schema file: [`harness-shim-state.schema.json`](/components/release-tooling/schemas/harness-shim-state.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)

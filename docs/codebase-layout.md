@@ -5,7 +5,7 @@ weight: 100
 ---
 
 <!--
-Copyright 2026 The Apache Software Foundation
+Copyright 2026 The Buildish Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ limitations under the License.
 
 # Production Source Tree
 
-This page maps the production Python code in `src/apache_buildish_release_tooling/`.
+This page maps the production Python code in `src/buildish_release_tooling/`.
 
 The package is organized around one rule:
 
@@ -32,7 +32,7 @@ The package is organized around one rule:
 
 ## Entry points and command flow
 
-- `release/__main__.py`: Python module entrypoint for `python -m apache_buildish_release_tooling.release`
+- `release/__main__.py`: Python module entrypoint for `python -m buildish_release_tooling.release`
 - `release/cli.py`: argparse command registration and argument normalization
 - `release/commands/`: command handlers plus command-local orchestration helpers grouped by workflow family
 

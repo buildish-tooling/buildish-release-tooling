@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,7 +29,6 @@ class WheelLegalFilesTests(unittest.TestCase):
         if uv_executable is None:
             self.fail("Expected 'uv' to be available on PATH for the wheel build test.")
         expected_paths = {
-            "DISCLAIMER": project_root / "DISCLAIMER",
             "LICENSE": project_root / "dist-release-legal/LICENSE",
             "NOTICE": project_root / "dist-release-legal/NOTICE",
         }
@@ -57,40 +56,35 @@ class WheelLegalFilesTests(unittest.TestCase):
             with zipfile.ZipFile(wheel_path) as wheel_zip:
                 names = set(wheel_zip.namelist())
                 metadata_path = (
-                    "apache_buildish_release_tooling-0.1.0.dist-info/METADATA"
+                    "buildish_release_tooling-0.1.0.dist-info/METADATA"
                 )
                 metadata_text = wheel_zip.read(metadata_path).decode("utf-8")
                 self.assertNotIn("LICENSE", names)
                 self.assertNotIn("NOTICE", names)
                 self.assertNotIn("DISCLAIMER", names)
                 self.assertNotIn(
-                    "apache_buildish_release_tooling-0.1.0.data/data/LICENSE",
+                    "buildish_release_tooling-0.1.0.data/data/LICENSE",
                     names,
                 )
                 self.assertNotIn(
-                    "apache_buildish_release_tooling-0.1.0.data/data/NOTICE",
+                    "buildish_release_tooling-0.1.0.data/data/NOTICE",
                     names,
                 )
                 self.assertNotIn(
-                    "apache_buildish_release_tooling-0.1.0.data/data/DISCLAIMER",
+                    "buildish_release_tooling-0.1.0.dist-info/licenses/dist-release-legal/LICENSE",
                     names,
                 )
                 self.assertNotIn(
-                    "apache_buildish_release_tooling-0.1.0.dist-info/licenses/dist-release-legal/LICENSE",
-                    names,
-                )
-                self.assertNotIn(
-                    "apache_buildish_release_tooling-0.1.0.dist-info/licenses/dist-release-legal/NOTICE",
+                    "buildish_release_tooling-0.1.0.dist-info/licenses/dist-release-legal/NOTICE",
                     names,
                 )
                 for relative_source_path, source_path in expected_paths.items():
                     wheel_member_path = (
-                        "apache_buildish_release_tooling-0.1.0.dist-info/licenses/"
+                        "buildish_release_tooling-0.1.0.dist-info/licenses/"
                         f"{relative_source_path}"
                     )
                     self.assertIn(wheel_member_path, names)
                     self.assertEqual(wheel_zip.read(wheel_member_path), source_path.read_bytes())
-                self.assertIn("License-File: DISCLAIMER", metadata_text)
                 self.assertIn("License-File: LICENSE", metadata_text)
                 self.assertIn("License-File: NOTICE", metadata_text)
                 self.assertNotIn(

@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import unittest
 from unittest import mock
 from typing import BinaryIO, cast
 
-from apache_buildish_release_tooling.release.process import CommandExecutionError, run_logged_command
+from buildish_release_tooling.release.process import CommandExecutionError, run_logged_command
 
 
 class ProcessTest(unittest.TestCase):
@@ -45,11 +45,11 @@ class ProcessTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "apache_buildish_release_tooling.release.process.subprocess.run",
+                "buildish_release_tooling.release.process.subprocess.run",
                 side_effect=fake_run,
             ) as run_mock,
-            mock.patch("apache_buildish_release_tooling.release.process.print_command"),
-            mock.patch("apache_buildish_release_tooling.release.process.log_command_output_file"),
+            mock.patch("buildish_release_tooling.release.process.print_command"),
+            mock.patch("buildish_release_tooling.release.process.log_command_output_file"),
         ):
             result = run_logged_command(["svn", "info"], capture_output=False)
 
@@ -66,11 +66,11 @@ class ProcessTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "apache_buildish_release_tooling.release.process.subprocess.run",
+                "buildish_release_tooling.release.process.subprocess.run",
                 side_effect=fake_run,
             ),
-            mock.patch("apache_buildish_release_tooling.release.process.print_command"),
-            mock.patch("apache_buildish_release_tooling.release.process.log_command_output_file"),
+            mock.patch("buildish_release_tooling.release.process.print_command"),
+            mock.patch("buildish_release_tooling.release.process.log_command_output_file"),
         ):
             with self.assertRaisesRegex(CommandExecutionError, r"\*\*\*") as context:
                 run_logged_command(
@@ -88,10 +88,10 @@ class ProcessTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "apache_buildish_release_tooling.release.process.subprocess.run",
+                "buildish_release_tooling.release.process.subprocess.run",
                 side_effect=fake_run,
             ) as run_mock,
-            mock.patch("apache_buildish_release_tooling.release.process.print_command"),
+            mock.patch("buildish_release_tooling.release.process.print_command"),
         ):
             with self.assertRaisesRegex(CommandExecutionError, "timed out") as context:
                 run_logged_command(
@@ -111,11 +111,11 @@ class ProcessTest(unittest.TestCase):
 
         with (
             mock.patch(
-                "apache_buildish_release_tooling.release.process.subprocess.run",
+                "buildish_release_tooling.release.process.subprocess.run",
                 side_effect=fake_run,
             ),
-            mock.patch("apache_buildish_release_tooling.release.process.MAX_CAPTURED_OUTPUT_BYTES", 5),
-            mock.patch("apache_buildish_release_tooling.release.process.print_command"),
+            mock.patch("buildish_release_tooling.release.process.MAX_CAPTURED_OUTPUT_BYTES", 5),
+            mock.patch("buildish_release_tooling.release.process.print_command"),
         ):
             with self.assertRaisesRegex(CommandExecutionError, "captured stdout exceeded"):
                 run_logged_command(["tool"])

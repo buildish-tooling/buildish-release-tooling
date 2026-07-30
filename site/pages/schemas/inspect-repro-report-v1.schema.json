@@ -270,7 +270,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/inspect-repro-report-v1.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/inspect-repro-report-v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Machine-readable inspect-repro output for automation and post-processing.",

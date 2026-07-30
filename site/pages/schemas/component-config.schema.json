@@ -401,7 +401,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/component-config.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/component-config.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Validated component policy and release-target configuration.",

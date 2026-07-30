@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import tarfile
 import unittest
 from unittest import mock
 
-from apache_buildish_release_tooling.release.source_artifact import checksum, create_from_git, write_checksum_file
+from buildish_release_tooling.release.source_artifact import checksum, create_from_git, write_checksum_file
 
 from tests.support import (
     cleanup_sandbox,
@@ -59,7 +59,7 @@ class SourceArtifactIntegrationTest(unittest.TestCase):
             return FakeProcess(kwargs.get("stdout"))
 
         with mock.patch(
-            "apache_buildish_release_tooling.release.source_artifact.subprocess.Popen",
+            "buildish_release_tooling.release.source_artifact.subprocess.Popen",
             side_effect=fake_popen,
         ):
             create_from_git(
@@ -95,7 +95,7 @@ class SourceArtifactIntegrationTest(unittest.TestCase):
             return process
 
         with mock.patch(
-            "apache_buildish_release_tooling.release.source_artifact.subprocess.Popen",
+            "buildish_release_tooling.release.source_artifact.subprocess.Popen",
             side_effect=fake_popen,
         ):
             create_from_git(
@@ -145,7 +145,7 @@ class SourceArtifactIntegrationTest(unittest.TestCase):
             return processes.pop(0)
 
         with mock.patch(
-            "apache_buildish_release_tooling.release.source_artifact.subprocess.Popen",
+            "buildish_release_tooling.release.source_artifact.subprocess.Popen",
             side_effect=fake_popen,
         ):
             with self.assertRaisesRegex(RuntimeError, "timed out"):
@@ -201,7 +201,7 @@ class SourceArtifactIntegrationTest(unittest.TestCase):
             raise OSError("gzip missing")
 
         with mock.patch(
-            "apache_buildish_release_tooling.release.source_artifact.subprocess.Popen",
+            "buildish_release_tooling.release.source_artifact.subprocess.Popen",
             side_effect=fake_popen,
         ):
             with self.assertRaisesRegex(OSError, "gzip missing"):

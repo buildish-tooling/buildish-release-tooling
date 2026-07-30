@@ -459,7 +459,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/file-like-reproducibility-metadata.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/file-like-reproducibility-metadata.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Retained comparison metadata for one file-like reproducibility failure or drift.",

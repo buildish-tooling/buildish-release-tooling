@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import subprocess
 import unittest
 from unittest import mock
 
-from apache_buildish_release_tooling.harness.process import (
+from buildish_release_tooling.harness.process import (
     DEFAULT_HARNESS_COMMAND_TIMEOUT_SECONDS,
     LONG_HARNESS_COMMAND_TIMEOUT_SECONDS,
     harness_command_timeout_seconds,
@@ -36,7 +36,7 @@ class HarnessProcessTest(unittest.TestCase):
     def test_run_harness_command_applies_default_timeout(self) -> None:
         completed = subprocess.CompletedProcess(["git", "status"], 0, "", "")
         with mock.patch(
-            "apache_buildish_release_tooling.harness.process.subprocess.run",
+            "buildish_release_tooling.harness.process.subprocess.run",
             return_value=completed,
         ) as run_mock:
             result = run_harness_command(["git", "status"], check=True, capture_output=True, text=True)
@@ -51,7 +51,7 @@ class HarnessProcessTest(unittest.TestCase):
     def test_run_harness_command_preserves_explicit_timeout(self) -> None:
         completed = subprocess.CompletedProcess(["git", "status"], 0, "", "")
         with mock.patch(
-            "apache_buildish_release_tooling.harness.process.subprocess.run",
+            "buildish_release_tooling.harness.process.subprocess.run",
             return_value=completed,
         ) as run_mock:
             run_harness_command(["git", "status"], timeout=3)

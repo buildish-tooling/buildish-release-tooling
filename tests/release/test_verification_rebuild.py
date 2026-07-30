@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,14 +24,14 @@ from pathlib import Path
 from typing import Any, cast
 from unittest.mock import patch
 
-from apache_buildish_release_tooling.release.command_logging import command_log_sink
-from apache_buildish_release_tooling.release.models import (
+from buildish_release_tooling.release.command_logging import command_log_sink
+from buildish_release_tooling.release.models import (
     ComponentConfig,
     VerifyRcBuildConfig,
     VerifyRcBuildOverrideConfig,
     VerifyRcOverrideConfig,
 )
-from apache_buildish_release_tooling.release.verification.rebuild import (
+from buildish_release_tooling.release.verification.rebuild import (
     build_host_direct_environment,
     collect_profile_output_paths,
     decide_reproducibility_mode,
@@ -58,7 +58,7 @@ class VerificationRebuildTest(unittest.TestCase):
                 "latest_tag_enabled": False,
                 "secondary_targets": ["github-action"],
                 "final_tag_mode": "rc-source-commit",
-                "vote_release_name": "Apache Buildish Example",
+                "vote_release_name": "Buildish Example",
                 "release_verification_guide_url": "https://example.invalid/release-verification",
                 "verify_rc_instructions": "verify",
                 "prepare_rc_runs_tests": False,
@@ -109,7 +109,7 @@ class VerificationRebuildTest(unittest.TestCase):
                 "latest_tag_enabled": False,
                 "secondary_targets": ["github-action"],
                 "final_tag_mode": "rc-source-commit",
-                "vote_release_name": "Apache Buildish Example",
+                "vote_release_name": "Buildish Example",
                 "release_verification_guide_url": "https://example.invalid/release-verification",
                 "verify_rc_instructions": "verify",
                 "prepare_rc_runs_tests": False,
@@ -331,7 +331,7 @@ class VerificationRebuildTest(unittest.TestCase):
                 "latest_tag_enabled": False,
                 "secondary_targets": ["github-action"],
                 "final_tag_mode": "rc-source-commit",
-                "vote_release_name": "Apache Buildish Example",
+                "vote_release_name": "Buildish Example",
                 "release_verification_guide_url": "https://example.invalid/release-verification",
                 "verify_rc_instructions": "verify",
                 "prepare_rc_runs_tests": False,
@@ -463,7 +463,7 @@ class VerificationRebuildTest(unittest.TestCase):
                     "latest_tag_enabled": False,
                     "secondary_targets": ["github-action"],
                     "final_tag_mode": "rc-source-commit",
-                    "vote_release_name": "Apache Buildish Example",
+                    "vote_release_name": "Buildish Example",
                     "release_verification_guide_url": "https://example.invalid/release-verification",
                     "verify_rc_instructions": "verify",
                     "prepare_rc_runs_tests": False,

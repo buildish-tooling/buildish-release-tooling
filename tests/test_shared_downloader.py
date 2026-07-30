@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,9 +22,9 @@ from tempfile import TemporaryDirectory
 import unittest
 from urllib.error import HTTPError
 
-from apache_buildish_release_tooling.shared._downloader import _ResourceDownloader
-from apache_buildish_release_tooling.shared.downloader import DownloadPolicy, DownloadSession
-from apache_buildish_release_tooling.shared.io import ByteLimitExceededError
+from buildish_release_tooling.shared._downloader import _ResourceDownloader
+from buildish_release_tooling.shared.downloader import DownloadPolicy, DownloadSession
+from buildish_release_tooling.shared.io import ByteLimitExceededError
 
 
 class _FakeResponse:

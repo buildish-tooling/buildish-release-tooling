@@ -1193,7 +1193,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/vote-materials-strict.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/vote-materials-strict.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Strict vote-materials block for authored and emitted manifests.",

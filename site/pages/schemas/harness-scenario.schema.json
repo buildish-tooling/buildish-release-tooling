@@ -615,7 +615,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/harness-scenario.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/harness-scenario.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "A runner-agnostic integration-test scenario.",

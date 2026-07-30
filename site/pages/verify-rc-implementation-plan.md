@@ -4,7 +4,7 @@ description: "Design proposal for a read-only verifier driven by the signed RC v
 ---
 
 <!--
-Copyright 2026 The Apache Software Foundation
+Copyright 2026 The Buildish Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -448,7 +448,7 @@ PY
 
 python_bin=$(select_python)
 
-TOOLING_REPO_URL=https://github.com/apache/buildish-release-tooling
+TOOLING_REPO_URL=https://github.com/buildish-tooling/buildish-release-tooling
 
 work_dir=$(mktemp -d "${TMPDIR:-/tmp}/verify-rc-bootstrap.XXXXXX")
 cleanup() { rm -rf "$work_dir"; }
@@ -505,7 +505,7 @@ git -C "$tooling_dir" checkout --quiet --detach "$tooling_commit"
 
 PYTHONPATH=$tooling_dir/src
 export PYTHONPATH
-exec "$python_bin" -m apache_buildish_release_tooling.verification \
+exec "$python_bin" -m buildish_release_tooling.verification \
   "$manifest_url" "$keys_url" "$@"
 ```
 
@@ -812,8 +812,8 @@ steps:
         --artifact-id bootstrap-zip \
         --role bootstrap-convenience-archive \
         --file dist/buildish-example-bootstrap.zip \
-        --uri "https://github.com/apache/buildish-example/releases/download/${RC_TAG}/buildish-example-bootstrap.zip" \
-        --sha512-uri "https://github.com/apache/buildish-example/releases/download/${RC_TAG}/buildish-example-bootstrap.zip.sha512" \
+        --uri "https://github.com/buildish-tooling/buildish-example/releases/download/${RC_TAG}/buildish-example-bootstrap.zip" \
+        --sha512-uri "https://github.com/buildish-tooling/buildish-example/releases/download/${RC_TAG}/buildish-example-bootstrap.zip.sha512" \
         --git-commit-sha "${SOURCE_SHA}"
 
   - name: Upload bootstrap registration bundle
@@ -863,7 +863,7 @@ steps:
         --package-name buildish-example \
         --package-version "${VERSION}" \
         --sha256-uri "https://test.pypi.org/packages/buildish_example-${VERSION}-py3-none-any.whl.sha256" \
-        --attestation-repository "apache/buildish-example" \
+        --attestation-repository "buildish-tooling/buildish-example" \
         --git-commit-sha "${SOURCE_SHA}"
 
   - name: Upload Python registration bundle
@@ -886,7 +886,7 @@ steps:
         --kind oci-image \
         --artifact-id ghcr-main-image \
         --role container-image \
-        --image-ref "ghcr.io/apache/buildish-example:${RC_TAG}" \
+        --image-ref "ghcr.io/buildish-tooling/buildish-example:${RC_TAG}" \
         --git-commit-sha "${SOURCE_SHA}"
 
   - name: Upload OCI registration bundle
@@ -911,9 +911,9 @@ steps:
         --role npm-package \
         --file "dist/apache-buildish-example-${VERSION}.tgz" \
         --registry-url "https://registry.npmjs.org/" \
-        --package-name "@apache/buildish-example" \
+        --package-name "@buildish-tooling/buildish-example" \
         --package-version "${VERSION}" \
-        --attestation-repository "apache/buildish-example" \
+        --attestation-repository "buildish-tooling/buildish-example" \
         --git-commit-sha "${SOURCE_SHA}"
 
   - name: Upload npm registration bundle
@@ -1543,7 +1543,7 @@ Adoption tradeoff:
 Recommendation:
 
 - phase 1 bootstrapper: preflight and clearly enforce the actual verifier minimum
-- longer term: try to keep `apache_buildish_release_tooling.verification` compatible with a lower Python baseline than the rest of release-tooling, if that can be done without distorting the codebase
+- longer term: try to keep `buildish_release_tooling.verification` compatible with a lower Python baseline than the rest of release-tooling, if that can be done without distorting the codebase
 
 Optional per-verifier dependencies:
 
@@ -2072,10 +2072,10 @@ Secondary Artifact 1/2: maven-staging-main
 Secondary Artifact 2/2: npm-package-main
 ----------------------------------------
   Kind: npm-package
-  Package: @apache/buildish-example 1.2.3
+  Package: @buildish-tooling/buildish-example 1.2.3
   Registry: file:///tmp/npm-registry/
   Tarball: file:///tmp/npm-dist/buildish-example-1.2.3.tgz
-✓ Verified registry metadata: file:///tmp/npm-registry/@apache/buildish-example
+✓ Verified registry metadata: file:///tmp/npm-registry/@buildish-tooling/buildish-example
 ✗ npm-package checksum does not match the signed manifest: npm-package-main 9abcde... != 123456...
 ✗ npm-package integrity does not match the downloaded tarball bytes: npm-package-main 9abcde... != 123456...
 

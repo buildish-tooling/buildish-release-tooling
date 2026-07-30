@@ -30,7 +30,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/authoritative-manifest-reference-read.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/authoritative-manifest-reference-read.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": true,
   "description": "Tolerant authoritative-manifest reference accepted by verify-rc readers.",

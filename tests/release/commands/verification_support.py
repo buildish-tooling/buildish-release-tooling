@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,20 +23,20 @@ from subprocess import CompletedProcess
 from typing import cast
 import unittest
 
-from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
+from buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     build_maven_repository_registration,
 )
-from apache_buildish_release_tooling.release.artifact_registration.kinds.oci_image import (
+from buildish_release_tooling.release.artifact_registration.kinds.oci_image import (
     build_oci_image_registration,
 )
-from apache_buildish_release_tooling.release.artifact_registration.kinds.python_distribution import (
+from buildish_release_tooling.release.artifact_registration.kinds.python_distribution import (
     build_python_distribution_registration,
 )
-from apache_buildish_release_tooling.release.gpg_signing import (
+from buildish_release_tooling.release.gpg_signing import (
     _effective_home,
     secret_key_fingerprint,
 )
-from apache_buildish_release_tooling.release.source_artifact import create_from_git
+from buildish_release_tooling.release.source_artifact import create_from_git
 
 from tests.release.archive_support import write_tgz_archive, write_zip_archive
 from tests.release.commands.support import (
@@ -248,7 +248,7 @@ class VerificationReproducibilityOptions:
                     "          - .buildish-out/oci-image-rebuilt.marker",
                     "      comparison:",
                     "        mode: platform-digest",
-                    "        image_ref: ghcr.io/apache/buildish-example:rebuild-local",
+                    "        image_ref: ghcr.io/buildish-tooling/buildish-example:rebuild-local",
                 ]
             )
         lines.extend(extra_lines)
@@ -2025,15 +2025,15 @@ class VerificationCommandsIntegrationTestBase(ReleaseCommandsIntegrationTestSupp
                 else expected_integrity
             )
             registry_root = sandbox_dir / "npm-registry"
-            metadata_dir = registry_root / "@apache" / "buildish-example"
+            metadata_dir = registry_root / "@buildish-tooling" / "buildish-example"
             metadata_dir.mkdir(parents=True, exist_ok=True)
             (metadata_dir / "index.json").write_text(
                 json.dumps(
                     {
-                        "name": "@apache/buildish-example",
+                        "name": "@buildish-tooling/buildish-example",
                         "versions": {
                             "1.2.3": {
-                                "name": "@apache/buildish-example",
+                                "name": "@buildish-tooling/buildish-example",
                                 "version": "1.2.3",
                                 "dist": {
                                     "tarball": artifact_file_path.as_uri(),
@@ -2052,7 +2052,7 @@ class VerificationCommandsIntegrationTestBase(ReleaseCommandsIntegrationTestSupp
                 "filename": artifact_file_path.name,
                 "uri": artifact_file_path.as_uri(),
                 "registry_url": registry_root.as_uri() + "/",
-                "package_name": "@apache/buildish-example",
+                "package_name": "@buildish-tooling/buildish-example",
                 "version": "1.2.3",
                 "integrity": expected_integrity,
                 "checksums": {
@@ -2121,7 +2121,7 @@ class VerificationCommandsIntegrationTestBase(ReleaseCommandsIntegrationTestSupp
                     artifact_id="ghcr-main-image",
                     image_ref=None,
                     registry="ghcr.io",
-                    repository="apache/buildish-example",
+                    repository="buildish-tooling/buildish-example",
                     digest=top_level_digest,
                     platform_digests=[
                         f"linux/amd64={amd64_digest}",
@@ -2166,9 +2166,9 @@ class VerificationCommandsIntegrationTestBase(ReleaseCommandsIntegrationTestSupp
                 }
             },
             "draft_github_release": {
-                "repository": "apache/buildish-example",
+                "repository": "buildish-tooling/buildish-example",
                 "tag": rc_tag,
-                "url": f"https://github.com/apache/buildish-example/releases/tag/{rc_tag}",
+                "url": f"https://github.com/buildish-tooling/buildish-example/releases/tag/{rc_tag}",
             },
             "vote_materials": {
                 "source_artifacts": [

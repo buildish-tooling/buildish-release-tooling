@@ -1466,7 +1466,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/vote-materials-read.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/vote-materials-read.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": true,
   "description": "Tolerant vote-materials block used by verify-rc readers.",

@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,8 +32,8 @@ from pathlib import Path
 from typing import Any, cast
 from unittest import mock
 
-from apache_buildish_release_tooling.release.asf_svn import AsfSvnClient
-from apache_buildish_release_tooling.release.git_materialization import (
+from buildish_release_tooling.release.asf_svn import AsfSvnClient
+from buildish_release_tooling.release.git_materialization import (
     delete_remote_ref_best_effort,
     push_remote_ref,
 )
@@ -228,7 +228,7 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
         component_id: str,
         dev_base_url: str,
         release_base_url: str,
-        vote_release_name: str = "Apache Buildish Example",
+        vote_release_name: str = "Buildish Example",
         moving_tags_enabled: bool = True,
         latest_tag_enabled: bool = False,
         secondary_targets: tuple[str, ...] = ("github-action",),
@@ -259,7 +259,7 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
                     f"project_status: {project_status}",
                     f"incubator_disclaimer_file: {incubator_disclaimer_file}",
                     f"candidate_start_number: {candidate_start_number}",
-                    "release_verification_guide_url: https://buildish.apache.org/buildish-example/release-verification/",
+                    "release_verification_guide_url: https://buildish.org/buildish-example/release-verification/",
                     "verify_rc_instructions: verify",
                     "prepare_rc_runs_tests: false",
                     "release_branch_ci_required: true",
@@ -340,7 +340,7 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
                 "version": version,
                 "release_line": "1.2.x",
                 "release_branch": "release/1.2.x",
-                "source_repository_url": "https://github.com/apache/buildish-example",
+                "source_repository_url": "https://github.com/buildish-tooling/buildish-example",
                 "source_commit_sha": "0123456789abcdef0123456789abcdef01234567",
                 "source_date_epoch": 1714132800,
                 "rc_tag": f"v{version}-rc{rc_number}",
@@ -349,8 +349,8 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
                 "provenance": {
                     "created_at": "2026-04-26T12:00:00Z",
                     "tooling": {
-                        "repository": "apache/buildish-release-tooling",
-                        "repository_url": "https://github.com/apache/buildish-release-tooling",
+                        "repository": "buildish-tooling/buildish-release-tooling",
+                        "repository_url": "https://github.com/buildish-tooling/buildish-release-tooling",
                         "git_commit_sha": "fedcba9876543210fedcba9876543210fedcba98",
                     },
                 },
@@ -362,9 +362,9 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
                     }
                 },
                 "draft_github_release": {
-                    "repository": "apache/buildish-example",
+                    "repository": "buildish-tooling/buildish-example",
                     "tag": f"v{version}-rc{rc_number}",
-                    "url": f"https://github.com/apache/buildish-example/releases/tag/v{version}-rc{rc_number}",
+                    "url": f"https://github.com/buildish-tooling/buildish-example/releases/tag/v{version}-rc{rc_number}",
                 },
                 "vote_materials": {
                     "source_artifacts": [

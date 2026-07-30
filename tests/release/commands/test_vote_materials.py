@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -208,7 +208,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         dev_base_url = f"{repo_url}/dist/dev/incubator/buildish/{component_id}"
         release_base_url = f"{repo_url}/dist/release/incubator/buildish/{component_id}"
         (clone_dir / "DISCLAIMER").write_text(
-            "Apache Buildish Example is an effort undergoing incubation.\n",
+            "Buildish Example is an effort undergoing incubation.\n",
             encoding="utf-8",
         )
 
@@ -271,9 +271,9 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
                 "--file",
                 str(bootstrap_asset_path),
                 "--uri",
-                "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
+                "https://github.com/buildish-tooling/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
                 "--sha512-uri",
-                "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip.sha512",
+                "https://github.com/buildish-tooling/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip.sha512",
                 "--artifact-origin",
                 "source-commit",
                 "--git-commit-sha",
@@ -292,7 +292,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             ]
         )
 
-        set_github_origin_url(clone_dir, "apache/buildish-example")
+        set_github_origin_url(clone_dir, "buildish-tooling/buildish-example")
         gh_path, gh_state_dir = create_fake_gh_launcher(
             sandbox_dir,
             list_response=[
@@ -300,8 +300,8 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
                     "id": 42,
                     "draft": True,
                     "tag_name": "v1.2.3-rc0",
-                    "name": "Apache Buildish Example 1.2.3",
-                    "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+                    "name": "Buildish Example 1.2.3",
+                    "html_url": "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc0",
                     "assets": [],
                 }
             ],
@@ -377,7 +377,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             "DISCLAIMER", staged_manifest["incubator_disclaimer"]["source_path"]
         )
         self.assertEqual(
-            "Apache Buildish Example is an effort undergoing incubation.",
+            "Buildish Example is an effort undergoing incubation.",
             staged_manifest["incubator_disclaimer"]["text"],
         )
         self.assertEqual(
@@ -398,11 +398,11 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             staged_manifest["vote_materials"]["secondary_artifacts"][0]["kind"],
         )
         self.assertEqual(
-            "https://github.com/apache/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
+            "https://github.com/buildish-tooling/buildish-example/releases/download/v1.2.3/buildish-example-bootstrap.zip",
             staged_manifest["vote_materials"]["secondary_artifacts"][0]["uri"],
         )
         self.assertEqual(
-            "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+            "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc0",
             staged_manifest["draft_github_release"]["url"],
         )
         self.assertEqual("v1.2.3-rc0", staged_manifest["draft_github_release"]["tag"])
@@ -466,7 +466,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
         )
         self.assertIn("## Incubating Disclaimer", update_release_request["body"])
         self.assertIn(
-            "Apache Buildish Example is an effort undergoing incubation",
+            "Buildish Example is an effort undergoing incubation",
             update_release_request["body"],
         )
         self.assertIn("Verify RC bootstrap one-liner:", update_release_request["body"])
@@ -562,7 +562,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             secondary_manifest_path.parent / "maven-staging-main-inventory.json"
         )
 
-        set_github_origin_url(clone_dir, "apache/buildish-example")
+        set_github_origin_url(clone_dir, "buildish-tooling/buildish-example")
         gh_path, gh_state_dir = create_fake_gh_launcher(
             sandbox_dir,
             list_response=[
@@ -570,8 +570,8 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
                     "id": 42,
                     "draft": True,
                     "tag_name": "v1.2.3-rc0",
-                    "name": "Apache Buildish Example 1.2.3",
-                    "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+                    "name": "Buildish Example 1.2.3",
+                    "html_url": "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc0",
                     "assets": [],
                 }
             ],
@@ -698,7 +698,7 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             check=True,
         )
 
-        set_github_origin_url(clone_dir, "apache/buildish-example")
+        set_github_origin_url(clone_dir, "buildish-tooling/buildish-example")
         gh_path, gh_state_dir = create_fake_gh_launcher(
             sandbox_dir,
             list_response=[
@@ -706,11 +706,11 @@ class VoteMaterialsCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
                     "id": 42,
                     "draft": True,
                     "tag_name": "v1.2.3-rc0",
-                    "name": "Apache Buildish Example 1.2.3",
-                    "html_url": "https://github.com/apache/buildish-example/releases/tag/v1.2.3-rc0",
+                    "name": "Buildish Example 1.2.3",
+                    "html_url": "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc0",
                     "body": "\n".join(
                         [
-                            "Candidate GitHub Release placeholder for Apache Buildish Example 1.2.3.",
+                            "Candidate GitHub Release placeholder for Buildish Example 1.2.3.",
                             "",
                             "Candidate tag: v1.2.3-rc0",
                             f"Resolved source ref: {git_rev_parse(clone_dir, 'v1.2.3-rc0^{commit}')}",

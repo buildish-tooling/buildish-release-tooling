@@ -4,7 +4,7 @@ description: "Small runtime payloads used by the harness shim to emulate GitHub 
 ---
 
 <!--
-Copyright 2026 The Apache Software Foundation
+Copyright 2026 The Buildish Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ Synthetic GitHub tag-ref mutation payload consumed by the harness shim.
 
 - category: `runtime`
 - ownership: `runtime-derived`
-- schema file: [`harness-builtin-gh-ref-mutation-payload.schema.json`](../../../schemas/harness-builtin-gh-ref-mutation-payload.schema.json)
+- schema file: [`harness-builtin-gh-ref-mutation-payload.schema.json`](/components/release-tooling/schemas/harness-builtin-gh-ref-mutation-payload.schema.json)
 - audience: `internal`
 - stability: `stable`
 - file contract: (inner type)

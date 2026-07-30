@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,14 +19,14 @@ from __future__ import annotations
 import unittest
 from typing import cast
 
-from apache_buildish_release_tooling.release.models import ComponentConfig
-from apache_buildish_release_tooling.release.prepare_rc_state import (
+from buildish_release_tooling.release.models import ComponentConfig
+from buildish_release_tooling.release.prepare_rc_state import (
     prepare_rc_source_artifact_name,
     prepare_rc_source_artifact_prefix_path,
     prepare_rc_source_artifact_root_name,
     resolve_prepare_rc_state,
 )
-from apache_buildish_release_tooling.release.git_repo import GitRepository
+from buildish_release_tooling.release.git_repo import GitRepository
 
 
 class PrepareRcStateTest(unittest.TestCase):
@@ -45,8 +45,8 @@ class PrepareRcStateTest(unittest.TestCase):
                 "latest_tag_enabled": False,
                 "secondary_targets": ["github-action"],
                 "final_tag_mode": "rc-source-commit",
-                "vote_release_name": "Apache Buildish Example",
-                "release_verification_guide_url": "https://buildish.apache.org/buildish-example/release-verification/",
+                "vote_release_name": "Buildish Example",
+                "release_verification_guide_url": "https://buildish.org/buildish-example/release-verification/",
                 "verify_rc_instructions": "verify",
                 "prepare_rc_runs_tests": False,
                 "release_branch_ci_required": True,

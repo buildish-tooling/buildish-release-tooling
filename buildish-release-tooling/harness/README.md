@@ -1,5 +1,5 @@
 <!--
-  Copyright 2026 The Apache Software Foundation
+  Copyright 2026 The Buildish Authors
 
   Licensed under the Apache License, Version 2.0 (the "License");
   you may not use this file except in compliance with the License.
@@ -42,12 +42,12 @@ The scenario model should stay reusable across backends. The same scenario shoul
 
 The current repository contains the first working slice:
 
-- a scenario model in `src/apache_buildish_release_tooling/harness/models.py`
-- a YAML loader in `src/apache_buildish_release_tooling/harness/scenario.py`
-- a backend dispatcher in `src/apache_buildish_release_tooling/harness/backend.py`
-- a custom execution backend in `src/apache_buildish_release_tooling/harness/runtime.py`
-- an `act` execution backend in `src/apache_buildish_release_tooling/harness/act_backend.py`
-- a generic shim entrypoint in `src/apache_buildish_release_tooling/harness/shim_entrypoint.py`
+- a scenario model in `src/buildish_release_tooling/harness/models.py`
+- a YAML loader in `src/buildish_release_tooling/harness/scenario.py`
+- a backend dispatcher in `src/buildish_release_tooling/harness/backend.py`
+- a custom execution backend in `src/buildish_release_tooling/harness/runtime.py`
+- an `act` execution backend in `src/buildish_release_tooling/harness/act_backend.py`
+- a generic shim entrypoint in `src/buildish_release_tooling/harness/shim_entrypoint.py`
 - a CLI entrypoint:
   - `buildish-release-harness run <scenario.yaml>`
   - `buildish-release-harness run <scenario.yaml> --seed-from <workspace>`
@@ -106,7 +106,7 @@ actually add committed harness scenarios, fixtures, or config files there.
 Workflow testing needs stable local bindings for:
 
 - the workflow repository under test
-- explicitly checked out companion repositories such as `apache/buildish-release-tooling`
+- explicitly checked out companion repositories such as `buildish-tooling/buildish-release-tooling`
 
 The harness uses a committed `buildish-release-tooling/harness/release-harness.yaml` file plus an
 optional gitignored `buildish-release-tooling/harness/release-harness.local.yaml` file next to it.
@@ -120,11 +120,11 @@ Committed example:
 schema_version: "1"
 
 self_repository:
-  repository_id: apache/buildish-mammoth-cache
+  repository_id: buildish-tooling/buildish-mammoth-cache
   local_checkout_mode: when_repository_omitted
 
 repository_overrides:
-  apache/buildish-release-tooling:
+  buildish-tooling/buildish-release-tooling:
     local_checkout_mode: always
 ```
 
@@ -132,11 +132,11 @@ Optional local override example:
 
 ```yaml
 self_repository:
-  local_path: /home/snazy/devel/apache/buildish/buildish-mammoth-cache
+  local_path: /home/snazy/devel/buildish-tooling/buildish/buildish-mammoth-cache
 
 repository_overrides:
-  apache/buildish-release-tooling:
-    local_path: /home/snazy/devel/apache/buildish/buildish-release-tooling
+  buildish-tooling/buildish-release-tooling:
+    local_path: /home/snazy/devel/buildish-tooling/buildish/buildish-release-tooling
 ```
 
 Resolution rules:
@@ -148,9 +148,9 @@ Resolution rules:
    repository root
 5. resolve explicit relative `local_path` values from the repository root as well
 
-For the standard layout above, `self_repository.repository_id: apache/buildish-mammoth-cache`
+For the standard layout above, `self_repository.repository_id: buildish-tooling/buildish-mammoth-cache`
 defaults to `../buildish-mammoth-cache` from the component repository root, which resolves back to
-the component repository itself. `apache/buildish-release-tooling` defaults to
+the component repository itself. `buildish-tooling/buildish-release-tooling` defaults to
 `../buildish-release-tooling`.
 
 This keeps the committed config portable while still making the common sibling-repository layout
@@ -173,11 +173,11 @@ uv run --frozen buildish-release-harness run buildish-release-tooling/harness/sc
 To run it as a tool from the local checkout via `uvx`, point `--from` at the repository root:
 
 ```bash
-uvx --from /home/snazy/devel/apache/buildish/buildish-release-tooling \
+uvx --from /home/snazy/devel/buildish-tooling/buildish/buildish-release-tooling \
   buildish-release-harness --help
-uvx --from /home/snazy/devel/apache/buildish/buildish-release-tooling \
+uvx --from /home/snazy/devel/buildish-tooling/buildish/buildish-release-tooling \
   buildish-release-harness run \
-  /home/snazy/devel/apache/buildish/buildish-release-tooling/buildish-release-tooling/harness/scenarios/basic-success.yaml
+  /home/snazy/devel/buildish-tooling/buildish/buildish-release-tooling/buildish-release-tooling/harness/scenarios/basic-success.yaml
 ```
 
 The `uv run` form is the preferred choice while developing the harness in this repository. The
@@ -188,7 +188,7 @@ To inspect resolved repository bindings from a committed harness config:
 
 ```bash
 uv run --frozen buildish-release-harness resolve-config /path/to/buildish-release-tooling/harness/release-harness.yaml
-uvx --from /home/snazy/devel/apache/buildish/buildish-release-tooling \
+uvx --from /home/snazy/devel/buildish-tooling/buildish/buildish-release-tooling \
   buildish-release-harness resolve-config \
   /path/to/buildish-release-tooling/harness/release-harness.yaml
 ```
@@ -584,7 +584,7 @@ pushed to a remote.
 
 ### Local checkout semantics
 
-For explicit companion repositories such as `apache/buildish-release-tooling`, the generated local
+For explicit companion repositories such as `buildish-tooling/buildish-release-tooling`, the generated local
 checkout action currently supports:
 
 - `local-git-clone`

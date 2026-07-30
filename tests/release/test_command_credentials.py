@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ class CommandCredentialHandlingUnitTest(unittest.TestCase):
     def test_push_remote_ref_uses_git_askpass_for_github_https_pushes(self) -> None:
         repo = mock.Mock()
         repo.path = Path("/sandbox/repo")
-        repo.remote_url.return_value = "git@github.com:apache/buildish-example.git"
+        repo.remote_url.return_value = "git@github.com:buildish-tooling/buildish-example.git"
         seen_script_path: Path | None = None
 
         def fake_run_logged_command(
@@ -48,7 +48,7 @@ class CommandCredentialHandlingUnitTest(unittest.TestCase):
                     "-C",
                     "/sandbox/repo",
                     "push",
-                    "https://github.com/apache/buildish-example.git",
+                    "https://github.com/buildish-tooling/buildish-example.git",
                     "HEAD:refs/buildish/test",
                 ],
                 command,
@@ -91,13 +91,13 @@ class CommandCredentialHandlingUnitTest(unittest.TestCase):
                 os.environ, {"GITHUB_TOKEN": "gh-secret-token"}, clear=False
             ),
             mock.patch(
-                "apache_buildish_release_tooling.release.git_materialization.run_logged_command",
+                "buildish_release_tooling.release.git_materialization.run_logged_command",
                 side_effect=fake_run_logged_command,
             ),
         ):
             actual = push_remote_ref(
                 repo,
-                repository_slug="apache/buildish-example",
+                repository_slug="buildish-tooling/buildish-example",
                 source_ref="HEAD",
                 target_ref="refs/buildish/test",
                 force=False,
@@ -114,7 +114,7 @@ class CommandCredentialHandlingUnitTest(unittest.TestCase):
     ) -> None:
         repo = mock.Mock()
         repo.path = Path("/sandbox/repo")
-        repo.remote_url.return_value = "git@github.com:apache/buildish-example.git"
+        repo.remote_url.return_value = "git@github.com:buildish-tooling/buildish-example.git"
         seen_script_path: Path | None = None
 
         def fake_run_logged_command(
@@ -128,7 +128,7 @@ class CommandCredentialHandlingUnitTest(unittest.TestCase):
                     "-C",
                     "/sandbox/repo",
                     "push",
-                    "https://github.com/apache/buildish-example.git",
+                    "https://github.com/buildish-tooling/buildish-example.git",
                     ":refs/buildish/test",
                 ],
                 command,
@@ -141,13 +141,13 @@ class CommandCredentialHandlingUnitTest(unittest.TestCase):
         with (
             mock.patch.dict(os.environ, {"GH_TOKEN": "gh-secret-token"}, clear=False),
             mock.patch(
-                "apache_buildish_release_tooling.release.git_materialization.run_logged_command",
+                "buildish_release_tooling.release.git_materialization.run_logged_command",
                 side_effect=fake_run_logged_command,
             ),
         ):
             actual = delete_remote_ref_best_effort(
                 repo,
-                repository_slug="apache/buildish-example",
+                repository_slug="buildish-tooling/buildish-example",
                 ref_name="refs/buildish/test",
             )
 

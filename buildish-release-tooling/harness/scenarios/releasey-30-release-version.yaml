@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,17 +24,17 @@ tool_behaviors:
           - api
           - -H
           - "Accept: application/vnd.github+json"
-          - repos/apache/buildish-release-tooling/releases?per_page=100
+          - repos/buildish-tooling/buildish-release-tooling/releases?per_page=100
       result:
         stdout: |
           [
             {
               "id": 123,
               "draft": true,
-              "name": "Apache Buildish Release Tooling 1.2.3",
+              "name": "Buildish Release Tooling 1.2.3",
               "tag_name": "v1.2.3-rc1",
-              "html_url": "https://github.com/apache/buildish-release-tooling/releases/tag/v1.2.3-rc1",
-              "body": "Draft GitHub Release placeholder for Apache Buildish Release Tooling 1.2.3.\n\nRC tag: v1.2.3-rc1\nFinal tag: v1.2.3\nResolved source ref: d232c22\nASF SVN staging URL: file:///tmp/placeholder\nFinal tag mode: rc-source-commit\n",
+              "html_url": "https://github.com/buildish-tooling/buildish-release-tooling/releases/tag/v1.2.3-rc1",
+              "body": "Draft GitHub Release placeholder for Buildish Release Tooling 1.2.3.\n\nRC tag: v1.2.3-rc1\nFinal tag: v1.2.3\nResolved source ref: d232c22\nASF SVN staging URL: file:///tmp/placeholder\nFinal tag mode: rc-source-commit\n",
               "assets": [
                 {"id": 500, "name": "rc-vote-manifest.json"},
                 {"id": 501, "name": "rc-vote-manifest.json.asc"},
@@ -47,7 +47,7 @@ tool_behaviors:
           - api
           - -H
           - "Accept: application/octet-stream"
-          - repos/apache/buildish-release-tooling/releases/assets/500
+          - repos/buildish-tooling/buildish-release-tooling/releases/assets/500
       result:
         stdout: |
           {
@@ -73,28 +73,28 @@ tool_behaviors:
               }
             },
             "draft_github_release": {
-              "repository": "apache/buildish-release-tooling",
+              "repository": "buildish-tooling/buildish-release-tooling",
               "tag": "v1.2.3-rc1",
-              "url": "https://github.com/apache/buildish-release-tooling/releases/tag/v1.2.3-rc1"
+              "url": "https://github.com/buildish-tooling/buildish-release-tooling/releases/tag/v1.2.3-rc1"
             },
             "vote_materials": {
               "source_artifacts": [
                 {
                   "role": "asf-source-release",
-                  "filename": "apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz",
-                  "uri": "file:///tmp/placeholder/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz",
+                  "filename": "buildish-release-tooling-1.2.3-incubating-src.tar.gz",
+                  "uri": "file:///tmp/placeholder/buildish-release-tooling-1.2.3-incubating-src.tar.gz",
                   "artifact_origin": "source-commit",
                   "git_commit_sha": "d232c22",
                   "checksums": {
                     "sha512": {
                       "value": "311f6197a06d4e75c9e65e0855aab71a3a4bb733a859b855d23d4bca5a66a16c485a9f364743e40561c61c0a0cf5e51a218bfb11b5de7a6f640b290125665e52",
-                      "uri": "file:///tmp/placeholder/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz.sha512"
+                      "uri": "file:///tmp/placeholder/buildish-release-tooling-1.2.3-incubating-src.tar.gz.sha512"
                     }
                   },
                   "signatures": [
                     {
                       "type": "openpgp-detached-ascii-armored",
-                      "uri": "file:///tmp/placeholder/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz.asc"
+                      "uri": "file:///tmp/placeholder/buildish-release-tooling-1.2.3-incubating-src.tar.gz.asc"
                     }
                   ]
                 }
@@ -124,7 +124,7 @@ tool_behaviors:
           - DELETE
           - -H
           - "Accept: application/vnd.github+json"
-          - repos/apache/buildish-release-tooling/releases/assets/500
+          - repos/buildish-tooling/buildish-release-tooling/releases/assets/500
       result:
         stdout: ""
     - match:
@@ -134,7 +134,7 @@ tool_behaviors:
           - DELETE
           - -H
           - "Accept: application/vnd.github+json"
-          - repos/apache/buildish-release-tooling/releases/assets/501
+          - repos/buildish-tooling/buildish-release-tooling/releases/assets/501
       result:
         stdout: ""
     - match:
@@ -144,7 +144,7 @@ tool_behaviors:
           - DELETE
           - -H
           - "Accept: application/vnd.github+json"
-          - repos/apache/buildish-release-tooling/releases/assets/502
+          - repos/buildish-tooling/buildish-release-tooling/releases/assets/502
       result:
         stdout: ""
     - match:
@@ -154,7 +154,7 @@ tool_behaviors:
           - PATCH
           - -H
           - "Accept: application/vnd.github+json"
-          - repos/apache/buildish-release-tooling/releases/123
+          - repos/buildish-tooling/buildish-release-tooling/releases/123
           - --input
           - "-"
       result:
@@ -162,9 +162,9 @@ tool_behaviors:
           {
             "id": 123,
             "draft": false,
-            "name": "Apache Buildish Release Tooling 1.2.3",
+            "name": "Buildish Release Tooling 1.2.3",
             "tag_name": "v1.2.3",
-            "html_url": "https://github.com/apache/buildish-release-tooling/releases/tag/v1.2.3",
+            "html_url": "https://github.com/buildish-tooling/buildish-release-tooling/releases/tag/v1.2.3",
             "assets": []
           }
 workflow:
@@ -189,13 +189,13 @@ workflow:
     release_dist_entries:
       - 1.2.2
     repository_files:
-      - path: repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc1/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz
+      - path: repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc1/buildish-release-tooling-1.2.3-incubating-src.tar.gz
         content: |
           dummy source payload
-      - path: repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc1/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz.sha512
+      - path: repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc1/buildish-release-tooling-1.2.3-incubating-src.tar.gz.sha512
         content: |
-          311f6197a06d4e75c9e65e0855aab71a3a4bb733a859b855d23d4bca5a66a16c485a9f364743e40561c61c0a0cf5e51a218bfb11b5de7a6f640b290125665e52  apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz
-      - path: repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc1/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz.asc
+          311f6197a06d4e75c9e65e0855aab71a3a4bb733a859b855d23d4bca5a66a16c485a9f364743e40561c61c0a0cf5e51a218bfb11b5de7a6f640b290125665e52  buildish-release-tooling-1.2.3-incubating-src.tar.gz
+      - path: repos/dist/dev/incubator/buildish/buildish-release-tooling/1.2.3-rc1/buildish-release-tooling-1.2.3-incubating-src.tar.gz.asc
         content: |
           -----BEGIN PGP SIGNATURE-----
           <dummy>
@@ -225,28 +225,28 @@ workflow:
               }
             },
             "draft_github_release": {
-              "repository": "apache/buildish-release-tooling",
+              "repository": "buildish-tooling/buildish-release-tooling",
               "tag": "v1.2.3-rc1",
-              "url": "https://github.com/apache/buildish-release-tooling/releases/tag/v1.2.3-rc1"
+              "url": "https://github.com/buildish-tooling/buildish-release-tooling/releases/tag/v1.2.3-rc1"
             },
             "vote_materials": {
               "source_artifacts": [
                 {
                   "role": "asf-source-release",
-                  "filename": "apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz",
-                  "uri": "file:///tmp/placeholder/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz",
+                  "filename": "buildish-release-tooling-1.2.3-incubating-src.tar.gz",
+                  "uri": "file:///tmp/placeholder/buildish-release-tooling-1.2.3-incubating-src.tar.gz",
                   "artifact_origin": "source-commit",
                   "git_commit_sha": "d232c22",
                   "checksums": {
                     "sha512": {
                       "value": "311f6197a06d4e75c9e65e0855aab71a3a4bb733a859b855d23d4bca5a66a16c485a9f364743e40561c61c0a0cf5e51a218bfb11b5de7a6f640b290125665e52",
-                      "uri": "file:///tmp/placeholder/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz.sha512"
+                      "uri": "file:///tmp/placeholder/buildish-release-tooling-1.2.3-incubating-src.tar.gz.sha512"
                     }
                   },
                   "signatures": [
                     {
                       "type": "openpgp-detached-ascii-armored",
-                      "uri": "file:///tmp/placeholder/apache-buildish-release-tooling-1.2.3-incubating-src.tar.gz.asc"
+                      "uri": "file:///tmp/placeholder/buildish-release-tooling-1.2.3-incubating-src.tar.gz.asc"
                     }
                   ]
                 }

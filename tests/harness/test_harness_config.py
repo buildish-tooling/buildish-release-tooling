@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,8 +24,8 @@ from unittest import mock
 
 import yaml
 
-from apache_buildish_release_tooling.harness.cli import main as harness_main
-from apache_buildish_release_tooling.harness.config import (
+from buildish_release_tooling.harness.cli import main as harness_main
+from buildish_release_tooling.harness.config import (
     default_local_override_path,
     load_release_harness_config,
     repository_root_for_config,
@@ -66,10 +66,10 @@ class ReleaseHarnessConfigTest(unittest.TestCase):
             {
                 "schema_version": "1",
                 "self_repository": {
-                    "repository_id": "apache/buildish-mammoth-cache",
+                    "repository_id": "buildish-tooling/buildish-mammoth-cache",
                 },
                 "repository_overrides": {
-                    "apache/buildish-release-tooling": {
+                    "buildish-tooling/buildish-release-tooling": {
                         "local_checkout_mode": "always",
                     }
                 },
@@ -81,7 +81,7 @@ class ReleaseHarnessConfigTest(unittest.TestCase):
         self.assertEqual(repo_root, resolved.self_repository.local_path)
         self.assertEqual(
             repo_root.parent / "buildish-release-tooling",
-            resolved.repository_overrides["apache/buildish-release-tooling"].local_path,
+            resolved.repository_overrides["buildish-tooling/buildish-release-tooling"].local_path,
         )
         self.assertFalse(resolved.local_override_present)
         self.assertEqual(config_path.with_name("release-harness.local.yaml"), resolved.local_override_path)
@@ -99,10 +99,10 @@ class ReleaseHarnessConfigTest(unittest.TestCase):
             {
                 "schema_version": "1",
                 "self_repository": {
-                    "repository_id": "apache/buildish-site-pipeline",
+                    "repository_id": "buildish-tooling/buildish-site-pipeline",
                 },
                 "repository_overrides": {
-                    "apache/buildish-release-tooling": {
+                    "buildish-tooling/buildish-release-tooling": {
                         "local_checkout_mode": "always",
                     }
                 },
@@ -115,7 +115,7 @@ class ReleaseHarnessConfigTest(unittest.TestCase):
                     "local_path": "/opt/dev/buildish-site-pipeline",
                 },
                 "repository_overrides": {
-                    "apache/buildish-release-tooling": {
+                    "buildish-tooling/buildish-release-tooling": {
                         "local_path": "/opt/dev/buildish-release-tooling",
                     }
                 },
@@ -128,9 +128,9 @@ class ReleaseHarnessConfigTest(unittest.TestCase):
         self.assertEqual(Path("/opt/dev/buildish-site-pipeline"), resolved.self_repository.local_path)
         self.assertEqual(
             Path("/opt/dev/buildish-release-tooling"),
-            resolved.repository_overrides["apache/buildish-release-tooling"].local_path,
+            resolved.repository_overrides["buildish-tooling/buildish-release-tooling"].local_path,
         )
-        self.assertEqual("always", resolved.repository_overrides["apache/buildish-release-tooling"].local_checkout_mode)
+        self.assertEqual("always", resolved.repository_overrides["buildish-tooling/buildish-release-tooling"].local_checkout_mode)
 
     def test_relative_local_override_paths_are_resolved_from_config_directory(self) -> None:
         """Relative override paths should be interpreted relative to `release-harness.yaml`."""
@@ -144,11 +144,11 @@ class ReleaseHarnessConfigTest(unittest.TestCase):
             {
                 "schema_version": "1",
                 "self_repository": {
-                    "repository_id": "apache/buildish-no-gradle-wrapper-jar",
+                    "repository_id": "buildish-tooling/buildish-no-gradle-wrapper-jar",
                     "local_path": "build/custom-self",
                 },
                 "repository_overrides": {
-                    "apache/buildish-release-tooling": {
+                    "buildish-tooling/buildish-release-tooling": {
                         "local_checkout_mode": "always",
                         "local_path": "build/custom-tooling",
                     }
@@ -161,7 +161,7 @@ class ReleaseHarnessConfigTest(unittest.TestCase):
         self.assertEqual(repo_root / "build" / "custom-self", resolved.self_repository.local_path)
         self.assertEqual(
             repo_root / "build" / "custom-tooling",
-            resolved.repository_overrides["apache/buildish-release-tooling"].local_path,
+            resolved.repository_overrides["buildish-tooling/buildish-release-tooling"].local_path,
         )
 
     def test_repository_root_is_parent_of_buildish_release_tooling_directory(self) -> None:
@@ -191,10 +191,10 @@ class ReleaseHarnessConfigTest(unittest.TestCase):
             {
                 "schema_version": "1",
                 "self_repository": {
-                    "repository_id": "apache/buildish-site-pipeline",
+                    "repository_id": "buildish-tooling/buildish-site-pipeline",
                 },
                 "repository_overrides": {
-                    "apache/buildish-release-tooling": {
+                    "buildish-tooling/buildish-release-tooling": {
                         "local_checkout_mode": "always",
                     }
                 },
@@ -205,12 +205,12 @@ class ReleaseHarnessConfigTest(unittest.TestCase):
 
         self.assertEqual(str(config_path), payload["config_path"])
         self.assertEqual(
-            "apache/buildish-site-pipeline",
+            "buildish-tooling/buildish-site-pipeline",
             payload["self_repository"]["repository_id"],
         )
         self.assertEqual(
             "always",
-            payload["repository_overrides"]["apache/buildish-release-tooling"]["local_checkout_mode"],
+            payload["repository_overrides"]["buildish-tooling/buildish-release-tooling"]["local_checkout_mode"],
         )
 
     def test_cli_resolve_config_emits_typed_json_payload(self) -> None:
@@ -225,7 +225,7 @@ class ReleaseHarnessConfigTest(unittest.TestCase):
             {
                 "schema_version": "1",
                 "self_repository": {
-                    "repository_id": "apache/buildish-mammoth-cache",
+                    "repository_id": "buildish-tooling/buildish-mammoth-cache",
                 },
             },
         )

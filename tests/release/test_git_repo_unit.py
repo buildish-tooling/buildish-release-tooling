@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from apache_buildish_release_tooling.release.git_repo import GitRepository, require_worktree_root
+from buildish_release_tooling.release.git_repo import GitRepository, require_worktree_root
 
 
 class GitRepositoryUnitTest(unittest.TestCase):
@@ -55,7 +55,7 @@ class GitRepositoryUnitTest(unittest.TestCase):
 
     def test_require_worktree_root_delegates_to_current_worktree_root(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.release.git_repo.current_worktree_root",
+            "buildish_release_tooling.release.git_repo.current_worktree_root",
             return_value=Path("/repo"),
         ) as current_root:
             actual = require_worktree_root(Path("/worktree/subdir"))

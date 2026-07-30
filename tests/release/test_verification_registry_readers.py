@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,15 +23,15 @@ from unittest import mock
 
 from pydantic import ValidationError
 
-from apache_buildish_release_tooling.release.artifact_registration.kinds.oci_image import (
+from buildish_release_tooling.release.artifact_registration.kinds.oci_image import (
     _inspect_image_ref,
 )
-from apache_buildish_release_tooling.release.verification.secondary.npm_package import (
+from buildish_release_tooling.release.verification.secondary.npm_package import (
     _NpmRegistryMetadataRead,
     _npm_registry_package_metadata,
     _typed_npm_registry_metadata,
 )
-from apache_buildish_release_tooling.release.verification.secondary.python_distribution import (
+from buildish_release_tooling.release.verification.secondary.python_distribution import (
     _simple_index_json_entries,
 )
 
@@ -214,10 +214,10 @@ class VerificationRegistryReadersTest(unittest.TestCase):
 
     def test_npm_registry_package_metadata_reports_normalized_malformed_payload_error(self) -> None:
         with mock.patch(
-            "apache_buildish_release_tooling.release.verification.secondary.npm_package._npm_registry_metadata_urls",
+            "buildish_release_tooling.release.verification.secondary.npm_package._npm_registry_metadata_urls",
             return_value=(("https://registry.example.invalid/buildish-example", "plain-path"),),
         ), mock.patch(
-            "apache_buildish_release_tooling.release.verification.secondary.npm_package._read_npm_registry_bytes",
+            "buildish_release_tooling.release.verification.secondary.npm_package._read_npm_registry_bytes",
             return_value=b"[]",
         ):
             with self.assertRaisesRegex(
@@ -261,11 +261,11 @@ class VerificationRegistryReadersTest(unittest.TestCase):
         for payload_text, error_fragment in malformed_payloads:
             with self.subTest(error_fragment=error_fragment):
                 with mock.patch(
-                    "apache_buildish_release_tooling.release.artifact_registration.kinds.oci_image.run_logged_command",
+                    "buildish_release_tooling.release.artifact_registration.kinds.oci_image.run_logged_command",
                     return_value=subprocess.CompletedProcess([], 0, payload_text, ""),
                 ):
                     with self.assertRaisesRegex(ValueError, error_fragment):
-                        _inspect_image_ref("ghcr.io/apache/buildish-example:latest")
+                        _inspect_image_ref("ghcr.io/buildish-tooling/buildish-example:latest")
 
 
 if __name__ == "__main__":

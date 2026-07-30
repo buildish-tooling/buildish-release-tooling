@@ -1614,7 +1614,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/rc-vote-manifest-v1.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/rc-vote-manifest-v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Strict authoritative RC vote manifest emitted by buildish-release-tooling.",

@@ -34,7 +34,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/resolved-release-harness-config-json.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/resolved-release-harness-config-json.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Machine-readable JSON payload for one resolved harness config file.",

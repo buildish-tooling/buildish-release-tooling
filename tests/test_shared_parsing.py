@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@ import unittest
 
 from pydantic import BaseModel
 
-from apache_buildish_release_tooling.shared.io import ByteLimitExceededError
-from apache_buildish_release_tooling.shared.parsing import (
+from buildish_release_tooling.shared.io import ByteLimitExceededError
+from buildish_release_tooling.shared.parsing import (
     read_json_object_file_bounded,
     read_pydantic_json_file_bounded,
     read_toml_file_bounded,

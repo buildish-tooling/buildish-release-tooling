@@ -2036,7 +2036,7 @@
       }
     }
   },
-  "$id": "https://buildish.apache.org/components/buildish-release-tooling/schemas/verify-rc-report-v1.schema.json",
+  "$id": "https://buildish.org/components/release-tooling/schemas/verify-rc-report-v1.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "Machine-readable Phase 1a RC verification report.",

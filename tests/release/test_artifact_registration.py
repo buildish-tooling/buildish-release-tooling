@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,24 +24,24 @@ from unittest import mock
 from typing import Any, cast
 from typing import ClassVar
 
-from apache_buildish_release_tooling.release.artifact_registration.kinds.generic_file import (
+from buildish_release_tooling.release.artifact_registration.kinds.generic_file import (
     _resolved_filename as _generic_file_resolved_filename,
 )
-from apache_buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
+from buildish_release_tooling.release.artifact_registration.kinds.maven_repository import (
     _RepositoryFile,
     _inventory_entry_sha512,
     _normalized_base_url,
     _parse_nexus_index,
     _repository_files,
 )
-from apache_buildish_release_tooling.release.artifact_registration.kinds.npm_package import (
+from buildish_release_tooling.release.artifact_registration.kinds.npm_package import (
     _resolved_filename as _npm_package_resolved_filename,
 )
-from apache_buildish_release_tooling.release.artifact_registration.kinds.python_distribution import (
+from buildish_release_tooling.release.artifact_registration.kinds.python_distribution import (
     _resolved_filename as _python_distribution_resolved_filename,
 )
-from apache_buildish_release_tooling.shared._downloader import _ResourceDownloader
-from apache_buildish_release_tooling.shared.downloader import DownloadPolicy, DownloadSession
+from buildish_release_tooling.shared._downloader import _ResourceDownloader
+from buildish_release_tooling.shared.downloader import DownloadPolicy, DownloadSession
 
 
 class _FakeHTTPResponse:
@@ -359,7 +359,7 @@ class MavenRepositoryRegistrationUnitTest(unittest.TestCase):
             _npm_package_resolved_filename(
                 "../package.tgz",
                 explicit_uri=None,
-                package_name="@apache/buildish-example",
+                package_name="@buildish-tooling/buildish-example",
                 version="1.2.3",
             )
 

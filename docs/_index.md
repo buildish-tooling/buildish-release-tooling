@@ -5,7 +5,7 @@ weight: 90
 ---
 
 <!--
-Copyright 2026 The Apache Software Foundation
+Copyright 2026 The Buildish Authors
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,8 @@ limitations under the License.
 # CLI API Contract
 
 This page defines the supported external contract for `buildish-release-tooling`.
+The Buildish release process is TBD. ASF-specific pages describe an optional
+tooling profile and do not define the current Buildish release policy.
 
 ## Internal implementation guides
 
@@ -30,7 +32,7 @@ The pages below describe the current source tree for maintainers. They are inten
 descriptive, not contractual.
 
 - [Reference](reference/)
-- [GitHub Release Policy](github-release-policy/)
+- [ASF Profile GitHub Release Policy](github-release-policy/)
 - [Codebase Layout](codebase-layout/)
 - [Release-legal maintenance](release-legal/)
 - [Threat Model](threat-model/)
@@ -185,13 +187,13 @@ latest_tag_enabled: false
 secondary_targets:
   - github-action
 final_tag_mode: rc-source-commit
-vote_release_name: Apache Buildish Example
+vote_release_name: Buildish Example
 release_program: asf
 project_status: tlp
 incubator_disclaimer_file: DISCLAIMER
 candidate_start_number: 0
 release_summary_include_final_tag_mode: false
-release_verification_guide_url: https://buildish.apache.org/buildish-example/release-verification/
+release_verification_guide_url: https://buildish.org/buildish-example/release-verification/
 verify_rc_instructions: |
   Verify the RC on trusted hardware.
 prepare_rc_runs_tests: false

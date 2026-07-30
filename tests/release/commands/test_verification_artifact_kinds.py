@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -447,7 +447,7 @@ class VerificationArtifactKindCommandTest(VerificationCommandsIntegrationTestBas
 
         self.assertEqual(0, inspect_completed.returncode, msg=inspect_completed.stderr)
         self.assertIn("Artifact 1/1: npm-package-main", inspect_completed.stderr)
-        self.assertIn("Package: @apache/buildish-example", inspect_completed.stderr)
+        self.assertIn("Package: @buildish-tooling/buildish-example", inspect_completed.stderr)
         self.assertIn("Version: 1.2.3", inspect_completed.stderr)
         self.assertIn("Declared integrity: sha512-", inspect_completed.stderr)
         self.assertIn("Registry URL:", inspect_completed.stderr)

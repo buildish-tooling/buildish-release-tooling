@@ -1,4 +1,4 @@
-# Copyright 2026 The Apache Software Foundation
+# Copyright 2026 The Buildish Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
 # limitations under the License.
 """npm package artifact-registration command tests."""
 
-from apache_buildish_release_tooling.release.contracts import (
+from buildish_release_tooling.release.contracts import (
     SecondaryArtifactManifestV1,
 )
 
@@ -72,11 +72,11 @@ class NpmPackageArtifactRegistrationCommandTest(ArtifactRegistrationCommandTestB
                 "--registry-url",
                 "https://registry.npmjs.org/",
                 "--package-name",
-                "@apache/buildish-example",
+                "@buildish-tooling/buildish-example",
                 "--package-version",
                 "1.2.3",
                 "--attestation-repository",
-                "apache/buildish-example",
+                "buildish-tooling/buildish-example",
                 "--git-commit-sha",
                 "0123456789abcdef0123456789abcdef01234567",
             ],
@@ -121,9 +121,9 @@ class NpmPackageArtifactRegistrationCommandTest(ArtifactRegistrationCommandTestB
                     "kind": "npm-package",
                     "role": "npm-package",
                     "filename": "buildish-example-1.2.3.tgz",
-                    "uri": "https://registry.npmjs.org/@apache/buildish-example/-/buildish-example-1.2.3.tgz",
+                    "uri": "https://registry.npmjs.org/@buildish-tooling/buildish-example/-/buildish-example-1.2.3.tgz",
                     "registry_url": "https://registry.npmjs.org/",
-                    "package_name": "@apache/buildish-example",
+                    "package_name": "@buildish-tooling/buildish-example",
                     "version": "1.2.3",
                     "integrity": expected_integrity,
                     "artifact_origin": "source-commit",
@@ -135,7 +135,7 @@ class NpmPackageArtifactRegistrationCommandTest(ArtifactRegistrationCommandTestB
                     },
                     "authenticity": {
                         "scheme": "npm-provenance",
-                        "repository": "apache/buildish-example",
+                        "repository": "buildish-tooling/buildish-example",
                     },
                 }
             ],
@@ -187,7 +187,7 @@ class NpmPackageArtifactRegistrationCommandTest(ArtifactRegistrationCommandTestB
                 "--file",
                 str(artifact_file_path),
                 "--uri",
-                "https://registry.npmjs.org/@apache/buildish-example/-/buildish-example-1.2.3.tgz",
+                "https://registry.npmjs.org/@buildish-tooling/buildish-example/-/buildish-example-1.2.3.tgz",
                 "--git-commit-sha",
                 "0123456789abcdef0123456789abcdef01234567",
             ],
@@ -216,9 +216,9 @@ class NpmPackageArtifactRegistrationCommandTest(ArtifactRegistrationCommandTestB
                     "artifact_id": artifact_id,
                     "kind": "npm-package",
                     "filename": "buildish-example-1.2.3.tgz",
-                    "uri": "https://registry.npmjs.org/@apache/buildish-example/-/buildish-example-1.2.3.tgz",
+                    "uri": "https://registry.npmjs.org/@buildish-tooling/buildish-example/-/buildish-example-1.2.3.tgz",
                     "registry_url": "https://registry.npmjs.org/",
-                    "package_name": "@apache/buildish-example",
+                    "package_name": "@buildish-tooling/buildish-example",
                     "version": "1.2.3",
                     "integrity": expected_integrity,
                     "artifact_origin": "source-commit",
@@ -263,7 +263,7 @@ class NpmPackageArtifactRegistrationCommandTest(ArtifactRegistrationCommandTestB
                 "--file",
                 str(artifact_file_path),
                 "--uri",
-                "https://registry.npmjs.org/@apache/buildish-example/-/buildish-example-1.2.3.tgz",
+                "https://registry.npmjs.org/@buildish-tooling/buildish-example/-/buildish-example-1.2.3.tgz",
                 "--integrity",
                 mismatched_integrity,
             ],
