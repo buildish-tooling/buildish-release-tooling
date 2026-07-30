@@ -17,10 +17,8 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import cast
 
 from apache_buildish_release_tooling.release.contracts import (
-    GenericFileVerificationReport,
     SourceArtifactVerificationSection,
 )
 from apache_buildish_release_tooling.release.progress import ProgressReporter
@@ -191,7 +189,7 @@ def inspect_repro_report(
         if verification.kind in {"generic-file", "generic-file-with-openpgp"}:
             inspect_file_like_reproducibility(
                 progress_reporter,
-                verification=cast(GenericFileVerificationReport, verification),
+                verification=verification,
                 reproducibility=reproducibility,
                 bundle_root=bundle_root,
             )

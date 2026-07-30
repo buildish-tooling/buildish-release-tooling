@@ -209,7 +209,7 @@ Selection command: uv export --format pylock.toml --no-dev --frozen
 This product bundles annotated-types.
 
 Project URL: https://github.com/annotated-types/annotated-types
-License: License :: OSI Approved :: MIT License
+License: MIT
 
 Included license text from licenses/annotated-types/LICENSE:
 | The MIT License (MIT)

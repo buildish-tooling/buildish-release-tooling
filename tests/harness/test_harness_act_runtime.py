@@ -206,7 +206,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             steps[1]["uses"],
         )
         self.assertEqual(
-            "astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78",
+            "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
             steps[2]["uses"],
         )
         self.assertEqual(

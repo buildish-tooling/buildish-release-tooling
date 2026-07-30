@@ -22,7 +22,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
 ]
 dependencies = [
-    "mistletoe>=1.5.1,<2",
+    "mistletoe>=1.6.0,<2",
     "pydantic>=2.13.4,<3",
     "pyyaml>=6.0.3",
     "urllib3>=2.7.0",
@@ -39,8 +39,8 @@ buildish-release-harness = "apache_buildish_release_tooling.harness.cli:main"
 
 [build-system]
 requires = [
-    "setuptools>=82.0.1",
-    "wheel",
+    "setuptools>=83.0.0",
+    "wheel>=0.47.0",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -56,10 +56,10 @@ bdist_wheel = "apache_buildish_release_tooling.legal.build_hooks.FlattenedLicens
 
 [dependency-groups]
 dev = [
-    "mypy==1.20.1",
-    "pytest==9.0.3",
+    "mypy==2.3.0",
+    "pytest==9.1.1",
     "pytest-xdist==3.8.0",
-    "ruff==0.15.11",
+    "ruff==0.16.0",
 ]
 
 [tool.ruff]

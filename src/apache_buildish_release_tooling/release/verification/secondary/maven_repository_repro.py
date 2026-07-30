@@ -253,8 +253,10 @@ def _compare_zip_paths(
     if missing_paths or unexpected_paths:
         return (
             False,
-            "archive members differ: "
-            f"missing={missing_paths} unexpected={unexpected_paths}",
+            (
+                "archive members differ: "
+                f"missing={missing_paths} unexpected={unexpected_paths}"
+            ),
         )
     for relative_path in sorted(staged_paths):
         staged_entry = staged_entries[relative_path]

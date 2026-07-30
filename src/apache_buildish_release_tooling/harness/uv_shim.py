@@ -89,8 +89,10 @@ def render_uv_shim_script(config: UvShimConfig) -> str:
             "            ;;",
             "        esac",
             "      done",
-            f'      exec {shlex.quote(config.shim_python_executable)} -m {config.shim_entrypoint_module} '
-            'buildish-release-tooling "${filtered_args[@]}"',
+            (
+                f'      exec {shlex.quote(config.shim_python_executable)} -m '
+                f'{config.shim_entrypoint_module} buildish-release-tooling "${{filtered_args[@]}}"'
+            ),
             "      ;;",
             "    *)",
             '      printf "buildish-release-harness: unexpected uv arguments: %s\\n" "$*" >&2',

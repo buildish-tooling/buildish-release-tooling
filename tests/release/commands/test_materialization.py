@@ -98,8 +98,10 @@ class MaterializationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
                 "--materialized-path",
                 "NOTICE.generated",
                 "--run-command",
-                "mkdir -p dist && printf 'payload\\n' > dist/release.txt && "
-                "printf 'generated notice\\n' > NOTICE.generated",
+                (
+                    "mkdir -p dist && printf 'payload\\n' > dist/release.txt && "
+                    "printf 'generated notice\\n' > NOTICE.generated"
+                ),
                 "1.2.3",
             ],
             cwd=clone_dir,

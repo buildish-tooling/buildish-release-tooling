@@ -350,8 +350,10 @@ def _write_generic_tool_shims(workspace: HarnessWorkspace, scenario: HarnessScen
                 [
                     "#!/usr/bin/env bash",
                     "set -euo pipefail",
-                    "exec python3 -m apache_buildish_release_tooling.harness.shim_entrypoint "
-                    f"{json.dumps(tool)} \"$@\"",
+                    (
+                        "exec python3 -m apache_buildish_release_tooling.harness.shim_entrypoint "
+                        f"{json.dumps(tool)} \"$@\""
+                    ),
                 ]
             )
             + "\n",

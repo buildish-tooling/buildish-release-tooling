@@ -276,8 +276,10 @@ def write_bash_env_hook(workspace: HarnessWorkspace, scenario: HarnessScenario) 
         lines.extend(
             [
                 f"{tool}() {{",
-                '  BUILDISH_HARNESS_CALL_SITE="${BASH_SOURCE[1]}:${BASH_LINENO[0]}" command '
-                f'{tool} "$@"',
+                (
+                    '  BUILDISH_HARNESS_CALL_SITE="${BASH_SOURCE[1]}:${BASH_LINENO[0]}" command '
+                    f'{tool} "$@"'
+                ),
                 "}",
                 "",
             ]

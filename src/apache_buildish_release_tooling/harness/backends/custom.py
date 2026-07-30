@@ -129,9 +129,11 @@ def _write_tool_shims(workspace: HarnessWorkspace, scenario: HarnessScenario) ->
                     [
                         "#!/usr/bin/env bash",
                         "set -euo pipefail",
-                        f"exec {json.dumps(sys.executable)} -m "
-                        "apache_buildish_release_tooling.harness.shim_entrypoint "
-                        f"{json.dumps(tool)} \"$@\"",
+                        (
+                            f"exec {json.dumps(sys.executable)} -m "
+                            "apache_buildish_release_tooling.harness.shim_entrypoint "
+                            f"{json.dumps(tool)} \"$@\""
+                        ),
                     ]
                 )
                 + "\n",

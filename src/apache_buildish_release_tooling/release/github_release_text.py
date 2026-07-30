@@ -142,8 +142,10 @@ def render_final_github_release_body(
             "",
             "## GitHub Release",
             "",
-            "This GitHub Release is provided as convenience metadata only. "
-            "GitHub release assets are convenience artifacts and are not the authoritative ASF release.",
+            (
+                "This GitHub Release is provided as convenience metadata only. "
+                "GitHub release assets are convenience artifacts and are not the authoritative ASF release."
+            ),
         ]
     )
     return "\n".join(lines)

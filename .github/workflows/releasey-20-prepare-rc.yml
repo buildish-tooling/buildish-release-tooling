@@ -41,11 +41,11 @@ jobs:
       contents: read
       statuses: read
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Install Python 3.11 for uv-managed commands
         run: uv python install 3.11
       - name: Fetch remote heads and tags
@@ -73,11 +73,11 @@ jobs:
       resolved_source_ref: ${{ steps.prepare-rc.outputs.resolved_source_ref }}
       source_date_epoch: ${{ steps.prepare-rc.outputs.source_date_epoch }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Install Python 3.11 for uv-managed commands
         run: uv python install 3.11
       - name: Fetch remote heads and tags
@@ -105,10 +105,10 @@ jobs:
       SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
       BUILDISH_SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Install Python 3.11 for uv-managed commands
         run: uv python install 3.11
       - name: Delete pre-existing RC directories from ASF SVN dev dist
@@ -130,11 +130,11 @@ jobs:
       SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
       BUILDISH_SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Install Python 3.11 for uv-managed commands
         run: uv python install 3.11
       - name: Fetch remote heads and tags
@@ -170,11 +170,11 @@ jobs:
       SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
       BUILDISH_SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Install Python 3.11 for uv-managed commands
         run: uv python install 3.11
       - name: Fetch remote heads and tags
@@ -206,11 +206,11 @@ jobs:
       SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
       BUILDISH_SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Install Python 3.11 for uv-managed commands
         run: uv python install 3.11
       - name: Fetch remote heads and tags
@@ -242,11 +242,11 @@ jobs:
       SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
       BUILDISH_SOURCE_DATE_EPOCH: ${{ needs.resolve-state.outputs.source_date_epoch }}
     steps:
-      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - name: Install Python 3.11 for uv-managed commands
         run: uv python install 3.11
       - name: Fetch remote heads and tags
