@@ -45,8 +45,9 @@ source:
   snapshot:
     mode: platform-generated
   checks:
-    run_selected_ref_tests: false
-    require_release_branch_ci: true
+    platform: github
+    required:
+      - Required Checks
 lifecycle:
   mode: direct
 artifacts:

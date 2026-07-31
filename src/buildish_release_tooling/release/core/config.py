@@ -20,7 +20,7 @@ import re
 from string import Formatter
 from typing import Annotated, Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, field_validator
 
 from buildish_release_tooling.docs.documentation import ComponentOwnedAuthoredModel
 
@@ -119,56 +119,6 @@ SourceSnapshotConfig = Annotated[
     | NoSourceSnapshotConfig,
     Field(discriminator="mode"),
 ]
-
-
-class SourceChecksConfig(ComponentOwnedAuthoredModel):
-    """Checks required for an exact source revision before artifact production."""
-
-    run_selected_ref_tests: bool = Field(
-        default=False,
-        description="Whether the candidate preparation flow runs component tests itself.",
-    )
-    require_release_branch_ci: bool = Field(
-        default=False,
-        description="Whether a green release-branch CI result is required.",
-    )
-
-    @model_validator(mode="after")
-    def _validate_at_least_one_check(self) -> SourceChecksConfig:
-        if not self.run_selected_ref_tests and not self.require_release_branch_ci:
-            raise ValueError(
-                "source checks must run selected-ref tests or require release-branch CI"
-            )
-        return self
-
-
-class SourceConfig(ComponentOwnedAuthoredModel):
-    """Source-selection, source-check, and snapshot policy."""
-
-    selection: Literal[
-        "explicit-ref-or-default-branch",
-        "explicit-ref",
-        "release-branch",
-    ] = Field(description="Policy used to resolve the exact release source revision.")
-    default_branch: str | None = Field(
-        default=None,
-        description="Optional default branch used when source selection permits it.",
-    )
-    snapshot: SourceSnapshotConfig = Field(
-        description="Policy for source material exposed to release consumers.",
-    )
-    checks: SourceChecksConfig = Field(
-        default_factory=SourceChecksConfig,
-        description="Checks required for the selected source revision.",
-    )
-
-    @model_validator(mode="after")
-    def _validate_default_branch(self) -> SourceConfig:
-        if self.selection == "explicit-ref-or-default-branch" and not self.default_branch:
-            raise ValueError(
-                "source.default_branch is required for explicit-ref-or-default-branch selection"
-            )
-        return self
 
 
 class DirectLifecycleConfig(ComponentOwnedAuthoredModel):

@@ -23,10 +23,9 @@ practice:
 - candidate publication and exact promotion with `.github/workflows/release-candidate.yml`,
   `.github/workflows/release-verify-candidate.yml`, and `.github/workflows/release-promote.yml`.
 
-The component's `release-config.yaml` selects the active lifecycle and publication policy. Do not
-dispatch a release until that config has been reviewed for the intended exercise, the workflow uses
-an exact approved tooling revision, required repository settings and secrets are in place, and a
-dry-run has completed.
+The checked-in `release-config.yaml` currently selects the direct lifecycle, GitHub as the
+authoritative publication, GitHub-generated source snapshots, and the exact `Required Checks` CI
+gate. It publishes no separately built assets and selects no foundation policy profile.
 
 The direct and candidate approaches are separate. A candidate exercise starts at RC1 by default and
 may publish later RCs. Promotion must use the exact accepted candidate tag and
@@ -34,6 +33,23 @@ may publish later RCs. Promotion must use the exact accepted candidate tag and
 
 Buildish currently treats GitHub as authoritative and does not require a separately built source
 snapshot. Those are component-configurable choices, not universal tooling requirements.
+
+## Self-bootstrap strategy
+
+The workflow executes the tooling from its own repository checkout. For a dispatched run, GitHub
+binds that checkout to the workflow run's exact commit; the wrapper recognizes the repository root
+as the tooling project and invokes it with `uv --frozen`. It does not download an earlier package or
+an unpinned copy of itself.
+
+Resolution separately binds the release source to an exact commit. For the first release, dispatch
+the workflow from the reviewed commit and select that same commit as `source_ref`. All later jobs
+consume the recorded source identity and digest-bound state rather than resolving `main` again.
+
+Do not dispatch a release until the selected commit is pushed, its `Required Checks` result is
+successful, the workflow and config are reviewed, required repository settings are in place, and
+the corresponding local harness scenario passes. The release workflows need no signing or
+publication secrets for the current no-built-asset GitHub composition; write operations use the
+job-scoped GitHub token.
 
 See the development documentation for the [direct lifecycle](../docs/direct-release.md),
 [candidate lifecycle](../docs/candidate-release.md), and

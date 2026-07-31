@@ -19,50 +19,27 @@ versioning:
   scheme: semver
   final_tag_template: "v{version}"
 source:
-  selection: release-branch
+  selection: explicit-ref-or-default-branch
+  default_branch: main
   snapshot:
-    mode: built-asset
-    filename_template: "buildish-release-tooling-{version}-incubating-src.tar.gz"
-    archive_root_template: "buildish-release-tooling-{version}-incubating-src"
+    mode: platform-generated
   checks:
-    run_selected_ref_tests: false
-    require_release_branch_ci: true
+    platform: github
+    required:
+      - Required Checks
 lifecycle:
-  mode: candidate
-candidate:
-  start_number: 0
-  visibility: draft
-  retention: retain-published
+  mode: direct
 artifacts:
-  produced:
-    - source-archive
-  checksums:
-    - sha512
+  produced: []
+  checksums: []
 publication:
   authoritative:
-    kind: asf-dist-svn
-  convenience:
-    - kind: github-release
-      repository: buildish-tooling/buildish-release-tooling
+    kind: github-release
+    repository: buildish-tooling/buildish-release-tooling
+  convenience: []
   secondary: []
 tags:
   final_mode: exact-source-commit
   moving: []
   include_final_mode_in_summary: false
-vote_materials:
-  profile: asf
-  release_name: Buildish Release Tooling
-  verification_guide_url: https://buildish.org/components/release-tooling/release-verification/
-  instructions: |
-    Run this verification flow on trusted Linux or macOS hardware:
-    1. verify .sha512
-    2. verify .asc
-    3. rebuild the source release from the tagged source commit
-    4. compare the rebuilt source archive with the staged RC source archive
-policy_profiles:
-  asf:
-    project_status: incubating
-    dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-release-tooling
-    dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-release-tooling
-    keys_url: https://buildish.org/KEYS
-    disclaimer_file: DISCLAIMER
+policy_profiles: {}

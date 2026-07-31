@@ -33,6 +33,7 @@ from buildish_release_tooling.release.config import (
 
 from tests.support import (
     cleanup_sandbox,
+    component_root,
     create_build_test_sandbox,
     fixture_component_config_path,
 )
@@ -52,10 +53,6 @@ def _direct_github_payload() -> dict[str, object]:
             "selection": "explicit-ref-or-default-branch",
             "default_branch": "main",
             "snapshot": {"mode": "platform-generated"},
-            "checks": {
-                "run_selected_ref_tests": True,
-                "require_release_branch_ci": False,
-            },
         },
         "lifecycle": {"mode": "direct"},
         "artifacts": {"produced": [], "checksums": []},
@@ -95,6 +92,61 @@ class ReleaseConfigTest(unittest.TestCase):
         self.assertIsNone(loaded.candidate)
         self.assertIsNone(loaded.vote_materials)
         validate_selected_release_targets(loaded, allow_test_targets=False)
+
+    def test_self_release_config_is_direct_and_github_authoritative(self) -> None:
+        loaded = load_release_config(
+            str(
+                component_root()
+                / "buildish-release-tooling"
+                / "release-config.yaml"
+            )
+        )
+
+        self.assertEqual("buildish-release-tooling", loaded.component.id)
+        self.assertEqual("direct", loaded.lifecycle.mode)
+        self.assertEqual("platform-generated", loaded.source.snapshot.mode)
+        checks = loaded.source.checks
+        if checks is None:
+            self.fail("self-release config must select the GitHub source-check gate")
+        self.assertEqual("github", checks.platform)
+        self.assertEqual(["Required Checks"], checks.required)
+        self.assertEqual("github-release", loaded.publication.authoritative.kind)
+        self.assertIsNone(loaded.candidate)
+        self.assertIsNone(loaded.vote_materials)
+        self.assertIsNone(loaded.policy_profiles.asf)
+
+    def test_source_checks_are_optional_and_platform_specific(self) -> None:
+        payload = _direct_github_payload()
+        loaded = ReleaseConfig.model_validate(payload)
+
+        self.assertIsNone(loaded.source.checks)
+
+        source = cast(dict[str, object], payload["source"])
+        source["checks"] = {"platform": "gitlab", "required": ["ci"]}
+        with self.assertRaisesRegex(ValueError, "github"):
+            ReleaseConfig.model_validate(payload)
+
+    def test_required_external_check_names_are_normalized_and_unique(self) -> None:
+        payload = _direct_github_payload()
+        source = cast(dict[str, object], payload["source"])
+        source["checks"] = {
+            "platform": "github",
+            "required": [" Required Checks "],
+        }
+
+        loaded = ReleaseConfig.model_validate(payload)
+
+        checks = loaded.source.checks
+        if checks is None:
+            self.fail("expected the configured GitHub source-check gate")
+        self.assertEqual(["Required Checks"], checks.required)
+
+        source["checks"] = {
+            "platform": "github",
+            "required": ["Required Checks", "Required Checks"],
+        }
+        with self.assertRaisesRegex(ValueError, "must be unique"):
+            ReleaseConfig.model_validate(payload)
 
     def test_candidate_config_defaults_to_one_based_public_candidates(self) -> None:
         payload = _direct_github_payload()
@@ -201,8 +253,8 @@ class ReleaseConfigTest(unittest.TestCase):
                 "archive_root_template": "example-{version}-src",
             },
             "checks": {
-                "run_selected_ref_tests": False,
-                "require_release_branch_ci": True,
+                "platform": "github",
+                "required": ["component-ci"],
             },
         }
         payload["publication"] = {

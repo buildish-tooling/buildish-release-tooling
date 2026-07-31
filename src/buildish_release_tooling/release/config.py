@@ -34,7 +34,7 @@ from buildish_release_tooling.release.core.config import (
     GenericVoteMaterialsConfig,
     LifecycleConfig,
     OpenPgpSigningConfig,
-    SourceConfig,
+    SourceSnapshotConfig,
     TagPolicyConfig,
     VersioningConfig,
 )
@@ -53,6 +53,7 @@ from buildish_release_tooling.release.platforms.github.config import (
     GitHubActionPublicationConfig,
     GitHubReleaseAssetsPublicationConfig,
     GitHubReleasePublicationConfig,
+    GitHubSourceChecksConfig,
 )
 from buildish_release_tooling.shared.parsing import (
     DEFAULT_CONFIG_PARSE_MAX_BYTES,
@@ -118,6 +119,39 @@ class PolicyProfilesConfig(ComponentOwnedAuthoredModel):
         default=None,
         description="Optional Apache Software Foundation release policy.",
     )
+
+
+class SourceConfig(ComponentOwnedAuthoredModel):
+    """Source selection, snapshot, and optional hosting-platform check policy."""
+
+    selection: Literal[
+        "explicit-ref-or-default-branch",
+        "explicit-ref",
+        "release-branch",
+    ] = Field(description="Policy used to resolve the exact release source revision.")
+    default_branch: str | None = Field(
+        default=None,
+        description="Optional default branch used when source selection permits it.",
+    )
+    snapshot: SourceSnapshotConfig = Field(
+        description="Policy for source material exposed to release consumers.",
+    )
+
+    checks: GitHubSourceChecksConfig | None = Field(
+        default=None,
+        description=(
+            "Optional hosting-platform checks required for the selected source revision. "
+            "Component-owned same-run test jobs remain workflow concerns."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_default_branch(self) -> SourceConfig:
+        if self.selection == "explicit-ref-or-default-branch" and not self.default_branch:
+            raise ValueError(
+                "source.default_branch is required for explicit-ref-or-default-branch selection"
+            )
+        return self
 
 
 class ReleaseConfig(ComponentOwnedAuthoredModel):

@@ -49,6 +49,31 @@ class GitHubReleasePublicationConfig(ComponentOwnedAuthoredModel):
         return normalized
 
 
+class GitHubSourceChecksConfig(ComponentOwnedAuthoredModel):
+    """GitHub check runs or status contexts required for one source revision."""
+
+    platform: Literal["github"] = Field(
+        description="Source-check hosting-platform discriminator.",
+    )
+    required: list[str] = Field(
+        min_length=1,
+        description=(
+            "Exact GitHub check-run or legacy status-context names required on the "
+            "selected revision."
+        ),
+    )
+
+    @field_validator("required")
+    @classmethod
+    def _normalize_required_checks(cls, values: list[str]) -> list[str]:
+        normalized = [value.strip() for value in values]
+        if any(not value for value in normalized):
+            raise ValueError("required GitHub check names must not be empty")
+        if len(set(normalized)) != len(normalized):
+            raise ValueError("required GitHub check names must be unique")
+        return normalized
+
+
 class GitHubActionPublicationConfig(ComponentOwnedAuthoredModel):
     """Secondary publication of immutable and moving GitHub Action refs."""
 

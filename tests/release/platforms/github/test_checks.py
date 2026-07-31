@@ -56,7 +56,7 @@ class GitHubChecksTest(unittest.TestCase):
                     ]
                 },
                 {"statuses": [{"context": "legacy-ci", "state": "success"}]},
-                require_at_least_one_check=True,
+                ["ci", "docs", "legacy-ci"],
             ),
         )
 
@@ -70,16 +70,28 @@ class GitHubChecksTest(unittest.TestCase):
                     ]
                 },
                 {"statuses": [{"context": "legacy-ci", "state": "failure"}]},
-                require_at_least_one_check=False,
+                ["ci", "lint", "legacy-ci"],
             )
 
-    def test_zero_checks_policy_is_enforced_when_required(self) -> None:
+    def test_only_named_checks_are_enforced(self) -> None:
         self.assertEqual(
             0,
-            assert_ref_ready({"check_runs": []}, {"statuses": []}, require_at_least_one_check=False),
+            assert_ref_ready(
+                {
+                    "check_runs": [
+                        {
+                            "name": "release-workflow",
+                            "status": "in_progress",
+                            "conclusion": None,
+                        }
+                    ]
+                },
+                {"statuses": []},
+                [],
+            ),
         )
-        with self.assertRaisesRegex(ValueError, "no GitHub checks were found"):
-            assert_ref_ready({"check_runs": []}, {"statuses": []}, require_at_least_one_check=True)
+        with self.assertRaisesRegex(ValueError, "required GitHub checks not found: ci"):
+            assert_ref_ready({"check_runs": []}, {"statuses": []}, ["ci"])
 
     def test_total_count_rejects_malformed_payloads(self) -> None:
         with self.assertRaisesRegex(ValueError, "invalid GitHub check-runs payload"):
@@ -98,13 +110,13 @@ class GitHubChecksTest(unittest.TestCase):
             assert_ref_ready(
                 {"check_runs": [{"name": []}]},
                 {"statuses": []},
-                require_at_least_one_check=False,
+                [],
             )
         with self.assertRaisesRegex(ValueError, "invalid GitHub statuses payload"):
             assert_ref_ready(
                 {"check_runs": []},
                 {"statuses": [{"context": []}]},
-                require_at_least_one_check=False,
+                [],
             )
 
     def test_resolve_repository_slug_reads_origin_url(self) -> None:

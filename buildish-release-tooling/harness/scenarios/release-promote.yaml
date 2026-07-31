@@ -42,9 +42,6 @@ workflow:
       default_branch: main
       snapshot:
         mode: platform-generated
-      checks:
-        run_selected_ref_tests: true
-        require_release_branch_ci: false
     lifecycle:
       mode: candidate
     candidate:

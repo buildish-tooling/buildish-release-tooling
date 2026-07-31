@@ -79,8 +79,11 @@ selection policy, resolves the ref to an exact commit, and persists typed state.
 commit rather than re-resolving a moving branch.
 
 The component is responsible for branch protection, review policy, CI definitions, and deciding who
-may dispatch a release. `verify-source-ref-checks` checks the configured GitHub status/check policy;
-it does not prove the quality of the tests themselves.
+may dispatch a release. When `source.checks.platform` is `github`,
+`verify-source-ref-checks` requires the configured exact GitHub check-run or legacy status-context
+names to be successful or intentionally skipped and ignores unrelated observations, including the
+release workflow's own jobs. Omitting the block applies no external platform-status gate. The CLI
+does not prove the quality of required or same-run component tests.
 
 ### Same-run job handoff
 

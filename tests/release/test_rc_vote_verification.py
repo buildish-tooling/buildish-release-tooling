@@ -43,10 +43,6 @@ class RcVotePublicationVerificationTest(unittest.TestCase):
                             "filename_template": "buildish-example-{version}-src.tar.gz",
                             "archive_root_template": "buildish-example-{version}-src",
                         },
-                        "checks": {
-                            "run_selected_ref_tests": True,
-                            "require_release_branch_ci": False,
-                        },
                     },
                     "lifecycle": {"mode": "candidate"},
                     "candidate": {},

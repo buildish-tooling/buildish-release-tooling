@@ -19,7 +19,7 @@ tool_behaviors:
     - match:
         argv_contains: ["/check-runs?per_page=100"]
       result:
-        stdout: '{"check_runs":[{"name":"component-ci","status":"completed","conclusion":"success"}]}'
+        stdout: '{"check_runs":[{"name":"Required Checks","status":"completed","conclusion":"success"}]}'
     - match:
         argv_contains: ["/status"]
       result:
@@ -39,31 +39,3 @@ workflow:
     - publish-github-final-release
     - create-release-manifest
     - attach-github-release-manifest
-  release_config:
-    component:
-      id: buildish-release-tooling
-      display_name: Buildish Release Tooling
-    versioning:
-      scheme: semver
-      final_tag_template: "v{version}"
-    source:
-      selection: explicit-ref-or-default-branch
-      default_branch: main
-      snapshot:
-        mode: platform-generated
-      checks:
-        run_selected_ref_tests: false
-        require_release_branch_ci: true
-    lifecycle:
-      mode: direct
-    artifacts:
-      produced: []
-      checksums: []
-    publication:
-      authoritative:
-        kind: github-release
-        repository: buildish-tooling/buildish-release-tooling
-    tags:
-      final_mode: exact-source-commit
-      moving: []
-    policy_profiles: {}

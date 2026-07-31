@@ -53,10 +53,6 @@ def _release_config_with_profiles(profiles: dict[str, object]) -> ReleaseConfig:
                 "selection": "explicit-ref-or-default-branch",
                 "default_branch": "main",
                 "snapshot": {"mode": "platform-generated"},
-                "checks": {
-                    "run_selected_ref_tests": True,
-                    "require_release_branch_ci": False,
-                },
             },
             "lifecycle": {"mode": "direct"},
             "publication": {

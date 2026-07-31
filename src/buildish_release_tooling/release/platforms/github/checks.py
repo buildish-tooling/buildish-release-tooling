@@ -145,9 +145,27 @@ def fetch_statuses_json(repository_slug: str, ref: str) -> dict[str, object]:
     return _json_object_output(completed.stdout, source="GitHub statuses API")
 
 
-def _invalid_check_runs_report(check_runs_payload: Mapping[str, object]) -> list[str]:
+def _required_check_runs(
+    check_runs_payload: Mapping[str, object], required_checks: set[str]
+) -> list[_CheckRunRead]:
+    return [
+        check_run
+        for check_run in _check_runs(check_runs_payload)
+        if check_run.name in required_checks
+    ]
+
+
+def _required_statuses(
+    status_payload: Mapping[str, object], required_checks: set[str]
+) -> list[_StatusRead]:
+    return [
+        status for status in _statuses(status_payload) if status.context in required_checks
+    ]
+
+
+def _invalid_check_runs_report(check_runs: list[_CheckRunRead]) -> list[str]:
     reports: list[str] = []
-    for check_run in _check_runs(check_runs_payload):
+    for check_run in check_runs:
         status = check_run.status
         conclusion = check_run.conclusion
         if status != "completed" or conclusion not in {"success", "skipped"}:
@@ -157,9 +175,9 @@ def _invalid_check_runs_report(check_runs_payload: Mapping[str, object]) -> list
     return reports
 
 
-def _invalid_statuses_report(status_payload: Mapping[str, object]) -> list[str]:
+def _invalid_statuses_report(statuses: list[_StatusRead]) -> list[str]:
     reports: list[str] = []
-    for status in _statuses(status_payload):
+    for status in statuses:
         if status.state != "success":
             reports.append(f"{status.context}\tstate={status.state}")
     return reports
@@ -180,25 +198,29 @@ def total_count(check_runs_payload: Mapping[str, object], statuses_payload: Mapp
 def assert_ref_ready(
     check_runs_payload: Mapping[str, object],
     statuses_payload: Mapping[str, object],
-    require_at_least_one_check: bool,
+    required_checks: list[str],
 ) -> int:
-    """Enforce the Buildish source-ref readiness policy for GitHub checks."""
+    """Require exact named GitHub checks while ignoring unrelated observations."""
 
     if _parsed_check_runs_payload(check_runs_payload) is None:
         raise ValueError("invalid GitHub check-runs payload")
     if _parsed_statuses_payload(statuses_payload) is None:
         raise ValueError("invalid GitHub statuses payload")
-    invalid_check_runs = _invalid_check_runs_report(check_runs_payload)
-    invalid_statuses = _invalid_statuses_report(statuses_payload)
-    checks_total = total_count(check_runs_payload, statuses_payload)
-    if require_at_least_one_check and checks_total == 0:
-        raise ValueError(
-            "no GitHub checks were found for the source ref, but release-branch CI is required"
-        )
+    required_names = set(required_checks)
+    matching_check_runs = _required_check_runs(check_runs_payload, required_names)
+    matching_statuses = _required_statuses(statuses_payload, required_names)
+    observed_names = {
+        item.name for item in matching_check_runs if item.name is not None
+    } | {item.context for item in matching_statuses if item.context is not None}
+    missing_names = sorted(required_names - observed_names)
+    if missing_names:
+        raise ValueError(f"required GitHub checks not found: {', '.join(missing_names)}")
+    invalid_check_runs = _invalid_check_runs_report(matching_check_runs)
+    invalid_statuses = _invalid_statuses_report(matching_statuses)
     if invalid_check_runs:
         invalid_report = "\n".join(invalid_check_runs)
         raise ValueError(f"invalid GitHub check runs:\n{invalid_report}")
     if invalid_statuses:
         invalid_report = "\n".join(invalid_statuses)
         raise ValueError(f"invalid GitHub status contexts:\n{invalid_report}")
-    return checks_total
+    return len(observed_names)

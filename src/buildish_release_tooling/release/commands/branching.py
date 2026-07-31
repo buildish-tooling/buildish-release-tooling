@@ -96,12 +96,14 @@ def run_verify_source_ref_checks(args: Namespace) -> None:
     source_commit = repo.resolve_commit(source_ref)
     target = require_github_authoritative_publication(context.release_config)
     repository_slug = target.repository or resolve_repository_slug(repo.path)
+    source_checks = context.release_config.source.checks
+    required_checks = source_checks.required if source_checks is not None else []
     check_runs_payload = fetch_check_runs_json(repository_slug, source_commit)
     statuses_payload = fetch_statuses_json(repository_slug, source_commit)
     total_checks = assert_ref_ready(
         check_runs_payload,
         statuses_payload,
-        context.release_config.source.checks.require_release_branch_ci,
+        required_checks,
     )
     summary = SummaryWriter.from_environment()
     summary.append_heading(f"Verify GitHub checks for source ref {version}")
@@ -117,28 +119,21 @@ def run_verify_source_ref_checks(args: Namespace) -> None:
             ),
             ("Resolved source ref", _summary_code(source_ref)),
             ("Resolved source commit", _summary_code(source_commit)),
-            ("GitHub checks found", str(total_checks)),
+            ("Required GitHub checks observed", str(total_checks)),
         ],
     )
     summary.append_key_value_table(
         "Gate policy",
         [
+            ("Source-check platform", _summary_code("github")),
             (
-                "Selected-ref component tests required",
-                str(
-                    context.release_config.source.checks.run_selected_ref_tests
-                ).lower(),
-            ),
-            (
-                "At least one successful GitHub check required",
-                str(
-                    context.release_config.source.checks.require_release_branch_ci
-                ).lower(),
+                "Required GitHub checks",
+                _summary_code(", ".join(required_checks) or "<none>"),
             ),
         ],
     )
     summary.append_plaintext_block(
         "Outcome",
-        "All GitHub checks on the resolved source commit are successful or skipped. "
-        f"The release gate accepted {total_checks} check entries for {source_commit}.",
+        "All configured GitHub checks on the resolved source commit are successful or skipped. "
+        f"The release gate accepted {total_checks} named checks for {source_commit}.",
     )

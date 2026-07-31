@@ -45,7 +45,7 @@ class ReleaseNamingTest(unittest.TestCase):
                         "filename_template": "apache-buildish-example-{version}-incubating-src.tar.gz",
                         "archive_root_template": "apache-buildish-example-{version}-incubating-src",
                     },
-                    "checks": {"require_release_branch_ci": True},
+                    "checks": {"platform": "github", "required": ["component-ci"]},
                 },
                 "lifecycle": {"mode": "candidate"},
                 "candidate": {"start_number": 1},

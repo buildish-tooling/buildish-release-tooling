@@ -70,8 +70,6 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
                     "  default_branch: main",
                     "  snapshot:",
                     "    mode: platform-generated",
-                    "  checks:",
-                    "    run_selected_ref_tests: true",
                     "lifecycle:",
                     "  mode: candidate",
                     "candidate:",

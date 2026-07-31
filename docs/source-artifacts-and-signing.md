@@ -34,8 +34,9 @@ source:
   snapshot:
     mode: platform-generated
   checks:
-    run_selected_ref_tests: false
-    require_release_branch_ci: true
+    platform: github
+    required:
+      - Required Checks
 artifacts:
   produced: []
   checksums: []
@@ -55,9 +56,6 @@ source:
     mode: built-asset
     filename_template: "{component}-{version}-src.tar.gz"
     archive_root_template: "{component}-{version}"
-  checks:
-    run_selected_ref_tests: true
-    require_release_branch_ci: false
 artifacts:
   produced:
     - source-archive

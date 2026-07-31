@@ -22,11 +22,12 @@ source:
   selection: release-branch
   snapshot:
     mode: built-asset
-    filename_template: "buildish-mammoth-cache-{version}-incubating-src.tar.gz"
-    archive_root_template: "buildish-mammoth-cache-{version}-incubating-src"
+    filename_template: "buildish-mammoth-cache-{version}-src.tar.gz"
+    archive_root_template: "buildish-mammoth-cache-{version}-src"
   checks:
-    run_selected_ref_tests: false
-    require_release_branch_ci: true
+    platform: github
+    required:
+      - component-ci
 lifecycle:
   mode: candidate
 candidate:

@@ -45,7 +45,7 @@ class AsfSvnIntegrationTest(unittest.TestCase):
         rc_url = url_join(dev_base_url, "1.2.3-rc0")
         old_release_url = url_join(release_base_url, "1.2.1")
         final_release_url = url_join(release_base_url, "1.2.3")
-        artifact_path = sandbox_dir / "buildish-mammoth-cache-1.2.3-incubating-src.tar.gz"
+        artifact_path = sandbox_dir / "buildish-mammoth-cache-1.2.3-src.tar.gz"
         artifact_path.write_text("artifact\n", encoding="utf-8")
 
         client.mkdir_url(dev_base_url, "create dev component path")
@@ -59,7 +59,7 @@ class AsfSvnIntegrationTest(unittest.TestCase):
         client.working_copy_put_file(
             working_copy_dir,
             artifact_path,
-            f"dist/release/incubator/buildish/{component_id}/1.2.1/buildish-mammoth-cache-1.2.1-incubating-src.tar.gz",
+            f"dist/release/incubator/buildish/{component_id}/1.2.1/buildish-mammoth-cache-1.2.1-src.tar.gz",
         )
         client.commit_working_copy(working_copy_dir, "stage draft release artifacts")
 

@@ -54,8 +54,9 @@ workflow:
       snapshot:
         mode: platform-generated
       checks:
-        run_selected_ref_tests: false
-        require_release_branch_ci: true
+        platform: github
+        required:
+          - component-ci
     lifecycle:
       mode: candidate
     candidate:

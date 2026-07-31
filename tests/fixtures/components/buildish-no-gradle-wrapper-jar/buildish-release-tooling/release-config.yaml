@@ -25,8 +25,9 @@ source:
     filename_template: "buildish-no-gradle-wrapper-jar-{version}-src.tar.gz"
     archive_root_template: "buildish-no-gradle-wrapper-jar-{version}-src"
   checks:
-    run_selected_ref_tests: false
-    require_release_branch_ci: true
+    platform: github
+    required:
+      - component-ci
 lifecycle:
   mode: candidate
 candidate:

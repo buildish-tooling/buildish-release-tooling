@@ -89,9 +89,15 @@ reviewers, deployment branches, or environment secrets are configured correctly 
 
 ## Source checks and build jobs
 
-`source.checks` chooses whether the release composition runs selected-ref tests itself, requires an
-existing successful GitHub check on the exact source commit, or both. A workflow must not silently
-skip both checks; the config schema rejects that composition.
+An optional `source.checks` block selects a hosting-platform check gate. The implemented
+`platform: github` adapter requires exactly named successful or intentionally skipped check runs or
+legacy status contexts on the exact source commit. Unrelated observations are ignored, so the
+release workflow does not wait on its own in-progress jobs.
+
+Same-run component tests are workflow-owned jobs, not a boolean promise in release config. A thin
+component workflow may run them before the mutation jobs, may rely on named results from its normal
+CI workflow, or may compose both controls. Omitting `source.checks` means the release CLI applies no
+external platform-status gate; it does not claim that tests ran elsewhere.
 
 The checked-in workflows publish no separately built artifact. A component that selects
 `source.snapshot.mode: built-asset` or other produced artifacts adds component-specific build,

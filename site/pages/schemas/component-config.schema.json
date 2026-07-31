@@ -523,6 +523,37 @@
         "ownership": "component-owned"
       }
     },
+    "GitHubSourceChecksConfig": {
+      "additionalProperties": false,
+      "description": "GitHub check runs or status contexts required for one source revision.",
+      "properties": {
+        "platform": {
+          "const": "github",
+          "description": "Source-check hosting-platform discriminator.",
+          "title": "Platform",
+          "type": "string"
+        },
+        "required": {
+          "description": "Exact GitHub check-run or legacy status-context names required on the selected revision.",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Required",
+          "type": "array"
+        }
+      },
+      "required": [
+        "platform",
+        "required"
+      ],
+      "title": "GitHubSourceChecksConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
     "NoSourceSnapshotConfig": {
       "additionalProperties": false,
       "description": "Policy for a release that intentionally publishes no source snapshot.",
@@ -750,37 +781,21 @@
         "ownership": "component-owned"
       }
     },
-    "SourceChecksConfig": {
-      "additionalProperties": false,
-      "description": "Checks required for an exact source revision before artifact production.",
-      "properties": {
-        "require_release_branch_ci": {
-          "default": false,
-          "description": "Whether a green release-branch CI result is required.",
-          "title": "Require Release Branch Ci",
-          "type": "boolean"
-        },
-        "run_selected_ref_tests": {
-          "default": false,
-          "description": "Whether the candidate preparation flow runs component tests itself.",
-          "title": "Run Selected Ref Tests",
-          "type": "boolean"
-        }
-      },
-      "title": "SourceChecksConfig",
-      "type": "object",
-      "x-buildish-contract": {
-        "category": "authored",
-        "ownership": "component-owned"
-      }
-    },
     "SourceConfig": {
       "additionalProperties": false,
-      "description": "Source-selection, source-check, and snapshot policy.",
+      "description": "Source selection, snapshot, and optional hosting-platform check policy.",
       "properties": {
         "checks": {
-          "$ref": "#/$defs/SourceChecksConfig",
-          "description": "Checks required for the selected source revision."
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GitHubSourceChecksConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional hosting-platform checks required for the selected source revision. Component-owned same-run test jobs remain workflow concerns."
         },
         "default_branch": {
           "anyOf": [

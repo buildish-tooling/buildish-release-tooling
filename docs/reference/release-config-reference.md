@@ -59,6 +59,7 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [GitHubFinalPublication](#githubfinalpublication) — GitHub Release publication evidence for one final release.
 - [GitHubReleaseAssetsPublicationConfig](#githubreleaseassetspublicationconfig) — Secondary component-produced assets attached to a GitHub Release.
 - [GitHubReleasePublicationConfig](#githubreleasepublicationconfig) — GitHub Release authoritative or convenience publication target.
+- [GitHubSourceChecksConfig](#githubsourcechecksconfig) — GitHub check runs or status contexts required for one source revision.
 - [ManifestDigestReference](#manifestdigestreference) — URI and cryptographic digest binding one exact manifest document.
 - [NoSourceSnapshotConfig](#nosourcesnapshotconfig) — Policy for a release that intentionally publishes no source snapshot.
 - [OpenPgpSigningConfig](#openpgpsigningconfig) — OpenPGP detached-signature policy and secret input names.
@@ -77,8 +78,7 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [ReleaseManifestV1](#releasemanifestv1) — Stable final release manifest for either direct publication or exact promotion.
 - [SameSourceRevisionPromotionEvidence](#samesourcerevisionpromotionevidence) — Evidence that candidate and final snapshots resolve to the same source commit.
 - [SourceArtifactPlan](#sourceartifactplan) — Resolved built-source archive names for one release run.
-- [SourceChecksConfig](#sourcechecksconfig) — Checks required for an exact source revision before artifact production.
-- [SourceConfig](#sourceconfig) — Source-selection, source-check, and snapshot policy.
+- [SourceConfig](#sourceconfig) — Source selection, snapshot, and optional hosting-platform check policy.
 - [SourceRevision](#sourcerevision) — Exact source repository revision selected for a release.
 - [StageGitHubCandidateResult](#stagegithubcandidateresult) — Result of converging on one exact draft GitHub candidate release.
 - [StageGitHubFinalReleaseResult](#stagegithubfinalreleaseresult) — Result of converging on one exact draft GitHub final release.
@@ -688,6 +688,20 @@ GitHub Release authoritative or convenience publication target.
 | <a id="githubreleasepublicationconfig-kind"></a>`kind` | Literal['github-release'] | no | Publication target discriminator. |
 | <a id="githubreleasepublicationconfig-repository"></a>`repository` | str | no | Optional explicit GitHub repository in owner/name form. |
 
+<a id="githubsourcechecksconfig"></a>
+### GitHubSourceChecksConfig
+
+GitHub check runs or status contexts required for one source revision.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="githubsourcechecksconfig-platform"></a>`platform` | Literal['github'] | yes | Source-check hosting-platform discriminator. |
+| <a id="githubsourcechecksconfig-required"></a>`required` | list[str] | yes | Exact GitHub check-run or legacy status-context names required on the selected revision. |
+
 <a id="manifestdigestreference"></a>
 ### ManifestDigestReference
 
@@ -999,24 +1013,10 @@ Resolved built-source archive names for one release run.
 | <a id="sourceartifactplan-filename"></a>`filename` | str | yes | Resolved source archive filename. |
 | <a id="sourceartifactplan-archive-root"></a>`archive_root` | str | yes | Resolved top-level archive directory. |
 
-<a id="sourcechecksconfig"></a>
-### SourceChecksConfig
-
-Checks required for an exact source revision before artifact production.
-
-- category: `authored`
-- ownership: `component-owned`
-- file contract: (inner type)
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| <a id="sourcechecksconfig-run-selected-ref-tests"></a>`run_selected_ref_tests` | bool | no | Whether the candidate preparation flow runs component tests itself. |
-| <a id="sourcechecksconfig-require-release-branch-ci"></a>`require_release_branch_ci` | bool | no | Whether a green release-branch CI result is required. |
-
 <a id="sourceconfig"></a>
 ### SourceConfig
 
-Source-selection, source-check, and snapshot policy.
+Source selection, snapshot, and optional hosting-platform check policy.
 
 - category: `authored`
 - ownership: `component-owned`
@@ -1027,7 +1027,7 @@ Source-selection, source-check, and snapshot policy.
 | <a id="sourceconfig-selection"></a>`selection` | Literal['explicit-ref-or-default-branch', 'explicit-ref', 'release-branch'] | yes | Policy used to resolve the exact release source revision. |
 | <a id="sourceconfig-default-branch"></a>`default_branch` | str | no | Optional default branch used when source selection permits it. |
 | <a id="sourceconfig-snapshot"></a>`snapshot` | SourceSnapshotConfig | yes | Policy for source material exposed to release consumers. |
-| <a id="sourceconfig-checks"></a>`checks` | [SourceChecksConfig](#sourcechecksconfig) | no | Checks required for the selected source revision. |
+| <a id="sourceconfig-checks"></a>`checks` | [GitHubSourceChecksConfig](#githubsourcechecksconfig) | no | Optional hosting-platform checks required for the selected source revision. Component-owned same-run test jobs remain workflow concerns. |
 
 <a id="sourcerevision"></a>
 ### SourceRevision
