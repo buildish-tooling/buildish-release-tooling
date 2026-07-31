@@ -102,7 +102,7 @@ jobs:
               "$RELEASE_VERSION"
           promotion_digest="$(sha256sum "$bundle/promotion-state.json" | cut -d' ' -f1)"
           printf 'promotion_digest=%s\n' "$promotion_digest" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: promotion-input-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/promotion-input
@@ -119,7 +119,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: promotion-input-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/promotion-input
@@ -144,7 +144,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: promotion-input-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/promotion-input
@@ -169,7 +169,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: promotion-input-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/promotion-input
@@ -195,7 +195,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: promotion-input-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/promotion-input
@@ -212,7 +212,7 @@ jobs:
           mkdir -p "$(dirname "$MANIFEST_PATH")"
           bash buildish-release-tooling/release-tooling.sh publish-github-final-release --release-state "$STATE_PATH"
           printf 'publication_digest=%s\n' "$(sha256sum "$MANIFEST_PATH" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: promotion-publication-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/publication
@@ -228,11 +228,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: promotion-input-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/promotion-input
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: promotion-publication-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/publication
@@ -255,7 +255,7 @@ jobs:
           bash buildish-release-tooling/release-tooling.sh attach-github-release-manifest \
             --release-state "$STATE_PATH" \
             --release-manifest "$MANIFEST_PATH"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: promoted-release-manifest-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-manifest

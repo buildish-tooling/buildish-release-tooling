@@ -82,7 +82,7 @@ jobs:
           print(f"source_commit={payload['source']['commit_sha']}")
           print(f"state_digest={hashlib.sha256(path.read_bytes()).hexdigest()}")
           PY
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: candidate-state-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/candidate-state
@@ -122,7 +122,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: candidate-state-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/candidate-state
@@ -157,7 +157,7 @@ jobs:
             --candidate-tag "$CANDIDATE_TAG" \
             --candidate-manifest-digest "$manifest_digest"
           printf 'manifest_digest=%s\n' "$manifest_digest" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: candidate-manifest-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/candidate-manifest
@@ -172,7 +172,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: candidate-manifest-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/candidate-manifest
@@ -189,7 +189,7 @@ jobs:
           bash buildish-release-tooling/release-tooling.sh create-vote-package \
             --candidate-manifest "$candidate_manifest" \
             --profile "$VOTE_PROFILE"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: vote-package-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/vote-package
