@@ -69,7 +69,7 @@ jobs:
           print(f"source_commit={payload['source']['commit_sha']}")
           print(f"state_digest={hashlib.sha256(path.read_bytes()).hexdigest()}")
           PY
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: direct-state-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/direct-state
@@ -107,7 +107,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: direct-state-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/direct-state
@@ -132,7 +132,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: direct-state-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/direct-state
@@ -147,7 +147,7 @@ jobs:
           printf '%s  %s\n' "$EXPECTED_DIGEST" "$STATE_PATH" | sha256sum --check --strict
           mkdir -p "$(dirname "$MANIFEST_PATH")"
           bash buildish-release-tooling/release-tooling.sh stage-github-final-release --release-state "$STATE_PATH"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: direct-stage-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/stage-result
@@ -162,7 +162,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: direct-state-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/direct-state
@@ -188,7 +188,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: direct-state-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/direct-state
@@ -205,7 +205,7 @@ jobs:
           mkdir -p "$(dirname "$MANIFEST_PATH")"
           bash buildish-release-tooling/release-tooling.sh publish-github-final-release --release-state "$STATE_PATH"
           printf 'publication_digest=%s\n' "$(sha256sum "$MANIFEST_PATH" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: direct-publication-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/publication
@@ -221,11 +221,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: direct-state-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/direct-state
-      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: direct-publication-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/publication
@@ -248,7 +248,7 @@ jobs:
           bash buildish-release-tooling/release-tooling.sh attach-github-release-manifest \
             --release-state "$STATE_PATH" \
             --release-manifest "$MANIFEST_PATH"
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: direct-release-manifest-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-manifest
