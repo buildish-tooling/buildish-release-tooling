@@ -243,6 +243,24 @@ class DirectGitHubReleaseCommandIntegrationTest(unittest.TestCase):
             (gh_state_dir / "requests.log").read_text(encoding="utf-8"),
         )
 
+        release_manifest_path = self.sandbox_dir / "direct-release-manifest.json"
+        completed = self._run(
+            [
+                "create-release-manifest",
+                "--release-state",
+                str(self.state_path),
+                "--publication-result",
+                str(rerun_path),
+            ],
+            manifest_path=release_manifest_path,
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        release_manifest = json.loads(
+            release_manifest_path.read_text(encoding="utf-8")
+        )
+        self.assertNotIn("promoted_candidate", release_manifest)
+        self.assertEqual([], release_manifest["promotion_evidence"])
+
     def test_built_asset_is_uploaded_without_clobber_and_revalidated(self) -> None:
         asset_bytes = b"direct release asset\n"
         digest = hashlib.sha256(asset_bytes).hexdigest()

@@ -32,7 +32,7 @@ from buildish_release_tooling.release.core.state import DirectReleaseState, Sour
 from buildish_release_tooling.release.git_repo import GitRepository
 
 
-def _selected_source_ref(
+def selected_source_ref(
     repo: GitRepository,
     config: ReleaseConfig,
     version: str,
@@ -66,7 +66,7 @@ def resolve_direct_release_state(
     if config.lifecycle.mode != "direct":
         raise ValueError("resolve-direct-release requires lifecycle.mode direct")
     normalized_version = require_semantic_version(version)
-    selected_ref = _selected_source_ref(repo, config, normalized_version, source_ref)
+    selected_ref = selected_source_ref(repo, config, normalized_version, source_ref)
     resolved_commit = repo.resolve_commit(selected_ref)
     snapshot = config.source.snapshot
     source_artifact = None

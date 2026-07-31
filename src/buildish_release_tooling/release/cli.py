@@ -117,6 +117,32 @@ def _register_source_selection_commands(
     _add_version_argument(resolve_direct_release)
     resolve_direct_release.add_argument("source_ref", nargs="?")
 
+    resolve_candidate = _add_command_parser(
+        subparsers,
+        common,
+        "resolve-candidate",
+        help_text="Resolve exact source, identity, and tag state for a release candidate.",
+        handler=commands.run_resolve_candidate,
+    )
+    resolve_candidate.add_argument(
+        "--candidate-label",
+        help="Optional candidate label overriding the configured label.",
+    )
+    _add_version_argument(resolve_candidate)
+    resolve_candidate.add_argument("source_ref", nargs="?")
+
+    resolve_promotion = _add_command_parser(
+        subparsers,
+        common,
+        "resolve-promotion",
+        help_text="Bind one exact candidate manifest and tag into promotion state.",
+        handler=commands.run_resolve_promotion,
+    )
+    resolve_promotion.add_argument("--candidate-tag", required=True)
+    resolve_promotion.add_argument("--candidate-manifest", required=True)
+    resolve_promotion.add_argument("--candidate-manifest-digest", required=True)
+    _add_version_argument(resolve_promotion)
+
     create_release_branch = _add_command_parser(
         subparsers,
         common,
@@ -434,6 +460,93 @@ def _register_publication_commands(
     subparsers: Subparsers,
     common: argparse.ArgumentParser,
 ) -> None:
+    create_candidate_tag = _add_command_parser(
+        subparsers,
+        common,
+        "create-candidate-tag",
+        help_text="Create or revalidate one immutable candidate tag.",
+        handler=commands.run_create_candidate_tag,
+    )
+    create_candidate_tag.add_argument("--candidate-state", required=True)
+
+    stage_github_candidate = _add_command_parser(
+        subparsers,
+        common,
+        "stage-github-candidate",
+        help_text="Create or complete one exact draft GitHub candidate release.",
+        handler=commands.run_stage_github_candidate,
+    )
+    stage_github_candidate.add_argument("--candidate-state", required=True)
+    stage_github_candidate.add_argument(
+        "--asset",
+        dest="assets",
+        action="append",
+        default=[],
+        help="Local candidate asset path. Repeat for every candidate release asset.",
+    )
+
+    create_candidate_manifest = _add_command_parser(
+        subparsers,
+        common,
+        "create-candidate-manifest",
+        help_text="Create the durable manifest for one staged candidate.",
+        handler=commands.run_create_candidate_manifest,
+    )
+    create_candidate_manifest.add_argument("--candidate-state", required=True)
+    create_candidate_manifest.add_argument("--stage-result", required=True)
+
+    create_vote_package = _add_command_parser(
+        subparsers,
+        common,
+        "create-vote-package",
+        help_text="Create optional voting materials over one exact candidate manifest.",
+        handler=commands.run_create_vote_package,
+    )
+    create_vote_package.add_argument("--candidate-manifest", required=True)
+    create_vote_package.add_argument("--profile", choices=("generic", "asf"), required=True)
+
+    create_release_manifest = _add_command_parser(
+        subparsers,
+        common,
+        "create-release-manifest",
+        help_text="Create the stable manifest for a published final release.",
+        handler=commands.run_create_release_manifest,
+    )
+    create_release_manifest.add_argument("--release-state", required=True)
+    create_release_manifest.add_argument("--publication-result", required=True)
+
+    attach_candidate_manifest = _add_command_parser(
+        subparsers,
+        common,
+        "attach-github-candidate-manifest",
+        help_text="Attach and verify one durable candidate manifest.",
+        handler=commands.run_attach_github_candidate_manifest,
+    )
+    attach_candidate_manifest.add_argument("--candidate-state", required=True)
+    attach_candidate_manifest.add_argument("--candidate-manifest", required=True)
+
+    for command_name, help_text, handler in (
+        (
+            "verify-github-candidate",
+            "Verify one exact GitHub candidate and durable manifest.",
+            commands.run_verify_github_candidate,
+        ),
+        (
+            "finalize-github-candidate",
+            "Apply configured visibility to one verified GitHub candidate.",
+            commands.run_finalize_github_candidate,
+        ),
+    ):
+        candidate_command = _add_command_parser(
+            subparsers,
+            common,
+            command_name,
+            help_text=help_text,
+            handler=handler,
+        )
+        candidate_command.add_argument("--candidate-tag", required=True)
+        candidate_command.add_argument("--candidate-manifest-digest", required=True)
+
     for command_name, help_text, handler in (
         (
             "stage-github-final-release",
@@ -568,6 +681,10 @@ def _register_publication_commands(
     create_final_tag.add_argument(
         "--release-state",
         help="DirectReleaseState JSON for a candidate-free direct release.",
+    )
+    create_final_tag.add_argument(
+        "--promotion-state",
+        help="PromotionState JSON for exact-candidate promotion.",
     )
     create_final_tag.add_argument("version", nargs="?")
 

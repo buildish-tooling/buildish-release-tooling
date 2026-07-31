@@ -20,7 +20,11 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from buildish_release_tooling.release.core.models import ArtifactReference
-from buildish_release_tooling.release.core.state import DirectReleaseState
+from buildish_release_tooling.release.core.state import (
+    CandidateReleaseState,
+    DirectReleaseState,
+    PromotionState,
+)
 from buildish_release_tooling.release.platforms.github.manifests import (
     GitHubAssetIdentity,
     GitHubFinalPublication,
@@ -30,13 +34,19 @@ from buildish_release_tooling.release.platforms.github.selection import asset_re
 from buildish_release_tooling.release.source_artifact import checksum
 
 
-def direct_release_name(state: DirectReleaseState) -> str:
+def direct_release_name(state: DirectReleaseState | PromotionState) -> str:
     """Return the deterministic GitHub title for one direct final release."""
 
     return f"{state.release.component.display_name} {state.release.version}"
 
 
-def _expected_artifacts(state: DirectReleaseState) -> dict[str, ArtifactReference]:
+ReleaseArtifactState = DirectReleaseState | CandidateReleaseState | PromotionState
+FinalReleaseState = DirectReleaseState | PromotionState
+
+
+def expected_release_artifacts(
+    state: ReleaseArtifactState,
+) -> dict[str, ArtifactReference]:
     expected: dict[str, ArtifactReference] = {}
     for artifact in state.artifacts:
         name = artifact.logical_name
@@ -54,12 +64,12 @@ def _expected_artifacts(state: DirectReleaseState) -> dict[str, ArtifactReferenc
 
 
 def validate_local_release_assets(
-    state: DirectReleaseState,
+    state: ReleaseArtifactState,
     asset_paths: Sequence[Path],
 ) -> list[Path]:
     """Validate local upload bytes against the exact direct-release artifact inventory."""
 
-    expected = _expected_artifacts(state)
+    expected = expected_release_artifacts(state)
     supplied: dict[str, Path] = {}
     for asset_path in asset_paths:
         if not asset_path.is_file():
@@ -85,7 +95,7 @@ def validate_local_release_assets(
     return ordered_paths
 
 
-def validate_final_tag(state: DirectReleaseState, tag_target_commit: str | None) -> None:
+def validate_final_tag(state: FinalReleaseState, tag_target_commit: str | None) -> None:
     """Require the immutable final tag to exist at the state's exact source commit."""
 
     if tag_target_commit is None:
@@ -98,7 +108,7 @@ def validate_final_tag(state: DirectReleaseState, tag_target_commit: str | None)
 
 
 def validate_final_release(
-    state: DirectReleaseState,
+    state: FinalReleaseState,
     repository: str,
     release_payload: Mapping[str, object],
     *,
@@ -111,9 +121,9 @@ def validate_final_release(
         release_payload,
         expected_body=expected_body,
     )
-    expected = _expected_artifacts(state)
-    observed = _observed_assets(release_payload)
-    missing = _validate_observed_assets(expected, observed)
+    expected = expected_release_artifacts(state)
+    observed = observed_release_assets(release_payload)
+    missing = validate_observed_release_assets(expected, observed)
     if missing:
         raise ValueError(
             "GitHub final release asset set does not match direct-release state: "
@@ -131,7 +141,7 @@ def validate_final_release(
 
 
 def observe_final_release(
-    state: DirectReleaseState,
+    state: FinalReleaseState,
     repository: str,
     release_payload: Mapping[str, object],
 ) -> GitHubFinalPublication:
@@ -149,7 +159,7 @@ def observe_final_release(
     release_url = asset_release_url(dict(release_payload))
     if not release_url:
         raise ValueError("GitHub final release does not include a release URL")
-    observed = _observed_assets(release_payload)
+    observed = observed_release_assets(release_payload)
     return GitHubFinalPublication(
         repository=repository,
         release_id=release_id,
@@ -162,7 +172,7 @@ def observe_final_release(
 
 
 def missing_final_release_assets(
-    state: DirectReleaseState,
+    state: FinalReleaseState,
     release_payload: Mapping[str, object],
     *,
     expected_body: str,
@@ -170,14 +180,14 @@ def missing_final_release_assets(
     """Validate existing metadata/assets and return only absent expected asset names."""
 
     _validate_release_metadata(state, release_payload, expected_body=expected_body)
-    return _validate_observed_assets(
-        _expected_artifacts(state),
-        _observed_assets(release_payload),
+    return validate_observed_release_assets(
+        expected_release_artifacts(state),
+        observed_release_assets(release_payload),
     )
 
 
 def _validate_release_metadata(
-    state: DirectReleaseState,
+    state: FinalReleaseState,
     release_payload: Mapping[str, object],
     *,
     expected_body: str,
@@ -201,7 +211,7 @@ def _validate_release_metadata(
     return release_id, draft, release_url
 
 
-def _observed_assets(
+def observed_release_assets(
     release_payload: Mapping[str, object],
 ) -> dict[str, GitHubAssetIdentity]:
     observed: dict[str, GitHubAssetIdentity] = {}
@@ -229,7 +239,7 @@ def _observed_assets(
     return observed
 
 
-def _validate_observed_assets(
+def validate_observed_release_assets(
     expected: Mapping[str, ArtifactReference],
     observed: Mapping[str, GitHubAssetIdentity],
 ) -> list[str]:

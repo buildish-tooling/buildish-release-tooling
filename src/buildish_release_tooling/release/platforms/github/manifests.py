@@ -23,6 +23,8 @@ from buildish_release_tooling.docs.documentation import (
     SchemaExportSpecification,
     ToolingDerivedModel,
 )
+from buildish_release_tooling.release.core.manifests import ManifestDigestReference
+from buildish_release_tooling.release.core.models import ArtifactReference, CandidateIdentity
 
 
 class GitHubAssetIdentity(ToolingDerivedModel):
@@ -150,6 +152,103 @@ class PublishGitHubFinalReleaseResult(ToolingDerivedModel):
     )
 
 
+class CreateGitHubCandidateTagResult(ToolingDerivedModel):
+    """Result of creating or revalidating one immutable candidate tag."""
+
+    component: str = Field(description="Released Buildish component identifier.")
+    version: str = Field(description="Exact candidate version.")
+    candidate: CandidateIdentity = Field(description="Exact candidate identity.")
+    source_commit: str = Field(description="Exact commit targeted by the candidate tag.")
+    action: Literal["create-candidate-tag"] = Field(
+        default="create-candidate-tag", description="Command action discriminator."
+    )
+    outcome: Literal["created", "already-complete"] = Field(
+        description="Idempotent tag creation outcome."
+    )
+
+
+class StageGitHubCandidateResult(ToolingDerivedModel):
+    """Result of converging on one exact draft GitHub candidate release."""
+
+    component: str = Field(description="Released Buildish component identifier.")
+    version: str = Field(description="Exact candidate version.")
+    candidate: CandidateIdentity = Field(description="Exact candidate identity.")
+    source_commit: str = Field(description="Exact source commit targeted by the candidate tag.")
+    artifacts: list[ArtifactReference] = Field(
+        default_factory=list, description="Immutable staged candidate artifact inventory."
+    )
+    publication: GitHubCandidatePublication = Field(
+        description="Observed exact GitHub candidate publication state."
+    )
+    action: Literal["stage-github-candidate"] = Field(
+        default="stage-github-candidate", description="Command action discriminator."
+    )
+    outcome: Literal["created", "completed", "already-complete"] = Field(
+        description="Idempotent candidate staging outcome."
+    )
+
+
+class AttachGitHubCandidateManifestResult(ToolingDerivedModel):
+    """Result of attaching one exact durable candidate manifest."""
+
+    component: str = Field(description="Released Buildish component identifier.")
+    version: str = Field(description="Exact candidate version.")
+    candidate: CandidateIdentity = Field(description="Exact candidate identity.")
+    candidate_manifest: ManifestDigestReference = Field(
+        description="Exact attached candidate-manifest identity."
+    )
+    publication: GitHubCandidatePublication = Field(
+        description="Observed GitHub candidate publication including the manifest asset."
+    )
+    action: Literal["attach-github-candidate-manifest"] = Field(
+        default="attach-github-candidate-manifest",
+        description="Command action discriminator.",
+    )
+    outcome: Literal["attached", "already-complete"] = Field(
+        description="Idempotent manifest attachment outcome."
+    )
+
+
+class VerifyGitHubCandidateResult(ToolingDerivedModel):
+    """Result of verifying one exact candidate and durable manifest."""
+
+    component: str = Field(description="Released Buildish component identifier.")
+    version: str = Field(description="Exact candidate version.")
+    candidate: CandidateIdentity = Field(description="Exact candidate identity.")
+    candidate_manifest: ManifestDigestReference = Field(
+        description="Verified candidate-manifest identity."
+    )
+    publication: GitHubCandidatePublication = Field(
+        description="Verified GitHub candidate publication state."
+    )
+    action: Literal["verify-github-candidate"] = Field(
+        default="verify-github-candidate", description="Command action discriminator."
+    )
+    outcome: Literal["verified"] = Field(
+        default="verified", description="Exact-state verification outcome."
+    )
+
+
+class FinalizeGitHubCandidateResult(ToolingDerivedModel):
+    """Result of applying configured visibility to one verified candidate."""
+
+    component: str = Field(description="Released Buildish component identifier.")
+    version: str = Field(description="Exact candidate version.")
+    candidate: CandidateIdentity = Field(description="Exact candidate identity.")
+    candidate_manifest: ManifestDigestReference = Field(
+        description="Verified candidate-manifest identity."
+    )
+    publication: GitHubCandidatePublication = Field(
+        description="Observed finalized GitHub candidate publication state."
+    )
+    action: Literal["finalize-github-candidate"] = Field(
+        default="finalize-github-candidate", description="Command action discriminator."
+    )
+    outcome: Literal["published", "retained-draft", "already-complete"] = Field(
+        description="Idempotent candidate finalization outcome."
+    )
+
+
 def _result_export(filename: str, summary: str) -> SchemaExportSpecification:
     return SchemaExportSpecification(
         filename=filename,
@@ -173,4 +272,24 @@ VerifyGitHubFinalReleaseResult.schema_export = _result_export(
 PublishGitHubFinalReleaseResult.schema_export = _result_export(
     "publish-github-final-release-result.schema.json",
     "Stable publication result for a direct GitHub final release.",
+)
+CreateGitHubCandidateTagResult.schema_export = _result_export(
+    "create-github-candidate-tag-result.schema.json",
+    "Stable result of creating one exact candidate tag.",
+)
+StageGitHubCandidateResult.schema_export = _result_export(
+    "stage-github-candidate-result.schema.json",
+    "Stable result of staging one exact GitHub release candidate.",
+)
+AttachGitHubCandidateManifestResult.schema_export = _result_export(
+    "attach-github-candidate-manifest-result.schema.json",
+    "Stable result of attaching one exact candidate manifest.",
+)
+VerifyGitHubCandidateResult.schema_export = _result_export(
+    "verify-github-candidate-result.schema.json",
+    "Stable verification result for one exact GitHub release candidate.",
+)
+FinalizeGitHubCandidateResult.schema_export = _result_export(
+    "finalize-github-candidate-result.schema.json",
+    "Stable finalization result for one exact GitHub release candidate.",
 )

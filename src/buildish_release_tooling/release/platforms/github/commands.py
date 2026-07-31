@@ -22,13 +22,14 @@ from typing import Literal
 
 from buildish_release_tooling.release.commands._shared import _context, _manifest_path
 from buildish_release_tooling.release.config import require_github_authoritative_publication
-from buildish_release_tooling.release.core.state import DirectReleaseState
+from buildish_release_tooling.release.core.state import DirectReleaseState, PromotionState
 from buildish_release_tooling.release.direct_release import resolve_direct_release_state
 from buildish_release_tooling.release.git_repo import GitRepository
 from buildish_release_tooling.release.manifest import write_manifest
 from buildish_release_tooling.release.platforms.github.checks import resolve_repository_slug
 from buildish_release_tooling.release.platforms.github.direct import (
     direct_release_name,
+    FinalReleaseState,
     missing_final_release_assets,
     observe_final_release,
     validate_final_release,
@@ -58,25 +59,31 @@ from buildish_release_tooling.release.platforms.github.text import (
 from buildish_release_tooling.release.summary import SummaryWriter
 from buildish_release_tooling.shared.parsing import (
     DEFAULT_MANIFEST_PARSE_MAX_BYTES,
-    read_pydantic_json_file_bounded,
+    read_json_object_file_bounded,
 )
 
 
-def _load_direct_state(path_text: str) -> DirectReleaseState:
-    return read_pydantic_json_file_bounded(
-        DirectReleaseState,
-        Path(path_text),
+def _load_final_release_state(path_text: str) -> FinalReleaseState:
+    path = Path(path_text)
+    payload = read_json_object_file_bounded(
+        path,
         max_bytes=DEFAULT_MANIFEST_PARSE_MAX_BYTES,
     )
+    if "candidate_manifest_digest" in payload:
+        return PromotionState.model_validate(payload)
+    return DirectReleaseState.model_validate(payload)
 
 
 def _validated_inputs(
     args: Namespace,
-) -> tuple[DirectReleaseState, GitRepository, str, str]:
+) -> tuple[FinalReleaseState, GitRepository, str, str]:
     context = _context(args)
-    if context.release_config.lifecycle.mode != "direct":
-        raise ValueError("direct GitHub final-release commands require lifecycle.mode direct")
-    state = _load_direct_state(args.release_state)
+    state = _load_final_release_state(args.release_state)
+    expected_lifecycle = "candidate" if isinstance(state, PromotionState) else "direct"
+    if context.release_config.lifecycle.mode != expected_lifecycle:
+        raise ValueError(
+            "final-release state lifecycle does not match release configuration"
+        )
     if state.release.component.id != context.release_config.component.id:
         raise ValueError("direct-release state component does not match release configuration")
     if state.final_tag.name != context.release_config.versioning.final_tag_template.format(
@@ -110,7 +117,7 @@ def _append_result_summary(
     heading: str,
     *,
     outcome: str,
-    state: DirectReleaseState,
+    state: FinalReleaseState,
     repository: str,
     release_url: str,
 ) -> None:

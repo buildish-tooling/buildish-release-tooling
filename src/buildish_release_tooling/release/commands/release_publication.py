@@ -61,7 +61,11 @@ from buildish_release_tooling.release.platforms.github.releases import (
     update_release,
 )
 from buildish_release_tooling.release.manifest import write_manifest
-from buildish_release_tooling.release.core.state import CandidateReleaseState, DirectReleaseState
+from buildish_release_tooling.release.core.state import (
+    CandidateReleaseState,
+    DirectReleaseState,
+    PromotionState,
+)
 from buildish_release_tooling.release.rc_vote_verification import (
     required_rc_vote_manifest_file_names,
     required_source_release_file_names,
@@ -339,24 +343,46 @@ def run_create_final_tag(args: Namespace) -> Path:
     context = _context(args)
     repo = GitRepository.from_current_worktree()
     release_state_path = getattr(args, "release_state", None)
+    promotion_state_path = getattr(args, "promotion_state", None)
+    if release_state_path and promotion_state_path:
+        raise ValueError("use either --release-state or --promotion-state, not both")
+    final_state_path = release_state_path or promotion_state_path
     selected_rc_tag: str | None
-    if release_state_path:
+    if final_state_path:
         if args.version is not None or getattr(args, "selected_rc_tag", None) is not None:
             raise ValueError(
-                "--release-state cannot be combined with version or --selected-rc-tag"
+                "state input cannot be combined with version or --selected-rc-tag"
             )
-        if context.release_config.lifecycle.mode != "direct":
-            raise ValueError("--release-state final-tag creation requires lifecycle.mode direct")
-        direct_state = read_pydantic_json_file_bounded(
-            DirectReleaseState,
-            Path(release_state_path),
-            max_bytes=DEFAULT_MANIFEST_PARSE_MAX_BYTES,
-        )
-        if direct_state.release.component.id != context.release_config.component.id:
-            raise ValueError("direct-release state component does not match release configuration")
-        version = direct_state.release.version
-        final_tag = direct_state.final_tag.name
-        target_commit = direct_state.source.commit_sha
+        if promotion_state_path:
+            promotion_state = read_pydantic_json_file_bounded(
+                PromotionState,
+                Path(promotion_state_path),
+                max_bytes=DEFAULT_MANIFEST_PARSE_MAX_BYTES,
+            )
+            final_state: DirectReleaseState | PromotionState = promotion_state
+            if context.release_config.lifecycle.mode != "candidate":
+                raise ValueError(
+                    "--promotion-state final-tag creation requires lifecycle.mode candidate"
+                )
+            selected_rc_tag = promotion_state.candidate.tag.name
+        else:
+            if release_state_path is None:
+                raise ValueError("missing direct release state path")
+            final_state = read_pydantic_json_file_bounded(
+                DirectReleaseState,
+                Path(release_state_path),
+                max_bytes=DEFAULT_MANIFEST_PARSE_MAX_BYTES,
+            )
+            if context.release_config.lifecycle.mode != "direct":
+                raise ValueError(
+                    "--release-state final-tag creation requires lifecycle.mode direct"
+                )
+            selected_rc_tag = None
+        if final_state.release.component.id != context.release_config.component.id:
+            raise ValueError("final-release state component does not match release configuration")
+        version = final_state.release.version
+        final_tag = final_state.final_tag.name
+        target_commit = final_state.source.commit_sha
         expected_final_tag = context.release_config.versioning.final_tag_template.format(
             version=version
         )
@@ -364,9 +390,8 @@ def run_create_final_tag(args: Namespace) -> Path:
             raise ValueError(
                 "direct-release state final tag does not match release configuration"
             )
-        if direct_state.final_tag.target_commit != target_commit:
-            raise ValueError("direct-release final tag does not target its source commit")
-        selected_rc_tag = None
+        if final_state.final_tag.target_commit != target_commit:
+            raise ValueError("final-release tag does not target its source commit")
         target = require_github_authoritative_publication(context.release_config)
         repository_slug = target.repository or _repository_slug_or_none(repo)
     else:
@@ -393,7 +418,7 @@ def run_create_final_tag(args: Namespace) -> Path:
         message=final_tag_message,
         allow_update=False,
     )
-    if release_state_path and not repo.tag_exists(final_tag):
+    if final_state_path and not repo.tag_exists(final_tag):
         repo.create_annotated_tag(final_tag, target_commit, final_tag_message)
     manifest_path = _manifest_path(
         context.release_config.component.id, "create-final-tag"

@@ -34,6 +34,7 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [AsfReleaseProfileConfig](#asfreleaseprofileconfig) — ASF project policy and trusted release infrastructure.
 - [AsfVoteExtension](#asfvoteextension) — ASF-specific vote rendering, trust-root, and disclaimer evidence.
 - [AsfVoteMaterialsConfig](#asfvotematerialsconfig) — ASF candidate vote-material rendering policy.
+- [AttachGitHubCandidateManifestResult](#attachgithubcandidatemanifestresult) — Result of attaching one exact durable candidate manifest.
 - [AuthenticityReference](#authenticityreference) — Optional signature or attestation reference for a manifest or vote package.
 - [BuiltSourceSnapshotConfig](#builtsourcesnapshotconfig) — Policy for a separately built source archive release asset.
 - [ByteIdenticalPromotionEvidence](#byteidenticalpromotionevidence) — Evidence that candidate and final artifact bytes have identical digests.
@@ -45,9 +46,11 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [CommandContext](#commandcontext) — Common runtime context passed into command handlers.
 - [ComponentIdentity](#componentidentity) — Stable machine and human identity of one released component.
 - [ComponentIdentityConfig](#componentidentityconfig) — Stable machine and human identities for one released component.
+- [CreateGitHubCandidateTagResult](#creategithubcandidatetagresult) — Result of creating or revalidating one immutable candidate tag.
 - [DirectLifecycleConfig](#directlifecycleconfig) — Release lifecycle that publishes a final release without a candidate.
 - [DirectReleaseState](#directreleasestate) — Exact source and final-tag state for a direct release.
 - [DockerHubPublicationConfig](#dockerhubpublicationconfig) — Secondary publication to Docker Hub.
+- [FinalizeGitHubCandidateResult](#finalizegithubcandidateresult) — Result of applying configured visibility to one verified candidate.
 - [GenericVoteMaterialsConfig](#genericvotematerialsconfig) — Project-neutral vote-material rendering policy.
 - [GitHubActionPublicationConfig](#githubactionpublicationconfig) — Secondary publication of immutable and moving GitHub Action refs.
 - [GitHubAssetIdentity](#githubassetidentity) — Immutable observed identity of one GitHub Release asset.
@@ -76,11 +79,13 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [SourceChecksConfig](#sourcechecksconfig) — Checks required for an exact source revision before artifact production.
 - [SourceConfig](#sourceconfig) — Source-selection, source-check, and snapshot policy.
 - [SourceRevision](#sourcerevision) — Exact source repository revision selected for a release.
+- [StageGitHubCandidateResult](#stagegithubcandidateresult) — Result of converging on one exact draft GitHub candidate release.
 - [StageGitHubFinalReleaseResult](#stagegithubfinalreleaseresult) — Result of converging on one exact draft GitHub final release.
 - [TagIdentity](#tagidentity) — Immutable identity of one Git tag and its exact target commit.
 - [TagPolicyConfig](#tagpolicyconfig) — Immutable-tag materialization and optional moving-tag policy.
 - [ToolingInvocationProvenance](#toolinginvocationprovenance) — Provider-neutral tooling revision and invocation metadata.
 - [VerificationResultReference](#verificationresultreference) — Reference to one machine-readable verification result.
+- [VerifyGitHubCandidateResult](#verifygithubcandidateresult) — Result of verifying one exact candidate and durable manifest.
 - [VerifyGitHubFinalReleaseResult](#verifygithubfinalreleaseresult) — Result of verifying one GitHub final release against direct-release state.
 - [VerifyRcBuildConfig](#verifyrcbuildconfig) — Host-direct rebuild recipe configuration for one reproducibility profile.
 - [VerifyRcBuildOverrideConfig](#verifyrcbuildoverrideconfig) — Local non-canonical rebuild overrides for one reproducibility profile.
@@ -242,6 +247,28 @@ ASF candidate vote-material rendering policy.
 | <a id="asfvotematerialsconfig-release-name"></a>`release_name` | str | yes | Human-facing release name used in ASF vote text. |
 | <a id="asfvotematerialsconfig-verification-guide-url"></a>`verification_guide_url` | str | yes | User-facing release verification guide URL. |
 | <a id="asfvotematerialsconfig-instructions"></a>`instructions` | str | yes | Human-facing verification instructions for the exact candidate. |
+
+<a id="attachgithubcandidatemanifestresult"></a>
+### AttachGitHubCandidateManifestResult
+
+Result of attaching one exact durable candidate manifest.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`attach-github-candidate-manifest-result.schema.json`](/components/release-tooling/schemas/attach-github-candidate-manifest-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="attachgithubcandidatemanifestresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="attachgithubcandidatemanifestresult-version"></a>`version` | <class 'str'> | yes | Exact candidate version. |
+| <a id="attachgithubcandidatemanifestresult-candidate"></a>`candidate` | <class 'buildish_release_tooling.release.core.models.[CandidateIdentity](#candidateidentity)'> | yes | Exact candidate identity. |
+| <a id="attachgithubcandidatemanifestresult-candidate-manifest"></a>`candidate_manifest` | <class 'buildish_release_tooling.release.core.manifests.[ManifestDigestReference](#manifestdigestreference)'> | yes | Exact attached candidate-manifest identity. |
+| <a id="attachgithubcandidatemanifestresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubCandidatePublication](#githubcandidatepublication)'> | yes | Observed GitHub candidate publication including the manifest asset. |
+| <a id="attachgithubcandidatemanifestresult-action"></a>`action` | typing.Literal['attach-github-candidate-manifest'] | no | Command action discriminator. |
+| <a id="attachgithubcandidatemanifestresult-outcome"></a>`outcome` | typing.Literal['attached', 'already-complete'] | yes | Idempotent manifest attachment outcome. |
 
 <a id="authenticityreference"></a>
 ### AuthenticityReference
@@ -434,6 +461,27 @@ Stable machine and human identities for one released component.
 | <a id="componentidentityconfig-id"></a>`id` | str | yes | Stable machine identifier used in release state and manifests. |
 | <a id="componentidentityconfig-display-name"></a>`display_name` | str | yes | Human-facing component name used in release text. |
 
+<a id="creategithubcandidatetagresult"></a>
+### CreateGitHubCandidateTagResult
+
+Result of creating or revalidating one immutable candidate tag.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`create-github-candidate-tag-result.schema.json`](/components/release-tooling/schemas/create-github-candidate-tag-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="creategithubcandidatetagresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="creategithubcandidatetagresult-version"></a>`version` | <class 'str'> | yes | Exact candidate version. |
+| <a id="creategithubcandidatetagresult-candidate"></a>`candidate` | <class 'buildish_release_tooling.release.core.models.[CandidateIdentity](#candidateidentity)'> | yes | Exact candidate identity. |
+| <a id="creategithubcandidatetagresult-source-commit"></a>`source_commit` | <class 'str'> | yes | Exact commit targeted by the candidate tag. |
+| <a id="creategithubcandidatetagresult-action"></a>`action` | typing.Literal['create-candidate-tag'] | no | Command action discriminator. |
+| <a id="creategithubcandidatetagresult-outcome"></a>`outcome` | typing.Literal['created', 'already-complete'] | yes | Idempotent tag creation outcome. |
+
 <a id="directlifecycleconfig"></a>
 ### DirectLifecycleConfig
 
@@ -483,6 +531,28 @@ Secondary publication to Docker Hub.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | <a id="dockerhubpublicationconfig-kind"></a>`kind` | Literal['dockerhub'] | no | Secondary publication target discriminator. |
+
+<a id="finalizegithubcandidateresult"></a>
+### FinalizeGitHubCandidateResult
+
+Result of applying configured visibility to one verified candidate.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`finalize-github-candidate-result.schema.json`](/components/release-tooling/schemas/finalize-github-candidate-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="finalizegithubcandidateresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="finalizegithubcandidateresult-version"></a>`version` | <class 'str'> | yes | Exact candidate version. |
+| <a id="finalizegithubcandidateresult-candidate"></a>`candidate` | <class 'buildish_release_tooling.release.core.models.[CandidateIdentity](#candidateidentity)'> | yes | Exact candidate identity. |
+| <a id="finalizegithubcandidateresult-candidate-manifest"></a>`candidate_manifest` | <class 'buildish_release_tooling.release.core.manifests.[ManifestDigestReference](#manifestdigestreference)'> | yes | Verified candidate-manifest identity. |
+| <a id="finalizegithubcandidateresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubCandidatePublication](#githubcandidatepublication)'> | yes | Observed finalized GitHub candidate publication state. |
+| <a id="finalizegithubcandidateresult-action"></a>`action` | typing.Literal['finalize-github-candidate'] | no | Command action discriminator. |
+| <a id="finalizegithubcandidateresult-outcome"></a>`outcome` | typing.Literal['published', 'retained-draft', 'already-complete'] | yes | Idempotent candidate finalization outcome. |
 
 <a id="genericvotematerialsconfig"></a>
 ### GenericVoteMaterialsConfig
@@ -952,6 +1022,29 @@ Exact source repository revision selected for a release.
 | <a id="sourcerevision-commit-sha"></a>`commit_sha` | str | yes | Exact source commit identifier. |
 | <a id="sourcerevision-source-ref"></a>`source_ref` | str | no | Optional authored or resolved source ref that selected the commit. |
 
+<a id="stagegithubcandidateresult"></a>
+### StageGitHubCandidateResult
+
+Result of converging on one exact draft GitHub candidate release.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`stage-github-candidate-result.schema.json`](/components/release-tooling/schemas/stage-github-candidate-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="stagegithubcandidateresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="stagegithubcandidateresult-version"></a>`version` | <class 'str'> | yes | Exact candidate version. |
+| <a id="stagegithubcandidateresult-candidate"></a>`candidate` | <class 'buildish_release_tooling.release.core.models.[CandidateIdentity](#candidateidentity)'> | yes | Exact candidate identity. |
+| <a id="stagegithubcandidateresult-source-commit"></a>`source_commit` | <class 'str'> | yes | Exact source commit targeted by the candidate tag. |
+| <a id="stagegithubcandidateresult-artifacts"></a>`artifacts` | list[buildish_release_tooling.release.core.models.[ArtifactReference](#artifactreference)] | no | Immutable staged candidate artifact inventory. |
+| <a id="stagegithubcandidateresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubCandidatePublication](#githubcandidatepublication)'> | yes | Observed exact GitHub candidate publication state. |
+| <a id="stagegithubcandidateresult-action"></a>`action` | typing.Literal['stage-github-candidate'] | no | Command action discriminator. |
+| <a id="stagegithubcandidateresult-outcome"></a>`outcome` | typing.Literal['created', 'completed', 'already-complete'] | yes | Idempotent candidate staging outcome. |
+
 <a id="stagegithubfinalreleaseresult"></a>
 ### StageGitHubFinalReleaseResult
 
@@ -1032,6 +1125,28 @@ Reference to one machine-readable verification result.
 | <a id="verificationresultreference-kind"></a>`kind` | str | yes | Verification result kind. |
 | <a id="verificationresultreference-uri"></a>`uri` | str | yes | URI of the verification result. |
 | <a id="verificationresultreference-digest"></a>`digest` | str | no | Optional result document digest. |
+
+<a id="verifygithubcandidateresult"></a>
+### VerifyGitHubCandidateResult
+
+Result of verifying one exact candidate and durable manifest.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`verify-github-candidate-result.schema.json`](/components/release-tooling/schemas/verify-github-candidate-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifygithubcandidateresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="verifygithubcandidateresult-version"></a>`version` | <class 'str'> | yes | Exact candidate version. |
+| <a id="verifygithubcandidateresult-candidate"></a>`candidate` | <class 'buildish_release_tooling.release.core.models.[CandidateIdentity](#candidateidentity)'> | yes | Exact candidate identity. |
+| <a id="verifygithubcandidateresult-candidate-manifest"></a>`candidate_manifest` | <class 'buildish_release_tooling.release.core.manifests.[ManifestDigestReference](#manifestdigestreference)'> | yes | Verified candidate-manifest identity. |
+| <a id="verifygithubcandidateresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubCandidatePublication](#githubcandidatepublication)'> | yes | Verified GitHub candidate publication state. |
+| <a id="verifygithubcandidateresult-action"></a>`action` | typing.Literal['verify-github-candidate'] | no | Command action discriminator. |
+| <a id="verifygithubcandidateresult-outcome"></a>`outcome` | typing.Literal['verified'] | no | Exact-state verification outcome. |
 
 <a id="verifygithubfinalreleaseresult"></a>
 ### VerifyGitHubFinalReleaseResult

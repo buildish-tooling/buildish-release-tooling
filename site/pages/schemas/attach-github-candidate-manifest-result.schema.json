@@ -1,0 +1,344 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "CandidateIdentity": {
+      "additionalProperties": false,
+      "description": "Deterministic identity of one exact release candidate.",
+      "properties": {
+        "label": {
+          "description": "Candidate series label.",
+          "title": "Label",
+          "type": "string"
+        },
+        "number": {
+          "description": "Candidate sequence number.",
+          "minimum": 0,
+          "title": "Number",
+          "type": "integer"
+        },
+        "release": {
+          "$ref": "#/$defs/ReleaseIdentity",
+          "description": "Release version proposed by the candidate."
+        },
+        "stable_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Deterministic candidate identifier independent of provider object IDs.",
+          "title": "Stable Id"
+        },
+        "tag": {
+          "$ref": "#/$defs/TagIdentity",
+          "description": "Exact immutable candidate tag."
+        }
+      },
+      "required": [
+        "release",
+        "label",
+        "number",
+        "tag"
+      ],
+      "title": "CandidateIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "ComponentIdentity": {
+      "additionalProperties": false,
+      "description": "Stable machine and human identity of one released component.",
+      "properties": {
+        "display_name": {
+          "description": "Human-facing component name.",
+          "title": "Display Name",
+          "type": "string"
+        },
+        "id": {
+          "description": "Stable machine identifier of the component.",
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "display_name"
+      ],
+      "title": "ComponentIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "GitHubAssetIdentity": {
+      "additionalProperties": false,
+      "description": "Immutable observed identity of one GitHub Release asset.",
+      "properties": {
+        "asset_id": {
+          "description": "GitHub-issued numeric asset identifier.",
+          "minimum": 1,
+          "title": "Asset Id",
+          "type": "integer"
+        },
+        "digest": {
+          "description": "GitHub-observed SHA-256 asset digest.",
+          "title": "Digest",
+          "type": "string"
+        },
+        "name": {
+          "description": "GitHub Release asset filename.",
+          "title": "Name",
+          "type": "string"
+        },
+        "size_bytes": {
+          "description": "GitHub-observed release asset size in bytes.",
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "asset_id",
+        "size_bytes",
+        "digest"
+      ],
+      "title": "GitHubAssetIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "GitHubCandidatePublication": {
+      "additionalProperties": false,
+      "description": "GitHub Release publication evidence for one exact candidate.",
+      "properties": {
+        "assets": {
+          "description": "Observed candidate asset identities.",
+          "items": {
+            "$ref": "#/$defs/GitHubAssetIdentity"
+          },
+          "title": "Assets",
+          "type": "array"
+        },
+        "draft": {
+          "description": "Whether GitHub reports the release as a draft.",
+          "title": "Draft",
+          "type": "boolean"
+        },
+        "kind": {
+          "const": "github-candidate-publication",
+          "default": "github-candidate-publication",
+          "description": "Extension discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "prerelease": {
+          "description": "Whether GitHub reports a pre-release.",
+          "title": "Prerelease",
+          "type": "boolean"
+        },
+        "release_id": {
+          "description": "GitHub Release numeric identifier.",
+          "minimum": 1,
+          "title": "Release Id",
+          "type": "integer"
+        },
+        "release_url": {
+          "description": "User-facing GitHub Release URL.",
+          "title": "Release Url",
+          "type": "string"
+        },
+        "repository": {
+          "description": "GitHub repository in owner/name form.",
+          "title": "Repository",
+          "type": "string"
+        },
+        "tag": {
+          "description": "Exact candidate tag attached to the release.",
+          "title": "Tag",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository",
+        "release_id",
+        "release_url",
+        "tag",
+        "draft",
+        "prerelease"
+      ],
+      "title": "GitHubCandidatePublication",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ManifestDigestReference": {
+      "additionalProperties": false,
+      "description": "URI and cryptographic digest binding one exact manifest document.",
+      "properties": {
+        "algorithm": {
+          "default": "sha256",
+          "description": "Digest algorithm.",
+          "enum": [
+            "sha256",
+            "sha512"
+          ],
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "digest": {
+          "description": "Lowercase hexadecimal manifest digest.",
+          "title": "Digest",
+          "type": "string"
+        },
+        "uri": {
+          "description": "URI of the exact manifest document.",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "uri",
+        "digest"
+      ],
+      "title": "ManifestDigestReference",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ReleaseIdentity": {
+      "additionalProperties": false,
+      "description": "Stable identity of one component version.",
+      "properties": {
+        "component": {
+          "$ref": "#/$defs/ComponentIdentity",
+          "description": "Released component identity."
+        },
+        "version": {
+          "description": "Exact component version.",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "version"
+      ],
+      "title": "ReleaseIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "TagIdentity": {
+      "additionalProperties": false,
+      "description": "Immutable identity of one Git tag and its exact target commit.",
+      "properties": {
+        "name": {
+          "description": "Exact tag name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "purpose": {
+          "description": "Provider-neutral purpose of the tag.",
+          "enum": [
+            "candidate",
+            "final",
+            "moving-alias"
+          ],
+          "title": "Purpose",
+          "type": "string"
+        },
+        "target_commit": {
+          "description": "Exact commit targeted by the tag.",
+          "title": "Target Commit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "target_commit",
+        "purpose"
+      ],
+      "title": "TagIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    }
+  },
+  "$id": "https://buildish.org/components/release-tooling/schemas/attach-github-candidate-manifest-result.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Result of attaching one exact durable candidate manifest.",
+  "properties": {
+    "action": {
+      "const": "attach-github-candidate-manifest",
+      "default": "attach-github-candidate-manifest",
+      "description": "Command action discriminator.",
+      "title": "Action",
+      "type": "string"
+    },
+    "candidate": {
+      "$ref": "#/$defs/CandidateIdentity",
+      "description": "Exact candidate identity."
+    },
+    "candidate_manifest": {
+      "$ref": "#/$defs/ManifestDigestReference",
+      "description": "Exact attached candidate-manifest identity."
+    },
+    "component": {
+      "description": "Released Buildish component identifier.",
+      "title": "Component",
+      "type": "string"
+    },
+    "outcome": {
+      "description": "Idempotent manifest attachment outcome.",
+      "enum": [
+        "attached",
+        "already-complete"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "publication": {
+      "$ref": "#/$defs/GitHubCandidatePublication",
+      "description": "Observed GitHub candidate publication including the manifest asset."
+    },
+    "version": {
+      "description": "Exact candidate version.",
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "version",
+    "candidate",
+    "candidate_manifest",
+    "publication",
+    "outcome"
+  ],
+  "title": "Buildish Release Tooling AttachGitHubCandidateManifestResult",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Stable result of attaching one exact candidate manifest."
+  }
+}

@@ -29,6 +29,13 @@ from buildish_release_tooling.release.commands.materialization import (
     run_create_rc_materialization_tag,
     run_materialize_rc_git_content,
 )
+from buildish_release_tooling.release.commands.lifecycle import (
+    run_create_candidate_manifest,
+    run_create_release_manifest,
+    run_create_vote_package,
+    run_resolve_candidate,
+    run_resolve_promotion,
+)
 from buildish_release_tooling.release.commands.rc_preparation import (
     run_build_source_rc,
     run_cleanup_dev_svn_rcs,
@@ -63,16 +70,29 @@ from buildish_release_tooling.release.platforms.github.commands import (
     run_stage_github_final_release,
     run_verify_github_final_release,
 )
+from buildish_release_tooling.release.platforms.github.candidate_commands import (
+    run_attach_github_candidate_manifest,
+    run_create_candidate_tag,
+    run_finalize_github_candidate,
+    run_stage_github_candidate,
+    run_verify_github_candidate,
+)
 
 __all__ = [
     "run_attach_github_release_assets",
+    "run_attach_github_candidate_manifest",
     "run_build_source_rc",
     "run_cleanup_dev_svn_rcs",
     "run_create_final_tag",
+    "run_create_candidate_manifest",
+    "run_create_release_manifest",
+    "run_create_vote_package",
+    "run_create_candidate_tag",
     "run_create_rc_materialization_tag",
     "run_create_release_branch",
     "run_create_source_artifact",
     "run_finalize_draft_github_release",
+    "run_finalize_github_candidate",
     "run_finalize_rc_vote_materials",
     "run_inspect_repro",
     "run_materialize_rc_git_content",
@@ -86,12 +106,16 @@ __all__ = [
     "run_read_github_final_release",
     "run_release_version",
     "run_resolve_direct_release",
+    "run_resolve_candidate",
+    "run_resolve_promotion",
     "run_report_atr_checks",
     "run_sync_draft_github_release",
     "run_stage_github_final_release",
+    "run_stage_github_candidate",
     "run_update_moving_image_aliases",
     "run_update_moving_tags",
     "run_verify_rc",
     "run_verify_github_final_release",
+    "run_verify_github_candidate",
     "run_verify_source_ref_checks",
 ]
