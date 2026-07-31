@@ -1,6 +1,6 @@
 ---
 title: Codebase Layout
-description: "Guide to the production Python package and where each release-tooling responsibility lives."
+description: "Maintainer guide to core release logic, adapters, commands, verification, and the workflow harness."
 weight: 100
 ---
 
@@ -22,119 +22,69 @@ limitations under the License.
 
 # Production Source Tree
 
-This page maps the production Python code in `src/buildish_release_tooling/`.
+Production release code lives in `src/buildish_release_tooling/release/`. The CLI and documented
+file contracts are supported integration surfaces; Python module paths are internal.
 
-The package is organized around one rule:
+## Provider-neutral core
 
-- the CLI is the supported external contract
-- the Python module layout is internal implementation detail
-- modules should stay focused on one release concern at a time
+- `core/config.py` defines component identity, source policy, lifecycle, candidate policy,
+  artifacts, signing, publication composition, and tags.
+- `core/models.py`, `core/state.py`, and `core/naming.py` derive provider-neutral release identity
+  and state.
+- `core/manifests.py` defines manifest references and promotion evidence.
+- `direct_release.py`, `candidate_release.py`, and `manifests.py` define stable lifecycle state and
+  top-level manifests.
 
-## Entry points and command flow
+Foundation or hosting-provider fields must not be added to these modules merely because the first
+implementation needs them. Use an explicit adapter and typed extension point.
 
-- `release/__main__.py`: Python module entrypoint for `python -m buildish_release_tooling.release`
-- `release/cli.py`: argparse command registration and argument normalization
-- `release/commands/`: command handlers plus command-local orchestration helpers grouped by workflow family
+## Hosting platforms and foundations
 
-The `release/commands/` package is intentionally the orchestration layer. It should decide:
+- `platforms/github/` contains GitHub config, API models, refs, Releases, checks, text, lifecycle
+  helpers, and commands.
+- `foundations/asf/` contains ASF-named config, dist behavior, and manifests.
+- `signing/openpgp.py` contains the OpenPGP implementation independently of any foundation.
 
-- which repo state to load
-- which external adapters to call
-- which manifest and summary files to write
+A future GitLab or Forgejo implementation belongs under `platforms/`. A future foundation policy
+belongs under `foundations/`. Core orchestration may depend on an adapter interface or typed union,
+but must not silently adopt one adapter's vocabulary.
 
-It should not absorb low-level protocol details that belong in a dedicated adapter module.
+## CLI orchestration
 
-## Configuration and shared models
+- `cli.py` registers commands and normalizes arguments.
+- `commands/lifecycle.py` resolves direct, candidate, and promotion state.
+- `commands/release_publication.py` and `commands/rc_preparation.py` orchestrate bounded release
+  steps.
+- `commands/vote_materials.py` creates optional vote packages.
+- `commands/artifact_registration.py` and `artifact_registration/` handle typed secondary
+  artifacts.
+- `command_manifests.py`, `manifest.py`, and `summary.py` write machine and human outputs.
 
-- `config.py`: loads `release-config.yaml` and validates secure/non-production target rules
-- `models.py`: pydantic models for component policy and derived command state
-- `contracts.py`: buildish-owned JSON contract models for manifests, reports, and inspection bundles
-- `prepare_rc_state.py`: derives the authoritative RC state from config, Git refs, and version input
-- `release_state.py`: pure version, tag, release-line, and pruning logic
+Commands should remain independently composable. They may create or revalidate one bounded unit of
+external state, but workflow policy and approval sequencing belong in component-owned workflows.
 
-If a behavior is mostly deterministic data derivation and does not need I/O, it should usually
-land in `prepare_rc_state.py` or `release_state.py` instead of in one of the command handlers.
+## Verification
 
-The contract-modeling rule is:
+`verification/` implements signed-source, secondary-artifact, reproducibility, inspection-bundle,
+and report contracts. Artifact-kind implementations are split between `artifact_registration/kinds/`
+and `verification/secondary/`; reproduction diagnosis lives under `verification/inspection/`.
 
-- buildish-owned persisted or boundary data uses pydantic models
-- internal structured helper state uses dataclasses or typed partial-reader models
-- raw `dict[str, Any]` payloads are kept only at explicit external or tolerant-input boundaries, and should stay narrowly isolated
+Provider-specific release verification remains with its adapter. Generic manifest and promotion
+evidence remains in the core.
 
-## External system adapters
+## Harness
 
-- `git_repo.py`: local Git worktree operations
-- `asf_svn.py`: SVN URL and working-copy operations
-- `github_checks.py`: GitHub check-run and commit-status policy
-- `github_git_refs.py`: low-level GitHub Git ref and annotated-tag API calls
-- `github_releases.py`: draft/final GitHub Release API calls and asset upload/download helpers
-- `gpg_signing.py`: detached signing and private-key import
-- `dockerhub.py`: Docker Hub moving-alias publication
-- `process.py`: subprocess execution and normalized command errors
-- `command_logging.py`: redacted command rendering for logs and failures
+`src/buildish_release_tooling/harness/` is a test-only workflow simulator. It runs synthetic scenarios
+or checked-in GitHub workflows through `act`, using local shims and inspectable workspace state for
+external mutations. It is validation evidence for workflow shape and command composition, not a
+production release backend and not proof of GitHub Environment settings.
 
-These modules exist to keep credentials, CLI flags, and protocol rules out of higher-level release
-logic. New integration code should usually start in one of these adapters.
+## Placement rules
 
-## Release artifacts and human-facing output
-
-- `source_artifact.py`: reproducible source archive creation and checksum helpers
-- `rc_vote_manifest.py`: authoritative RC vote manifest structure plus staged-artifact readers
-- `manifest.py`: JSON manifest writing used by most commands
-- `summary.py`: Markdown step-summary helpers
-- `email_templates.py`: vote-result, vote-request, and announce email rendering
-
-The release flow has two output classes:
-
-- machine-consumed manifests in JSON
-- human-consumed summaries, emails, signatures, and checksums
-
-Keeping those concerns in dedicated modules helps command handlers stay readable.
-
-## Harness package
-
-The `harness/` package is a local workflow simulator used by tests and release-playbook reviews.
-
-- `harness/cli.py` and `harness/__main__.py`: harness CLI entrypoints
-- `harness/config.py`: checked-in harness config plus local override support
-- `harness/models.py`: scenario, repository, and workspace model types
-- `harness/runtime.py`: shared workspace layout, disposable checkout creation, and generic runtime helpers
-- `harness/backends/custom.py`: simple local-exec backend for synthetic shell scenarios
-- `harness/backends/act/`: `act`-driven GitHub Actions simulation backend
-- `harness/uv_shim.py`: shared `uv` shim rendering used by both harness backends
-- `harness/scenario.py`: scenario file loading
-- `harness/shim_entrypoint.py`: Python entrypoint for shell-tool shims
-- `harness/backend.py`, `harness/backends/`, and `harness/errors.py`: backend dispatch, interface, and user-facing harness errors
-
-Shared shell-shim behavior should prefer `harness/uv_shim.py` or another helper instead of being
-copied into both backends.
-
-## Practical placement rules
-
-- Add new CLI flags in `release/cli.py` and consume them in the relevant `release/commands/` module.
-- Add new release-state derivation in `prepare_rc_state.py` or `release_state.py` when possible.
-- Add new external API or CLI interaction in the corresponding adapter module.
-- Add new manifest or summary formatting in `manifest.py`, `summary.py`, or `email_templates.py`.
-- Add new harness-only behavior under `harness/`, not in the production CLI modules.
-
-When in doubt, prefer a new helper module over growing one command module or one harness backend
-with another protocol-specific block.
-
-## Adding artifact kinds
-
-New secondary-artifact or reproducibility kinds should follow the existing contract pattern:
-
-- add strict emitted contract models in `release/contracts.py`
-- add tolerant read-side models only where malformed or forward-compatible input handling is needed
-- add verifier logic under `release/verification/secondary/`
-- add `inspect-repro` logic under `release/verification/inspection/` only when the built-in diagnosis
-  needs kind-specific behavior
-
-Keep the supported report and bundle contract stable while doing that:
-
-- additive per-kind fields under schema version `1` are fine when they do not change existing field
-  meanings
-- incompatible machine-readable changes require a new schema version
-- update `docs/verification-contracts.md` in the same change
-- add or update golden-shape tests for emitted report and bundle outputs
-- add malformed-input coverage for the new tolerant readers
+- Put deterministic identity and lifecycle rules in `core/`.
+- Put GitHub, GitLab, Forgejo, or another host's protocol and data under `platforms/<provider>/`.
+- Put ASF or another foundation's policy-specific fields and operations under
+  `foundations/<foundation>/` with explicit type names and discriminator values.
+- Put credentials in runtime integration, never authored config values.
+- Add CLI flags in `cli.py` and bounded orchestration in the relevant `commands/` module.
+- Update schemas, public contract docs, and tests together when a supported file contract changes.

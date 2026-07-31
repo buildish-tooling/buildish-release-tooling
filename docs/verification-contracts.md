@@ -1,7 +1,7 @@
 ---
-title: Verification Report and Bundle Contract
-description: "Supported machine-readable contract for verify-rc reports, inspection bundles, and inspect-repro JSON output."
-weight: 110
+title: Manifests And Verification
+description: "Stable candidate, vote-package, release, and optional reproducibility contracts."
+weight: 70
 ---
 
 <!--
@@ -20,243 +20,100 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# Verification Report and Bundle Contract
+# Manifests And Verification
 
-This page defines the supported machine-readable contract for:
+Release Tooling uses typed JSON documents to bind independently executable workflow phases. A
+manifest is evidence about an exact release object; it is not evidence that a governance vote or
+approval succeeded.
 
-- `verify-rc` JSON reports
-- curated `verify-rc` inspection bundles
-- `inspect-repro --json` output
+## Stable lifecycle manifests
 
-The current supported schema version for all three is `1`.
+`CandidateManifestV1` records:
 
-## Compatibility policy
+- candidate identity and immutable tag;
+- exact source revision;
+- declared artifact names, sizes, and digests;
+- platform publication records;
+- verification evidence and tooling provenance.
 
-- `schema_version: "1"` in `verify-rc` reports is a supported contract.
-- `inspection_bundle.bundle_schema_version: "1"` plus the bundle manifest
-  `inspection-bundle.json` is a supported contract.
-- `schema_version: "1"` in `inspect-repro --json` output is a supported contract.
-- Future incompatible changes must use a new explicit schema version rather than silently mutating
-  the existing structure.
-- `inspect-repro` remains backward-tolerant for older pre-contract reports that only recorded
-  `inspection_bundle.relative_path_from_report`.
+The GitHub candidate workflow attaches the exact document as `candidate-manifest.json`. Its SHA-256
+is the cross-run selection handle used by independent verification, external approval systems, and
+promotion.
 
-## `verify-rc` report JSON
+`VotePackageV1` optionally binds rendered opening and result material to one candidate-manifest
+digest. The selected `generic` or `asf` profile must match authored config. The package intentionally
+contains no vote outcome.
 
-Top-level required structure:
+`ReleaseManifestV1` records the final release. A direct release has no promoted-candidate reference.
+A promoted release identifies the exact candidate manifest and includes typed evidence for each
+promoted artifact:
 
-```json
-{
-  "schema_version": "1",
-  "report_type": "verify-rc",
-  "manifest_url": "...",
-  "keys_url": "...",
-  "verdict": "verified|failed|warning",
-  "work_dir": "...",
-  "manifest_verification": { "...": "..." },
-  "source_artifact_verification": { "...": "..." },
-  "reproducibility_execution": { "...": "..." },
-  "secondary_artifact_verifications": []
-}
-```
+- `byte-identical` for files with identical digest sets;
+- `registry-identity` for an unchanged immutable package or image identity;
+- `same-source-revision` for hosting-platform snapshots generated from candidate and final tags at
+  the same commit.
 
-Top-level fields currently emitted:
+The generated field-by-field contracts are in the [Reference](../reference/).
 
-- `schema_version`
-- `report_type`
-- `component_id`
-- `version`
-- `rc_tag`
-- `source_commit_sha`
-- `source_date_epoch`
-- `source_repository_url`
-- `manifest_url`
-- `keys_url`
-- `verdict`
-- `work_dir`
-- `failures`
-- `manifest_verification`
-- `source_artifact_verification`
-- `reproducibility_execution`
-- `inspection_bundle`
-- `secondary_artifact_verifications`
+## GitHub candidate verification
 
-Important nested structures:
+`verify-github-candidate` accepts the exact candidate tag and expected lowercase SHA-256. It
+downloads `candidate-manifest.json` from that release and verifies:
 
-- `manifest_verification` records manifest checksum, signature, KEYS, and trust-root results.
-- `source_artifact_verification` records staged source-artifact verification and, when attempted,
-  structured source reproducibility details.
-- `secondary_artifact_verifications` contains one typed verification record per declared secondary
-  artifact.
-- `reproducibility_execution` records whether build-based checks were attempted and how they were
-  executed.
-- `inspection_bundle` records the bundle directory relative to the report plus the supported bundle
-  schema version and manifest path.
+- the manifest bytes match the supplied digest;
+- the component, version, candidate number, tag, and source commit agree;
+- the tag and GitHub Release resolve to the declared identity;
+- each declared uploaded asset has the expected name, size, and digest;
+- the candidate publication state matches its recorded lifecycle state.
 
-### Structured reproducibility report shape
+The read-only `release-verify-candidate.yml` workflow is a reusable independent-verification entry
+point. It retains the verified manifest and command result as same-run workflow artifacts.
 
-When local reproducibility checks are attempted, the supported reproducibility contract is:
+## Final-release verification
 
-- `canonical_recipe`
-- `effective_execution`
-- `override`
+Final verification compares the exact resolved direct or promotion state with the final tag, draft
+or public GitHub Release, expected body, and asset inventory. Publication revalidates that same state
+instead of assuming an earlier job's observation remains valid.
 
-Those sections are emitted for secondary artifacts and, where applicable, for source-artifact
-reproducibility.
+The final manifest is attached without clobbering. Attachment then verifies the downloaded bytes,
+size, and digest and rechecks the final release. If attachment fails after publication, the release
+may be public without its final manifest until a convergent rerun completes; workflows and monitors
+should treat that as an incomplete release operation.
 
-Environment reporting intentionally records variable names only, never values. The supported fields
-are:
+## Workflow handoff integrity
 
-- `canonical_recipe.build.env_keys`
-- `effective_execution.build.injected_environment_keys`
-- `override.build.env_keys`
+Same-run state and command results move as JSON files through workflow artifacts. Producers emit a
+SHA-256 through job output; every release-mutating consumer verifies the downloaded bytes before
+acting. Workflow artifacts are transport, not a durable cross-run approval record.
 
-That contract is deliberate so reports and bundles do not leak secrets or machine-local
-credentials.
+Candidate promotion instead re-downloads the manifest from the candidate publication and verifies
+the digest supplied by the external gate. Neither verification nor promotion discovers a candidate
+by a moving alias such as "latest RC".
 
-### Current comparison-mode matrix
+## Optional full RC verification
 
-Schema version `1` currently supports this reproducibility comparison-mode matrix:
+`verify-rc` is the deeper signed-source and reproducibility subsystem used by release compositions
+that publish an explicit source candidate. It verifies a signed RC vote manifest, trust-root data,
+the staged source artifact, and configured secondary artifacts. `inspect-repro` reads a saved report
+and curated inspection bundle without rerunning the build.
 
-- `source-artifact`: `exact-bytes`
-- `generic-file`: `exact-bytes`
-- `generic-file-with-openpgp`: `exact-bytes`
-- `python-distribution`: `exact-bytes`
-- `npm-package`: `exact-bytes`
-- `maven-repository`: `repository-tree`
-- `oci-image`: `platform-digest` or `provenance-only`
+These versioned contracts remain supported:
 
-That matrix is part of the current contract. New modes or incompatible remapping of existing
-artifact kinds to different modes require an explicit schema or configuration-contract change, not
-silent expansion.
+- `verify-rc` report `schema_version: "1"`;
+- inspection bundle `bundle_schema_version: "1"` and `inspection-bundle.json`;
+- `inspect-repro --json` output `schema_version: "1"`.
 
-## Inspection bundle
+Reports record environment-variable names, not values. Supported comparison modes include exact
+bytes for file-like artifacts, repository-tree comparison for Maven repositories, and immutable
+platform-digest or provenance-only comparison for OCI images. Incompatible changes require a new
+explicit schema version.
 
-When `verify-rc` attempts reproducibility checks, it may emit a curated inspection bundle next to
-the report.
+The optional full RC verifier does not make the generic candidate lifecycle ASF-specific. A
+component selects it when its artifact or foundation policy requires that additional evidence.
 
-The report points to that bundle through:
+## Trust boundary
 
-```json
-{
-  "inspection_bundle": {
-    "relative_path_from_report": "...",
-    "bundle_schema_version": "1",
-    "manifest_relative_path": "inspection-bundle.json"
-  }
-}
-```
-
-The bundle manifest shape is:
-
-```json
-{
-  "schema_version": "1",
-  "bundle_type": "verify-rc-inspection",
-  "report_type": "verify-rc",
-  "report_schema_version": "1",
-  "component_id": "...",
-  "version": "...",
-  "rc_tag": "...",
-  "artifacts": [
-    {
-      "artifact_id": "...",
-      "kind": "...",
-      "metadata_path": "..."
-    }
-  ]
-}
-```
-
-Bundle semantics:
-
-- paths recorded in the report are relative to the bundle root so the bundle remains relocatable
-- each `artifacts[*].metadata_path` points to one typed per-artifact metadata document
-- retained evidence files are referenced from those metadata documents, not discovered implicitly
-
-## `inspect-repro --json`
-
-`inspect-repro --json` emits its own supported machine-readable payload:
-
-```json
-{
-  "schema_version": "1",
-  "report_type": "inspect-repro",
-  "verify_rc_report_schema_version": "1",
-  "bundle_schema_version": "1",
-  "verify_rc_verdict": "verified|failed|warning",
-  "build_checks_attempted": true,
-  "report_json_path": "...",
-  "inspection_bundle_path": "...",
-  "summary": { "...": "..." },
-  "targets": []
-}
-```
-
-Top-level fields currently emitted:
-
-- `schema_version`
-- `report_type`
-- `verify_rc_report_schema_version`
-- `bundle_schema_version`
-- `component_id`
-- `rc_tag`
-- `verify_rc_verdict`
-- `build_checks_attempted`
-- `report_json_path`
-- `inspection_bundle_path`
-- `selected_artifact_ids`
-- `selected_failure_classes`
-- `summary_only`
-- `summary`
-- `targets`
-
-The `summary` block contains grouped counts for:
-
-- total reproducibility failures
-- source-artifact failures
-- secondary-artifact failures
-- failure kinds
-- failure classes
-- failure groups
-
-Each `targets[*]` entry identifies one selected reproducibility failure with:
-
-- `artifact_id`
-- `kind`
-- `failure_class`
-- `failure_group`
-- `profile_id`
-- `comparison_mode`
-- `recipe_source`
-- `execution_backend`
-- `build_command`
-- `build_working_directory`
-- `injected_environment_keys`
-- `evidence_labels`
-- `evidence`
-- `override_fields`
-
-Human `inspect-repro` transcript behavior in schema version `1` also supports:
-
-- `--artifact-id <id>` target filtering
-- `--failure-class <class>` failure-class filtering
-- `--summary-only` grouped-summary mode
-- `--compact` grouped-summary plus compact per-target headers without deep analyzer output
-
-## Artifact-kind stability rules
-
-New artifact kinds may extend:
-
-- `secondary_artifact_verifications[*].kind`
-- bundle `artifacts[*].kind`
-- typed per-kind verification and metadata records
-
-They must not silently change:
-
-- top-level report or bundle schema version semantics
-- existing field meanings
-- the structured reproducibility sections
-
-If a new artifact kind needs incompatible report or bundle layout changes, that requires a new
-schema version.
+Digest verification detects substitution relative to a value obtained through an independent,
+trusted channel. A digest published beside the object it protects is useful for consistency but is
+not an independent authenticity proof. Projects remain responsible for deciding how candidate
+manifest digests, signing-key fingerprints, and approval results reach the promotion authority.

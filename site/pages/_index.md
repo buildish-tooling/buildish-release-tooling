@@ -1,6 +1,6 @@
 ---
 title: "Release Tooling"
-description: "Shared release implementation component with an optional ASF profile."
+description: "Composable direct and candidate release automation for Buildish components and other Git-hosted projects."
 ---
 
 <!--
@@ -19,24 +19,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-`buildish-release-tooling` is the shared release implementation component used by Buildish
-repositories.
+`buildish-release-tooling` is a composable release CLI. It supports a direct, one-dispatch final
+release and an RC-based lifecycle that promotes one exact candidate after an external approval or
+voting process.
 
-The Buildish release process is TBD. ASF-specific pages describe an optional
-tooling profile and do not define the current Buildish release policy.
+GitHub is the first implemented hosting platform. Core release identity, state, manifests, artifact
+policy, signing, and promotion evidence are provider-neutral. ASF behavior is available only through
+an explicit optional foundation profile.
 
-The stable contract is the CLI plus `release-config.yaml`. The Python package layout is internal,
-but the docs tree includes maintainer guides for the current structure:
+- [Release lifecycles](release-lifecycles/)
+- [Optional ASF profile](asf-profile/)
+- [Unreleased development documentation](development/)
 
-- [CLI contract and compatibility notes](development/)
-- [Production package layout](development/codebase-layout/)
-- [Test suite layout and layering](development/test-suite/)
+Each component owns a thin workflow and its release config. The CLI provides bounded, rerunnable
+operations and stable machine-readable manifests; the component chooses job boundaries, GitHub
+Environments, secret policy, artifacts, signing, and any external gate.
 
 Use `make check` as the standard local and CI gate.
-
-Planning and assessment documents:
-
-- [ASF Profile GitHub Release policy](github-release-policy/)
-- [Verify RC implementation plan](verify-rc-implementation-plan/)
-- [ATR integration assessment](atr-integration-assessment/)
-- [ASF project fit assessment](asf-project-fit-assessment/)

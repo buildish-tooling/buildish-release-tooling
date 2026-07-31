@@ -16,9 +16,25 @@ limitations under the License.
 
 # Release Tooling Release Process
 
-TBD.
+This component supports two release exercises while Buildish establishes its initial release
+practice:
 
-The Buildish release process has not been defined yet. Existing release
-automation is retained as development tooling, but it does not define an
-approved Buildish release process and must not be used to publish a release
-until reviewed instructions replace this document.
+- direct publication with `.github/workflows/release-direct.yml`;
+- candidate publication and exact promotion with `.github/workflows/release-candidate.yml`,
+  `.github/workflows/release-verify-candidate.yml`, and `.github/workflows/release-promote.yml`.
+
+The component's `release-config.yaml` selects the active lifecycle and publication policy. Do not
+dispatch a release until that config has been reviewed for the intended exercise, the workflow uses
+an exact approved tooling revision, required repository settings and secrets are in place, and a
+dry-run has completed.
+
+The direct and candidate approaches are separate. A candidate exercise starts at RC1 by default and
+may publish later RCs. Promotion must use the exact accepted candidate tag and
+`candidate-manifest.json` SHA-256. Voting, when used, is external to the tooling.
+
+Buildish currently treats GitHub as authoritative and does not require a separately built source
+snapshot. Those are component-configurable choices, not universal tooling requirements.
+
+See the development documentation for the [direct lifecycle](../docs/direct-release.md),
+[candidate lifecycle](../docs/candidate-release.md), and
+[workflow composition](../docs/release-workflows.md).

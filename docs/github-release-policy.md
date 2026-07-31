@@ -1,3 +1,9 @@
+---
+title: GitHub Release Adapter
+description: "GitHub-specific publication behavior for direct, candidate, and promoted releases."
+weight: 50
+---
+
 <!--
 Copyright 2026 The Buildish Authors
 
@@ -14,104 +20,76 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# ASF Profile GitHub Release Policy
+# GitHub Release Adapter
 
-This page documents the Release Tooling's optional ASF profile. It is not the
-current Buildish release policy, which is TBD.
+GitHub is the first implemented hosting platform. A component selects it explicitly with a
+`github-release` publication target; GitHub is not part of the provider-neutral release identity or
+manifest model.
 
-Under the ASF profile, GitHub Releases are convenience metadata and optional
-convenience asset mirrors. The authoritative ASF source release is the material
-published under ASF `dist/release`.
+```yaml
+publication:
+  authoritative:
+    kind: github-release
+    repository: example/example
+  convenience: []
+  secondary: []
+```
+
+`repository` may be omitted when the workflow repository is the target. GitHub credentials and
+GitHub Environment names belong to the component workflow, not this authored config.
+
+## Direct releases
+
+The direct path creates an immutable final tag, prepares a draft release, verifies it, publishes it
+with `prerelease=false`, and attaches `release-manifest-v1.json`. An existing tag or release is
+accepted only when it represents the same resolved state; conflicting state fails closed.
+
+See [Direct release](../direct-release/) for the complete workflow.
 
 ## Candidate releases
 
-The candidate flow derives tags as:
+A candidate uses an immutable tag such as `v1.2.3-rc1`. After staging and verification, its GitHub
+Release is either:
 
-```text
-v<version>-<candidate-label><number>
-```
+- a public prerelease when `candidate.visibility` is `public-prerelease`; or
+- an unpublished draft when visibility is `draft`.
 
-Defaults preserve the existing RC convention:
+The candidate body identifies it as a candidate. `candidate-manifest.json` is a durable release
+asset and records the exact source revision, publication, and artifact inventory. Candidate
+numbering defaults to one and can be configured to start at zero.
 
-```text
-candidate label: rc
-candidate_start_number: 0
-first tag: v1.2.3-rc0
-```
+## Promotion
 
-Projects can choose another candidate label per run:
+Promotion names the exact candidate tag and candidate-manifest SHA-256. It does not select the most
+recent tag. The adapter re-reads the candidate Release, verifies its manifest and every declared
+asset, then stages and publishes the final Release.
 
-```text
-buildish-release-tooling prepare-rc --candidate-label alpha 1.2.3
-```
+The final tag is unsuffixed by default. The final Release is a separate publication; promoting a
+candidate does not rename a prerelease or mutate the candidate tag.
 
-If `candidate_start_number: 1` is configured, the first alpha candidate becomes
-`v1.2.3-alpha1`. Once matching tags exist, Buildish always uses the next number after the highest
-existing tag for the same version and label.
+## Release assets
 
-## Candidate visibility
+GitHub-generated source archives are identified by the immutable tag and source commit. They are not
+uploaded assets and do not have stable bytes across candidate and final tag names. The release
+manifest therefore records `same-source-revision` promotion evidence for this mode.
 
-`sync-draft-github-release` supports two visibility modes:
+Separately built files are explicit release assets. The adapter checks name, size, and configured
+digests, uploads without clobbering, and requires byte-identical evidence during candidate
+promotion. An unexpected existing asset is a conflict, not an invitation to overwrite it.
 
-- `draft`: the default; creates or updates a non-public GitHub Release.
-- `public-prerelease`: publishes the candidate GitHub Release with GitHub `prerelease=true`.
+## Permissions and serialization
 
-Public candidate GitHub Releases are not official ASF releases. Their generated body says this
-explicitly and identifies the candidate tag. Incubating projects also include the incubating
-disclaimer when candidate release pages are public.
+The checked-in workflows default to `contents: read` and grant `contents: write` only to jobs that
+create tags or mutate Releases. Mutation workflows share a non-canceling repository-and-version
+concurrency group.
 
-## Final releases
+Components may add GitHub Environments to any job boundary required by their policy. The CLI does
+not infer or enforce repository Environment configuration. See
+[Workflow composition](../release-workflows/) for the handoff and approval-boundary rules.
 
-Final publication rewrites the GitHub Release body before publishing it as a final release. The
-final body:
+## Provider boundary
 
-- does not use draft placeholder wording
-- links to the authoritative ASF source release directory
-- links to the source artifact, `.sha512`, and `.asc`
-- links to the ASF KEYS URL
-- links to the release verification guide
-- states that GitHub Release assets are convenience artifacts only
-- includes the incubating disclaimer for incubating projects
-
-Final GitHub Releases are published with `prerelease=false`.
-
-## Release workflow concurrency
-
-Release workflows that mutate RC or final-release state should serialize by component repository and
-exact version. Use the same non-canceling concurrency group for both the Prepare RC workflow and the
-Release Version workflow:
-
-```yaml
-concurrency:
-  group: buildish-release-${{ github.repository }}-${{ inputs.version }}
-  cancel-in-progress: false
-```
-
-Using the same group for both workflows prevents an accidental double-dispatch or rerun from racing
-against the same RC tags, SVN staging directories, GitHub Releases, or final publication state.
-`cancel-in-progress: false` is intentional: a later release run should wait rather than cancel a run
-that may already hold partially updated external release state.
-
-## GitHub Environment approval for release mutations
-
-Projects that require approval before release mutations should put the relevant GitHub Environment
-on every job that mutates release state, not only on jobs that read environment-scoped secrets. In
-Buildish release workflows this usually means reviewing all jobs with:
-
-```yaml
-permissions:
-  contents: write
-```
-
-If the project policy is "approval before all release mutations", those jobs should declare an
-appropriate `environment:` as well. This includes jobs that create or update RC tags, materialization
-tags, final tags, and GitHub Releases, even when they currently use `github.token` rather than an
-environment-scoped PAT.
-
-Projects may use one environment for all release writes or split the policy into clearer stages, for
-example `rc-staging-release-secrets` and `final-release-publication`. The important part is that the
-workflow YAML matches the intended approval boundary.
-
-The local `act` harness does not validate GitHub Environment protection semantics. Treat harness
-results as workflow-shape regression evidence only; review `environment:` declarations in workflow
-YAML and verify the actual approval rules in GitHub repository settings.
+GitHub-specific config, API models, release text, refs, and commands live under the GitHub adapter.
+A future GitLab or Forgejo adapter should implement the same core lifecycle boundaries with its own
+publication records and workflow integration. It must not reinterpret GitHub Release identifiers
+as provider-neutral identities.

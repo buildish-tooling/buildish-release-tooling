@@ -28,7 +28,8 @@ This section contains generated reference material for the typed Buildish Releas
 
 The generated reference intentionally includes both:
 
-- supported external contracts such as `release-config.yaml`, `rc-vote-manifest.json`, `verify-rc` report JSON, and `inspect-repro --json`
+- supported external contracts such as `release-config.yaml`, candidate, vote-package, and release
+  manifests, `verify-rc` report JSON, and `inspect-repro --json`
 - internal Buildish-owned contracts such as harness payloads and command action manifests
 
 Internal command action manifests are documented here for maintenance and debugging, but they are

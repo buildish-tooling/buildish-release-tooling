@@ -36,13 +36,13 @@ The scenario model should stay reusable across backends. The same scenario shoul
 
 ## Current implementation
 
-The current repository contains the first working slice:
+The current repository contains:
 
 - a scenario model in `src/buildish_release_tooling/harness/models.py`
 - a YAML loader in `src/buildish_release_tooling/harness/scenario.py`
 - a backend dispatcher in `src/buildish_release_tooling/harness/backend.py`
-- a custom execution backend in `src/buildish_release_tooling/harness/runtime.py`
-- an `act` execution backend in `src/buildish_release_tooling/harness/act_backend.py`
+- a custom execution backend in `src/buildish_release_tooling/harness/backends/custom.py`
+- an `act` execution backend in `src/buildish_release_tooling/harness/backends/act/`
 - a generic shim entrypoint in `src/buildish_release_tooling/harness/shim_entrypoint.py`
 - a CLI entrypoint:
   - `buildish-release-harness run <scenario.yaml>`
@@ -128,11 +128,11 @@ Optional local override example:
 
 ```yaml
 self_repository:
-  local_path: /home/snazy/devel/buildish-tooling/buildish/buildish-mammoth-cache
+  local_path: /path/to/buildish-mammoth-cache
 
 repository_overrides:
   buildish-tooling/buildish-release-tooling:
-    local_path: /home/snazy/devel/buildish-tooling/buildish/buildish-release-tooling
+    local_path: /path/to/buildish-release-tooling
 ```
 
 Resolution rules:
@@ -152,9 +152,8 @@ the component repository itself. `buildish-tooling/buildish-release-tooling` def
 This keeps the committed config portable while still making the common sibling-repository layout
 work out of the box.
 
-The current custom backend does not yet parse workflow YAML or execute `actions/checkout`, so these
-repository bindings are currently resolved and inspectable through the harness CLI and are intended
-to be consumed by the workflow-aware `act` backend.
+The custom backend resolves these bindings for direct scenario execution. The workflow-aware `act`
+backend also uses them while rewriting `actions/checkout` and tooling imports to local sources.
 
 ## Running with `uv` and `uvx`
 
@@ -169,11 +168,11 @@ uv run --frozen buildish-release-harness run buildish-release-tooling/harness/sc
 To run it as a tool from the local checkout via `uvx`, point `--from` at the repository root:
 
 ```bash
-uvx --from /home/snazy/devel/buildish-tooling/buildish/buildish-release-tooling \
+uvx --from /path/to/buildish-release-tooling \
   buildish-release-harness --help
-uvx --from /home/snazy/devel/buildish-tooling/buildish/buildish-release-tooling \
+uvx --from /path/to/buildish-release-tooling \
   buildish-release-harness run \
-  /home/snazy/devel/buildish-tooling/buildish/buildish-release-tooling/buildish-release-tooling/harness/scenarios/basic-success.yaml
+  /path/to/buildish-release-tooling/buildish-release-tooling/harness/scenarios/basic-success.yaml
 ```
 
 The `uv run` form is the preferred choice while developing the harness in this repository. The
@@ -184,7 +183,7 @@ To inspect resolved repository bindings from a committed harness config:
 
 ```bash
 uv run --frozen buildish-release-harness resolve-config /path/to/buildish-release-tooling/harness/release-harness.yaml
-uvx --from /home/snazy/devel/buildish-tooling/buildish/buildish-release-tooling \
+uvx --from /path/to/buildish-release-tooling \
   buildish-release-harness resolve-config \
   /path/to/buildish-release-tooling/harness/release-harness.yaml
 ```

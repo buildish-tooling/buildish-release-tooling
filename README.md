@@ -16,51 +16,41 @@ limitations under the License.
 
 # Buildish Release Tooling
 
-`buildish-release-tooling` is the shared release implementation component for Buildish projects.
+`buildish-release-tooling` is a composable release CLI for Git-hosted projects. It currently ships
+GitHub adapters and component-owned GitHub Actions workflows, while keeping platform-neutral release
+identity, state, manifests, signing policy, and promotion evidence in the core model.
 
-It exists to move the growing release logic out of loosely coupled bash libraries and into a
-versioned Python tool with:
+Two release lifecycles are supported:
 
-- a stable CLI surface for Buildish release workflows
-- structured models for release state and component policy
-- reusable Git, SVN, GPG, and GitHub-check integrations
-- unit and integration tests that run from a repo-local `build/` tree
+- direct: resolve one exact source revision and publish the final release end to end;
+- candidate: publish one or more retained candidates, let an external process decide whether a
+  candidate may advance, and promote one exact candidate manifest to the final release.
 
-The intended consumption model is:
+Voting is optional and external to release publication. The CLI can create generic or ASF-specific
+vote packages over an exact candidate manifest, but it does not count votes or decide an outcome.
 
-- Buildish component repositories pin an exact immutable Git ref for this tool
-- GitHub workflows check out that exact ref
-- component-local wrappers run the tool via `uv run --project`
+The supported integration surface is:
 
-Examples:
+- the `buildish-release-tooling` CLI;
+- component-owned `release-config.yaml`;
+- stable candidate, vote-package, and final release manifests;
+- thin component workflows that call the CLI.
 
-```bash
-uv run --project buildish-release-tooling buildish-release-tooling prepare-rc \
-  --component-config buildish-mammoth-cache/buildish-release-tooling/release-config.yaml \
-  1.2.3
-```
+The Python module layout is internal. Release-critical consumers should pin an exact immutable Git
+revision of this component and invoke the CLI from a checked-out copy.
 
-```bash
-uvx --from git+https://github.com/buildish-tooling/buildish-release-tooling@v0.1.0 \
-  buildish-release-tooling prepare-rc \
-  --component-config ./buildish-release-tooling/release-config.yaml \
-  1.2.3
-```
+## Workflows
 
-`uvx` is a convenience hook for ad hoc use. The release workflows should prefer a checked-out,
-exact pinned ref over pulling from an index.
+The repository contains four GitHub workflows:
 
-## CLI commands
+- `.github/workflows/release-direct.yml`;
+- `.github/workflows/release-candidate.yml`;
+- `.github/workflows/release-promote.yml`;
+- `.github/workflows/release-verify-candidate.yml`.
 
-- `create-release-branch`
-- `verify-source-ref-checks`
-- `prepare-rc`
-- `create-source-artifact`
-- `build-source-rc`
-- `materialize-rc-git-content`
-- `release-version`
-- `verify-rc`
-- `inspect-repro`
+The direct workflow is the one-dispatch release path. The candidate and promotion workflows form a
+separate RC-based path. Promotion requires the exact version, candidate tag, and candidate-manifest
+SHA-256 selected by the external approval or voting process.
 
 ## Development
 
@@ -68,8 +58,16 @@ exact pinned ref over pulling from an index.
 make check
 ```
 
+The local harness runs the checked-in workflows through `act` while replacing GitHub mutations with
+inspectable workspace-local Git and GitHub Release state.
+
 ## Documentation
 
-- `docs/_index.md`: CLI contract and compatibility notes
-- `docs/codebase-layout.md`: production source tree guide
-- `docs/test-suite.md`: test suite guide
+- [Documentation index](docs/_index.md)
+- [Direct release walkthrough](docs/direct-release.md)
+- [Candidate and promotion walkthrough](docs/candidate-release.md)
+- [Workflow composition](docs/release-workflows.md)
+- [Source artifacts and OpenPGP signing](docs/source-artifacts-and-signing.md)
+- [Optional ASF profile](docs/asf-profile.md)
+- [Threat model](docs/threat-model.md)
+- [Generated reference](docs/reference/_index.md)

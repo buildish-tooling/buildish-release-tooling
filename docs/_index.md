@@ -1,6 +1,6 @@
 ---
-title: Docs and Reference
-description: "This `docs/` tree now holds the material that belongs under the component's versioned docs root: stable reference pages today, and release-tied docs later."
+title: Release Tooling Documentation
+description: "Composable direct and candidate release lifecycles, stable manifests, and provider-specific adapters."
 weight: 90
 ---
 
@@ -20,61 +20,58 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-# CLI API Contract
+# Release Tooling Documentation
 
-This page defines the supported external contract for `buildish-release-tooling`.
-The Buildish release process is TBD. ASF-specific pages describe an optional
-tooling profile and do not define the current Buildish release policy.
+Buildish Release Tooling separates project policy, release state, platform adapters, and workflow
+orchestration. A component owns its `release-config.yaml` and thin workflow. The CLI resolves exact
+identities, performs one bounded operation at a time, and writes machine-readable results that the
+workflow passes to later jobs.
 
-## Internal implementation guides
+GitHub is the first implemented hosting platform. Platform-neutral state and manifests do not treat
+GitHub, the ASF, voting, a built source archive, or any secondary registry as mandatory.
 
-The pages below describe the current source tree for maintainers. They are intentionally
-descriptive, not contractual.
+## Choose a lifecycle
 
-- [Reference](reference/)
-- [ASF Profile GitHub Release Policy](github-release-policy/)
-- [Codebase Layout](codebase-layout/)
+- [Direct release](direct-release/) publishes an exact final version without a candidate.
+- [Candidate release and exact promotion](candidate-release/) publishes retained candidates and
+  promotes one explicitly selected candidate.
+
+Both approaches may use an unsuffixed final version such as `1.2.3` and final tag such as `v1.2.3`.
+The candidate suffix identifies the candidate only; it does not change the final version.
+
+## Compose a component release
+
+- [Workflow composition](release-workflows/) explains job boundaries, artifact handoff, permissions,
+  concurrency, optional GitHub Environments, and external gates.
+- [Source artifacts and signing](source-artifacts-and-signing/) covers platform-generated source
+  snapshots, separately built source archives, and protected or unprotected OpenPGP keys.
+- [GitHub release policy](github-release-policy/) documents current GitHub candidate and final
+  publication behavior.
+- [Optional ASF profile](asf-profile/) adds ASF dist, vote wording, KEYS, and Incubator policy only
+  when a component selects that profile.
+
+Maintainer references:
+
+- [Generated config and schema reference](reference/)
+- [Manifest and verification contracts](verification-contracts/)
+- [Codebase layout](codebase-layout/)
+- [Local test and harness layout](test-suite/)
 - [Release-legal maintenance](release-legal/)
-- [Threat Model](threat-model/)
-- [Test Suite Layout](test-suite/)
-- [Verification Report and Bundle Contract](verification-contracts/)
+- [Threat model](threat-model/)
 
-The public contract is intentionally narrow:
+## Supported external contract
 
-- the `buildish-release-tooling` CLI command surface
-- the required `release-config.yaml` schema
-- the manifest, summary, and exit-code behavior that workflows may rely on
+The supported contract consists of:
 
-The Python module layout is not a public API. Buildish component workflows should consume this
-component through the CLI only, pinned to an exact immutable Git ref.
+- CLI commands and arguments;
+- the authored `release-config.yaml` schema;
+- supported JSON schemas and emitted manifest shapes;
+- exit status, manifest-path output, and GitHub step summaries documented for a command.
 
-## Versioning and compatibility
+The Python package layout is not a public API. Component workflows should invoke the CLI from an
+exact immutable tooling revision.
 
-`buildish-release-tooling` is intended to follow semantic versioning for its external contract.
-
-- major releases may change command names, arguments, manifest keys, or config schema in breaking
-  ways
-- minor releases may add commands, flags, manifest keys, or config fields in backward-compatible
-  ways
-- patch releases should keep the documented contract stable and only fix behavior
-
-Verification-specific machine-readable contracts are now documented and supported explicitly:
-
-- `verify-rc` report JSON schema version `1`
-- inspection-bundle schema version `1`
-- `inspect-repro --json` schema version `1`
-
-See [Verification Report and Bundle Contract](verification-contracts/) for the supported shapes.
-
-Release-critical workflows should pin:
-
-- an exact immutable Git tag or commit of `buildish-release-tooling`
-- not a moving branch
-- not a package index lookup as the primary release path
-
-## Invocation contract
-
-The stable invocation model is:
+The standard invocation shape is:
 
 ```bash
 uv run --project /path/to/buildish-release-tooling --frozen \
@@ -83,702 +80,53 @@ uv run --project /path/to/buildish-release-tooling --frozen \
   [command arguments...]
 ```
 
-The current working directory must be the target component repository, or inside its Git worktree.
+Commands operate on the current component Git worktree. Workflow jobs that inspect remote refs must
+fetch the required heads and tags first.
 
-Commands that inspect release branches or tags assume the workflow has already fetched:
+## Configuration model
 
-- remote heads into `refs/remotes/origin/*`
-- tags for the repository
+`release-config.yaml` is a typed composition of independent choices:
 
-Example:
+- component and version identity;
+- source selection and source snapshot mode;
+- source checks;
+- direct or candidate lifecycle;
+- optional candidate policy;
+- built artifacts, checksums, and optional signing;
+- authoritative, convenience, and secondary publication targets;
+- immutable and moving tag policy;
+- optional vote-material profile;
+- optional foundation policy profiles.
 
-```bash
-git fetch --force --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
-```
+The complete generated field reference is under [Reference](reference/). The walkthroughs use
+minimal valid examples for their lifecycle.
 
-## Detached materialization commit model
+## Stable manifests
 
-Some components need release-only generated Git content that must not live in normal branch history,
-for example a git-ignored `dist/` payload used by a GitHub Action.
+Three top-level manifest contracts connect otherwise independent phases:
 
-For those components, the supported model is:
+- `CandidateManifestV1` binds one exact candidate tag, source revision, artifact inventory,
+  verification evidence, publications, and tooling provenance.
+- `VotePackageV1` optionally binds human voting material to the cryptographic digest of one exact
+  candidate manifest. It does not record or decide the vote outcome.
+- `ReleaseManifestV1` records a direct or promoted final release. Direct releases omit candidate
+  fields; promoted releases name the exact candidate manifest and use typed promotion evidence.
 
-- resolve the source commit from the release branch as usual
-- build the authoritative ASF source release from that source commit
-- create a detached materialization commit from that source commit in isolated Git state
-- if later workflow jobs need to see that detached commit, temporarily anchor it on a remote ref
-- keep that detached commit out of `release/<line>` history
-- place the RC tag on that detached materialization commit
-- place the final exact tag on that same detached materialization commit after release approval
+Current promotion evidence distinguishes byte-identical artifacts, immutable registry identity, and
+platform-generated snapshots from tags that resolve to the same source revision.
 
-This is a component-policy exception, not the default behavior. Components that do not need
-release-only generated Git content should keep both RC and final tags on the plain source commit.
+## Runtime integration
 
-## Stable inputs
+`MANIFEST_PATH` selects the JSON result path for commands that emit a manifest.
+`GITHUB_STEP_SUMMARY` receives human-readable summaries. Selected workflow-boundary commands append
+small scalar values to `GITHUB_OUTPUT`; complete state remains in JSON files.
 
-### Required flag
+Credentials are operational inputs, not authored config values. GitHub tokens, signing keys,
+passphrases, registry credentials, and foundation credentials belong in the workflow or deployment
+secret store chosen by the component.
 
-All commands require:
+## Optional capabilities
 
-- `--component-config <path>`
-
-That file is the component policy contract between a Buildish component and this tool.
-
-### Positional arguments
-
-The stable interface uses explicit positional arguments such as:
-
-- `version`
-- `source_sha`
-- `release_line`
-- `source_ref`
-- `assets...`
-
-Environment fallbacks for positional arguments exist in a few places for workflow compatibility,
-but they are not part of the long-term stable contract and should not be the preferred integration
-path.
-
-### Runtime environment integration
-
-Environment variables are not the preferred public API surface for this tool. The preferred
-integration surface is:
-
-- explicit CLI arguments
-- checked-out Git state
-- `release-config.yaml`
-
-Only a small set of runtime environment hooks should be treated as stable integration points:
-
-- `MANIFEST_PATH`: override where the command writes its JSON manifest
-- `GITHUB_OUTPUT`: optional path where selected commands append stable GitHub step outputs
-- `GITHUB_STEP_SUMMARY`: required path where Markdown summary output is appended
-
-The tool also interoperates with environment-based credentials and GitHub runner metadata when it
-talks to external systems, but those should be treated as operational wiring rather than semver
-stable CLI API:
-
-- `GH_TOKEN` or `GITHUB_TOKEN` for GitHub CLI authentication and temporary detached-ref pushes
-- `BUILDISH_SVN_DEV_USERNAME` and `BUILDISH_SVN_DEV_PASSWORD` for ASF SVN access
-- the private-key variable named by `artifacts.signing.private_key_env` for detached OpenPGP signing
-- the optional passphrase variable named by `artifacts.signing.passphrase_env` for protected keys
-- `DOCKERHUB_USER` and `DOCKERHUB_TOKEN` for Docker Hub alias publication
-
-Those variables are common in GitHub Actions, but they expand the process environment and therefore
-should stay minimal. They are documented here because the current implementation uses them, not
-because environment-variable integration is the preferred design.
-
-GitHub API operations derive the repository slug from the checked-out worktree's `origin` remote
-URL rather than from a separate environment-variable hint.
-
-The following environment-variable hooks are implementation details and should not be relied on as
-public contract. New functionality should prefer explicit CLI arguments, checked-out repository
-state, or `release-config.yaml` over additional environment variables.
-
-## `release-config.yaml` contract
-
-The config file is a YAML object. The currently required fields are:
-
-```yaml
-component_id: buildish-example
-source_artifact_prefix: apache-buildish-example
-asf_dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example
-asf_dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example
-moving_tags_enabled: true
-latest_tag_enabled: false
-secondary_targets:
-  - github-action
-final_tag_mode: rc-source-commit
-vote_release_name: Buildish Example
-release_program: asf
-project_status: tlp
-incubator_disclaimer_file: DISCLAIMER
-candidate_start_number: 0
-release_summary_include_final_tag_mode: false
-release_verification_guide_url: https://buildish.org/buildish-example/release-verification/
-verify_rc_instructions: |
-  Verify the RC on trusted hardware.
-prepare_rc_runs_tests: false
-release_branch_ci_required: true
-atr:
-  enabled: true
-  base_url: https://release-test.apache.org
-  committee: buildish
-  product_line: buildish-example
-  source_artifact_paths:
-    - "**/*-src.tar.gz"
-  binary_artifact_paths:
-    - "**/*.zip"
-  strict_checking: false
-  license_check_mode: both
-```
-
-Field meanings:
-
-- `component_id`: stable component identifier used in manifests and default output paths
-- `source_artifact_prefix`: root directory prefix for reproducible source archives
-- `asf_dist_dev_base`: ASF SVN `dist/dev` base URL for the component
-- `asf_dist_release_base`: ASF SVN `dist/release` base URL for the component
-- `moving_tags_enabled`: whether version-derived moving aliases are enabled
-- `latest_tag_enabled`: whether `latest` may be derived for supported targets
-- `secondary_targets`: convenience target families such as `github-action`, `github-release`,
-  `github-release-assets`, `dockerhub`, or `pypi`
-- `final_tag_mode`: final tag policy such as `rc-source-commit` or
-  `detached-materialization-commit`
-  - `rc-source-commit` means the RC and final tags point at the plain source commit
-  - `detached-materialization-commit` means the RC and final tags point at a detached commit derived
-    from the source commit, while the source release itself is still built from the source commit
-- `vote_release_name`: human-readable name used in mail subjects and release titles
-- `release_program`: release-governance program whose policy model applies to the component;
-  currently defaults to `asf`
-- `project_status`: project lifecycle status within the release program, currently `tlp` or
-  `incubating` for ASF components
-- `incubator_disclaimer_file`: project-root-relative path to the approved Incubator disclaimer
-  text; defaults to `DISCLAIMER`
-- `candidate_start_number`: first numeric suffix for a new candidate label when no matching tag
-  exists; defaults to `0`, preserving the default `rc0` sequence
-- `release_summary_include_final_tag_mode`: whether summaries explicitly repeat the final tag mode
-- `release_verification_guide_url`: authoritative verification-guide URL inserted into RC vote
-  email templates
-- `verify_rc_instructions`: authoritative RC verification text for humans
-- `prepare_rc_runs_tests`: whether `Prepare RC` runs tests itself
-- `release_branch_ci_required`: whether the component requires CI on `release/*` branches
-- `atr`: optional ATR integration policy block
-  - `enabled`: whether ATR publication and ATR check-reporting commands are enabled for this component
-  - `base_url`: ATR base URL, usually `https://release-test.apache.org`
-  - `committee`: ATR committee key used for release ownership and policy context
-  - `product_line`: current buildish-to-ATR project key used by the official `atr` client wrapper
-  - `source_artifact_paths`: planned ATR source-classification patterns
-  - `binary_artifact_paths`: planned ATR binary-classification patterns
-  - `strict_checking`: whether ATR hard failures should block later release progression when an ATR
-    reporting step is used as a gate
-  - `license_check_mode`: ATR source license-check mode, one of `both`, `lightweight`, or `rat`
-
-ATR credentials are intentionally not stored in `release-config.yaml`.
-
-For the current `publish-atr-candidate` and `report-atr-checks` commands:
-
-- install the official `atr` client first
-- provide `BUILDISH_ATR_ASF_UID` and `BUILDISH_ATR_PAT` in the environment
-- or use the shorter aliases `ATR_ASF_UID` and `ATR_PAT`
-
-The PAT is user-specific and should come from the ATR Tokens page, not from repository config.
-
-## Output contract
-
-### Exit status
-
-- `0` means success
-- non-zero means failure
-
-The CLI currently normalizes handled command failures to exit code `1`.
-
-### Stdout
-
-Commands that write manifests print the manifest path to stdout.
-
-Commands that exist only as gates or human-output steps may print nothing on success.
-
-### Manifest files
-
-Most commands emit a UTF-8 JSON object manifest.
-
-Default location:
-
-```text
-<cwd>/<component-id>-<action>.json
-```
-
-Override:
-
-```text
-$MANIFEST_PATH
-```
-
-Stable manifest conventions:
-
-- `component` is the component identifier
-- `action` is the command/action name
-- `version` is present when the command operates on an exact release version
-
-Additional keys are command-specific. Additive keys may be introduced in minor releases.
-
-### GitHub Summary
-
-Commands that emit human-facing workflow information append Markdown to `$GITHUB_STEP_SUMMARY`.
-That variable is required.
-
-Summaries are intended for:
-
-- vote-mail templates
-- vote-result templates
-- ANNOUNCE templates
-- checksum and signature material
-- resolved release state
-- GitHub release metadata
-- artifact upload lists
-
-## Command groups
-
-### Branch management
-
-- `create-release-branch <release_line> <source_ref>`
-
-### RC preparation and staging
-
-- `verify-source-ref-checks <version> [source_sha]`
-- `prepare-rc [--candidate-label <label>] <version> [source_sha]`
-- `cleanup-dev-svn-rcs <version>`
-- `create-source-artifact <version> [source_sha]`
-- `build-source-rc [--rc-tag <tag>] <version> [source_sha]`
-- `materialize-rc-git-content [--rc-tag <tag>] --materialized-path <path>... [--materialized-ref-name <ref>] --run-command <shell> <version> [source_sha]`
-- `create-rc-materialization-tag [--rc-tag <tag>] [--target-commit <sha>] <version> [source_sha]`
-- `record-artifact --kind <kind> --artifact-id <id> --uri <uri> ...`
-- `sync-draft-github-release [--rc-tag <tag>] [--candidate-label <label>] [--candidate-visibility draft|public-prerelease] <version> [source_sha]`
-- `finalize-rc-vote-materials [--secondary-artifact-manifest <path>]... [--rc-tag <tag>] <version> [source_sha]`
-- `publish-atr-candidate [--wait-for-checks] [--check-timeout-seconds <seconds>] [--check-interval-ms <ms>] [--rc-tag <tag>] <version> [source_sha]`
-- `report-atr-checks [--revision <number>] [--verbose-atr-output] [--rc-tag <tag>] <version> [source_sha]`
-
-### Final release materialization
-
-- `release-version <version>`
-- `publish-source-release-svn [--selected-rc-tag <tag>] <version>`
-- `prune-older-line-releases <version>`
-- `create-final-tag [--selected-rc-tag <tag>] <version>`
-- `update-moving-tags <version>`
-- `update-moving-image-aliases <version>`
-- `publish-dockerhub-moving-tags <version> <source_image>`
-- `attach-github-release-assets [--sign] [--checksum sha256|sha512]... <version> <assets...>`
-- `finalize-draft-github-release [--selected-rc-tag <tag>] <version>`
-
-### Human verification support
-
-- `verify-rc [--component-config <path>] [--repro-override-file <path>] <rc_vote_manifest_url> <keys_url>`
-- `inspect-repro <report_json>`
-
-## Selected command guarantees
-
-### `verify-rc`
-
-- verifies one explicit signed `rc-vote-manifest.json` plus its staged source artifact and declared secondary artifacts
-- requires two positional inputs:
-  - the exact `rc_vote_manifest_url`
-  - the explicit `keys_url` expected by the signed manifest
-- writes a machine-readable JSON report and a Markdown report
-- writes a combined transcript and low-level command log
-- in `--mode full`, runs configured local reproducibility checks and writes a curated inspection bundle suitable for `inspect-repro`
-- emits report schema version `1` and, when an inspection bundle is present, bundle schema version `1`
-- treats the `verify-rc` report JSON and the inspection bundle layout as supported machine-readable contract
-  from this revision onward
-- keeps `inspect-repro` backward-tolerant for older pre-contract bundles that only recorded
-  `inspection_bundle.relative_path_from_report`
-- supports `--repro-override-file <path>` for explicit human local rebuild overrides
-- treats any run with `--repro-override-file` as non-canonical and records that in the
-  reproducibility report structure under:
-  - `override.applied`
-  - sparse override details under `override.build`
-- for host-direct reproducibility runs, records the canonical and effective execution context under:
-  - `canonical_recipe`
-  - `effective_execution`
-- environment reporting intentionally records variable names only, never values, so reports and
-  inspection bundles do not expose secrets or machine-local credentials
-- the current supported machine-readable contract is:
-  - `schema_version: "1"` for the `verify-rc` report JSON
-  - `inspection_bundle.bundle_schema_version: "1"` plus the bundle manifest `inspection-bundle.json`
-- future incompatible changes should use a new explicit schema version rather than silently mutating
-  the current one
-- CI and release workflow runs should not use `--repro-override-file`; that flag exists for human local investigation when the canonical repo-maintained recipe is too narrow for one machine
-
-Example canonical verification run:
-
-```text
-buildish-release-tooling verify-rc \
-  --component-config release-config.yaml \
-  https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json \
-  https://downloads.apache.org/incubator/buildish/KEYS
-```
-
-Example non-canonical local override run:
-
-```text
-buildish-release-tooling verify-rc \
-  --component-config release-config.yaml \
-  --repro-override-file ~/tmp/repro-overrides.yaml \
-  https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json \
-  https://downloads.apache.org/incubator/buildish/KEYS
-```
-
-Example override file:
-
-```yaml
-verify_rc:
-  profile_overrides:
-    bootstrap-zip:
-      build:
-        command: ["./buildish-release-tooling/rebuild-bootstrap-local.sh"]
-
-    pypi-wheel:
-      build:
-        working_dir: "python-package"
-        env:
-          PIP_NO_BUILD_ISOLATION: "1"
-```
-
-### `inspect-repro`
-
-- reads one saved `verify-rc` JSON report plus its inspection bundle
-- validates the supported report and bundle schema versions before inspecting retained evidence
-- explains failed reproducibility checks without rerunning remote verification
-- starts with a grouped failure summary, including source-vs-secondary counts, failure kinds, and failure classes
-- surfaces the selected `profile_id`, recipe-source classification, structured override details, retained evidence labels, and kind-specific drift details
-- keeps archive-aware inspection limited to the top-level downloadable artifact under verification, such as the source tarball, wheel, sdist, or npm package tarball
-- keeps built-in archive-aware inspection shallow and artifact-oriented, focusing on entry path, size, mtime, mode bits, ownership fields, file type, symlink target, and direct entry-content equality for those top-level members
-- does not recursively unpack nested archives or embedded payloads by default; it is intended as a focused verifier aid, not a general-purpose `diffoscope` clone
-- also shows the recorded rebuild execution context when present:
-  - effective build command
-  - effective build working directory
-  - injected environment keys
-- supports `--artifact-id <id>` to narrow inspection to one or more selected failures
-- supports `--failure-class <class>` to narrow inspection to one or more saved failure classes
-- supports `--summary-only` to print only the saved grouped summary and selected targets
-- supports `--compact` to print the grouped summary plus compact per-target headers without deep analyzer output
-- supports `--json` to emit machine-readable inspection output to stdout instead of the human transcript
-
-Typical operator flow:
-
-1. Run `verify-rc` first, usually with `--report-json <path>` and `--mode full` when local
-   rebuild checks are desired.
-2. If `verify-rc` reports one or more reproducibility failures, keep the generated JSON report and
-   inspection bundle together.
-3. Run `inspect-repro <report_json>` against that saved report.
-4. Start with the grouped failure summary and the retained evidence labels shown for each artifact, then use the kind-specific output:
-   - source artifact: staged vs rebuilt source archive drift
-   - Python / npm / generic file: retained artifact drift, shallow top-level archive drift when
-     the artifact format is tar/zip-based
-   - Maven / OCI: kind-specific path, digest, and metadata drift summaries
-5. Use optional external tools only as escalation when the built-in diagnosis is insufficient.
-
-Common invocation patterns:
-
-```text
-# Human local canonical verification run
-buildish-release-tooling verify-rc \
-  --component-config release-config.yaml \
-  --mode full \
-  --report-json build/verify-rc-report.json \
-  https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json \
-  https://downloads.apache.org/incubator/buildish/KEYS
-
-# Human local non-canonical override run
-buildish-release-tooling verify-rc \
-  --component-config release-config.yaml \
-  --mode full \
-  --repro-override-file ~/tmp/repro-overrides.yaml \
-  --report-json build/verify-rc-report.json \
-  https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/rc-vote-manifest.json \
-  https://downloads.apache.org/incubator/buildish/KEYS
-
-# Inspect every saved reproducibility failure
-buildish-release-tooling inspect-repro build/verify-rc-report.json
-
-# Inspect only two saved failures
-buildish-release-tooling inspect-repro \
-  --artifact-id source-artifact \
-  --artifact-id maven-staging-main \
-  build/verify-rc-report.json
-
-# Inspect only saved Maven path-comparison failures
-buildish-release-tooling inspect-repro \
-  --failure-class path-comparison-failed \
-  build/verify-rc-report.json
-
-# Print only the grouped summary and selected targets
-buildish-release-tooling inspect-repro --summary-only build/verify-rc-report.json
-
-# Print the grouped summary plus compact per-target headers
-buildish-release-tooling inspect-repro --compact build/verify-rc-report.json
-
-# Emit machine-readable inspect-repro JSON
-buildish-release-tooling inspect-repro --json build/verify-rc-report.json
-```
-
-Bundle-reading guide:
-
-1. Start from the report's `inspection_bundle` section.
-2. Open the bundle manifest `inspection-bundle.json`.
-3. Use the artifact `metadata_path` entries to find the per-artifact retained evidence.
-4. Use the per-artifact evidence labels in the report or `inspect-repro` output to decide whether
-   you need:
-   - `comparison-metadata`
-   - `staged-artifact`
-   - `rebuilt-artifact` or rebuilt outputs
-   - kind-specific retained evidence
-5. Use the schema reference in [Verification Report and Bundle Contract](verification-contracts/)
-   when you need the machine-readable field-level contract rather than the human transcript.
-
-Typical transcript shape:
-
-```text
-buildish-release-tooling inspect-repro build/verify-rc-report-example-v1.2.3-rc0.json
-Inspect Repro
-=============
-  Report JSON: build/verify-rc-report-example-v1.2.3-rc0.json
-  Inspection bundle: build/verify-rc-report-example-v1.2.3-rc0.bundle
-
-Summary
--------
-  Reproducibility failures: 2
-  Source artifact failures: 1
-  Secondary artifact failures: 1
-  Failure kinds: generic-file=1, source-artifact=1
-  Failure classes: byte-mismatch=2
-
-Source Artifact 1/2
--------------------
-  Recipe source: verifier-internal
-  Failure class: byte-mismatch
-  Retained evidence: comparison-metadata, staged-artifact, rebuilt-artifact
-  ...
-
-Artifact 2/2: bootstrap-zip
----------------------------
-  Recipe source: canonical-profile
-  Failure class: byte-mismatch
-  Retained evidence: comparison-metadata, staged-artifact, rebuilt-artifact
-  ...
-
-Outcome
--------
-✓ Inspected 2 saved reproducibility failure(s)
-```
-
-Representative malformed-input failures:
-
-```text
-# Unsupported verify-rc report schema
-unsupported verify-rc report schema version: '2'; supported: 1
-
-# Incomplete inspection-bundle contract fields in the report
-inspection bundle contract fields are incomplete; expected both
-inspection_bundle.bundle_schema_version and inspection_bundle.manifest_relative_path
-
-# Unsupported inspection-bundle schema
-unsupported inspection bundle schema version: '2'; supported: 1
-
-# Malformed secondary artifact entry in the signed manifest
-manifest secondary artifact entry is malformed: https://.../rc-vote-manifest.json
-
-# Malformed external GitHub verification payload
-invalid GitHub check-runs payload
-```
-
-These failures are expected to be direct and fail closed. The verifier should not silently ignore
-malformed contract or external payload data and continue with guessed semantics.
-
-### `prepare-rc`
-
-- resolves the release branch, next candidate number, and authoritative source commit for one version
-- derives candidate tags as `v<version>-<label><number>`; `--candidate-label` defaults to `rc`
-  and `candidate_start_number` controls the first number when no matching tag exists
-- writes the full JSON manifest to `MANIFEST_PATH`
-- appends `rc_tag` and `resolved_source_ref` to `GITHUB_OUTPUT` when that file path is present
-
-### `sync-draft-github-release`
-
-- creates or updates the GitHub Release page for the selected candidate tag
-- defaults to `--candidate-visibility draft`, which keeps the candidate GitHub Release non-public
-- supports `--candidate-visibility public-prerelease`, which publishes the candidate GitHub Release
-  with GitHub `prerelease=true`
-- uses `--candidate-label` when deriving a candidate tag and `--rc-tag` when a workflow rerun must
-  stay pinned to an already-selected candidate tag
-- keeps GitHub candidate releases as convenience metadata only; final ASF source releases remain
-  authoritative on ASF infrastructure
-- see [GitHub Release Policy](github-release-policy/) for the candidate and final-release wording
-  model
-
-### `create-source-artifact`
-
-- builds from Git using a fixed mtime and reproducible gzip settings
-- creates a source tarball rooted at `source_artifact_prefix-<version>-incubating-src/`
-- emits the SHA512 line in the summary
-
-### `build-source-rc`
-
-- creates the reproducible source artifact
-- writes `.sha512`
-- creates a detached ASCII-armored signature
-- stages the artifact set into ASF SVN `dist/dev`
-- accepts `--rc-tag` so later reruns in one `Prepare RC` workflow stay bound to the same RC
-- does not by itself define where the RC Git tag must point; that remains component policy
-
-### `materialize-rc-git-content`
-
-- valid only for components whose `final_tag_mode` is `detached-materialization-commit`
-- resolves the same authoritative RC source commit as the rest of the `Prepare RC` flow
-- creates an isolated detached worktree from that source commit
-- runs one caller-provided shell command in that detached worktree after the workflow has already
-  prepared any project-specific toolchain state
-- accepts repeatable repository-relative file or directory `--materialized-path` inputs and
-  force-stages them so git-ignored payloads such as `dist/` can be committed without entering
-  normal branch history
-- creates one detached materialization commit and emits its exact commit SHA
-- pushes that detached commit to a temporary remote ref so later workflow jobs can tag it before
-  the temporary anchor ref is deleted
-- accepts `--materialized-ref-name` as an override, but generates a default temporary remote ref
-  name when one is not provided
-- appends `materialized_commit_sha` and `materialized_ref_name` to `GITHUB_OUTPUT` when that file
-  path is present
-
-### `create-rc-materialization-tag`
-
-- creates the RC tag for the resolved version
-- tags the resolved source commit by default
-- requires `--target-commit` for components that use detached materialization commits
-- accepts `--rc-tag` so the tag-creation step can reuse the RC number resolved earlier in the workflow
-- can optionally clean up one temporary remote anchor ref after the RC tag has been created
-- fails if the RC tag already exists, even when it already points at the same commit
-- this prevents concurrent same-version `Prepare RC` runs from silently sharing one RC tag
-
-### `record-artifact`
-
-- writes one typed secondary-artifact manifest fragment for later RC finalization
-- currently supports `--kind generic-file`, `--kind maven-repository`,
-  `--kind oci-image`, `--kind python-distribution`, and `--kind npm-package`
-- for `generic-file`, computes the SHA512 digest from `--file` when one is supplied, or validates
-  an explicit `--sha512` when both are provided
-- when `--git-commit-sha` is supplied and `--artifact-origin` is omitted, records
-  `artifact_origin: source-commit`
-- for `npm-package`, can derive the canonical tarball URI from `--registry-url`,
-  `--package-name`, and `--package-version`, or derive those registry fields from a canonical
-  npm tarball `--uri`; it records integrity material derived from `--file` or validated from
-  `--integrity`, `--sha256`, or `--sha512`
-- for `maven-repository`, recursively snapshots the repository rooted at `--base-url` and writes a
-  detached inventory file into the registration bundle
-- for `maven-repository`, defaults `--base-url` to
-  `https://repository.apache.org/content/repositories/<staging-repository-id>/` when omitted
-- for `maven-repository`, defaults remote discovery and digest fetching to 16 workers and allows
-  overriding that with `--inventory-workers`
-- writes one registration bundle rooted at
-  `build/release-artifacts/<component>/secondary-artifacts/<artifact-id>/` by default
-- prints the fragment path on stdout so shell steps can pass it directly to later commands
-- appends `artifact_id`, `artifact_kind`, `artifact_manifest_path`, and `artifact_bundle_dir`
-  to `GITHUB_OUTPUT` when that file path is present
-- is intended to be paired with GitHub workflow artifacts for cross-job handoff: producer jobs
-  upload the bundle, and the finalization job downloads it before calling
-  `finalize-rc-vote-materials --secondary-artifact-manifest ...`
-
-### `finalize-rc-vote-materials`
-
-- requires the RC tag and draft GitHub Release to already exist
-- builds `rc-vote-manifest.json` from resolved live Git/SVN/GitHub state
-- accepts `--secondary-artifact-manifest` inputs for typed secondary-artifact fragments, including
-  manifests produced earlier by `record-artifact`
-- stages detached secondary-artifact inventory files referenced by those fragments and rewrites
-  their final authoritative URIs into the signed RC vote manifest
-- accepts `--rc-tag` so reruns keep using the already-selected RC
-- writes `.sha512`
-- creates a detached ASCII-armored signature for the manifest
-- stages the manifest set into ASF SVN `dist/dev`
-- mirrors the manifest set to the draft GitHub Release
-- emits the project RC vote email template alongside the machine-readable manifest
-- emits a later-use IPMC vote-request template for podlings, with human-fill thread placeholders
-
-### `publish-atr-candidate`
-
-- requires ATR integration to be enabled in the component config
-- wraps the official `atr` client instead of speaking the unstable ATR API directly
-- downloads the staged RC source-release files and the staged authoritative RC vote-manifest files
-- creates or reuses the ATR draft release for the configured product line and version
-- uploads the candidate files into ATR
-- can optionally wait for ATR's initial checks and include a status snapshot in the summary and manifest
-
-### `report-atr-checks`
-
-- fetches ATR check status for the latest ATR revision by default, or for one exact `--revision`
-- records ATR counts and status output in the emitted summary and manifest
-- stays advisory when `atr.strict_checking` is `false`
-- fails the command when ATR reports hard failures or exceptions and `atr.strict_checking` is `true`
-
-### `release-version`
-
-- resolves the selected RC tag from the exact-version draft GitHub Release
-- derives the specific release line from the exact version
-- reads previously published versions from ASF SVN `dist/release`
-- computes same-line pruning and moving-tag plans
-- assumes the final exact tag should reuse the released RC commit, whether that RC commit is the
-  plain source commit or a detached materialization commit
-- emits a project vote-result email template with human-fill vote-count placeholders
-- should hand off `selected_rc_tag` to later `Release version` jobs in the same workflow
-
-### `create-final-tag`
-
-- creates the immutable exact final Git tag for the version
-- targets the same commit as the selected RC tag
-- accepts `--selected-rc-tag` so later jobs can fail if the draft GitHub Release drifts to a newer RC
-- prefers GitHub API tag creation when the repository slug is available
-- treats an already-existing final tag on the same target commit as a successful no-op
-
-### `update-moving-tags`
-
-- currently supports Git tag-backed aliases such as GitHub Action `v1` / `v1.2`
-- requires the immutable exact final tag to already exist
-- applies the documented no-backward-move policy before mutating any alias
-- updates an existing alias only when the new version is newer within that alias's scope
-- treats an alias that already points at the intended final release as a successful no-op
-
-### `attach-github-release-assets`
-
-- locates the existing GitHub Release by exact final tag
-- uploads one or more files through `gh release upload`
-- uses replace semantics through `--clobber`
-- may additionally generate detached `*.asc` signatures
-- may additionally generate `*.sha512` and `*.sha256` sidecars
-- rejects duplicate upload basenames before invoking GitHub
-
-GitHub release assets are convenience artifacts only. They are not the authoritative ASF release.
-
-### `publish-dockerhub-moving-tags`
-
-- derives moving Docker Hub aliases such as `1`, `1.2`, and optionally `latest`
-- requires an already-pushed exact source image reference
-- authenticates with `DOCKERHUB_USER` and `DOCKERHUB_TOKEN`
-- uses `docker buildx imagetools create --prefer-index=false` so one command path can alias both
-  normal single-platform images and multi-platform images already present in the registry
-- publishes only the derived aliases; it does not build or push the exact image itself
-
-### `finalize-draft-github-release`
-
-- removes draft-only RC vote-manifest assets when present
-- accepts `--selected-rc-tag` so the final publication step can fail if the draft GitHub Release
-  drifted to a different RC after `release-version` resolved it
-- publishes the draft GitHub Release for the final tag
-- treats an already-published final release as a successful no-op
-- emits the final ANNOUNCE email template with a human-fill placeholder for release-specific text
-
-## External tool requirements
-
-Depending on the command, the runtime expects these tools on `PATH`:
-
-- `git`
-- `svn`
-- `gh`
-- `gpg`
-- `gzip`
-
-Integration tests also use `svnadmin`.
-
-## Logging and secret handling
-
-Subprocess commands such as `git`, `svn`, `gh`, and `gpg` are logged with arguments for workflow
-debuggability.
-
-The documented secret-bearing values are redacted from command logs.
-OpenPGP passphrases are sent to GnuPG over standard input and are never placed in command arguments.
-
-## Non-contract details
-
-The following are intentionally not public API:
-
-- Python module names and function names
-- internal helper behavior that is not surfaced through the CLI
-- undocumented environment-variable fallbacks for positional arguments
-- exact Markdown wording in summaries, except where a workflow explicitly consumes it as human text
+Release branch creation is available through `create-release-branch`, but neither lifecycle requires
+a maintained release line. Secondary publication adapters, moving aliases, generic voting, ASF
+composition, and reproducibility verification are selected only by components that need them.
