@@ -230,8 +230,8 @@ class RcVoteManifestTest(unittest.TestCase):
                 "buildish_release_tooling.release.rc_vote_manifest.github_workflow_provenance",
                 return_value=GitHubWorkflowProvenance(
                     repository="buildish-tooling/buildish-example",
-                    workflow="Releasey Prepare RC",
-                    workflow_ref="buildish-tooling/buildish-example/.github/workflows/releasey-20-prepare-rc.yml@refs/heads/main",
+                    workflow="Release Candidate",
+                    workflow_ref="buildish-tooling/buildish-example/.github/workflows/release-candidate.yml@refs/heads/main",
                     run_id=42,
                     run_attempt=1,
                     run_url="https://github.com/buildish-tooling/buildish-example/actions/runs/42",

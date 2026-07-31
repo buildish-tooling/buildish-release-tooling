@@ -33,6 +33,7 @@ from buildish_release_tooling.harness.job_selection import rerunnable_job_ids
 from buildish_release_tooling.harness.models import (
     HarnessJobStatus,
     HarnessScenario,
+    HarnessShimState,
     WorkflowScenario,
 )
 from buildish_release_tooling.harness.process import wait_for_harness_process
@@ -43,6 +44,10 @@ from buildish_release_tooling.harness.runtime import (
     load_job_statuses,
     write_job_statuses,
     write_job_summaries,
+)
+from buildish_release_tooling.shared.parsing import (
+    DEFAULT_CONFIG_PARSE_MAX_BYTES,
+    read_pydantic_json_file_bounded,
 )
 
 from . import fixtures, workflow
@@ -65,7 +70,9 @@ class ActBackend(Backend):
         workflow_scenario = _require_workflow(scenario)
         _progress(f"loading harness config {workflow_scenario.harness_config}")
         bindings = load_release_harness_config(Path(workflow_scenario.harness_config))
-        seed_workspace = load_existing_workspace(seed_from) if seed_from is not None else None
+        seed_workspace = (
+            load_existing_workspace(seed_from) if seed_from is not None else None
+        )
         if seed_workspace is not None:
             _progress(f"seeding workspace state from {seed_workspace.root}")
         workspace = fixtures._create_workspace(
@@ -75,7 +82,9 @@ class ActBackend(Backend):
         )
         _progress(f"created workspace {workspace.root}")
         _progress(f"bootstrapping workspace for scenario {scenario.name}")
-        fixtures._bootstrap_workspace(workspace, scenario, bindings, seed_workspace=seed_workspace)
+        fixtures._bootstrap_workspace(
+            workspace, scenario, bindings, seed_workspace=seed_workspace
+        )
         job_definitions = workflow._load_job_definitions(Path(workflow_scenario.path))
         selected_job_ids = workflow._topological_job_ids(job_definitions)
         _progress(f"preparing rewritten workflow {workflow_scenario.path}")
@@ -96,7 +105,9 @@ class ActBackend(Backend):
         )
         return result
 
-    def rerun_failed_jobs(self, scenario: HarnessScenario, workspace_root: Path) -> HarnessRunResult:
+    def rerun_failed_jobs(
+        self, scenario: HarnessScenario, workspace_root: Path
+    ) -> HarnessRunResult:
         """Rerun the failed `act` jobs and their downstream dependents in an existing workspace."""
 
         workflow_scenario = _require_workflow(scenario)
@@ -156,6 +167,7 @@ def _prepare_workflow_execution(
     workflow_scenario = _require_workflow(scenario)
     workflow._write_setup_uv_noop_action(workspace)
     workflow._write_local_checkout_action(workspace)
+    workflow._write_local_artifact_actions(workspace)
     rewritten_workflow = workflow._rewrite_workflow(
         workspace=workspace,
         workflow_path=Path(workflow_scenario.path),
@@ -164,14 +176,47 @@ def _prepare_workflow_execution(
         real_cli_commands=set(workflow_scenario.real_cli_commands),
         generated_gpg_fixture=workflow_scenario.gpg_fixture == "generated-signing-key",
     )
-    event_payload = {
-        "inputs": dict(workflow_scenario.inputs),
-    }
+    event_payload = {"inputs": _resolved_workflow_inputs(workspace, workflow_scenario)}
     (workspace.harness_dir / "act-event.json").write_text(
         json.dumps(event_payload, indent=2, sort_keys=True),
         encoding="utf-8",
     )
-    (workspace.harness_dir / "active-workflow.txt").write_text(str(rewritten_workflow), encoding="utf-8")
+    (workspace.harness_dir / "active-workflow.txt").write_text(
+        str(rewritten_workflow), encoding="utf-8"
+    )
+
+
+def _resolved_workflow_inputs(
+    workspace: HarnessWorkspace,
+    workflow: WorkflowScenario,
+) -> dict[str, str]:
+    """Resolve explicit harness-only inputs from retained seeded provider state."""
+
+    inputs = dict(workflow.inputs)
+    prefix = "harness:seeded-release-asset-sha256:"
+    for input_name, value in tuple(inputs.items()):
+        if not value.startswith(prefix):
+            continue
+        asset_name = value.removeprefix(prefix)
+        candidate_tag = inputs.get("candidate_tag", "")
+        state = read_pydantic_json_file_bounded(
+            HarnessShimState,
+            workspace.state_file,
+            max_bytes=DEFAULT_CONFIG_PARSE_MAX_BYTES,
+        )
+        release = state.gh_releases.get(candidate_tag)
+        if release is None:
+            continue
+        matching_assets = [
+            asset for asset in release.assets if asset.name == asset_name
+        ]
+        if len(matching_assets) != 1:
+            raise ValueError(f"seeded GitHub Release requires one {asset_name} asset")
+        algorithm, separator, digest = matching_assets[0].digest.partition(":")
+        if separator != ":" or algorithm != "sha256" or not digest:
+            raise ValueError("seeded GitHub Release asset lacks a SHA-256 digest")
+        inputs[input_name] = digest
+    return inputs
 
 
 def _run_act(
@@ -203,9 +248,10 @@ def _run_act(
     _progress(f"running command: {shlex.join(command)}")
     stdout_path = workspace.harness_dir / "act-stdout.log"
     stderr_path = workspace.harness_dir / "act-stderr.log"
-    with stdout_path.open("a", encoding="utf-8") as stdout_handle, stderr_path.open(
-        "a", encoding="utf-8"
-    ) as stderr_handle:
+    with (
+        stdout_path.open("a", encoding="utf-8") as stdout_handle,
+        stderr_path.open("a", encoding="utf-8") as stderr_handle,
+    ):
         process = subprocess.Popen(  # noqa: S603
             command,
             cwd=str(workspace.root),
@@ -224,7 +270,9 @@ def _run_act(
     return return_code
 
 
-def _start_stream_thread(stream: IO[str] | None, log_handle: IO[str]) -> threading.Thread:
+def _start_stream_thread(
+    stream: IO[str] | None, log_handle: IO[str]
+) -> threading.Thread:
     """Start one background forwarder that tees a process stream into the log and stderr."""
 
     def forward() -> None:
@@ -320,16 +368,22 @@ def _job_status_directory(workspace: HarnessWorkspace) -> Path:
     return workspace.job_statuses_dir
 
 
-def _collect_recorded_job_statuses(workspace: HarnessWorkspace) -> dict[str, HarnessJobStatus]:
+def _collect_recorded_job_statuses(
+    workspace: HarnessWorkspace,
+) -> dict[str, HarnessJobStatus]:
     """Load all job-status files emitted by the rewritten workflow."""
 
     statuses: dict[str, HarnessJobStatus] = {}
     for path in sorted(_job_status_directory(workspace).glob("*.status")):
-        statuses[path.stem] = _normalize_job_status(path.read_text(encoding="utf-8").strip())
+        statuses[path.stem] = _normalize_job_status(
+            path.read_text(encoding="utf-8").strip()
+        )
     return statuses
 
 
-def _clear_job_status_files(workspace: HarnessWorkspace, selected_job_ids: list[str]) -> None:
+def _clear_job_status_files(
+    workspace: HarnessWorkspace, selected_job_ids: list[str]
+) -> None:
     """Remove stale status files for the jobs that are about to be rerun."""
 
     for job_id in selected_job_ids:
@@ -364,7 +418,11 @@ def _result_from_recorded_statuses(
                 failed_job_ids.append(job_id)
             continue
         needs = _job_needs(job_definitions, job_id)
-        if any(all_statuses.get(need) != "success" for need in needs if need in selected_set):
+        if any(
+            all_statuses.get(need) != "success"
+            for need in needs
+            if need in selected_set
+        ):
             all_statuses[job_id] = "blocked"
             blocked_job_ids.append(job_id)
             continue
@@ -387,7 +445,9 @@ def _result_from_recorded_statuses(
     )
 
 
-def _job_needs(job_definitions: list[workflow.WorkflowJobDefinition], job_id: str) -> list[str]:
+def _job_needs(
+    job_definitions: list[workflow.WorkflowJobDefinition], job_id: str
+) -> list[str]:
     """Return the normalized `needs` list for one workflow job."""
 
     for definition in job_definitions:

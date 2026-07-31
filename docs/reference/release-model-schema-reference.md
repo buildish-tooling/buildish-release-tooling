@@ -43,6 +43,6 @@ It covers supported external configuration and verification/report contracts, pl
 
 ## Coverage notes
 
-- generated schema files: `65`
+- generated schema files: `66`
 - command action manifests are documented here for maintenance and debugging, but they are intentionally unstable and not a supported external API.
 

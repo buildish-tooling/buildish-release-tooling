@@ -64,6 +64,7 @@ from buildish_release_tooling.release.commands.vote_materials import (
     run_finalize_rc_vote_materials,
 )
 from buildish_release_tooling.release.platforms.github.commands import (
+    run_attach_github_release_manifest,
     run_publish_github_final_release,
     run_read_github_final_release,
     run_resolve_direct_release,
@@ -79,6 +80,7 @@ from buildish_release_tooling.release.platforms.github.candidate_commands import
 )
 
 __all__ = [
+    "run_attach_github_release_manifest",
     "run_attach_github_release_assets",
     "run_attach_github_candidate_manifest",
     "run_build_source_rc",

@@ -35,6 +35,7 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [AsfVoteExtension](#asfvoteextension) — ASF-specific vote rendering, trust-root, and disclaimer evidence.
 - [AsfVoteMaterialsConfig](#asfvotematerialsconfig) — ASF candidate vote-material rendering policy.
 - [AttachGitHubCandidateManifestResult](#attachgithubcandidatemanifestresult) — Result of attaching one exact durable candidate manifest.
+- [AttachGitHubReleaseManifestResult](#attachgithubreleasemanifestresult) — Result of attaching one exact durable final release manifest.
 - [AuthenticityReference](#authenticityreference) — Optional signature or attestation reference for a manifest or vote package.
 - [BuiltSourceSnapshotConfig](#builtsourcesnapshotconfig) — Policy for a separately built source archive release asset.
 - [ByteIdenticalPromotionEvidence](#byteidenticalpromotionevidence) — Evidence that candidate and final artifact bytes have identical digests.
@@ -269,6 +270,27 @@ Result of attaching one exact durable candidate manifest.
 | <a id="attachgithubcandidatemanifestresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubCandidatePublication](#githubcandidatepublication)'> | yes | Observed GitHub candidate publication including the manifest asset. |
 | <a id="attachgithubcandidatemanifestresult-action"></a>`action` | typing.Literal['attach-github-candidate-manifest'] | no | Command action discriminator. |
 | <a id="attachgithubcandidatemanifestresult-outcome"></a>`outcome` | typing.Literal['attached', 'already-complete'] | yes | Idempotent manifest attachment outcome. |
+
+<a id="attachgithubreleasemanifestresult"></a>
+### AttachGitHubReleaseManifestResult
+
+Result of attaching one exact durable final release manifest.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`attach-github-release-manifest-result.schema.json`](/components/release-tooling/schemas/attach-github-release-manifest-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="attachgithubreleasemanifestresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="attachgithubreleasemanifestresult-version"></a>`version` | <class 'str'> | yes | Exact released component version. |
+| <a id="attachgithubreleasemanifestresult-release-manifest"></a>`release_manifest` | <class 'buildish_release_tooling.release.core.manifests.[ManifestDigestReference](#manifestdigestreference)'> | yes | Exact attached final release-manifest identity. |
+| <a id="attachgithubreleasemanifestresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubFinalPublication](#githubfinalpublication)'> | yes | Observed GitHub final publication containing the manifest asset. |
+| <a id="attachgithubreleasemanifestresult-action"></a>`action` | typing.Literal['attach-github-release-manifest'] | no | Command action discriminator. |
+| <a id="attachgithubreleasemanifestresult-outcome"></a>`outcome` | typing.Literal['attached', 'already-complete'] | yes | Idempotent manifest attachment outcome. |
 
 <a id="authenticityreference"></a>
 ### AuthenticityReference

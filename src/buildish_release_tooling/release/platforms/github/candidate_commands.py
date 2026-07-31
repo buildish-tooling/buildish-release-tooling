@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 from argparse import Namespace
+from io import BytesIO
 from pathlib import Path
 from typing import Literal
 
@@ -79,6 +80,7 @@ from buildish_release_tooling.shared.parsing import (
     DEFAULT_MANIFEST_PARSE_MAX_BYTES,
     read_pydantic_json_file_bounded,
 )
+from buildish_release_tooling.shared.io import copy_stream_to_path
 
 
 def _load_candidate_state(path_text: str) -> CandidateReleaseState:
@@ -97,7 +99,9 @@ def _validated_candidate_context(
     if context.release_config.lifecycle.mode != "candidate":
         raise ValueError("GitHub candidate commands require lifecycle.mode candidate")
     if state.release.component.id != context.release_config.component.id:
-        raise ValueError("candidate state component does not match release configuration")
+        raise ValueError(
+            "candidate state component does not match release configuration"
+        )
     target = require_github_authoritative_publication(context.release_config)
     repo = GitRepository.from_current_worktree()
     repository = target.repository or resolve_repository_slug(repo.path)
@@ -116,8 +120,12 @@ def _validate_candidate_tags(
     )
     if local_target != state.source.commit_sha:
         if local_target is None:
-            raise ValueError(f"candidate tag does not exist: {state.candidate.tag.name}")
-        raise ValueError("local candidate tag target does not match candidate source commit")
+            raise ValueError(
+                f"candidate tag does not exist: {state.candidate.tag.name}"
+            )
+        raise ValueError(
+            "local candidate tag target does not match candidate source commit"
+        )
     remote_target = resolve_annotated_tag_target_commit(
         repository,
         tag_name=state.candidate.tag.name,
@@ -326,9 +334,8 @@ def _validate_manifest_publication(
             "candidate manifest requires one neutral GitHub publication reference"
         )
     reference = matching_references[0]
-    if (
-        reference.uri != publication.release_url
-        or reference.immutable_id != str(publication.release_id)
+    if reference.uri != publication.release_url or reference.immutable_id != str(
+        publication.release_id
     ):
         raise ValueError(
             "candidate manifest publication reference does not match observed release"
@@ -374,7 +381,9 @@ def run_attach_github_candidate_manifest(args: Namespace) -> Path:
             raise ValueError("GitHub candidate manifest asset sha256 mismatch")
     else:
         if not publication.draft:
-            raise ValueError("published GitHub candidate is missing its durable manifest")
+            raise ValueError(
+                "published GitHub candidate is missing its durable manifest"
+            )
         upload_release_assets(
             repository,
             tag_name=state.candidate.tag.name,
@@ -397,9 +406,13 @@ def run_attach_github_candidate_manifest(args: Namespace) -> Path:
         if manifest_asset is None:
             raise ValueError("GitHub candidate manifest is absent after upload")
         if manifest_asset.size_bytes != manifest_path.stat().st_size:
-            raise ValueError("GitHub candidate manifest asset size mismatch after upload")
+            raise ValueError(
+                "GitHub candidate manifest asset size mismatch after upload"
+            )
         if manifest_asset.digest != f"sha256:{reference.digest}":
-            raise ValueError("GitHub candidate manifest asset sha256 mismatch after upload")
+            raise ValueError(
+                "GitHub candidate manifest asset sha256 mismatch after upload"
+            )
     outcome: Literal["attached", "already-complete"] = (
         "already-complete" if attached else "attached"
     )
@@ -431,6 +444,7 @@ def _verified_remote_candidate(
     GitHubCandidatePublication,
     ManifestDigestReference,
     str,
+    str,
 ]:
     context = _context(args)
     if context.release_config.lifecycle.mode != "candidate":
@@ -448,16 +462,22 @@ def _verified_remote_candidate(
         raise ValueError("GitHub candidate does not contain candidate-manifest.json")
     expected_digest = args.candidate_manifest_digest.lower()
     if manifest_asset.digest != f"sha256:{expected_digest}":
-        raise ValueError("GitHub candidate manifest digest does not match selected digest")
+        raise ValueError(
+            "GitHub candidate manifest digest does not match selected digest"
+        )
     manifest_text = download_release_asset_text(repository, manifest_asset.asset_id)
     if len(manifest_text.encode("utf-8")) > DEFAULT_MANIFEST_PARSE_MAX_BYTES:
         raise ValueError("downloaded candidate manifest exceeds the maximum size")
     actual_digest = hashlib.sha256(manifest_text.encode("utf-8")).hexdigest()
     if actual_digest != expected_digest:
-        raise ValueError("downloaded candidate manifest digest does not match selected digest")
+        raise ValueError(
+            "downloaded candidate manifest digest does not match selected digest"
+        )
     manifest = CandidateManifestV1.model_validate_json(manifest_text)
     if manifest.release.component.id != context.release_config.component.id:
-        raise ValueError("candidate manifest component does not match release configuration")
+        raise ValueError(
+            "candidate manifest component does not match release configuration"
+        )
     if manifest.candidate.tag.name != args.candidate_tag:
         raise ValueError("candidate manifest does not match selected candidate tag")
     if manifest.source_date_epoch is None:
@@ -492,15 +512,29 @@ def _verified_remote_candidate(
         algorithm="sha256",
         digest=expected_digest,
     )
-    return manifest, state, publication, reference, repository
+    return manifest, state, publication, reference, repository, manifest_text
 
 
 def run_verify_github_candidate(args: Namespace) -> Path:
     """Verify one candidate tag, release, asset set, and durable manifest."""
 
-    _manifest, state, publication, reference, repository = _verified_remote_candidate(
-        args
-    )
+    (
+        _manifest,
+        state,
+        publication,
+        reference,
+        repository,
+        manifest_text,
+    ) = _verified_remote_candidate(args)
+    output_path_text = getattr(args, "candidate_manifest_output", None)
+    if output_path_text:
+        output_path = Path(output_path_text)
+        copy_stream_to_path(
+            BytesIO(manifest_text.encode("utf-8")),
+            output_path,
+            algorithms=("sha256",),
+            max_bytes=DEFAULT_MANIFEST_PARSE_MAX_BYTES,
+        )
     result = VerifyGitHubCandidateResult(
         component=state.release.component.id,
         version=state.release.version,
@@ -523,8 +557,8 @@ def run_verify_github_candidate(args: Namespace) -> Path:
 def run_finalize_github_candidate(args: Namespace) -> Path:
     """Apply configured candidate visibility after exact manifest verification."""
 
-    _manifest, state, publication, reference, repository = _verified_remote_candidate(
-        args
+    _manifest, state, publication, reference, repository, _manifest_text = (
+        _verified_remote_candidate(args)
     )
     candidate_config = require_candidate_config(_context(args).release_config)
     if candidate_config.visibility == "draft":
@@ -557,7 +591,9 @@ def run_finalize_github_candidate(args: Namespace) -> Path:
             allow_attached_manifest=True,
         )
         if publication.draft or not publication.prerelease:
-            raise ValueError("GitHub candidate visibility did not converge after publication")
+            raise ValueError(
+                "GitHub candidate visibility did not converge after publication"
+            )
         outcome = "published"
     else:
         outcome = "already-complete"

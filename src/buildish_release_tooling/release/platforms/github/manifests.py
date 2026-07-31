@@ -24,7 +24,10 @@ from buildish_release_tooling.docs.documentation import (
     ToolingDerivedModel,
 )
 from buildish_release_tooling.release.core.manifests import ManifestDigestReference
-from buildish_release_tooling.release.core.models import ArtifactReference, CandidateIdentity
+from buildish_release_tooling.release.core.models import (
+    ArtifactReference,
+    CandidateIdentity,
+)
 
 
 class GitHubAssetIdentity(ToolingDerivedModel):
@@ -42,7 +45,9 @@ class GitHubAssetIdentity(ToolingDerivedModel):
     def _validate_digest(cls, value: str) -> str:
         normalized = value.lower()
         if re.fullmatch(r"sha256:[0-9a-f]{64}", normalized) is None:
-            raise ValueError("GitHub asset digest must use sha256:<64 lowercase hex digits>")
+            raise ValueError(
+                "GitHub asset digest must use sha256:<64 lowercase hex digits>"
+            )
         return normalized
 
 
@@ -85,13 +90,16 @@ class StageGitHubFinalReleaseResult(ToolingDerivedModel):
 
     component: str = Field(description="Released Buildish component identifier.")
     version: str = Field(description="Exact released component version.")
-    source_commit: str = Field(description="Exact source commit targeted by the final tag.")
+    source_commit: str = Field(
+        description="Exact source commit targeted by the final tag."
+    )
     publication: GitHubFinalPublication = Field(
         description="Observed exact GitHub final-release publication state."
     )
 
     action: Literal["stage-github-final-release"] = Field(
-        default="stage-github-final-release", description="Command action discriminator."
+        default="stage-github-final-release",
+        description="Command action discriminator.",
     )
     outcome: Literal["created", "completed", "already-complete"] = Field(
         description="Idempotent staging outcome."
@@ -103,7 +111,9 @@ class ReadGitHubFinalReleaseResult(ToolingDerivedModel):
 
     component: str = Field(description="Released Buildish component identifier.")
     version: str = Field(description="Exact released component version.")
-    source_commit: str = Field(description="Exact source commit targeted by the final tag.")
+    source_commit: str = Field(
+        description="Exact source commit targeted by the final tag."
+    )
     publication: GitHubFinalPublication = Field(
         description="Observed exact GitHub final-release publication state."
     )
@@ -121,13 +131,16 @@ class VerifyGitHubFinalReleaseResult(ToolingDerivedModel):
 
     component: str = Field(description="Released Buildish component identifier.")
     version: str = Field(description="Exact released component version.")
-    source_commit: str = Field(description="Exact source commit targeted by the final tag.")
+    source_commit: str = Field(
+        description="Exact source commit targeted by the final tag."
+    )
     publication: GitHubFinalPublication = Field(
         description="Observed exact GitHub final-release publication state."
     )
 
     action: Literal["verify-github-final-release"] = Field(
-        default="verify-github-final-release", description="Command action discriminator."
+        default="verify-github-final-release",
+        description="Command action discriminator.",
     )
     outcome: Literal["verified"] = Field(
         default="verified", description="Exact-state verification outcome."
@@ -139,16 +152,39 @@ class PublishGitHubFinalReleaseResult(ToolingDerivedModel):
 
     component: str = Field(description="Released Buildish component identifier.")
     version: str = Field(description="Exact released component version.")
-    source_commit: str = Field(description="Exact source commit targeted by the final tag.")
+    source_commit: str = Field(
+        description="Exact source commit targeted by the final tag."
+    )
     publication: GitHubFinalPublication = Field(
         description="Observed exact GitHub final-release publication state."
     )
 
     action: Literal["publish-github-final-release"] = Field(
-        default="publish-github-final-release", description="Command action discriminator."
+        default="publish-github-final-release",
+        description="Command action discriminator.",
     )
     outcome: Literal["published", "already-complete"] = Field(
         description="Idempotent final publication outcome."
+    )
+
+
+class AttachGitHubReleaseManifestResult(ToolingDerivedModel):
+    """Result of attaching one exact durable final release manifest."""
+
+    component: str = Field(description="Released Buildish component identifier.")
+    version: str = Field(description="Exact released component version.")
+    release_manifest: ManifestDigestReference = Field(
+        description="Exact attached final release-manifest identity."
+    )
+    publication: GitHubFinalPublication = Field(
+        description="Observed GitHub final publication containing the manifest asset."
+    )
+    action: Literal["attach-github-release-manifest"] = Field(
+        default="attach-github-release-manifest",
+        description="Command action discriminator.",
+    )
+    outcome: Literal["attached", "already-complete"] = Field(
+        description="Idempotent manifest attachment outcome."
     )
 
 
@@ -158,7 +194,9 @@ class CreateGitHubCandidateTagResult(ToolingDerivedModel):
     component: str = Field(description="Released Buildish component identifier.")
     version: str = Field(description="Exact candidate version.")
     candidate: CandidateIdentity = Field(description="Exact candidate identity.")
-    source_commit: str = Field(description="Exact commit targeted by the candidate tag.")
+    source_commit: str = Field(
+        description="Exact commit targeted by the candidate tag."
+    )
     action: Literal["create-candidate-tag"] = Field(
         default="create-candidate-tag", description="Command action discriminator."
     )
@@ -173,9 +211,12 @@ class StageGitHubCandidateResult(ToolingDerivedModel):
     component: str = Field(description="Released Buildish component identifier.")
     version: str = Field(description="Exact candidate version.")
     candidate: CandidateIdentity = Field(description="Exact candidate identity.")
-    source_commit: str = Field(description="Exact source commit targeted by the candidate tag.")
+    source_commit: str = Field(
+        description="Exact source commit targeted by the candidate tag."
+    )
     artifacts: list[ArtifactReference] = Field(
-        default_factory=list, description="Immutable staged candidate artifact inventory."
+        default_factory=list,
+        description="Immutable staged candidate artifact inventory.",
     )
     publication: GitHubCandidatePublication = Field(
         description="Observed exact GitHub candidate publication state."
@@ -272,6 +313,10 @@ VerifyGitHubFinalReleaseResult.schema_export = _result_export(
 PublishGitHubFinalReleaseResult.schema_export = _result_export(
     "publish-github-final-release-result.schema.json",
     "Stable publication result for a direct GitHub final release.",
+)
+AttachGitHubReleaseManifestResult.schema_export = _result_export(
+    "attach-github-release-manifest-result.schema.json",
+    "Stable result of attaching one exact final release manifest.",
 )
 CreateGitHubCandidateTagResult.schema_export = _result_export(
     "create-github-candidate-tag-result.schema.json",

@@ -21,10 +21,6 @@
 Its purpose is to validate what Buildish release workflows and release CLI commands would do,
 including transient failures and reruns, without needing live GitHub or registry access.
 
-The phased plan for moving the `act` backend from mocked release-tooling calls to real CLI
-execution against harness-managed Git and ASF SVN fixtures is tracked in
-[REAL-CLI-ACT-PLAN.md](REAL-CLI-ACT-PLAN.md).
-
 ## Scope
 
 The harness is designed around three layers:
@@ -195,21 +191,22 @@ uvx --from /home/snazy/devel/buildish-tooling/buildish/buildish-release-tooling 
 
 ## Running the `act` backend
 
-The committed `releasey-*.yaml` harness scenarios use the `act` backend and run the real checked-in
-workflow YAML through a rewritten disposable workspace.
+The committed lifecycle scenarios use the `act` backend and run the real checked-in workflow YAML
+through a rewritten disposable workspace. The harness replaces same-run GitHub workflow artifact
+actions and GitHub Release operations with deterministic workspace-local implementations.
 
 Example:
 
 ```bash
 uv run --frozen buildish-release-harness run \
-  buildish-release-tooling/harness/scenarios/releasey-20-prepare-rc.yaml
+  buildish-release-tooling/harness/scenarios/release-candidate.yaml
 ```
 
-To seed one workflow run from a prior harness workspace's Git and SVN state:
+To seed one workflow run from a prior workspace's Git, GitHub Release, and optional SVN state:
 
 ```bash
 uv run --frozen buildish-release-harness run \
-  buildish-release-tooling/harness/scenarios/releasey-30-release-version.yaml \
+  buildish-release-tooling/harness/scenarios/release-promote.yaml \
   --seed-from /path/to/previous/workspace
 ```
 
@@ -217,9 +214,13 @@ To run multiple workflows in order, with each run seeded from the previous works
 
 ```bash
 uv run --frozen buildish-release-harness run-sequence \
-  buildish-release-tooling/harness/scenarios/releasey-20-prepare-rc.yaml \
-  buildish-release-tooling/harness/scenarios/releasey-30-release-version.yaml
+  buildish-release-tooling/harness/scenarios/release-candidate.yaml \
+  buildish-release-tooling/harness/scenarios/release-candidate.yaml \
+  buildish-release-tooling/harness/scenarios/release-promote.yaml
 ```
+
+This sequence publishes retained `rc1` and `rc2` candidates, then promotes the explicitly selected
+`rc2` candidate and its exact manifest digest.
 
 That requires:
 
@@ -239,7 +240,8 @@ checkout actions are visible inside the runner workspace.
 The rewritten workflow in the disposable workspace is clearly marked as harness-generated and keeps
 a verbatim `*.original.yml` copy of the source workflow next to it for comparison.
 
-The `act` backend also prepares a harness-owned local ASF SVN repository under
+The `act` backend retains GitHub Releases and their assets across seeded workflow runs. It also
+prepares a harness-owned local ASF SVN repository under
 `.buildish-release-harness/svn/repository/`, checks out an inspectable working copy under
 `.buildish-release-harness/svn/working-copy/`, and rewrites the workspace
 `buildish-release-tooling/release-config.yaml` to use `file://...` URLs that point at that local
@@ -260,7 +262,7 @@ The `act` backend scenarios can also be rerun from an existing workspace:
 
 ```bash
 uv run --frozen buildish-release-harness rerun-failed \
-  buildish-release-tooling/harness/scenarios/releasey-30-release-version.yaml \
+  buildish-release-tooling/harness/scenarios/release-promote.yaml \
   /path/to/existing/workspace
 ```
 
@@ -277,10 +279,8 @@ with a small preset-style initial state such as:
 Scenarios can also add explicit `dev_dist_entries` and `release_dist_entries` under the configured
 `asf_dist_dev_base` and `asf_dist_release_base` roots.
 
-Scenarios can seed repository-relative SVN files through `workflow.svn_fixture.repository_files`.
-This is useful for standalone workflows like `releasey-30-release-version`, which may need a
-minimal staged source RC payload even when they are not seeded from a previous `prepare-rc`
-workspace.
+Scenarios for an explicit ASF composition can seed repository-relative SVN files through
+`workflow.svn_fixture.repository_files`.
 
 When a run uses `--seed-from` or `run-sequence`, the harness applies SVN directories and
 `repository_files` additively:
@@ -432,11 +432,11 @@ This repository currently includes:
 - the lightweight custom-backend examples:
   - `basic-success.yaml`
   - `fail-once-rerun.yaml`
-- committed `act` scenarios for the four `releasey-*` workflows:
-  - `releasey-10-create-release-branch.yaml`
-  - `releasey-20-prepare-rc.yaml`
-  - `releasey-30-release-version.yaml`
-  - `releasey-40-verify-rc.yaml`
+- committed `act` scenarios for the four lifecycle workflows:
+  - `release-direct.yaml`
+  - `release-candidate.yaml`
+  - `release-promote.yaml`
+  - `release-verify-candidate.yaml`
 - a committed `buildish-release-tooling/harness/release-harness.yaml` binding file for the
   tooling repo itself
 
@@ -450,17 +450,20 @@ For `act` scenarios, the workflow block can also declare:
   - currently supports:
     - `tags`
     - `branches`
+- `release_config`
+  - complete scenario-local release configuration installed only in the disposable workspace
 
 Example:
 
 ```yaml
 workflow:
-  path: ../../../.github/workflows/releasey-40-verify-rc.yml
+  path: ../../../.github/workflows/release-verify-candidate.yml
   harness_config: ../release-harness.yaml
   inputs:
-    version: 9.9.9
+    candidate_tag: v9.9.9-rc1
+    candidate_manifest_digest: <exact-sha256>
   real_cli_commands:
-    - verify-rc
+    - verify-github-candidate
   repository_fixture:
     tags:
       - name: v9.9.9-rc1

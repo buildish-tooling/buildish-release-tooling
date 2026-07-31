@@ -21,7 +21,11 @@ from pathlib import Path
 from buildish_release_tooling.harness.config import ResolvedReleaseHarnessConfig
 from buildish_release_tooling.harness.models import validate_harness_identifier
 from buildish_release_tooling.harness.runtime import HarnessWorkspace
-from buildish_release_tooling.harness.yaml_types import YamlMapping, YamlValue, require_yaml_mapping
+from buildish_release_tooling.harness.yaml_types import (
+    YamlMapping,
+    YamlValue,
+    require_yaml_mapping,
+)
 from buildish_release_tooling.harness.backends.act.workflow_helpers import (
     _bootstrap_step,
     _generated_action_references,
@@ -31,6 +35,7 @@ from buildish_release_tooling.harness.backends.act.workflow_helpers import (
     _rewrite_step,
     _write_bash_shim,
     _write_generic_tool_shims,
+    _write_local_artifact_actions,
     _write_local_checkout_action,
     _write_setup_uv_noop_action,
     _write_uv_shim,
@@ -60,6 +65,7 @@ __all__ = [
     "_topological_job_ids",
     "_write_bash_shim",
     "_write_generic_tool_shims",
+    "_write_local_artifact_actions",
     "_write_local_checkout_action",
     "_write_setup_uv_noop_action",
     "_write_uv_shim",
@@ -86,7 +92,9 @@ def _rewrite_workflow(
     if not isinstance(jobs, dict):
         raise ValueError(f"workflow {workflow_path} does not define a jobs mapping")
     for job_id, job_payload in jobs.items():
-        normalized_job_id = validate_harness_identifier(str(job_id), field_name="workflow job id")
+        normalized_job_id = validate_harness_identifier(
+            str(job_id), field_name="workflow job id"
+        )
         if not isinstance(job_payload, dict):
             raise ValueError(f"workflow job {job_id} must be a mapping")
         raw_steps = job_payload.get("steps")
@@ -120,7 +128,9 @@ def _rewrite_workflow(
         job_payload["steps"] = rewritten_steps
     destination = workspace.root / ".github" / "workflows" / workflow_path.name
     destination.parent.mkdir(parents=True, exist_ok=True)
-    original_copy = destination.with_name(f"{destination.stem}.original{destination.suffix}")
+    original_copy = destination.with_name(
+        f"{destination.stem}.original{destination.suffix}"
+    )
     original_copy.write_text(
         read_text_file_bounded(workflow_path, max_bytes=DEFAULT_CONFIG_PARSE_MAX_BYTES),
         encoding="utf-8",

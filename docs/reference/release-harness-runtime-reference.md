@@ -27,6 +27,8 @@ Back to the [reference overview](../release-model-schema-reference/).
 
 - [FileWriteAction](#filewriteaction) — A file write that a mocked tool invocation should perform.
 - [GitRepositoryFixture](#gitrepositoryfixture) — A disposable Git repository that should be initialized inside the workspace.
+- [HarnessBuiltinGhRelease](#harnessbuiltinghrelease) — Synthetic GitHub Release retained by the stateful harness shim.
+- [HarnessBuiltinGhReleaseAsset](#harnessbuiltinghreleaseasset) — Synthetic GitHub Release asset retained by the stateful harness shim.
 - [HarnessBuiltinGhTagObject](#harnessbuiltinghtagobject) — Synthetic GitHub tag-object payload retained by the harness shim.
 - [HarnessCommandTraceEntry](#harnesscommandtraceentry) — One persisted command-trace entry recorded by harness tool shims.
 - [HarnessInspectablePaths](#harnessinspectablepaths) — Stable inspectable workspace paths exposed by the harness CLI.
@@ -77,6 +79,45 @@ A disposable Git repository that should be initialized inside the workspace.
 | <a id="gitrepositoryfixture-default-branch"></a>`default_branch` | str | no | Branch name that the harness should create as the default branch in the disposable Git repository fixture. |
 | <a id="gitrepositoryfixture-commit-message"></a>`commit_message` | str | no | Commit message that the harness should use when creating the initial commit in the disposable Git repository fixture. |
 | <a id="gitrepositoryfixture-files"></a>`files` | list[[WorkspaceFile](#workspacefile)] | no | Workspace files that the harness should create inside the related fixture repository before execution begins. |
+
+<a id="harnessbuiltinghrelease"></a>
+### HarnessBuiltinGhRelease
+
+Synthetic GitHub Release retained by the stateful harness shim.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="harnessbuiltinghrelease-id"></a>`id` | int | yes | Synthetic GitHub Release identifier. |
+| <a id="harnessbuiltinghrelease-repository"></a>`repository` | str | yes | GitHub repository identity associated with the release. |
+| <a id="harnessbuiltinghrelease-tag-name"></a>`tag_name` | str | yes | Exact tag associated with the release. |
+| <a id="harnessbuiltinghrelease-name"></a>`name` | str | yes | Release title. |
+| <a id="harnessbuiltinghrelease-body"></a>`body` | str | yes | Release body. |
+| <a id="harnessbuiltinghrelease-draft"></a>`draft` | bool | yes | Whether the release remains a draft. |
+| <a id="harnessbuiltinghrelease-prerelease"></a>`prerelease` | bool | yes | Whether the release is a prerelease. |
+| <a id="harnessbuiltinghrelease-html-url"></a>`html_url` | str | yes | Synthetic browser-facing release URL. |
+| <a id="harnessbuiltinghrelease-url"></a>`url` | str | yes | Synthetic API-facing release URL. |
+| <a id="harnessbuiltinghrelease-assets"></a>`assets` | list[[HarnessBuiltinGhReleaseAsset](#harnessbuiltinghreleaseasset)] | no | Synthetic assets currently attached to the retained GitHub Release. |
+
+<a id="harnessbuiltinghreleaseasset"></a>
+### HarnessBuiltinGhReleaseAsset
+
+Synthetic GitHub Release asset retained by the stateful harness shim.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="harnessbuiltinghreleaseasset-id"></a>`id` | int | yes | Synthetic GitHub Release asset identifier. |
+| <a id="harnessbuiltinghreleaseasset-name"></a>`name` | str | yes | Release asset basename. |
+| <a id="harnessbuiltinghreleaseasset-size"></a>`size` | int | yes | Release asset size in bytes. |
+| <a id="harnessbuiltinghreleaseasset-digest"></a>`digest` | str | yes | GitHub-style algorithm-prefixed asset digest. |
+| <a id="harnessbuiltinghreleaseasset-stored-path"></a>`stored_path` | str | yes | Workspace-relative path containing the retained bytes. |
 
 <a id="harnessbuiltinghtagobject"></a>
 ### HarnessBuiltinGhTagObject
@@ -246,6 +287,9 @@ Persisted subprocess-facing harness shim state.
 | <a id="harnessshimstate-tool-behaviors"></a>`tool_behaviors` | dict[str, list[[ToolBehavior](#toolbehavior)]] | no | Scripted intercepted-tool behaviors keyed by tool name in the related harness scenario or runtime state. |
 | <a id="harnessshimstate-counts"></a>`counts` | dict[str, int] | no | Per-tool or per-key invocation counts retained in harness runtime state. |
 | <a id="harnessshimstate-gh-tag-objects"></a>`gh_tag_objects` | dict[str, [HarnessBuiltinGhTagObject](#harnessbuiltinghtagobject)] | no | Synthetic GitHub annotated-tag payloads persisted in harness shim state for later ref mutation handling. |
+| <a id="harnessshimstate-gh-releases"></a>`gh_releases` | dict[str, [HarnessBuiltinGhRelease](#harnessbuiltinghrelease)] | no | Synthetic GitHub Releases keyed by exact tag. |
+| <a id="harnessshimstate-gh-next-release-id"></a>`gh_next_release_id` | int | no | Next synthetic GitHub Release identifier allocated by the stateful shim. |
+| <a id="harnessshimstate-gh-next-asset-id"></a>`gh_next_asset_id` | int | no | Next synthetic GitHub Release asset identifier allocated by the stateful shim. |
 
 <a id="invocationmatch"></a>
 ### InvocationMatch
@@ -409,6 +453,7 @@ A real workflow-YAML invocation executed by the `act` backend.
 | <a id="workflowscenario-event"></a>`event` | Literal['workflow_dispatch'] | no | Workflow event name that the harness should simulate for the related workflow scenario. |
 | <a id="workflowscenario-inputs"></a>`inputs` | dict[str, str] | no | Workflow-dispatch inputs that the harness should pass to the selected workflow invocation. |
 | <a id="workflowscenario-harness-config"></a>`harness_config` | str | yes | Path to the harness configuration file that the `act` workflow scenario should load. |
+| <a id="workflowscenario-release-config"></a>`release_config` | dict[str, object] | no | Optional complete release configuration used only inside the disposable workflow workspace. |
 | <a id="workflowscenario-real-cli-commands"></a>`real_cli_commands` | list[str] | no | External CLI command names that the `act` harness workflow may run directly instead of through shim wrappers. |
 | <a id="workflowscenario-repository-fixture"></a>`repository_fixture` | [WorkflowRepositoryFixture](#workflowrepositoryfixture) | no | Workflow-repository ref fixture that the harness should materialize before running the selected workflow. |
 | <a id="workflowscenario-gpg-fixture"></a>`gpg_fixture` | [GpgFixtureMode](../release-shared-types-reference/#gpgfixturemode) | no | GPG fixture mode that the harness should prepare for the related workflow scenario. |

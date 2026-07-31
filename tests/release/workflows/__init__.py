@@ -12,13 +12,4 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: releasey-create-release-branch
-backend: act
-workflow:
-  path: ../../../.github/workflows/releasey-10-create-release-branch.yml
-  harness_config: ../release-harness.yaml
-  inputs:
-    release_line: 9.x
-    source_ref: main
-  real_cli_commands:
-    - create-release-branch
+"""Release-workflow policy tests."""

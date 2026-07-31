@@ -141,7 +141,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         """Workspace preparation should rewrite the checked-in workflow before any `act` run."""
 
         scenario, workspace = self._prepare_workspace_for_scenario(
-            "releasey-10-create-release-branch.yaml"
+            "release-direct.yaml"
         )
         if scenario.workflow is None:
             self.fail("scenario unexpectedly lacks workflow configuration")
@@ -152,7 +152,18 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             )
         ]
 
-        self.assertEqual(["create-release-branch"], selected_job_ids)
+        self.assertEqual(
+            [
+                "resolve",
+                "verify-source",
+                "create-final-tag",
+                "stage",
+                "verify-final",
+                "publish",
+                "manifest",
+            ],
+            selected_job_ids,
+        )
         self.assertRegex(
             workspace.root.name,
             r"^scenario\.\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.",
@@ -178,7 +189,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         self.assertIn("buildish-release-harness", rewritten_lines[1])
         self.assertIn("Original workflow source:", rewritten_lines[2])
         self.assertIn("Verbatim original copy in this directory:", rewritten_lines[3])
-        self.assertIn("name: Releasey Create Release Branch", rewritten_lines)
+        self.assertIn("name: Release Direct", rewritten_lines)
         self.assertIn("on:", rewritten_lines)
         self.assertIn(
             "BUILDISH_ALLOW_NON_PRODUCTION_RELEASE_TARGETS=true", rewritten_text
@@ -189,17 +200,14 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         self.assertTrue(original_copy_path.is_file())
         self.assertEqual(
             (
-                component_root()
-                / ".github"
-                / "workflows"
-                / "releasey-10-create-release-branch.yml"
+                component_root() / ".github" / "workflows" / "release-direct.yml"
             ).read_text(encoding="utf-8"),
             original_copy_path.read_text(encoding="utf-8"),
         )
         payload = (
             yaml.safe_load(rewritten_workflow_path.read_text(encoding="utf-8")) or {}
         )
-        steps = payload["jobs"]["create-release-branch"]["steps"]
+        steps = payload["jobs"]["resolve"]["steps"]
         self.assertEqual("Harness bootstrap environment", steps[0]["name"])
         self.assertEqual(
             "./.buildish-release-harness/actions/local-checkout",
@@ -209,118 +217,47 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
             steps[2]["uses"],
         )
-        self.assertEqual(
-            "draft-branch-creation",
-            steps[-2]["env"]["BUILDISH_HARNESS_STEP_ID"],
-        )
+        self.assertEqual("local-upload-artifact", steps[-2]["uses"].rsplit("/", 1)[-1])
         self.assertEqual("Harness record job status", steps[-1]["name"])
         self.assertIn("run: |", rewritten_text)
-        self.assertEqual(
-            "bash buildish-release-tooling/release-tooling.sh create-release-branch \\\n"
-            "  --apply \\\n"
-            '  "$RELEASE_LINE" \\\n'
-            '  "$SOURCE_REF"\n',
-            steps[-2]["run"],
-        )
+        self.assertIn("resolve-direct-release", rewritten_text)
+        self.assertIn("local-download-artifact", rewritten_text)
         self.assertTrue(workspace.job_summaries_dir.is_dir())
 
-    def test_run_scenario_prepares_local_svn_fixture_and_overlayed_release_config(
+    def test_run_scenario_applies_complete_release_config_fixture(
         self,
     ) -> None:
-        """Workspace preparation should create inspectable SVN state and overlay local release-config URLs."""
+        """Workspace preparation should install the scenario's lifecycle configuration."""
 
         _scenario, workspace = self._prepare_workspace_for_scenario(
-            "releasey-30-release-version.yaml"
+            "release-direct.yaml"
         )
 
         config_path = (
             workspace.root / "buildish-release-tooling" / "release-config.yaml"
         )
         config_payload = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        self.assertEqual("direct", config_payload["lifecycle"]["mode"])
         self.assertEqual(
-            (
-                workspace.svn_repository_dir
-                / "repos"
-                / "dist"
-                / "dev"
-                / "incubator"
-                / "buildish"
-                / "buildish-release-tooling"
-            ).as_uri(),
-            config_payload["policy_profiles"]["asf"]["dist_dev_base"],
+            "github-release",
+            config_payload["publication"]["authoritative"]["kind"],
         )
         self.assertEqual(
-            (
-                workspace.svn_repository_dir
-                / "repos"
-                / "dist"
-                / "release"
-                / "incubator"
-                / "buildish"
-                / "buildish-release-tooling"
-            ).as_uri(),
-            config_payload["policy_profiles"]["asf"]["dist_release_base"],
-        )
-        self.assertTrue(
-            (
-                workspace.svn_working_copy_dir
-                / "repos"
-                / "dist"
-                / "dev"
-                / "incubator"
-                / "buildish"
-                / "buildish-release-tooling"
-                / "1.2.3-rc1"
-            ).is_dir()
-        )
-        self.assertTrue(
-            (
-                workspace.svn_working_copy_dir
-                / "repos"
-                / "dist"
-                / "release"
-                / "incubator"
-                / "buildish"
-                / "buildish-release-tooling"
-                / "1.2.2"
-            ).is_dir()
-        )
-        artifact_path = (
-            workspace.svn_working_copy_dir
-            / "repos"
-            / "dist"
-            / "dev"
-            / "incubator"
-            / "buildish"
-            / "buildish-release-tooling"
-            / "1.2.3-rc1"
-            / "buildish-release-tooling-1.2.3-incubating-src.tar.gz"
-        )
-        self.assertTrue(artifact_path.is_file())
-        self.assertEqual(
-            "dummy source payload\n", artifact_path.read_text(encoding="utf-8")
+            "platform-generated", config_payload["source"]["snapshot"]["mode"]
         )
 
-    def test_run_scenario_seeds_repository_relative_svn_files(self) -> None:
-        """Workspace preparation should seed repository-relative SVN files like shared KEYS."""
+    def test_candidate_scenario_uses_one_based_numbering(self) -> None:
+        """The default candidate harness fixture should begin at candidate one."""
 
         _scenario, workspace = self._prepare_workspace_for_scenario(
-            "releasey-20-prepare-rc.yaml"
+            "release-candidate.yaml"
         )
-        keys_path = (
-            workspace.svn_working_copy_dir
-            / "repos"
-            / "dist"
-            / "release"
-            / "incubator"
-            / "buildish"
-            / "KEYS"
+        config_path = (
+            workspace.root / "buildish-release-tooling" / "release-config.yaml"
         )
-        self.assertTrue(keys_path.is_file())
-        self.assertIn(
-            "Buildish Release Harness <buildish-release-harness@example.invalid>",
-            keys_path.read_text(encoding="utf-8"),
-        )
+        config_payload = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        self.assertEqual("candidate", config_payload["lifecycle"]["mode"])
+        self.assertEqual(1, config_payload["candidate"]["start_number"])
 
     def test_rerun_failed_jobs_reinvokes_act_for_failed_jobs_and_dependents(
         self,
@@ -328,9 +265,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         """The `act` backend should select failed jobs and their dependents on rerun."""
 
         act_path, state_dir = create_fake_act_launcher(self.sandbox_dir)
-        scenario = load_scenario(
-            self._scenario_path("releasey-30-release-version.yaml")
-        )
+        scenario = load_scenario(self._scenario_path("release-promote.yaml"))
 
         with (
             mock.patch.dict(
@@ -351,14 +286,16 @@ class ActHarnessIntegrationTest(unittest.TestCase):
 
         self.assertEqual(["create-final-tag"], first_result.failed_job_ids)
         self.assertEqual(
-            ["publish-pypi-convenience-artifacts", "finalize-draft-github-release"],
+            ["stage", "verify-final", "publish", "manifest"],
             first_result.blocked_job_ids,
         )
         self.assertEqual(
             [
                 "create-final-tag",
-                "publish-pypi-convenience-artifacts",
-                "finalize-draft-github-release",
+                "stage",
+                "verify-final",
+                "publish",
+                "manifest",
             ],
             rerun_result.selected_job_ids,
         )
@@ -371,8 +308,10 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         self.assertEqual(
             [
                 "create-final-tag",
-                "publish-pypi-convenience-artifacts",
-                "finalize-draft-github-release",
+                "stage",
+                "verify-final",
+                "publish",
+                "manifest",
             ],
             rerun_invocation["selected_jobs"],
         )
@@ -383,9 +322,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         """A seeded run should inherit mutable Git and SVN state from the prior workspace."""
 
         act_path, state_dir = create_fake_act_launcher(self.sandbox_dir)
-        scenario = load_scenario(
-            self._scenario_path("releasey-10-create-release-branch.yaml")
-        )
+        scenario = load_scenario(self._scenario_path("release-direct.yaml"))
 
         with (
             mock.patch.dict(
@@ -415,6 +352,12 @@ class ActHarnessIntegrationTest(unittest.TestCase):
                 capture_output=True,
                 text=True,
             )
+            release_wrapper = (
+                first_result.workspace.root
+                / "buildish-release-tooling"
+                / "release-tooling.sh"
+            )
+            release_wrapper.write_text("stale seeded source\n", encoding="utf-8")
             subprocess.run(
                 [
                     "git",
@@ -487,6 +430,16 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         )
         self.assertEqual("vseed\n", root_tag.stdout)
         self.assertEqual("vseed\n", origin_tag.stdout)
+        self.assertEqual(
+            (
+                component_root() / "buildish-release-tooling" / "release-tooling.sh"
+            ).read_bytes(),
+            (
+                seeded_result.workspace.root
+                / "buildish-release-tooling"
+                / "release-tooling.sh"
+            ).read_bytes(),
+        )
         self.assertTrue(
             (
                 seeded_result.workspace.svn_working_copy_dir
@@ -503,9 +456,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         """The backend should tee `act` stdout and stderr into both log files and stderr."""
 
         act_path, state_dir = create_fake_act_launcher(self.sandbox_dir)
-        scenario = load_scenario(
-            self._scenario_path("releasey-10-create-release-branch.yaml")
-        )
+        scenario = load_scenario(self._scenario_path("release-direct.yaml"))
         stderr = StringIO()
 
         with (
@@ -546,10 +497,8 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         """The CLI sequence runner should execute scenarios in order and return each workspace."""
 
         act_path, state_dir = create_fake_act_launcher(self.sandbox_dir)
-        first_scenario_path = self._scenario_path(
-            "releasey-10-create-release-branch.yaml"
-        )
-        second_scenario_path = self._scenario_path("releasey-40-verify-rc.yaml")
+        first_scenario_path = self._scenario_path("release-direct.yaml")
+        second_scenario_path = self._scenario_path("release-verify-candidate.yaml")
         stderr = StringIO()
         stdout = StringIO()
 
@@ -644,7 +593,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         """The CLI should not exit successfully when the scenario run itself failed."""
 
         act_path, state_dir = create_fake_act_launcher(self.sandbox_dir)
-        scenario_path = self._scenario_path("releasey-30-release-version.yaml")
+        scenario_path = self._scenario_path("release-promote.yaml")
         stderr = StringIO()
         stdout = StringIO()
 
@@ -690,7 +639,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         """Successful `act` runs should still emit progress details to stderr."""
 
         act_path, state_dir = create_fake_act_launcher(self.sandbox_dir)
-        scenario_path = self._scenario_path("releasey-10-create-release-branch.yaml")
+        scenario_path = self._scenario_path("release-direct.yaml")
         stderr = StringIO()
         stdout = StringIO()
 
@@ -737,7 +686,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
     def test_cli_reports_missing_act_backend_dependency_cleanly(self) -> None:
         """The CLI should print a direct message instead of a traceback when `act` is unavailable."""
 
-        scenario_path = self._scenario_path("releasey-10-create-release-branch.yaml")
+        scenario_path = self._scenario_path("release-direct.yaml")
         stderr = StringIO()
         stdout = StringIO()
 

@@ -73,7 +73,9 @@ def _add_optional_source_sha_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("source_sha", nargs="?")
 
 
-def _add_version_and_optional_source_sha_arguments(parser: argparse.ArgumentParser) -> None:
+def _add_version_and_optional_source_sha_arguments(
+    parser: argparse.ArgumentParser,
+) -> None:
     _add_version_argument(parser)
     _add_optional_source_sha_argument(parser)
 
@@ -99,7 +101,9 @@ def _add_candidate_visibility_argument(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _add_selected_rc_tag_argument(parser: argparse.ArgumentParser, help_text: str) -> None:
+def _add_selected_rc_tag_argument(
+    parser: argparse.ArgumentParser, help_text: str
+) -> None:
     parser.add_argument("--selected-rc-tag", dest="selected_rc_tag", help=help_text)
 
 
@@ -262,7 +266,9 @@ def _register_materialization_commands(
         help_text="Create the RC tag on the source commit or on a detached materialization commit.",
         handler=commands.run_create_rc_materialization_tag,
     )
-    _add_rc_tag_argument(create_rc_materialization_tag, "Exact RC tag to create or reuse for this run.")
+    _add_rc_tag_argument(
+        create_rc_materialization_tag, "Exact RC tag to create or reuse for this run."
+    )
     create_rc_materialization_tag.add_argument(
         "--target-commit",
         dest="target_commit",
@@ -503,7 +509,9 @@ def _register_publication_commands(
         handler=commands.run_create_vote_package,
     )
     create_vote_package.add_argument("--candidate-manifest", required=True)
-    create_vote_package.add_argument("--profile", choices=("generic", "asf"), required=True)
+    create_vote_package.add_argument(
+        "--profile", choices=("generic", "asf"), required=True
+    )
 
     create_release_manifest = _add_command_parser(
         subparsers,
@@ -514,6 +522,16 @@ def _register_publication_commands(
     )
     create_release_manifest.add_argument("--release-state", required=True)
     create_release_manifest.add_argument("--publication-result", required=True)
+
+    attach_release_manifest = _add_command_parser(
+        subparsers,
+        common,
+        "attach-github-release-manifest",
+        help_text="Attach and verify one durable final release manifest.",
+        handler=commands.run_attach_github_release_manifest,
+    )
+    attach_release_manifest.add_argument("--release-state", required=True)
+    attach_release_manifest.add_argument("--release-manifest", required=True)
 
     attach_candidate_manifest = _add_command_parser(
         subparsers,
@@ -546,6 +564,11 @@ def _register_publication_commands(
         )
         candidate_command.add_argument("--candidate-tag", required=True)
         candidate_command.add_argument("--candidate-manifest-digest", required=True)
+        if command_name == "verify-github-candidate":
+            candidate_command.add_argument(
+                "--candidate-manifest-output",
+                help="Optional path receiving the exact verified downloaded manifest bytes.",
+            )
 
     for command_name, help_text, handler in (
         (

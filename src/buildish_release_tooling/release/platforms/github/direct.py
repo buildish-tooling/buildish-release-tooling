@@ -30,8 +30,12 @@ from buildish_release_tooling.release.platforms.github.manifests import (
     GitHubFinalPublication,
 )
 from buildish_release_tooling.release.platforms.github.releases import release_assets
-from buildish_release_tooling.release.platforms.github.selection import asset_release_url
+from buildish_release_tooling.release.platforms.github.selection import (
+    asset_release_url,
+)
 from buildish_release_tooling.release.source_artifact import checksum
+
+FINAL_RELEASE_MANIFEST_ASSET_NAME = "release-manifest-v1.json"
 
 
 def direct_release_name(state: DirectReleaseState | PromotionState) -> str:
@@ -51,14 +55,20 @@ def expected_release_artifacts(
     for artifact in state.artifacts:
         name = artifact.logical_name
         if Path(name).name != name:
-            raise ValueError(f"GitHub Release asset logical_name must be a basename: {name}")
+            raise ValueError(
+                f"GitHub Release asset logical_name must be a basename: {name}"
+            )
         if name in expected:
             raise ValueError(f"duplicate direct-release artifact logical_name: {name}")
         sha256 = artifact.digests.get("sha256")
         if sha256 is None:
-            raise ValueError(f"direct GitHub Release artifact requires a sha256 digest: {name}")
+            raise ValueError(
+                f"direct GitHub Release artifact requires a sha256 digest: {name}"
+            )
         if artifact.size_bytes is None:
-            raise ValueError(f"direct GitHub Release artifact requires size_bytes: {name}")
+            raise ValueError(
+                f"direct GitHub Release artifact requires size_bytes: {name}"
+            )
         expected[name] = artifact
     return expected
 
@@ -75,7 +85,9 @@ def validate_local_release_assets(
         if not asset_path.is_file():
             raise ValueError(f"GitHub Release asset file does not exist: {asset_path}")
         if asset_path.name in supplied:
-            raise ValueError(f"duplicate local GitHub Release asset name: {asset_path.name}")
+            raise ValueError(
+                f"duplicate local GitHub Release asset name: {asset_path.name}"
+            )
         supplied[asset_path.name] = asset_path
     if set(supplied) != set(expected):
         missing = sorted(set(expected) - set(supplied))
@@ -113,6 +125,7 @@ def validate_final_release(
     release_payload: Mapping[str, object],
     *,
     expected_body: str,
+    allow_attached_manifest: bool = False,
 ) -> GitHubFinalPublication:
     """Validate exact GitHub release metadata and asset identities or fail closed."""
 
@@ -123,6 +136,9 @@ def validate_final_release(
     )
     expected = expected_release_artifacts(state)
     observed = observed_release_assets(release_payload)
+    manifest_asset = observed.pop(FINAL_RELEASE_MANIFEST_ASSET_NAME, None)
+    if manifest_asset is not None and not allow_attached_manifest:
+        observed[FINAL_RELEASE_MANIFEST_ASSET_NAME] = manifest_asset
     missing = validate_observed_release_assets(expected, observed)
     if missing:
         raise ValueError(
@@ -176,14 +192,16 @@ def missing_final_release_assets(
     release_payload: Mapping[str, object],
     *,
     expected_body: str,
+    allow_attached_manifest: bool = False,
 ) -> list[str]:
     """Validate existing metadata/assets and return only absent expected asset names."""
 
     _validate_release_metadata(state, release_payload, expected_body=expected_body)
-    return validate_observed_release_assets(
-        expected_release_artifacts(state),
-        observed_release_assets(release_payload),
-    )
+    observed = observed_release_assets(release_payload)
+    manifest_asset = observed.pop(FINAL_RELEASE_MANIFEST_ASSET_NAME, None)
+    if manifest_asset is not None and not allow_attached_manifest:
+        observed[FINAL_RELEASE_MANIFEST_ASSET_NAME] = manifest_asset
+    return validate_observed_release_assets(expected_release_artifacts(state), observed)
 
 
 def _validate_release_metadata(
@@ -198,9 +216,13 @@ def _validate_release_metadata(
     if release_payload.get("tag_name") != state.final_tag.name:
         raise ValueError("GitHub final release tag does not match direct-release state")
     if release_payload.get("name") != direct_release_name(state):
-        raise ValueError("GitHub final release title does not match direct-release state")
+        raise ValueError(
+            "GitHub final release title does not match direct-release state"
+        )
     if release_payload.get("body") != expected_body:
-        raise ValueError("GitHub final release body does not match direct-release state")
+        raise ValueError(
+            "GitHub final release body does not match direct-release state"
+        )
     draft = release_payload.get("draft")
     prerelease = release_payload.get("prerelease")
     if not isinstance(draft, bool) or prerelease is not False:
@@ -221,7 +243,9 @@ def observed_release_assets(
         size = asset_payload.get("size")
         digest = asset_payload.get("digest")
         if not isinstance(name, str) or not name:
-            raise ValueError("GitHub final release contains an asset without a valid name")
+            raise ValueError(
+                "GitHub final release contains an asset without a valid name"
+            )
         if name in observed:
             raise ValueError(f"GitHub final release contains a duplicate asset: {name}")
         if (
@@ -229,7 +253,9 @@ def observed_release_assets(
             or not isinstance(size, int)
             or not isinstance(digest, str)
         ):
-            raise ValueError(f"GitHub final release asset identity is incomplete: {name}")
+            raise ValueError(
+                f"GitHub final release asset identity is incomplete: {name}"
+            )
         observed[name] = GitHubAssetIdentity(
             name=name,
             asset_id=asset_id,

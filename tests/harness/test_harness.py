@@ -20,7 +20,9 @@ import os
 import subprocess
 import sys
 import unittest
+from io import StringIO
 from pathlib import Path
+from typing import cast
 from unittest import mock
 
 import yaml
@@ -34,6 +36,7 @@ from buildish_release_tooling.harness.models import (
     HarnessCommandTraceEntry,
     HarnessScenario,
     HarnessShimState,
+    ToolBehaviorResult,
 )
 from buildish_release_tooling.harness.runtime import (
     remove_workspace,
@@ -42,8 +45,14 @@ from buildish_release_tooling.harness.runtime import (
     write_workspace_file,
 )
 from buildish_release_tooling.harness.shim_entrypoint import _perform_file_writes
+from buildish_release_tooling.harness.shim_builtins import handle_builtin_tool
 from buildish_release_tooling.harness.scenario import load_scenario
-from tests.support import cleanup_sandbox, component_root, create_build_test_sandbox, tool_env
+from tests.support import (
+    cleanup_sandbox,
+    component_root,
+    create_build_test_sandbox,
+    tool_env,
+)
 
 
 class HarnessIntegrationTest(unittest.TestCase):
@@ -70,7 +79,9 @@ class HarnessIntegrationTest(unittest.TestCase):
 
     def test_workspace_file_writes_reject_workspace_escapes(self) -> None:
         with self.assertRaisesRegex(ValueError, "must be relative"):
-            write_workspace_file(self.sandbox_dir, str(Path.cwd() / "outside.txt"), "bad\n", False)
+            write_workspace_file(
+                self.sandbox_dir, str(Path.cwd() / "outside.txt"), "bad\n", False
+            )
 
         with self.assertRaisesRegex(ValueError, "must not escape"):
             write_workspace_file(self.sandbox_dir, "../outside.txt", "bad\n", False)
@@ -88,7 +99,9 @@ class HarnessIntegrationTest(unittest.TestCase):
             trace_file=(self.sandbox_dir / "trace.jsonl").as_posix(),
         )
 
-        with mock.patch.dict(os.environ, {"ESCAPE_PATH": "../outside.txt"}, clear=False):
+        with mock.patch.dict(
+            os.environ, {"ESCAPE_PATH": "../outside.txt"}, clear=False
+        ):
             with self.assertRaisesRegex(ValueError, "must not escape"):
                 _perform_file_writes(
                     state,
@@ -102,6 +115,105 @@ class HarnessIntegrationTest(unittest.TestCase):
             self.sandbox_dir / "nested" / "file.txt",
             resolve_workspace_relative_path(self.sandbox_dir, "nested/file.txt"),
         )
+
+    def test_builtin_gh_release_state_retains_assets_and_visibility(self) -> None:
+        """The stateful GitHub shim should model no-clobber release assets."""
+
+        state = HarnessShimState(
+            workspace_root=self.sandbox_dir.as_posix(),
+            trace_file=(self.sandbox_dir / "trace.jsonl").as_posix(),
+        )
+        create_payload = {
+            "tag_name": "v1.2.3-rc1",
+            "name": "Buildish Example 1.2.3 (rc1)",
+            "body": "candidate body",
+            "draft": True,
+            "prerelease": False,
+        }
+        with mock.patch("sys.stdin", StringIO(json.dumps(create_payload))):
+            created = cast(
+                ToolBehaviorResult,
+                handle_builtin_tool(
+                    "gh",
+                    [
+                        "api",
+                        "-X",
+                        "POST",
+                        "repos/buildish-tooling/buildish-example/releases",
+                    ],
+                    state,
+                ),
+            )
+        self.assertIsNotNone(created)
+        self.assertTrue(json.loads(created.stdout)["draft"])
+
+        manifest_path = self.sandbox_dir / "candidate-manifest.json"
+        manifest_path.write_text('{"kind":"candidate-manifest"}\n', encoding="utf-8")
+        uploaded = cast(
+            ToolBehaviorResult,
+            handle_builtin_tool(
+                "gh",
+                [
+                    "release",
+                    "upload",
+                    "v1.2.3-rc1",
+                    str(manifest_path),
+                    "-R",
+                    "buildish-tooling/buildish-example",
+                ],
+                state,
+            ),
+        )
+        self.assertIsNotNone(uploaded)
+        self.assertEqual(0, uploaded.exit_code)
+        conflict = cast(
+            ToolBehaviorResult,
+            handle_builtin_tool(
+                "gh",
+                [
+                    "release",
+                    "upload",
+                    "v1.2.3-rc1",
+                    str(manifest_path),
+                    "-R",
+                    "buildish-tooling/buildish-example",
+                ],
+                state,
+            ),
+        )
+        self.assertIsNotNone(conflict)
+        self.assertNotEqual(0, conflict.exit_code)
+
+        listed = cast(
+            ToolBehaviorResult,
+            handle_builtin_tool(
+                "gh",
+                [
+                    "api",
+                    "repos/buildish-tooling/buildish-example/releases?per_page=100",
+                ],
+                state,
+            ),
+        )
+        self.assertIsNotNone(listed)
+        release = json.loads(listed.stdout)[0]
+        self.assertEqual("sha256:", release["assets"][0]["digest"][:7])
+        asset_id = release["assets"][0]["id"]
+        downloaded = cast(
+            ToolBehaviorResult,
+            handle_builtin_tool(
+                "gh",
+                [
+                    "api",
+                    "-H",
+                    "Accept: application/octet-stream",
+                    f"repos/buildish-tooling/buildish-example/releases/assets/{asset_id}",
+                ],
+                state,
+            ),
+        )
+        self.assertIsNotNone(downloaded)
+        self.assertEqual(manifest_path.read_text(encoding="utf-8"), downloaded.stdout)
 
     def test_scenario_rejects_unsafe_tool_job_and_step_identifiers(self) -> None:
         with self.assertRaisesRegex(ValueError, "tool behavior name"):
@@ -117,7 +229,9 @@ class HarnessIntegrationTest(unittest.TestCase):
             HarnessScenario.model_validate(
                 {
                     "name": "bad-job",
-                    "jobs": [{"id": "../job", "steps": [{"id": "step", "run": "true"}]}],
+                    "jobs": [
+                        {"id": "../job", "steps": [{"id": "step", "run": "true"}]}
+                    ],
                 }
             )
 
@@ -125,7 +239,9 @@ class HarnessIntegrationTest(unittest.TestCase):
             HarnessScenario.model_validate(
                 {
                     "name": "bad-step",
-                    "jobs": [{"id": "job", "steps": [{"id": "../step", "run": "true"}]}],
+                    "jobs": [
+                        {"id": "job", "steps": [{"id": "../step", "run": "true"}]}
+                    ],
                 }
             )
 
@@ -165,7 +281,9 @@ class HarnessIntegrationTest(unittest.TestCase):
     def test_checked_in_example_scenarios_load(self) -> None:
         """The documented example scenarios should stay loadable."""
 
-        scenarios_dir = component_root() / "buildish-release-tooling" / "harness" / "scenarios"
+        scenarios_dir = (
+            component_root() / "buildish-release-tooling" / "harness" / "scenarios"
+        )
         loaded_names = []
         for scenario_path in sorted(scenarios_dir.glob("*.yaml")):
             loaded_names.append(load_scenario(scenario_path).name)
@@ -173,10 +291,10 @@ class HarnessIntegrationTest(unittest.TestCase):
             [
                 "basic-success",
                 "fail-once-rerun",
-                "releasey-create-release-branch",
-                "releasey-prepare-rc",
-                "releasey-release-version",
-                "releasey-verify-rc",
+                "release-candidate",
+                "release-direct",
+                "release-promote",
+                "release-verify-candidate",
             ],
             loaded_names,
         )
@@ -200,7 +318,7 @@ class HarnessIntegrationTest(unittest.TestCase):
                     "gh": [
                         {
                             "match": {"argv_prefix": ["api", "repos/demo"]},
-                            "result": {"stdout": "{\"ok\":true}\n"},
+                            "result": {"stdout": '{"ok":true}\n'},
                         }
                     ]
                 },
@@ -277,12 +395,16 @@ class HarnessIntegrationTest(unittest.TestCase):
                 "tool_behaviors": {
                     "docker": [
                         {
-                            "match": {"argv_prefix": ["buildx", "imagetools", "create"]},
+                            "match": {
+                                "argv_prefix": ["buildx", "imagetools", "create"]
+                            },
                             "result": {"exit_code": 17, "stderr": "temporary outage\n"},
                             "times": 1,
                         },
                         {
-                            "match": {"argv_prefix": ["buildx", "imagetools", "create"]},
+                            "match": {
+                                "argv_prefix": ["buildx", "imagetools", "create"]
+                            },
                             "result": {"stdout": "published\n"},
                         },
                     ]
@@ -328,7 +450,9 @@ class HarnessIntegrationTest(unittest.TestCase):
         self.assertEqual(2, len(docker_invocations))
         self.assertEqual(17, docker_invocations[0].exit_code)
         self.assertEqual(0, docker_invocations[1].exit_code)
-        summary_path = rerun_result.workspace.summaries_dir / "finalize__write-summary.md"
+        summary_path = (
+            rerun_result.workspace.summaries_dir / "finalize__write-summary.md"
+        )
         self.assertEqual("finalized\n", summary_path.read_text(encoding="utf-8"))
         job_summary_path = rerun_result.workspace.job_summaries_dir / "finalize.md"
         self.assertEqual("finalized\n", job_summary_path.read_text(encoding="utf-8"))
@@ -391,7 +515,9 @@ class HarnessIntegrationTest(unittest.TestCase):
                     "tool_behaviors": {
                         "buildish-release-tooling": [
                             {
-                                "match": {"argv": ["verify-source-ref-checks", "1.2.3"]},
+                                "match": {
+                                    "argv": ["verify-source-ref-checks", "1.2.3"]
+                                },
                                 "result": {"stdout": "checks passed\n"},
                             }
                         ]
@@ -449,7 +575,7 @@ class HarnessIntegrationTest(unittest.TestCase):
                         "gh": [
                             {
                                 "match": {"argv": ["api", "repos/demo"]},
-                                "result": {"stdout": "{\"ok\":true}\n"},
+                                "result": {"stdout": '{"ok":true}\n'},
                             }
                         ]
                     },
@@ -488,7 +614,7 @@ class HarnessIntegrationTest(unittest.TestCase):
 
         stdout, stderr = shim_process.communicate(timeout=1)
         self.assertEqual(0, exit_code)
-        self.assertEqual("{\"ok\":true}\n", stdout)
+        self.assertEqual('{"ok":true}\n', stdout)
         self.assertEqual("", stderr)
         trace = [
             HarnessCommandTraceEntry.model_validate_json(line)
@@ -498,12 +624,16 @@ class HarnessIntegrationTest(unittest.TestCase):
         self.assertEqual("gh", trace[0].tool)
         self.assertEqual(["api", "repos/demo"], trace[0].argv)
 
-    def test_builtin_gh_tag_mutations_update_workspace_and_origin_repositories(self) -> None:
+    def test_builtin_gh_tag_mutations_update_workspace_and_origin_repositories(
+        self,
+    ) -> None:
         """Builtin `gh api` tag mutations should create annotated tags in both tracked repos."""
 
         trace_path = self.sandbox_dir / "trace.jsonl"
         state_path = self.sandbox_dir / "shim-state.json"
-        origin_root = self.sandbox_dir / ".buildish-release-harness" / "git-origins" / "self"
+        origin_root = (
+            self.sandbox_dir / ".buildish-release-harness" / "git-origins" / "self"
+        )
         origin_root.parent.mkdir(parents=True, exist_ok=True)
         commit_env = {
             **os.environ,
@@ -518,13 +648,27 @@ class HarnessIntegrationTest(unittest.TestCase):
                 text=True,
             )
             subprocess.run(
-                ["git", "-C", str(repository), "config", "user.name", "Buildish Harness"],
+                [
+                    "git",
+                    "-C",
+                    str(repository),
+                    "config",
+                    "user.name",
+                    "Buildish Harness",
+                ],
                 check=True,
                 capture_output=True,
                 text=True,
             )
             subprocess.run(
-                ["git", "-C", str(repository), "config", "user.email", "buildish-harness@example.invalid"],
+                [
+                    "git",
+                    "-C",
+                    str(repository),
+                    "config",
+                    "user.email",
+                    "buildish-harness@example.invalid",
+                ],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -640,7 +784,15 @@ class HarnessIntegrationTest(unittest.TestCase):
             self.assertEqual(
                 "Release 1.2.3",
                 subprocess.run(
-                    ["git", "-C", str(repository), "tag", "-l", "v1.2.3", "--format=%(contents)"],
+                    [
+                        "git",
+                        "-C",
+                        str(repository),
+                        "tag",
+                        "-l",
+                        "v1.2.3",
+                        "--format=%(contents)",
+                    ],
                     check=True,
                     capture_output=True,
                     text=True,

@@ -20,8 +20,11 @@ import os
 import shutil
 from pathlib import Path
 
+import yaml
+
 from buildish_release_tooling.harness.config import ResolvedReleaseHarnessConfig
 from buildish_release_tooling.harness.models import HarnessScenario, WorkflowScenario
+from buildish_release_tooling.harness.models import HarnessShimState
 from buildish_release_tooling.harness.process import run_harness_command
 from buildish_release_tooling.harness.runtime import (
     HarnessWorkspace,
@@ -33,6 +36,10 @@ from buildish_release_tooling.harness.runtime import (
     write_shim_state,
     write_workspace_file,
 )
+from buildish_release_tooling.shared.parsing import (
+    DEFAULT_CONFIG_PARSE_MAX_BYTES,
+    read_pydantic_json_file_bounded,
+)
 from buildish_release_tooling.harness.backends.act.workflow import (
     _write_bash_shim,
     _write_generic_tool_shims,
@@ -43,10 +50,14 @@ from .fixtures_git import (
     apply_workflow_repository_fixture,
     materialize_git_checkout,
     materialize_git_repository_state,
+    materialize_source_tree,
     stage_repository_sources,
 )
 from . import fixtures_svn
-from .fixtures_svn import overlay_release_config_for_local_svn, prepare_local_svn_fixture
+from .fixtures_svn import (
+    overlay_release_config_for_local_svn,
+    prepare_local_svn_fixture,
+)
 
 _refresh_svn_working_copy = fixtures_svn._refresh_svn_working_copy
 
@@ -72,6 +83,7 @@ def _create_workspace(
         materialize_git_checkout(self_repository_root, workspace_root)
     else:
         materialize_git_repository_state(seed_workspace.root, workspace_root)
+        materialize_source_tree(self_repository_root, workspace_root)
     workspace = workspace_paths(workspace_root)
     ensure_workspace_directories(workspace)
     if seed_workspace is not None:
@@ -87,6 +99,10 @@ def _seed_workspace_state(
 
     _copy_directory(seed_workspace.git_origins_dir, workspace.git_origins_dir)
     _copy_directory(seed_workspace.svn_repository_dir, workspace.svn_repository_dir)
+    _copy_directory(
+        seed_workspace.harness_dir / "github-release-assets",
+        workspace.harness_dir / "github-release-assets",
+    )
 
 
 def _copy_directory(source: Path, destination: Path) -> None:
@@ -114,6 +130,14 @@ def _bootstrap_workspace(
         _generated_gpg_private_key_path(workspace)
     prepare_local_svn_fixture(workspace, scenario, seed_workspace=seed_workspace)
     overlay_release_config_for_local_svn(workspace)
+    if workflow.release_config is not None:
+        release_config_path = (
+            workspace.root / "buildish-release-tooling" / "release-config.yaml"
+        )
+        release_config_path.write_text(
+            yaml.safe_dump(workflow.release_config, sort_keys=False),
+            encoding="utf-8",
+        )
     apply_workflow_repository_fixture(workspace, scenario)
     for file_fixture in scenario.workspace_files:
         write_workspace_file(
@@ -124,7 +148,16 @@ def _bootstrap_workspace(
         )
     for repository in scenario.git_repositories:
         init_git_repository(workspace.root, repository)
-    write_shim_state(workspace, scenario)
+    seed_state = (
+        read_pydantic_json_file_bounded(
+            HarnessShimState,
+            seed_workspace.state_file,
+            max_bytes=DEFAULT_CONFIG_PARSE_MAX_BYTES,
+        )
+        if seed_workspace is not None and seed_workspace.state_file.is_file()
+        else None
+    )
+    write_shim_state(workspace, scenario, seed_state=seed_state)
     write_bash_env_hook(workspace, scenario)
     _write_generic_tool_shims(workspace, scenario)
     _write_bash_shim(workspace)
@@ -199,4 +232,8 @@ def _generated_gpg_private_key_path(workspace: HarnessWorkspace) -> Path:
 def _active_workflow_path(workspace: HarnessWorkspace) -> Path:
     """Return the currently prepared rewritten workflow path for one workspace."""
 
-    return Path((workspace.harness_dir / "active-workflow.txt").read_text(encoding="utf-8").strip())
+    return Path(
+        (workspace.harness_dir / "active-workflow.txt")
+        .read_text(encoding="utf-8")
+        .strip()
+    )

@@ -80,7 +80,7 @@ TOOLING_DIR="$(resolve_tooling_dir)"
 extra_args=()
 case "${BUILDISH_ALLOW_NON_PRODUCTION_RELEASE_TARGETS:-}" in
   1|true|TRUE|yes|YES)
-    extra_args+=(--allow-non-production-release-targets)
+    extra_args+=(--test-target-mode)
     ;;
 esac
 

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Direct non-ASF GitHub release command integration tests."""
+"""Direct GitHub release command integration tests."""
 
 from __future__ import annotations
 
@@ -181,7 +181,9 @@ class DirectGitHubReleaseCommandIntegrationTest(unittest.TestCase):
         create_request = json.loads(
             (gh_state_dir / "create-release-request.json").read_text(encoding="utf-8")
         )
-        self.assertEqual(self.state.source.commit_sha, create_request["target_commitish"])
+        self.assertEqual(
+            self.state.source.commit_sha, create_request["target_commitish"]
+        )
         self.assertTrue(create_request["draft"])
         self.assertFalse(create_request["prerelease"])
 
@@ -255,11 +257,75 @@ class DirectGitHubReleaseCommandIntegrationTest(unittest.TestCase):
             manifest_path=release_manifest_path,
         )
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
-        release_manifest = json.loads(
-            release_manifest_path.read_text(encoding="utf-8")
-        )
+        release_manifest = json.loads(release_manifest_path.read_text(encoding="utf-8"))
         self.assertNotIn("promoted_candidate", release_manifest)
         self.assertEqual([], release_manifest["promotion_evidence"])
+
+        durable_manifest_path = self.sandbox_dir / "release-manifest-v1.json"
+        durable_manifest_path.write_bytes(release_manifest_path.read_bytes())
+        manifest_digest = hashlib.sha256(durable_manifest_path.read_bytes()).hexdigest()
+        manifest_asset = {
+            "id": 102,
+            "name": "release-manifest-v1.json",
+            "size": durable_manifest_path.stat().st_size,
+            "digest": f"sha256:{manifest_digest}",
+        }
+        public_with_manifest = self._release(draft=False, assets=[manifest_asset])
+        gh_path, gh_state_dir = self._fake_gh(
+            list_response=[public],
+            list_responses=([public], [public_with_manifest]),
+        )
+        attach_result_path = self.sandbox_dir / "attach-release-manifest-result.json"
+        completed = self._run(
+            [
+                "attach-github-release-manifest",
+                "--release-state",
+                str(self.state_path),
+                "--release-manifest",
+                str(durable_manifest_path),
+            ],
+            manifest_path=attach_result_path,
+            gh_path=gh_path,
+            gh_state_dir=gh_state_dir,
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        attach_result = json.loads(attach_result_path.read_text(encoding="utf-8"))
+        self.assertEqual("attached", attach_result["outcome"])
+        self.assertEqual(manifest_digest, attach_result["release_manifest"]["digest"])
+        self.assertEqual(
+            "false",
+            (gh_state_dir / "release-upload-clobber.txt")
+            .read_text(encoding="utf-8")
+            .strip(),
+        )
+        uploaded_files = (gh_state_dir / "release-upload-files.log").read_text(
+            encoding="utf-8"
+        )
+
+        attach_rerun_result_path = (
+            self.sandbox_dir / "attach-release-manifest-rerun-result.json"
+        )
+        completed = self._run(
+            [
+                "attach-github-release-manifest",
+                "--release-state",
+                str(self.state_path),
+                "--release-manifest",
+                str(durable_manifest_path),
+            ],
+            manifest_path=attach_rerun_result_path,
+            gh_path=gh_path,
+            gh_state_dir=gh_state_dir,
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        attach_rerun_result = json.loads(
+            attach_rerun_result_path.read_text(encoding="utf-8")
+        )
+        self.assertEqual("already-complete", attach_rerun_result["outcome"])
+        self.assertEqual(
+            uploaded_files,
+            (gh_state_dir / "release-upload-files.log").read_text(encoding="utf-8"),
+        )
 
     def test_built_asset_is_uploaded_without_clobber_and_revalidated(self) -> None:
         asset_bytes = b"direct release asset\n"
@@ -346,7 +412,9 @@ class DirectGitHubReleaseCommandIntegrationTest(unittest.TestCase):
         self.assertFalse((gh_state_dir / "update-release-request.json").exists())
         self.assertFalse((gh_state_dir / "release-upload-files.log").exists())
 
-    def test_read_reports_observed_state_without_desired_metadata_comparison(self) -> None:
+    def test_read_reports_observed_state_without_desired_metadata_comparison(
+        self,
+    ) -> None:
         observed = self._release(draft=True, body="externally authored body")
         gh_path, gh_state_dir = self._fake_gh(
             list_response=[observed],
@@ -389,7 +457,9 @@ class DirectGitHubReleaseCommandIntegrationTest(unittest.TestCase):
         result = json.loads(result_path.read_text(encoding="utf-8"))
         self.assertNotIn("selected_rc_tag", result)
         self.assertEqual("github-api", result["tag_creation_mode"])
-        self.assertEqual(self.state.source.commit_sha, git_rev_parse(self.clone_dir, "v1.2.3^{}"))
+        self.assertEqual(
+            self.state.source.commit_sha, git_rev_parse(self.clone_dir, "v1.2.3^{}")
+        )
 
 
 if __name__ == "__main__":

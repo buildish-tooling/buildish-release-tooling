@@ -25,10 +25,19 @@ from buildish_release_tooling.harness.config import (
     ResolvedReleaseHarnessConfig,
     ResolvedRepositoryBinding,
 )
-from buildish_release_tooling.harness.models import HarnessScenario, validate_harness_identifier
+from buildish_release_tooling.harness.models import (
+    HarnessScenario,
+    validate_harness_identifier,
+)
 from buildish_release_tooling.harness.runtime import HarnessWorkspace
-from buildish_release_tooling.harness.uv_shim import render_uv_shim_script, uv_shim_config
-from buildish_release_tooling.harness.yaml_types import YamlMapping, require_yaml_mapping
+from buildish_release_tooling.harness.uv_shim import (
+    render_uv_shim_script,
+    uv_shim_config,
+)
+from buildish_release_tooling.harness.yaml_types import (
+    YamlMapping,
+    require_yaml_mapping,
+)
 
 
 def _bootstrap_step() -> YamlMapping:
@@ -38,28 +47,28 @@ def _bootstrap_step() -> YamlMapping:
         "name": "Harness bootstrap environment",
         "shell": "bash",
         "run": (
-            "mkdir -p \"$GITHUB_WORKSPACE/.buildish-release-harness/job-statuses\"\n"
+            'mkdir -p "$GITHUB_WORKSPACE/.buildish-release-harness/job-statuses"\n'
             "{\n"
-            "  printf 'PATH=%s/.buildish-release-harness/shims:%s\\n' \"$GITHUB_WORKSPACE\" \"$PATH\"\n"
+            '  printf \'PATH=%s/.buildish-release-harness/shims:%s\\n\' "$GITHUB_WORKSPACE" "$PATH"\n'
             "  printf 'BUILDISH_HARNESS_STATE_FILE=%s/.buildish-release-harness/shim-state.json\\n' \"$GITHUB_WORKSPACE\"\n"
             "  printf 'BUILDISH_HARNESS_REAL_PATH=%s\\n' \"$PATH\"\n"
             "  printf 'BUILDISH_HARNESS_BASH_ENV_FILE=%s/.buildish-release-harness/bash-env.sh\\n' \"$GITHUB_WORKSPACE\"\n"
             "  printf 'BUILDISH_HARNESS_SUMMARIES_DIR=%s/.buildish-release-harness/summaries\\n' \"$GITHUB_WORKSPACE\"\n"
             "  printf 'BUILDISH_HARNESS_TOOLING_SOURCE_DIR=%s/.buildish-release-harness/repo-sources/apache__buildish-release-tooling\\n' \"$GITHUB_WORKSPACE\"\n"
             "  printf 'BUILDISH_ALLOW_NON_PRODUCTION_RELEASE_TARGETS=true\\n'\n"
-            "  if [[ -n \"${PYTHONPATH:-}\" ]]; then\n"
-            "    printf 'PYTHONPATH=%s/.buildish-release-harness/repo-sources/apache__buildish-release-tooling/src:%s\\n' \"$GITHUB_WORKSPACE\" \"$PYTHONPATH\"\n"
+            '  if [[ -n "${PYTHONPATH:-}" ]]; then\n'
+            '    printf \'PYTHONPATH=%s/.buildish-release-harness/repo-sources/apache__buildish-release-tooling/src:%s\\n\' "$GITHUB_WORKSPACE" "$PYTHONPATH"\n'
             "  else\n"
             "    printf 'PYTHONPATH=%s/.buildish-release-harness/repo-sources/apache__buildish-release-tooling/src\\n' \"$GITHUB_WORKSPACE\"\n"
             "  fi\n"
-            "} >> \"$GITHUB_ENV\"\n"
-            "gpg_key_file=\"$GITHUB_WORKSPACE/.buildish-release-harness/gpg-fixture/private.asc\"\n"
-            "if [[ -f \"$gpg_key_file\" ]]; then\n"
+            '} >> "$GITHUB_ENV"\n'
+            'gpg_key_file="$GITHUB_WORKSPACE/.buildish-release-harness/gpg-fixture/private.asc"\n'
+            'if [[ -f "$gpg_key_file" ]]; then\n'
             "  {\n"
             "    printf 'BUILDISH_GPG_PRIVATE_KEY<<__BUILDISH_HARNESS_GPG_KEY__\\n'\n"
-            "    cat \"$gpg_key_file\"\n"
+            '    cat "$gpg_key_file"\n'
             "    printf '__BUILDISH_HARNESS_GPG_KEY__\\n'\n"
-            "  } >> \"$GITHUB_ENV\"\n"
+            '  } >> "$GITHUB_ENV"\n'
             "fi\n"
         ),
     }
@@ -84,7 +93,9 @@ def _rewrite_step(
         and not real_cli_commands
     ):
         rewritten: YamlMapping = {
-            key: value for key, value in step_payload.items() if key not in {"uses", "with"}
+            key: value
+            for key, value in step_payload.items()
+            if key not in {"uses", "with"}
         }
         rewritten["uses"] = generated_action_references["setup-uv-noop"]
         return rewritten
@@ -96,6 +107,14 @@ def _rewrite_step(
         )
         if rewritten_checkout is not None:
             return rewritten_checkout
+    if isinstance(uses, str) and uses.startswith("actions/upload-artifact@"):
+        rewritten = dict(step_payload)
+        rewritten["uses"] = generated_action_references["local-upload-artifact"]
+        return rewritten
+    if isinstance(uses, str) and uses.startswith("actions/download-artifact@"):
+        rewritten = dict(step_payload)
+        rewritten["uses"] = generated_action_references["local-download-artifact"]
+        return rewritten
     if "run" not in step_payload:
         return dict(step_payload)
     step_id = _step_identifier(step_payload, step_index)
@@ -124,7 +143,9 @@ def _rewrite_checkout_step(
         step_payload.get("with"),
         source="workflow actions/checkout with",
     )
-    repository_id = str(with_payload.get("repository", bindings.self_repository.repository_id))
+    repository_id = str(
+        with_payload.get("repository", bindings.self_repository.repository_id)
+    )
     source_binding: ResolvedRepositoryBinding | None = None
     mode: str | None = None
     if "repository" not in with_payload:
@@ -133,7 +154,10 @@ def _rewrite_checkout_step(
             mode = "local-git-clone"
     else:
         source_binding = bindings.repository_overrides.get(repository_id)
-        if source_binding is not None and source_binding.local_checkout_mode == "always":
+        if (
+            source_binding is not None
+            and source_binding.local_checkout_mode == "always"
+        ):
             mode = "local-source-tree"
     if source_binding is None or mode is None:
         return None
@@ -155,6 +179,8 @@ def _generated_action_references() -> dict[str, str]:
 
     return {
         "local-checkout": "./.buildish-release-harness/actions/local-checkout",
+        "local-download-artifact": "./.buildish-release-harness/actions/local-download-artifact",
+        "local-upload-artifact": "./.buildish-release-harness/actions/local-upload-artifact",
         "setup-uv-noop": "./.buildish-release-harness/actions/setup-uv-noop",
     }
 
@@ -164,7 +190,9 @@ def _step_identifier(step_payload: YamlMapping, step_index: int) -> str:
 
     raw_identifier = step_payload.get("id")
     if isinstance(raw_identifier, str) and raw_identifier:
-        return validate_harness_identifier(raw_identifier, field_name="workflow step id")
+        return validate_harness_identifier(
+            raw_identifier, field_name="workflow step id"
+        )
     raw_name = step_payload.get("name")
     if isinstance(raw_name, str) and raw_name:
         normalized = re.sub(r"[^A-Za-z0-9]+", "-", raw_name).strip("-").lower()
@@ -185,7 +213,7 @@ def _job_status_step(job_id: str) -> YamlMapping:
         },
         "run": (
             "printf '%s\\n' \"$BUILDISH_HARNESS_JOB_STATUS\" > "
-            f"\"$GITHUB_WORKSPACE/.buildish-release-harness/job-statuses/{job_id}.status\"\n"
+            f'"$GITHUB_WORKSPACE/.buildish-release-harness/job-statuses/{job_id}.status"\n'
         ),
     }
 
@@ -248,13 +276,13 @@ def _write_local_checkout_action(workspace: HarnessWorkspace) -> None:
                 'rm -rf "$destination"',
                 'mkdir -p "$(dirname "$destination")"',
                 'case "$mode" in',
-                '  local-git-clone)',
+                "  local-git-clone)",
                 '    git clone --local "$source_path" "$destination"',
                 '    if [[ -n "$ref" ]]; then',
                 '      git -C "$destination" checkout "$ref"',
                 "    fi",
                 "    ;;",
-                '  local-source-tree)',
+                "  local-source-tree)",
                 '    mkdir -p "$destination"',
                 '    cp -a "$source_path"/. "$destination"/',
                 '    rm -rf "$destination/.git"',
@@ -286,6 +314,89 @@ def _write_local_checkout_action(workspace: HarnessWorkspace) -> None:
                         {
                             "shell": "bash",
                             "run": 'bash "$GITHUB_ACTION_PATH/local-checkout.sh"',
+                        }
+                    ],
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_local_artifact_actions(workspace: HarnessWorkspace) -> None:
+    """Write deterministic local substitutes for same-run workflow artifacts."""
+
+    _write_local_artifact_action(
+        workspace,
+        action_name="local-upload-artifact",
+        script=(
+            'name="${INPUT_NAME:?}"\n'
+            'source_path="${INPUT_PATH:?}"\n'
+            '[[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || '
+            "{ printf 'invalid artifact name: %s\\n' \"$name\" >&2; exit 2; }\n"
+            'store="$GITHUB_WORKSPACE/.buildish-release-harness/workflow-artifacts/$name"\n'
+            '[[ ! -e "$store" ]] || '
+            "{ printf 'workflow artifact already exists: %s\\n' \"$name\" >&2; exit 2; }\n"
+            '[[ -e "$source_path" ]] || '
+            "{ printf 'workflow artifact source does not exist: %s\\n' \"$source_path\" >&2; exit 2; }\n"
+            'mkdir -p "$store"\n'
+            'if [[ -d "$source_path" ]]; then\n'
+            '  cp -a "$source_path"/. "$store"/\n'
+            "else\n"
+            '  cp -a "$source_path" "$store"/\n'
+            "fi\n"
+        ),
+    )
+    _write_local_artifact_action(
+        workspace,
+        action_name="local-download-artifact",
+        script=(
+            'name="${INPUT_NAME:?}"\n'
+            'target_path="${INPUT_PATH:-.}"\n'
+            '[[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || '
+            "{ printf 'invalid artifact name: %s\\n' \"$name\" >&2; exit 2; }\n"
+            'store="$GITHUB_WORKSPACE/.buildish-release-harness/workflow-artifacts/$name"\n'
+            '[[ -d "$store" ]] || '
+            "{ printf 'workflow artifact does not exist: %s\\n' \"$name\" >&2; exit 2; }\n"
+            'mkdir -p "$target_path"\n'
+            'cp -a "$store"/. "$target_path"/\n'
+        ),
+    )
+
+
+def _write_local_artifact_action(
+    workspace: HarnessWorkspace,
+    *,
+    action_name: str,
+    script: str,
+) -> None:
+    """Write one local workflow-artifact composite action."""
+
+    action_dir = workspace.actions_dir / action_name
+    action_dir.mkdir(parents=True, exist_ok=True)
+    script_path = action_dir / "run.sh"
+    script_path.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n" + script,
+        encoding="utf-8",
+    )
+    script_path.chmod(script_path.stat().st_mode | 0o111)
+    (action_dir / "action.yml").write_text(
+        yaml.safe_dump(
+            {
+                "name": f"Buildish harness {action_name}",
+                "inputs": {
+                    "name": {"required": True},
+                    "path": {"required": True},
+                    "retention-days": {"required": False},
+                    "if-no-files-found": {"required": False},
+                },
+                "runs": {
+                    "using": "composite",
+                    "steps": [
+                        {
+                            "shell": "bash",
+                            "run": 'bash "$GITHUB_ACTION_PATH/run.sh"',
                         }
                     ],
                 },
@@ -339,7 +450,9 @@ def _write_bash_shim(workspace: HarnessWorkspace) -> None:
     script_path.chmod(script_path.stat().st_mode | 0o111)
 
 
-def _write_generic_tool_shims(workspace: HarnessWorkspace, scenario: HarnessScenario) -> None:
+def _write_generic_tool_shims(
+    workspace: HarnessWorkspace, scenario: HarnessScenario
+) -> None:
     """Write container-safe executable shims for all intercepted non-shell tools."""
 
     tools = sorted(set(scenario.tool_behaviors) | {"gh", "docker", "java", "javac"})
@@ -353,7 +466,7 @@ def _write_generic_tool_shims(workspace: HarnessWorkspace, scenario: HarnessScen
                     "set -euo pipefail",
                     (
                         "exec python3 -m buildish_release_tooling.harness.shim_entrypoint "
-                        f"{json.dumps(tool)} \"$@\""
+                        f'{json.dumps(tool)} "$@"'
                     ),
                 ]
             )

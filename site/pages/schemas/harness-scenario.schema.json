@@ -562,6 +562,20 @@
           "title": "Real Cli Commands",
           "type": "array"
         },
+        "release_config": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional complete release configuration used only inside the disposable workflow workspace.",
+          "title": "Release Config"
+        },
         "repository_fixture": {
           "$ref": "#/$defs/WorkflowRepositoryFixture",
           "description": "Workflow-repository ref fixture that the harness should materialize before running the selected workflow."

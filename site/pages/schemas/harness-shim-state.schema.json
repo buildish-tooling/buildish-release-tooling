@@ -33,6 +33,129 @@
         "ownership": "consumer-owned"
       }
     },
+    "HarnessBuiltinGhRelease": {
+      "additionalProperties": false,
+      "description": "Synthetic GitHub Release retained by the stateful harness shim.",
+      "properties": {
+        "assets": {
+          "description": "Synthetic assets currently attached to the retained GitHub Release.",
+          "items": {
+            "$ref": "#/$defs/HarnessBuiltinGhReleaseAsset"
+          },
+          "title": "Assets",
+          "type": "array"
+        },
+        "body": {
+          "description": "Release body.",
+          "title": "Body",
+          "type": "string"
+        },
+        "draft": {
+          "description": "Whether the release remains a draft.",
+          "title": "Draft",
+          "type": "boolean"
+        },
+        "html_url": {
+          "description": "Synthetic browser-facing release URL.",
+          "title": "Html Url",
+          "type": "string"
+        },
+        "id": {
+          "description": "Synthetic GitHub Release identifier.",
+          "minimum": 1,
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "description": "Release title.",
+          "title": "Name",
+          "type": "string"
+        },
+        "prerelease": {
+          "description": "Whether the release is a prerelease.",
+          "title": "Prerelease",
+          "type": "boolean"
+        },
+        "repository": {
+          "description": "GitHub repository identity associated with the release.",
+          "title": "Repository",
+          "type": "string"
+        },
+        "tag_name": {
+          "description": "Exact tag associated with the release.",
+          "title": "Tag Name",
+          "type": "string"
+        },
+        "url": {
+          "description": "Synthetic API-facing release URL.",
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "repository",
+        "tag_name",
+        "name",
+        "body",
+        "draft",
+        "prerelease",
+        "html_url",
+        "url"
+      ],
+      "title": "HarnessBuiltinGhRelease",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "HarnessBuiltinGhReleaseAsset": {
+      "additionalProperties": false,
+      "description": "Synthetic GitHub Release asset retained by the stateful harness shim.",
+      "properties": {
+        "digest": {
+          "description": "GitHub-style algorithm-prefixed asset digest.",
+          "title": "Digest",
+          "type": "string"
+        },
+        "id": {
+          "description": "Synthetic GitHub Release asset identifier.",
+          "minimum": 1,
+          "title": "Id",
+          "type": "integer"
+        },
+        "name": {
+          "description": "Release asset basename.",
+          "title": "Name",
+          "type": "string"
+        },
+        "size": {
+          "description": "Release asset size in bytes.",
+          "minimum": 0,
+          "title": "Size",
+          "type": "integer"
+        },
+        "stored_path": {
+          "description": "Workspace-relative path containing the retained bytes.",
+          "title": "Stored Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "size",
+        "digest",
+        "stored_path"
+      ],
+      "title": "HarnessBuiltinGhReleaseAsset",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
     "HarnessBuiltinGhTagObject": {
       "additionalProperties": true,
       "description": "Synthetic GitHub tag-object payload retained by the harness shim.",
@@ -267,6 +390,28 @@
       },
       "title": "Env Capture",
       "type": "array"
+    },
+    "gh_next_asset_id": {
+      "default": 1,
+      "description": "Next synthetic GitHub Release asset identifier allocated by the stateful shim.",
+      "minimum": 1,
+      "title": "Gh Next Asset Id",
+      "type": "integer"
+    },
+    "gh_next_release_id": {
+      "default": 1,
+      "description": "Next synthetic GitHub Release identifier allocated by the stateful shim.",
+      "minimum": 1,
+      "title": "Gh Next Release Id",
+      "type": "integer"
+    },
+    "gh_releases": {
+      "additionalProperties": {
+        "$ref": "#/$defs/HarnessBuiltinGhRelease"
+      },
+      "description": "Synthetic GitHub Releases keyed by exact tag.",
+      "title": "Gh Releases",
+      "type": "object"
     },
     "gh_tag_objects": {
       "additionalProperties": {

@@ -20,6 +20,10 @@ import re
 from argparse import Namespace
 from pathlib import Path
 
+from buildish_release_tooling.release.config import (
+    require_github_authoritative_publication,
+)
+from buildish_release_tooling.release.direct_release import selected_source_ref
 from buildish_release_tooling.release.git_repo import GitRepository
 from buildish_release_tooling.release.platforms.github.checks import (
     assert_ref_ready,
@@ -31,14 +35,12 @@ from buildish_release_tooling.release.manifest import write_manifest
 from buildish_release_tooling.release.command_manifests import (
     CreateReleaseBranchManifest,
 )
-from buildish_release_tooling.release.prepare_rc_state import resolve_prepare_rc_state
 from buildish_release_tooling.release.summary import SummaryWriter
 
 from buildish_release_tooling.release.commands._shared import (
     _context,
     _manifest_path,
     _summary_code,
-    _summary_optional_code,
 )
 
 
@@ -51,7 +53,9 @@ def run_create_release_branch(args: Namespace) -> Path:
     if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)?\.x", release_line):
         raise ValueError("release_line must look like 1.x or 1.2.x")
     repo = GitRepository.from_current_worktree()
-    manifest_path = _manifest_path(context.release_config.component.id, "create-release-branch")
+    manifest_path = _manifest_path(
+        context.release_config.component.id, "create-release-branch"
+    )
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
@@ -77,16 +81,23 @@ def run_create_release_branch(args: Namespace) -> Path:
 
 
 def run_verify_source_ref_checks(args: Namespace) -> None:
-    """Run the hard GitHub-check gate for `Prepare RC`."""
+    """Run the hard GitHub-check gate for one exact selected source revision."""
 
     context = _context(args)
     repo = GitRepository.from_current_worktree()
     version = args.version
-    source_sha = args.source_sha
-    state = resolve_prepare_rc_state(repo, context.release_config, version, source_sha)
-    repository_slug = resolve_repository_slug(repo.path)
-    check_runs_payload = fetch_check_runs_json(repository_slug, state.resolved_source_ref)
-    statuses_payload = fetch_statuses_json(repository_slug, state.resolved_source_ref)
+    requested_source_ref = args.source_sha
+    source_ref = selected_source_ref(
+        repo,
+        context.release_config,
+        version,
+        requested_source_ref,
+    )
+    source_commit = repo.resolve_commit(source_ref)
+    target = require_github_authoritative_publication(context.release_config)
+    repository_slug = target.repository or resolve_repository_slug(repo.path)
+    check_runs_payload = fetch_check_runs_json(repository_slug, source_commit)
+    statuses_payload = fetch_statuses_json(repository_slug, source_commit)
     total_checks = assert_ref_ready(
         check_runs_payload,
         statuses_payload,
@@ -100,11 +111,12 @@ def run_verify_source_ref_checks(args: Namespace) -> None:
             ("Component", _summary_code(context.release_config.component.id)),
             ("Version", _summary_code(version)),
             ("Repository", _summary_code(repository_slug)),
-            ("Resolved release branch", _summary_code(state.resolved_release_branch)),
-            ("Resolved source commit", _summary_code(state.resolved_source_ref)),
-            ("Requested source SHA", _summary_optional_code(source_sha)),
-            ("RC tag", _summary_code(state.rc_tag)),
-            ("Final tag", _summary_code(state.final_tag)),
+            (
+                "Requested source ref",
+                _summary_code(requested_source_ref or "<configured>"),
+            ),
+            ("Resolved source ref", _summary_code(source_ref)),
+            ("Resolved source commit", _summary_code(source_commit)),
             ("GitHub checks found", str(total_checks)),
         ],
     )
@@ -112,17 +124,21 @@ def run_verify_source_ref_checks(args: Namespace) -> None:
         "Gate policy",
         [
             (
-                "Prepare RC runs component tests",
-                str(context.release_config.source.checks.run_selected_ref_tests).lower(),
+                "Selected-ref component tests required",
+                str(
+                    context.release_config.source.checks.run_selected_ref_tests
+                ).lower(),
             ),
             (
-                "Release-branch CI required",
-                str(context.release_config.source.checks.require_release_branch_ci).lower(),
+                "At least one successful GitHub check required",
+                str(
+                    context.release_config.source.checks.require_release_branch_ci
+                ).lower(),
             ),
         ],
     )
     summary.append_plaintext_block(
         "Outcome",
         "All GitHub checks on the resolved source commit are successful or skipped. "
-        f"The release gate accepted {total_checks} check entries for {state.resolved_source_ref}.",
+        f"The release gate accepted {total_checks} check entries for {source_commit}.",
     )

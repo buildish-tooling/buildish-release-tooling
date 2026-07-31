@@ -1,0 +1,196 @@
+# Copyright 2026 The Buildish Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Release Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact final version, such as 1.2.3
+        required: true
+        type: string
+      source_ref:
+        description: Optional exact source ref or commit
+        required: false
+        type: string
+      candidate_label:
+        description: Optional candidate label override, such as rc
+        required: false
+        type: string
+      vote_profile:
+        description: Optional vote package profile configured by the component
+        required: true
+        default: none
+        type: choice
+        options: [none, generic, asf]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: buildish-release-${{ github.repository }}-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      candidate_tag: ${{ steps.state.outputs.candidate_tag }}
+      source_commit: ${{ steps.state.outputs.source_commit }}
+      state_digest: ${{ steps.state.outputs.state_digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - run: uv python install 3.11
+      - run: git fetch --force --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
+      - id: state
+        env:
+          CANDIDATE_LABEL: ${{ inputs.candidate_label }}
+          MANIFEST_PATH: ${{ runner.temp }}/candidate-state/candidate-state.json
+          RELEASE_VERSION: ${{ inputs.version }}
+          SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          mkdir -p "$(dirname "$MANIFEST_PATH")"
+          args=("$RELEASE_VERSION")
+          if [[ -n "$SOURCE_REF" ]]; then args+=("$SOURCE_REF"); fi
+          if [[ -n "$CANDIDATE_LABEL" ]]; then args=(--candidate-label "$CANDIDATE_LABEL" "${args[@]}"); fi
+          bash buildish-release-tooling/release-tooling.sh resolve-candidate "${args[@]}"
+          python3 - "$MANIFEST_PATH" <<'PY' >> "$GITHUB_OUTPUT"
+          import hashlib
+          import json
+          import sys
+          from pathlib import Path
+
+          path = Path(sys.argv[1])
+          payload = json.loads(path.read_text(encoding="utf-8"))
+          print(f"candidate_tag={payload['candidate']['tag']['name']}")
+          print(f"source_commit={payload['source']['commit_sha']}")
+          print(f"state_digest={hashlib.sha256(path.read_bytes()).hexdigest()}")
+          PY
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: candidate-state-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-state
+          retention-days: 1
+          if-no-files-found: error
+
+  verify-source:
+    needs: resolve
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+      statuses: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ needs.resolve.outputs.source_commit }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - run: uv python install 3.11
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ inputs.version }}
+          SOURCE_COMMIT: ${{ needs.resolve.outputs.source_commit }}
+        run: bash buildish-release-tooling/release-tooling.sh verify-source-ref-checks "$RELEASE_VERSION" "$SOURCE_COMMIT"
+
+  publish-candidate:
+    needs: [resolve, verify-source]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      manifest_digest: ${{ steps.publish.outputs.manifest_digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: candidate-state-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-state
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - run: uv python install 3.11
+      - id: publish
+        env:
+          EXPECTED_DIGEST: ${{ needs.resolve.outputs.state_digest }}
+          GH_TOKEN: ${{ github.token }}
+          STATE_PATH: ${{ runner.temp }}/candidate-state/candidate-state.json
+        run: |
+          printf '%s  %s\n' "$EXPECTED_DIGEST" "$STATE_PATH" | sha256sum --check --strict
+          git fetch --force --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
+          MANIFEST_PATH="${{ runner.temp }}/candidate-tag-result.json" \
+            bash buildish-release-tooling/release-tooling.sh create-candidate-tag --candidate-state "$STATE_PATH"
+          MANIFEST_PATH="${{ runner.temp }}/candidate-stage-result.json" \
+            bash buildish-release-tooling/release-tooling.sh stage-github-candidate --candidate-state "$STATE_PATH"
+          mkdir -p "${{ runner.temp }}/candidate-manifest"
+          MANIFEST_PATH="${{ runner.temp }}/candidate-manifest/candidate-manifest.json" \
+            bash buildish-release-tooling/release-tooling.sh create-candidate-manifest \
+              --candidate-state "$STATE_PATH" \
+              --stage-result "${{ runner.temp }}/candidate-stage-result.json"
+          bash buildish-release-tooling/release-tooling.sh attach-github-candidate-manifest \
+            --candidate-state "$STATE_PATH" \
+            --candidate-manifest "${{ runner.temp }}/candidate-manifest/candidate-manifest.json"
+          manifest_digest="$(sha256sum "${{ runner.temp }}/candidate-manifest/candidate-manifest.json" | cut -d' ' -f1)"
+          bash buildish-release-tooling/release-tooling.sh verify-github-candidate \
+            --candidate-tag "${{ needs.resolve.outputs.candidate_tag }}" \
+            --candidate-manifest-digest "$manifest_digest"
+          bash buildish-release-tooling/release-tooling.sh finalize-github-candidate \
+            --candidate-tag "${{ needs.resolve.outputs.candidate_tag }}" \
+            --candidate-manifest-digest "$manifest_digest"
+          printf 'manifest_digest=%s\n' "$manifest_digest" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: candidate-manifest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-manifest
+          retention-days: 30
+          if-no-files-found: error
+
+  vote-package:
+    if: ${{ inputs.vote_profile != 'none' }}
+    needs: [resolve, publish-candidate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: candidate-manifest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/candidate-manifest
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - run: uv python install 3.11
+      - env:
+          EXPECTED_DIGEST: ${{ needs.publish-candidate.outputs.manifest_digest }}
+          MANIFEST_PATH: ${{ runner.temp }}/vote-package/vote-package.json
+          VOTE_PROFILE: ${{ inputs.vote_profile }}
+        run: |
+          candidate_manifest="${{ runner.temp }}/candidate-manifest/candidate-manifest.json"
+          printf '%s  %s\n' "$EXPECTED_DIGEST" "$candidate_manifest" | sha256sum --check --strict
+          mkdir -p "$(dirname "$MANIFEST_PATH")"
+          bash buildish-release-tooling/release-tooling.sh create-vote-package \
+            --candidate-manifest "$candidate_manifest" \
+            --profile "$VOTE_PROFILE"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: vote-package-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/vote-package
+          retention-days: 30
+          if-no-files-found: error

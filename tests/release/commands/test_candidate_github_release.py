@@ -315,6 +315,7 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
             release_asset_text_by_id={202: manifest_text},
         )
         verify_result_path = self.sandbox_dir / "candidate-1-verify.json"
+        downloaded_manifest_path = self.sandbox_dir / "verified-candidate-manifest.json"
         completed = self._run(
             [
                 "verify-github-candidate",
@@ -322,12 +323,17 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
                 state.candidate.tag.name,
                 "--candidate-manifest-digest",
                 manifest_digest,
+                "--candidate-manifest-output",
+                str(downloaded_manifest_path),
             ],
             result_path=verify_result_path,
             gh_path=gh_path,
             gh_state_dir=gh_state_dir,
         )
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        self.assertEqual(
+            manifest_text, downloaded_manifest_path.read_text(encoding="utf-8")
+        )
 
         public_config_text = self.config_path.read_text(encoding="utf-8")
         self.config_path.write_text(
@@ -488,9 +494,7 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
                 "ref": f"refs/tags/{state.candidate.tag.name}",
                 "object": {"sha": "a" * 40, "type": "tag"},
             },
-            read_tag_response={
-                "object": {"sha": "f" * 40, "type": "commit"}
-            },
+            read_tag_response={"object": {"sha": "f" * 40, "type": "commit"}},
         )
 
         completed = self._run(
@@ -844,9 +848,7 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
             result_path=release_manifest_path,
         )
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
-        release_manifest = json.loads(
-            release_manifest_path.read_text(encoding="utf-8")
-        )
+        release_manifest = json.loads(release_manifest_path.read_text(encoding="utf-8"))
         self.assertEqual(
             "v1.2.3-rc2",
             release_manifest["promoted_candidate"]["candidate"]["tag"]["name"],

@@ -33,8 +33,12 @@ from buildish_release_tooling.harness.backends.act import (
 from buildish_release_tooling.harness.backends.act.workflow import (
     _rewrite_workflow,
 )
-from buildish_release_tooling.harness.backends.act.workflow_helpers import _step_identifier
-from buildish_release_tooling.harness.backends.act.workflow_yaml import _load_job_definitions
+from buildish_release_tooling.harness.backends.act.workflow_helpers import (
+    _step_identifier,
+)
+from buildish_release_tooling.harness.backends.act.workflow_yaml import (
+    _load_job_definitions,
+)
 from buildish_release_tooling.harness import runtime
 from buildish_release_tooling.harness.config import (
     ResolvedReleaseHarnessConfig,
@@ -249,9 +253,7 @@ class ActWorkflowRewriteUnitTest(unittest.TestCase):
             'if [[ "$command_name" == "--test-target-mode" ]]; then',
             script,
         )
-        self.assertIn(
-            'exec python3 -m buildish_release_tooling.release "$@"', script
-        )
+        self.assertIn('exec python3 -m buildish_release_tooling.release "$@"', script)
         self.assertIn(
             'exec python3 -m buildish_release_tooling.harness.shim_entrypoint buildish-release-tooling "${filtered_args[@]}"',
             script,
@@ -343,12 +345,7 @@ class ActWorkflowRewriteUnitTest(unittest.TestCase):
     def _workflow_path(self) -> Path:
         """Return one checked-in workflow path used only to satisfy the scenario model."""
 
-        return (
-            component_root()
-            / ".github"
-            / "workflows"
-            / "releasey-10-create-release-branch.yml"
-        )
+        return component_root() / ".github" / "workflows" / "release-direct.yml"
 
     def _initialize_git_repository(self, path: Path) -> None:
         """Create a disposable repository with a single `main` commit."""
