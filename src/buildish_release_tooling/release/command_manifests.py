@@ -377,7 +377,7 @@ class CreateFinalTagManifest(CommandActionManifest):
 
     action: Literal["create-final-tag"] = Field(default="create-final-tag", description="Stable command action identifier written by one Buildish command manifest.")
     version: NonEmptyString = Field(description="Release version string without a leading `v` prefix.")
-    selected_rc_tag: NonEmptyString = Field(description="RC tag that Buildish selected as the winning release candidate for a final release action.")
+    selected_rc_tag: NonEmptyString | None = Field(default=None, description="Optional RC tag selected for a candidate-based final release action; absent for direct releases.")
     final_tag: NonEmptyString = Field(description="Final immutable Git tag that Buildish intends to publish for the released version.")
     target_commit: NonEmptyString = Field(description="Git commit SHA that the related tag or alias operation targeted.")
     tag_creation_mode: NonEmptyString = Field(description="Mode that Buildish used when creating or reusing the related annotated Git tag.")

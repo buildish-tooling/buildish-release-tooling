@@ -159,7 +159,7 @@ Action manifest emitted after creating or validating the final immutable release
 | <a id="createfinaltagmanifest-component"></a>`component` | object | yes | Component identifier for the Buildish command manifest or emitted action record. |
 | <a id="createfinaltagmanifest-action"></a>`action` | Literal['create-final-tag'] | no | Stable command action identifier written by one Buildish command manifest. |
 | <a id="createfinaltagmanifest-version"></a>`version` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Release version string without a leading `v` prefix. |
-| <a id="createfinaltagmanifest-selected-rc-tag"></a>`selected_rc_tag` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | RC tag that Buildish selected as the winning release candidate for a final release action. |
+| <a id="createfinaltagmanifest-selected-rc-tag"></a>`selected_rc_tag` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | no | Optional RC tag selected for a candidate-based final release action; absent for direct releases. |
 | <a id="createfinaltagmanifest-final-tag"></a>`final_tag` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Final immutable Git tag that Buildish intends to publish for the released version. |
 | <a id="createfinaltagmanifest-target-commit"></a>`target_commit` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Git commit SHA that the related tag or alias operation targeted. |
 | <a id="createfinaltagmanifest-tag-creation-mode"></a>`tag_creation_mode` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Mode that Buildish used when creating or reusing the related annotated Git tag. |

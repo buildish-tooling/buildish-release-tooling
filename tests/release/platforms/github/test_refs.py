@@ -43,6 +43,60 @@ class GitHubGitRefsTest(unittest.TestCase):
                     message="Release Buildish Example 1.2.3",
                 )
 
+    def test_resolve_annotated_tag_target_commit_follows_tag_object(self) -> None:
+        with mock.patch(
+            "buildish_release_tooling.release.platforms.github.refs.run_logged_command",
+            side_effect=(
+                subprocess.CompletedProcess(
+                    [],
+                    0,
+                    json.dumps(
+                        {
+                            "ref": "refs/tags/v1.2.3",
+                            "object": {"sha": "tag-object-sha", "type": "tag"},
+                        }
+                    ),
+                    "",
+                ),
+                subprocess.CompletedProcess(
+                    [],
+                    0,
+                    json.dumps(
+                        {"object": {"sha": "commit-sha", "type": "commit"}}
+                    ),
+                    "",
+                ),
+            ),
+        ) as run_command:
+            actual = github_git_refs.resolve_annotated_tag_target_commit(
+                "buildish-tooling/buildish-example",
+                tag_name="v1.2.3",
+            )
+
+        self.assertEqual("commit-sha", actual)
+        self.assertEqual(2, run_command.call_count)
+
+    def test_resolve_annotated_tag_target_commit_rejects_lightweight_tag(self) -> None:
+        with mock.patch(
+            "buildish_release_tooling.release.platforms.github.refs.run_logged_command",
+            return_value=subprocess.CompletedProcess(
+                [],
+                0,
+                json.dumps(
+                    {
+                        "ref": "refs/tags/v1.2.3",
+                        "object": {"sha": "commit-sha", "type": "commit"},
+                    }
+                ),
+                "",
+            ),
+        ):
+            with self.assertRaisesRegex(ValueError, "not an annotated tag"):
+                github_git_refs.resolve_annotated_tag_target_commit(
+                    "buildish-tooling/buildish-example",
+                    tag_name="v1.2.3",
+                )
+
     def test_create_ref_rejects_invalid_object_payload(self) -> None:
         with mock.patch(
             "buildish_release_tooling.release.platforms.github.refs.run_logged_command",

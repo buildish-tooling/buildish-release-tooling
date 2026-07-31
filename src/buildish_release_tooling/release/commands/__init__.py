@@ -56,6 +56,13 @@ from buildish_release_tooling.release.commands.verification import (
 from buildish_release_tooling.release.commands.vote_materials import (
     run_finalize_rc_vote_materials,
 )
+from buildish_release_tooling.release.platforms.github.commands import (
+    run_publish_github_final_release,
+    run_read_github_final_release,
+    run_resolve_direct_release,
+    run_stage_github_final_release,
+    run_verify_github_final_release,
+)
 
 __all__ = [
     "run_attach_github_release_assets",
@@ -73,13 +80,18 @@ __all__ = [
     "run_prepare_rc",
     "run_prune_older_line_releases",
     "run_publish_dockerhub_moving_tags",
+    "run_publish_github_final_release",
     "run_publish_source_release_svn",
     "run_record_artifact",
+    "run_read_github_final_release",
     "run_release_version",
+    "run_resolve_direct_release",
     "run_report_atr_checks",
     "run_sync_draft_github_release",
+    "run_stage_github_final_release",
     "run_update_moving_image_aliases",
     "run_update_moving_tags",
     "run_verify_rc",
+    "run_verify_github_final_release",
     "run_verify_source_ref_checks",
 ]

@@ -34,7 +34,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, cast
@@ -561,7 +561,10 @@ def create_fake_gh_launcher(
     create_tag_response: object | None = None,
     create_ref_response: object | None = None,
     update_ref_response: object | None = None,
+    read_ref_response: object | None = None,
+    read_tag_response: object | None = None,
     release_asset_text_by_id: Mapping[int, str] | None = None,
+    list_responses: Sequence[object] | None = None,
 ) -> tuple[Path, Path]:
     """Create a lightweight `gh` shim for deterministic API and release-upload behavior."""
 
@@ -570,7 +573,16 @@ def create_fake_gh_launcher(
     launcher_path = launcher_dir / "gh"
     state_dir.mkdir(parents=True, exist_ok=True)
     launcher_dir.mkdir(parents=True, exist_ok=True)
-    (state_dir / "list-releases.json").write_text(json.dumps(list_response), encoding="utf-8")
+    effective_list_responses = tuple(list_responses or (list_response,))
+    for index, response in enumerate(effective_list_responses):
+        (state_dir / f"list-releases-{index}.json").write_text(
+            json.dumps(response), encoding="utf-8"
+        )
+    (state_dir / "list-releases-last-index.txt").write_text(
+        str(len(effective_list_responses) - 1), encoding="utf-8"
+    )
+    (state_dir / "list-releases-request-count.txt").write_text("0", encoding="utf-8")
+    (state_dir / "requests.log").write_text("", encoding="utf-8")
     (state_dir / "create-release-response.json").write_text(
         json.dumps(create_response if create_response is not None else {}),
         encoding="utf-8",
@@ -589,6 +601,14 @@ def create_fake_gh_launcher(
     )
     (state_dir / "update-ref-response.json").write_text(
         json.dumps(update_ref_response if update_ref_response is not None else {}),
+        encoding="utf-8",
+    )
+    (state_dir / "read-ref-response.json").write_text(
+        json.dumps(read_ref_response if read_ref_response is not None else {}),
+        encoding="utf-8",
+    )
+    (state_dir / "read-tag-response.json").write_text(
+        json.dumps(read_tag_response if read_tag_response is not None else {}),
         encoding="utf-8",
     )
     for asset_id, asset_text in sorted((release_asset_text_by_id or {}).items()):
@@ -667,11 +687,22 @@ def create_fake_gh_launcher(
                 'printf "%s %s\\n" "$method" "$endpoint" >> "$state_dir/requests.log"',
                 'case "$method:$endpoint" in',
                 '  GET:repos/*/releases\\?per_page=100)',
-                '    cat "$state_dir/list-releases.json"',
+                '    request_index="$(cat "$state_dir/list-releases-request-count.txt" 2>/dev/null || printf 0)"',
+                '    last_index="$(cat "$state_dir/list-releases-last-index.txt")"',
+                '    response_index="$request_index"',
+                '    if (( response_index > last_index )); then response_index="$last_index"; fi',
+                '    cat "$state_dir/list-releases-${response_index}.json"',
+                '    printf "%s" "$((request_index + 1))" > "$state_dir/list-releases-request-count.txt"',
                 "    ;;",
                 '  GET:repos/*/releases/assets/*)',
                 '    asset_id="${endpoint##*/}"',
                 '    cat "$state_dir/release-asset-${asset_id}.txt"',
+                "    ;;",
+                '  GET:repos/*/git/ref/tags/*)',
+                '    cat "$state_dir/read-ref-response.json"',
+                "    ;;",
+                '  GET:repos/*/git/tags/*)',
+                '    cat "$state_dir/read-tag-response.json"',
                 "    ;;",
                 '  DELETE:repos/*/releases/assets/*)',
                 '    printf "%s\\n" "$endpoint" >> "$state_dir/deleted-asset-endpoints.log"',

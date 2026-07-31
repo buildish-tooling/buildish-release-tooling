@@ -266,6 +266,17 @@ def require_openpgp_signing(release_config: ReleaseConfig) -> OpenPgpSigningConf
     return signing
 
 
+def require_github_authoritative_publication(
+    release_config: ReleaseConfig,
+) -> GitHubReleasePublicationConfig:
+    """Return the authoritative GitHub Release target or reject another provider."""
+
+    target = release_config.publication.authoritative
+    if not isinstance(target, GitHubReleasePublicationConfig):
+        raise ValueError("this command requires publication.authoritative kind github-release")
+    return target
+
+
 def require_vote_materials(release_config: ReleaseConfig) -> VoteMaterialsConfig:
     """Return vote-material policy or reject a vote-only command."""
 

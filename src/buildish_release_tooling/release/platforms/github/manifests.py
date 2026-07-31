@@ -12,13 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Typed GitHub publication extensions for stable release manifests."""
+"""Typed GitHub publication extensions and stable command results."""
 
+import re
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
-from buildish_release_tooling.docs.documentation import ToolingDerivedModel
+from buildish_release_tooling.docs.documentation import (
+    SchemaExportSpecification,
+    ToolingDerivedModel,
+)
 
 
 class GitHubAssetIdentity(ToolingDerivedModel):
@@ -26,9 +30,18 @@ class GitHubAssetIdentity(ToolingDerivedModel):
 
     name: str = Field(description="GitHub Release asset filename.")
     asset_id: int = Field(ge=1, description="GitHub-issued numeric asset identifier.")
-    digest: str | None = Field(
-        default=None, description="GitHub-observed or Buildish-verified asset digest."
+    size_bytes: int = Field(
+        ge=0, description="GitHub-observed release asset size in bytes."
     )
+    digest: str = Field(description="GitHub-observed SHA-256 asset digest.")
+
+    @field_validator("digest")
+    @classmethod
+    def _validate_digest(cls, value: str) -> str:
+        normalized = value.lower()
+        if re.fullmatch(r"sha256:[0-9a-f]{64}", normalized) is None:
+            raise ValueError("GitHub asset digest must use sha256:<64 lowercase hex digits>")
+        return normalized
 
 
 class GitHubCandidatePublication(ToolingDerivedModel):
@@ -63,3 +76,101 @@ class GitHubFinalPublication(ToolingDerivedModel):
     assets: list[GitHubAssetIdentity] = Field(
         default_factory=list, description="Observed final asset identities."
     )
+
+
+class StageGitHubFinalReleaseResult(ToolingDerivedModel):
+    """Result of converging on one exact draft GitHub final release."""
+
+    component: str = Field(description="Released Buildish component identifier.")
+    version: str = Field(description="Exact released component version.")
+    source_commit: str = Field(description="Exact source commit targeted by the final tag.")
+    publication: GitHubFinalPublication = Field(
+        description="Observed exact GitHub final-release publication state."
+    )
+
+    action: Literal["stage-github-final-release"] = Field(
+        default="stage-github-final-release", description="Command action discriminator."
+    )
+    outcome: Literal["created", "completed", "already-complete"] = Field(
+        description="Idempotent staging outcome."
+    )
+
+
+class ReadGitHubFinalReleaseResult(ToolingDerivedModel):
+    """Exact observed state of one GitHub final release."""
+
+    component: str = Field(description="Released Buildish component identifier.")
+    version: str = Field(description="Exact released component version.")
+    source_commit: str = Field(description="Exact source commit targeted by the final tag.")
+    publication: GitHubFinalPublication = Field(
+        description="Observed exact GitHub final-release publication state."
+    )
+
+    action: Literal["read-github-final-release"] = Field(
+        default="read-github-final-release", description="Command action discriminator."
+    )
+    outcome: Literal["observed"] = Field(
+        default="observed", description="Read-only observation outcome."
+    )
+
+
+class VerifyGitHubFinalReleaseResult(ToolingDerivedModel):
+    """Result of verifying one GitHub final release against direct-release state."""
+
+    component: str = Field(description="Released Buildish component identifier.")
+    version: str = Field(description="Exact released component version.")
+    source_commit: str = Field(description="Exact source commit targeted by the final tag.")
+    publication: GitHubFinalPublication = Field(
+        description="Observed exact GitHub final-release publication state."
+    )
+
+    action: Literal["verify-github-final-release"] = Field(
+        default="verify-github-final-release", description="Command action discriminator."
+    )
+    outcome: Literal["verified"] = Field(
+        default="verified", description="Exact-state verification outcome."
+    )
+
+
+class PublishGitHubFinalReleaseResult(ToolingDerivedModel):
+    """Result of publishing or revalidating one exact GitHub final release."""
+
+    component: str = Field(description="Released Buildish component identifier.")
+    version: str = Field(description="Exact released component version.")
+    source_commit: str = Field(description="Exact source commit targeted by the final tag.")
+    publication: GitHubFinalPublication = Field(
+        description="Observed exact GitHub final-release publication state."
+    )
+
+    action: Literal["publish-github-final-release"] = Field(
+        default="publish-github-final-release", description="Command action discriminator."
+    )
+    outcome: Literal["published", "already-complete"] = Field(
+        description="Idempotent final publication outcome."
+    )
+
+
+def _result_export(filename: str, summary: str) -> SchemaExportSpecification:
+    return SchemaExportSpecification(
+        filename=filename,
+        summary=summary,
+        reference_group="supported-emitted-root",
+    )
+
+
+StageGitHubFinalReleaseResult.schema_export = _result_export(
+    "stage-github-final-release-result.schema.json",
+    "Stable result of staging a direct GitHub final release.",
+)
+ReadGitHubFinalReleaseResult.schema_export = _result_export(
+    "read-github-final-release-result.schema.json",
+    "Stable exact observation of a direct GitHub final release.",
+)
+VerifyGitHubFinalReleaseResult.schema_export = _result_export(
+    "verify-github-final-release-result.schema.json",
+    "Stable verification result for a direct GitHub final release.",
+)
+PublishGitHubFinalReleaseResult.schema_export = _result_export(
+    "publish-github-final-release-result.schema.json",
+    "Stable publication result for a direct GitHub final release.",
+)

@@ -36,6 +36,15 @@ class _GitHubReleaseAssetRead(ExternalGitHubReadModel):
         default=None,
         description="GitHub Release asset filename returned by the releases API.",
     )
+    size: int | None = Field(
+        default=None,
+        ge=0,
+        description="GitHub-observed release asset size in bytes.",
+    )
+    digest: str | None = Field(
+        default=None,
+        description="GitHub-observed release asset digest, including its algorithm prefix.",
+    )
 
 
 class _GitHubReleaseRead(ExternalGitHubReadModel):
@@ -163,6 +172,28 @@ def release_by_tag(
     return dict(matches[0])
 
 
+def release_by_tag_or_none(
+    releases: Sequence[Mapping[str, object]],
+    *,
+    tag_name: str,
+) -> dict[str, object] | None:
+    """Return the unique exact-tag release, or `None` when it is absent."""
+
+    matches = [
+        release
+        for release in releases
+        if (parsed := _release_read_view(release)) is not None
+        and parsed.tag_name == tag_name
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise ValueError(
+            f"expected at most one GitHub Release for tag {tag_name}, found {len(matches)}"
+        )
+    return dict(matches[0])
+
+
 def release_asset_ids_by_names(
     release_payload: Mapping[str, object],
     *,
@@ -181,6 +212,20 @@ def release_asset_ids_by_names(
         if asset_id is not None and asset_name in requested_names:
             matching_assets[asset_name] = asset_id
     return matching_assets
+
+
+def release_assets(release_payload: Mapping[str, object]) -> list[dict[str, object]]:
+    """Return validated GitHub Release asset payloads for one release."""
+
+    parsed_release = _release_read_view(release_payload)
+    if parsed_release is None:
+        raise ValueError("GitHub Release contains malformed asset metadata")
+    if parsed_release.assets is None:
+        return []
+    return [
+        asset.model_dump(mode="python", exclude_none=True)
+        for asset in parsed_release.assets
+    ]
 
 
 def delete_release(repository_slug: str, release_id: int) -> None:

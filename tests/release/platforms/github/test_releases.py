@@ -105,6 +105,44 @@ class GitHubReleasesTest(unittest.TestCase):
         )
         self.assertEqual({"id": 10, "draft": True, "tag_name": "v1.2.3"}, actual)
 
+    def test_release_by_tag_or_none_distinguishes_absence_from_duplicates(self) -> None:
+        self.assertIsNone(
+            github_releases.release_by_tag_or_none([], tag_name="v1.2.3")
+        )
+        with self.assertRaisesRegex(ValueError, "at most one"):
+            github_releases.release_by_tag_or_none(
+                [
+                    {"id": 10, "tag_name": "v1.2.3"},
+                    {"id": 11, "tag_name": "v1.2.3"},
+                ],
+                tag_name="v1.2.3",
+            )
+
+    def test_release_assets_preserve_size_and_digest_identity(self) -> None:
+        actual = github_releases.release_assets(
+            {
+                "assets": [
+                    {
+                        "id": 101,
+                        "name": "example.zip",
+                        "size": 17,
+                        "digest": f"sha256:{'a' * 64}",
+                    }
+                ]
+            }
+        )
+        self.assertEqual(
+            [
+                {
+                    "id": 101,
+                    "name": "example.zip",
+                    "size": 17,
+                    "digest": f"sha256:{'a' * 64}",
+                }
+            ],
+            actual,
+        )
+
     def test_release_asset_ids_by_names_returns_matching_asset_ids(self) -> None:
         actual = github_releases.release_asset_ids_by_names(
             {

@@ -223,27 +223,27 @@
           "type": "integer"
         },
         "digest": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "GitHub-observed or Buildish-verified asset digest.",
-          "title": "Digest"
+          "description": "GitHub-observed SHA-256 asset digest.",
+          "title": "Digest",
+          "type": "string"
         },
         "name": {
           "description": "GitHub Release asset filename.",
           "title": "Name",
           "type": "string"
+        },
+        "size_bytes": {
+          "description": "GitHub-observed release asset size in bytes.",
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
         }
       },
       "required": [
         "name",
-        "asset_id"
+        "asset_id",
+        "size_bytes",
+        "digest"
       ],
       "title": "GitHubAssetIdentity",
       "type": "object",

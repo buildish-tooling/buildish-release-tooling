@@ -30,10 +30,18 @@
       "type": "string"
     },
     "selected_rc_tag": {
-      "description": "RC tag that Buildish selected as the winning release candidate for a final release action.",
-      "minLength": 1,
-      "title": "Selected Rc Tag",
-      "type": "string"
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional RC tag selected for a candidate-based final release action; absent for direct releases.",
+      "title": "Selected Rc Tag"
     },
     "tag_creation_mode": {
       "description": "Mode that Buildish used when creating or reusing the related annotated Git tag.",
@@ -57,7 +65,6 @@
   "required": [
     "component",
     "version",
-    "selected_rc_tag",
     "final_tag",
     "target_commit",
     "tag_creation_mode",

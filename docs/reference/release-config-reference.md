@@ -64,7 +64,9 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [PromotionState](#promotionstate) — Exact candidate evidence and final-tag state for promotion.
 - [PublicationConfig](#publicationconfig) — Authoritative, convenience, and secondary publication targets.
 - [PublicationReference](#publicationreference) — Reference to one provider or foundation publication result.
+- [PublishGitHubFinalReleaseResult](#publishgithubfinalreleaseresult) — Result of publishing or revalidating one exact GitHub final release.
 - [PythonPackagePublicationConfig](#pythonpackagepublicationconfig) — Secondary publication to the configured Python package index.
+- [ReadGitHubFinalReleaseResult](#readgithubfinalreleaseresult) — Exact observed state of one GitHub final release.
 - [RegistryIdentityPromotionEvidence](#registryidentitypromotionevidence) — Evidence that an immutable package or registry identity is unchanged.
 - [ReleaseConfig](#releaseconfig) — Component-authored release lifecycle and capability configuration.
 - [ReleaseIdentity](#releaseidentity) — Stable identity of one component version.
@@ -74,10 +76,12 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [SourceChecksConfig](#sourcechecksconfig) — Checks required for an exact source revision before artifact production.
 - [SourceConfig](#sourceconfig) — Source-selection, source-check, and snapshot policy.
 - [SourceRevision](#sourcerevision) — Exact source repository revision selected for a release.
+- [StageGitHubFinalReleaseResult](#stagegithubfinalreleaseresult) — Result of converging on one exact draft GitHub final release.
 - [TagIdentity](#tagidentity) — Immutable identity of one Git tag and its exact target commit.
 - [TagPolicyConfig](#tagpolicyconfig) — Immutable-tag materialization and optional moving-tag policy.
 - [ToolingInvocationProvenance](#toolinginvocationprovenance) — Provider-neutral tooling revision and invocation metadata.
 - [VerificationResultReference](#verificationresultreference) — Reference to one machine-readable verification result.
+- [VerifyGitHubFinalReleaseResult](#verifygithubfinalreleaseresult) — Result of verifying one GitHub final release against direct-release state.
 - [VerifyRcBuildConfig](#verifyrcbuildconfig) — Host-direct rebuild recipe configuration for one reproducibility profile.
 - [VerifyRcBuildOverrideConfig](#verifyrcbuildoverrideconfig) — Local non-canonical rebuild overrides for one reproducibility profile.
 - [VerifyRcConfig](#verifyrcconfig) — Structured verify-rc configuration for rebuild recipes and profile selection.
@@ -522,7 +526,8 @@ Immutable observed identity of one GitHub Release asset.
 | --- | --- | --- | --- |
 | <a id="githubassetidentity-name"></a>`name` | <class 'str'> | yes | GitHub Release asset filename. |
 | <a id="githubassetidentity-asset-id"></a>`asset_id` | <class 'int'> | yes | GitHub-issued numeric asset identifier. |
-| <a id="githubassetidentity-digest"></a>`digest` | str | no | GitHub-observed or Buildish-verified asset digest. |
+| <a id="githubassetidentity-size-bytes"></a>`size_bytes` | <class 'int'> | yes | GitHub-observed release asset size in bytes. |
+| <a id="githubassetidentity-digest"></a>`digest` | <class 'str'> | yes | GitHub-observed SHA-256 asset digest. |
 
 <a id="githubcandidatepublication"></a>
 ### GitHubCandidatePublication
@@ -730,6 +735,27 @@ Reference to one provider or foundation publication result.
 | <a id="publicationreference-uri"></a>`uri` | str | yes | Primary URI of the publication result. |
 | <a id="publicationreference-immutable-id"></a>`immutable_id` | str | no | Optional provider-issued immutable publication identifier. |
 
+<a id="publishgithubfinalreleaseresult"></a>
+### PublishGitHubFinalReleaseResult
+
+Result of publishing or revalidating one exact GitHub final release.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`publish-github-final-release-result.schema.json`](/components/release-tooling/schemas/publish-github-final-release-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="publishgithubfinalreleaseresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="publishgithubfinalreleaseresult-version"></a>`version` | <class 'str'> | yes | Exact released component version. |
+| <a id="publishgithubfinalreleaseresult-source-commit"></a>`source_commit` | <class 'str'> | yes | Exact source commit targeted by the final tag. |
+| <a id="publishgithubfinalreleaseresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubFinalPublication](#githubfinalpublication)'> | yes | Observed exact GitHub final-release publication state. |
+| <a id="publishgithubfinalreleaseresult-action"></a>`action` | typing.Literal['publish-github-final-release'] | no | Command action discriminator. |
+| <a id="publishgithubfinalreleaseresult-outcome"></a>`outcome` | typing.Literal['published', 'already-complete'] | yes | Idempotent final publication outcome. |
+
 <a id="pythonpackagepublicationconfig"></a>
 ### PythonPackagePublicationConfig
 
@@ -742,6 +768,27 @@ Secondary publication to the configured Python package index.
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | <a id="pythonpackagepublicationconfig-kind"></a>`kind` | Literal['pypi'] | no | Secondary publication target discriminator. |
+
+<a id="readgithubfinalreleaseresult"></a>
+### ReadGitHubFinalReleaseResult
+
+Exact observed state of one GitHub final release.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`read-github-final-release-result.schema.json`](/components/release-tooling/schemas/read-github-final-release-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="readgithubfinalreleaseresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="readgithubfinalreleaseresult-version"></a>`version` | <class 'str'> | yes | Exact released component version. |
+| <a id="readgithubfinalreleaseresult-source-commit"></a>`source_commit` | <class 'str'> | yes | Exact source commit targeted by the final tag. |
+| <a id="readgithubfinalreleaseresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubFinalPublication](#githubfinalpublication)'> | yes | Observed exact GitHub final-release publication state. |
+| <a id="readgithubfinalreleaseresult-action"></a>`action` | typing.Literal['read-github-final-release'] | no | Command action discriminator. |
+| <a id="readgithubfinalreleaseresult-outcome"></a>`outcome` | typing.Literal['observed'] | no | Read-only observation outcome. |
 
 <a id="registryidentitypromotionevidence"></a>
 ### RegistryIdentityPromotionEvidence
@@ -905,6 +952,27 @@ Exact source repository revision selected for a release.
 | <a id="sourcerevision-commit-sha"></a>`commit_sha` | str | yes | Exact source commit identifier. |
 | <a id="sourcerevision-source-ref"></a>`source_ref` | str | no | Optional authored or resolved source ref that selected the commit. |
 
+<a id="stagegithubfinalreleaseresult"></a>
+### StageGitHubFinalReleaseResult
+
+Result of converging on one exact draft GitHub final release.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`stage-github-final-release-result.schema.json`](/components/release-tooling/schemas/stage-github-final-release-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="stagegithubfinalreleaseresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="stagegithubfinalreleaseresult-version"></a>`version` | <class 'str'> | yes | Exact released component version. |
+| <a id="stagegithubfinalreleaseresult-source-commit"></a>`source_commit` | <class 'str'> | yes | Exact source commit targeted by the final tag. |
+| <a id="stagegithubfinalreleaseresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubFinalPublication](#githubfinalpublication)'> | yes | Observed exact GitHub final-release publication state. |
+| <a id="stagegithubfinalreleaseresult-action"></a>`action` | typing.Literal['stage-github-final-release'] | no | Command action discriminator. |
+| <a id="stagegithubfinalreleaseresult-outcome"></a>`outcome` | typing.Literal['created', 'completed', 'already-complete'] | yes | Idempotent staging outcome. |
+
 <a id="tagidentity"></a>
 ### TagIdentity
 
@@ -964,6 +1032,27 @@ Reference to one machine-readable verification result.
 | <a id="verificationresultreference-kind"></a>`kind` | str | yes | Verification result kind. |
 | <a id="verificationresultreference-uri"></a>`uri` | str | yes | URI of the verification result. |
 | <a id="verificationresultreference-digest"></a>`digest` | str | no | Optional result document digest. |
+
+<a id="verifygithubfinalreleaseresult"></a>
+### VerifyGitHubFinalReleaseResult
+
+Result of verifying one GitHub final release against direct-release state.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`verify-github-final-release-result.schema.json`](/components/release-tooling/schemas/verify-github-final-release-result.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifygithubfinalreleaseresult-component"></a>`component` | <class 'str'> | yes | Released Buildish component identifier. |
+| <a id="verifygithubfinalreleaseresult-version"></a>`version` | <class 'str'> | yes | Exact released component version. |
+| <a id="verifygithubfinalreleaseresult-source-commit"></a>`source_commit` | <class 'str'> | yes | Exact source commit targeted by the final tag. |
+| <a id="verifygithubfinalreleaseresult-publication"></a>`publication` | <class 'buildish_release_tooling.release.platforms.github.manifests.[GitHubFinalPublication](#githubfinalpublication)'> | yes | Observed exact GitHub final-release publication state. |
+| <a id="verifygithubfinalreleaseresult-action"></a>`action` | typing.Literal['verify-github-final-release'] | no | Command action discriminator. |
+| <a id="verifygithubfinalreleaseresult-outcome"></a>`outcome` | typing.Literal['verified'] | no | Exact-state verification outcome. |
 
 <a id="verifyrcbuildconfig"></a>
 ### VerifyRcBuildConfig

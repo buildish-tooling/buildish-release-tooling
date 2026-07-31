@@ -107,6 +107,16 @@ def _register_source_selection_commands(
     subparsers: Subparsers,
     common: argparse.ArgumentParser,
 ) -> None:
+    resolve_direct_release = _add_command_parser(
+        subparsers,
+        common,
+        "resolve-direct-release",
+        help_text="Resolve exact source and final-tag state for a direct release.",
+        handler=commands.run_resolve_direct_release,
+    )
+    _add_version_argument(resolve_direct_release)
+    resolve_direct_release.add_argument("source_ref", nargs="?")
+
     create_release_branch = _add_command_parser(
         subparsers,
         common,
@@ -424,6 +434,49 @@ def _register_publication_commands(
     subparsers: Subparsers,
     common: argparse.ArgumentParser,
 ) -> None:
+    for command_name, help_text, handler in (
+        (
+            "stage-github-final-release",
+            "Create or complete an exact draft GitHub final release.",
+            commands.run_stage_github_final_release,
+        ),
+        (
+            "read-github-final-release",
+            "Read the exact-tag GitHub final release state.",
+            commands.run_read_github_final_release,
+        ),
+        (
+            "verify-github-final-release",
+            "Verify exact GitHub final release metadata and assets.",
+            commands.run_verify_github_final_release,
+        ),
+        (
+            "publish-github-final-release",
+            "Publish or revalidate an exact GitHub final release.",
+            commands.run_publish_github_final_release,
+        ),
+    ):
+        direct_github_command = _add_command_parser(
+            subparsers,
+            common,
+            command_name,
+            help_text=help_text,
+            handler=handler,
+        )
+        direct_github_command.add_argument(
+            "--release-state",
+            required=True,
+            help="Path to the exact DirectReleaseState JSON produced by resolve-direct-release.",
+        )
+        if command_name == "stage-github-final-release":
+            direct_github_command.add_argument(
+                "--asset",
+                dest="assets",
+                action="append",
+                default=[],
+                help="Local release asset path. Repeat once for every artifact in release state.",
+            )
+
     publish_atr_candidate = _add_command_parser(
         subparsers,
         common,
@@ -512,7 +565,11 @@ def _register_publication_commands(
         create_final_tag,
         "Exact RC tag that this release-version workflow run is allowed to finalize.",
     )
-    _add_version_argument(create_final_tag)
+    create_final_tag.add_argument(
+        "--release-state",
+        help="DirectReleaseState JSON for a candidate-free direct release.",
+    )
+    create_final_tag.add_argument("version", nargs="?")
 
     finalize_draft_github_release = _add_command_parser(
         subparsers,
