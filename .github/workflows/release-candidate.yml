@@ -130,6 +130,7 @@ jobs:
       - run: uv python install 3.11
       - id: publish
         env:
+          CANDIDATE_TAG: ${{ needs.resolve.outputs.candidate_tag }}
           EXPECTED_DIGEST: ${{ needs.resolve.outputs.state_digest }}
           GH_TOKEN: ${{ github.token }}
           STATE_PATH: ${{ runner.temp }}/candidate-state/candidate-state.json
@@ -150,10 +151,10 @@ jobs:
             --candidate-manifest "${{ runner.temp }}/candidate-manifest/candidate-manifest.json"
           manifest_digest="$(sha256sum "${{ runner.temp }}/candidate-manifest/candidate-manifest.json" | cut -d' ' -f1)"
           bash buildish-release-tooling/release-tooling.sh verify-github-candidate \
-            --candidate-tag "${{ needs.resolve.outputs.candidate_tag }}" \
+            --candidate-tag "$CANDIDATE_TAG" \
             --candidate-manifest-digest "$manifest_digest"
           bash buildish-release-tooling/release-tooling.sh finalize-github-candidate \
-            --candidate-tag "${{ needs.resolve.outputs.candidate_tag }}" \
+            --candidate-tag "$CANDIDATE_TAG" \
             --candidate-manifest-digest "$manifest_digest"
           printf 'manifest_digest=%s\n' "$manifest_digest" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
