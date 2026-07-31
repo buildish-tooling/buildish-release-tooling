@@ -33,6 +33,7 @@ from buildish_release_tooling.release.core.config import (
     ComponentIdentityConfig,
     GenericVoteMaterialsConfig,
     LifecycleConfig,
+    OpenPgpSigningConfig,
     SourceConfig,
     TagPolicyConfig,
     VersioningConfig,
@@ -254,6 +255,15 @@ def require_built_source_snapshot(
     if not isinstance(snapshot, BuiltSourceSnapshotConfig):
         raise ValueError("this command requires source.snapshot.mode built-asset")
     return snapshot
+
+
+def require_openpgp_signing(release_config: ReleaseConfig) -> OpenPgpSigningConfig:
+    """Return configured OpenPGP policy or reject an operation that must sign artifacts."""
+
+    signing = release_config.artifacts.signing
+    if signing is None:
+        raise ValueError("this command requires artifacts.signing kind openpgp")
+    return signing
 
 
 def require_vote_materials(release_config: ReleaseConfig) -> VoteMaterialsConfig:

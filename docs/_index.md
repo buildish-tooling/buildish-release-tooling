@@ -159,7 +159,8 @@ stable CLI API:
 
 - `GH_TOKEN` or `GITHUB_TOKEN` for GitHub CLI authentication and temporary detached-ref pushes
 - `BUILDISH_SVN_DEV_USERNAME` and `BUILDISH_SVN_DEV_PASSWORD` for ASF SVN access
-- `BUILDISH_GPG_PRIVATE_KEY` for detached signing
+- the private-key variable named by `artifacts.signing.private_key_env` for detached OpenPGP signing
+- the optional passphrase variable named by `artifacts.signing.passphrase_env` for protected keys
 - `DOCKERHUB_USER` and `DOCKERHUB_TOKEN` for Docker Hub alias publication
 
 Those variables are common in GitHub Actions, but they expand the process environment and therefore
@@ -771,6 +772,7 @@ Subprocess commands such as `git`, `svn`, `gh`, and `gpg` are logged with argume
 debuggability.
 
 The documented secret-bearing values are redacted from command logs.
+OpenPGP passphrases are sent to GnuPG over standard input and are never placed in command arguments.
 
 ## Non-contract details
 

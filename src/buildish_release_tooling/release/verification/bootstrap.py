@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from textwrap import dedent
 
-from buildish_release_tooling.release.signing.openpgp import detached_ascii_sign
+from buildish_release_tooling.release.signing.openpgp import OpenPgpSigner
 from buildish_release_tooling.release.source_artifact import sha512, write_sha512_file
 
 VERIFY_RC_BOOTSTRAP_SCRIPT_NAME = "verify-rc-bootstrap.sh"
@@ -42,7 +42,7 @@ def build_verify_rc_bootstrap_artifacts(
     output_dir: Path,
     manifest_url: str,
     keys_url: str,
-    gpg_home: Path,
+    signer: OpenPgpSigner,
 ) -> VerifyRcBootstrapArtifacts:
     """Write, checksum, sign, and describe the verify-rc bootstrap script."""
 
@@ -53,7 +53,7 @@ def build_verify_rc_bootstrap_artifacts(
     script_sha512 = sha512(script_path)
     script_sha512_path = write_sha512_file(script_path, script_sha512)
     script_signature_path = script_path.with_name(f"{script_path.name}.asc")
-    detached_ascii_sign(gpg_home, script_path, script_signature_path)
+    signer.sign_file(script_path, script_signature_path)
     return VerifyRcBootstrapArtifacts(
         script_path=script_path,
         script_sha512=script_sha512,

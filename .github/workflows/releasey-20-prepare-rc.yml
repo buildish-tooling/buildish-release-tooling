@@ -148,6 +148,7 @@ jobs:
           BUILDISH_SVN_DEV_USERNAME: ${{ secrets.BUILDISH_SVN_DEV_USERNAME }}
           BUILDISH_SVN_DEV_PASSWORD: ${{ secrets.BUILDISH_SVN_DEV_PASSWORD }}
           BUILDISH_GPG_PRIVATE_KEY: ${{ secrets.BUILDISH_GPG_PRIVATE_KEY }}
+          BUILDISH_GPG_PASSPHRASE: ${{ secrets.BUILDISH_GPG_PASSPHRASE }}
           RC_TAG: ${{ needs.resolve-state.outputs.rc_tag }}
           RELEASE_VERSION: ${{ inputs.version }}
           INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
@@ -256,6 +257,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BUILDISH_GPG_PRIVATE_KEY: ${{ secrets.BUILDISH_GPG_PRIVATE_KEY }}
+          BUILDISH_GPG_PASSPHRASE: ${{ secrets.BUILDISH_GPG_PASSPHRASE }}
           RC_TAG: ${{ needs.resolve-state.outputs.rc_tag }}
           RELEASE_VERSION: ${{ inputs.version }}
           INPUT_SOURCE_SHA: ${{ inputs.source_sha }}

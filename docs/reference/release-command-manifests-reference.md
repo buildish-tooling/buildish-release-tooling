@@ -102,6 +102,7 @@ Action manifest emitted after building and staging the signed source RC bundle.
 | <a id="buildsourcercmanifest-source-artifact-sha512"></a>`source_artifact_sha512` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | SHA-512 digest of the staged or locally produced source release artifact. |
 | <a id="buildsourcercmanifest-source-artifact-sha512-path"></a>`source_artifact_sha512_path` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Filesystem path of the `.sha512` sidecar generated for the locally produced source artifact. |
 | <a id="buildsourcercmanifest-source-artifact-asc-path"></a>`source_artifact_asc_path` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Filesystem path of the detached OpenPGP signature file for the locally produced source artifact. |
+| <a id="buildsourcercmanifest-gpg-fingerprint"></a>`gpg_fingerprint` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | OpenPGP fingerprint of the signing key Buildish used. |
 | <a id="buildsourcercmanifest-staging-url"></a>`staging_url` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | ASF dev/dist staging directory URL selected for the current RC. |
 
 <a id="cleanupdevsvnrcsmanifest"></a>

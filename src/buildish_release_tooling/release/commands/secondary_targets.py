@@ -21,6 +21,7 @@ from argparse import Namespace
 from buildish_release_tooling.release.config import (
     latest_tag_enabled,
     moving_tags_enabled,
+    require_openpgp_signing,
     secondary_target_kinds,
 )
 from collections.abc import Iterable
@@ -37,9 +38,8 @@ from buildish_release_tooling.release.platforms.github.releases import (
     upload_release_assets,
 )
 from buildish_release_tooling.release.signing.openpgp import (
-    detached_ascii_sign,
-    import_private_key_from_secret,
-    secret_key_fingerprint,
+    OpenPgpSigner,
+    OpenPgpSigningInput,
 )
 from buildish_release_tooling.release.command_manifests import (
     AttachGitHubReleaseAssetsManifest,
@@ -110,19 +110,20 @@ def _assert_unique_upload_asset_names(asset_paths: Iterable[Path]) -> None:
         seen_names.add(asset_path.name)
 
 
-def _sign_release_assets(asset_paths: list[Path]) -> tuple[list[Path], str]:
+def _sign_release_assets(
+    asset_paths: list[Path], signing_input: OpenPgpSigningInput
+) -> tuple[list[Path], str]:
     """Generate detached ASCII-armored signatures for one set of release assets."""
 
     with _temporary_build_dir("attach-github-release-assets") as temp_root:
         gpg_home = temp_root / "gnupg"
-        import_private_key_from_secret(gpg_home)
-        gpg_fingerprint = secret_key_fingerprint(gpg_home)
+        signer = OpenPgpSigner.from_environment(gpg_home, signing_input)
         signature_paths: list[Path] = []
         for asset_path in asset_paths:
             signature_path = asset_path.with_name(f"{asset_path.name}.asc")
-            detached_ascii_sign(gpg_home, asset_path, signature_path)
+            signer.sign_file(asset_path, signature_path)
             signature_paths.append(signature_path)
-        return signature_paths, gpg_fingerprint
+        return signature_paths, signer.fingerprint
 
 
 def _prepare_release_asset_uploads(
@@ -130,6 +131,7 @@ def _prepare_release_asset_uploads(
     checksum_algorithms: list[str],
     *,
     sign: bool,
+    signing_input: OpenPgpSigningInput | None,
 ) -> PreparedReleaseAssetUploads:
     """Generate checksum/signature sidecars and the final GitHub Release upload set."""
 
@@ -147,7 +149,11 @@ def _prepare_release_asset_uploads(
     generated_signature_paths: list[Path] = []
     gpg_fingerprint = ""
     if sign:
-        generated_signature_paths, gpg_fingerprint = _sign_release_assets(asset_paths)
+        if signing_input is None:
+            raise ValueError("signing_input is required when sign is enabled")
+        generated_signature_paths, gpg_fingerprint = _sign_release_assets(
+            asset_paths, signing_input
+        )
         upload_paths.extend(generated_signature_paths)
 
     return PreparedReleaseAssetUploads(
@@ -323,6 +329,13 @@ def run_attach_github_release_assets(args: Namespace) -> Path:
         asset_paths,
         _deduplicated_checksum_algorithms(args.checksum_algorithms),
         sign=args.sign,
+        signing_input=(
+            OpenPgpSigningInput.from_config(
+                require_openpgp_signing(context.release_config)
+            )
+            if args.sign
+            else None
+        ),
     )
     _assert_unique_upload_asset_names(prepared_uploads.upload_paths)
     upload_release_assets(

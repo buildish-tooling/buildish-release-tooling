@@ -27,6 +27,7 @@ from buildish_release_tooling.release.config import (
     load_release_config,
     load_verification_override_config,
     require_asf_profile,
+    require_openpgp_signing,
     validate_selected_release_targets,
 )
 
@@ -117,6 +118,55 @@ class ReleaseConfigTest(unittest.TestCase):
         loaded = ReleaseConfig.model_validate(payload)
 
         self.assertEqual(0, loaded.candidate.start_number if loaded.candidate else None)
+
+    def test_openpgp_signing_policy_names_secret_inputs_and_normalizes_fingerprint(
+        self,
+    ) -> None:
+        payload = _direct_github_payload()
+        payload["artifacts"] = {
+            "checksums": ["sha512"],
+            "signing": {
+                "kind": "openpgp",
+                "private_key_env": "PROJECT_RELEASE_PRIVATE_KEY",
+                "passphrase_env": "PROJECT_RELEASE_PASSPHRASE",
+                "expected_fingerprint": "0123 4567 89ab cdef 0123 4567 89ab cdef 0123 4567",
+            },
+        }
+
+        loaded = ReleaseConfig.model_validate(payload)
+        signing = require_openpgp_signing(loaded)
+
+        self.assertEqual("PROJECT_RELEASE_PRIVATE_KEY", signing.private_key_env)
+        self.assertEqual("PROJECT_RELEASE_PASSPHRASE", signing.passphrase_env)
+        self.assertEqual(
+            "0123456789ABCDEF0123456789ABCDEF01234567",
+            signing.expected_fingerprint,
+        )
+
+    def test_openpgp_signing_policy_rejects_invalid_secret_input_name(self) -> None:
+        payload = _direct_github_payload()
+        payload["artifacts"] = {
+            "signing": {
+                "kind": "openpgp",
+                "private_key_env": "not a variable",
+            }
+        }
+
+        with self.assertRaisesRegex(ValueError, "environment variable names"):
+            ReleaseConfig.model_validate(payload)
+
+    def test_openpgp_signing_policy_rejects_short_fingerprint(self) -> None:
+        payload = _direct_github_payload()
+        payload["artifacts"] = {
+            "signing": {
+                "kind": "openpgp",
+                "private_key_env": "PROJECT_RELEASE_PRIVATE_KEY",
+                "expected_fingerprint": "01234567",
+            }
+        }
+
+        with self.assertRaisesRegex(ValueError, "full OpenPGP fingerprint"):
+            ReleaseConfig.model_validate(payload)
 
     def test_candidate_block_is_required_exactly_for_candidate_lifecycle(self) -> None:
         missing = _direct_github_payload()
@@ -232,6 +282,10 @@ class ReleaseConfigTest(unittest.TestCase):
                 self.assertEqual(
                     "https://downloads.apache.org/incubator/buildish/KEYS",
                     require_asf_profile(loaded).keys_url,
+                )
+                self.assertEqual(
+                    "BUILDISH_GPG_PASSPHRASE",
+                    require_openpgp_signing(loaded).passphrase_env,
                 )
 
     def test_unknown_fields_are_rejected_at_nested_boundaries(self) -> None:

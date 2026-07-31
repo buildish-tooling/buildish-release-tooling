@@ -18,6 +18,12 @@
       "title": "Component",
       "type": "string"
     },
+    "gpg_fingerprint": {
+      "description": "OpenPGP fingerprint of the signing key Buildish used.",
+      "minLength": 1,
+      "title": "Gpg Fingerprint",
+      "type": "string"
+    },
     "rc_tag": {
       "description": "Exact RC Git tag, including the leading `v` prefix and `-rcN` suffix.",
       "minLength": 1,
@@ -90,6 +96,7 @@
     "source_artifact_sha512",
     "source_artifact_sha512_path",
     "source_artifact_asc_path",
+    "gpg_fingerprint",
     "staging_url"
   ],
   "title": "Buildish Release Tooling BuildSourceRcManifest",

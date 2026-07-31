@@ -37,6 +37,10 @@ candidate:
 artifacts:
   produced: []
   checksums: [sha512]
+  signing:
+    kind: openpgp
+    private_key_env: BUILDISH_GPG_PRIVATE_KEY
+    passphrase_env: BUILDISH_GPG_PASSPHRASE
 publication:
   authoritative:
     kind: asf-dist-svn

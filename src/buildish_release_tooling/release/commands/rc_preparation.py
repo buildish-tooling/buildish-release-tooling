@@ -19,7 +19,10 @@ from __future__ import annotations
 from argparse import Namespace
 from pathlib import Path
 
-from buildish_release_tooling.release.config import require_asf_profile
+from buildish_release_tooling.release.config import (
+    require_asf_profile,
+    require_openpgp_signing,
+)
 from buildish_release_tooling.release.foundations.asf.dist import AsfSvnClient, url_join
 from buildish_release_tooling.release.command_manifests import (
     BuildSourceRcManifest,
@@ -29,8 +32,8 @@ from buildish_release_tooling.release.command_manifests import (
 )
 from buildish_release_tooling.release.git_repo import GitRepository
 from buildish_release_tooling.release.signing.openpgp import (
-    detached_ascii_sign,
-    import_private_key_from_secret,
+    OpenPgpSigner,
+    OpenPgpSigningInput,
 )
 from buildish_release_tooling.release.manifest import write_manifest
 from buildish_release_tooling.release.source_artifact import (
@@ -201,9 +204,14 @@ def run_build_source_rc(args: Namespace) -> Path:
         create_from_git(repo.path, state.resolved_source_ref, state.source_artifact_prefix_path, artifact_path)
         artifact_sha512 = sha512(artifact_path)
         sha512_path = write_sha512_file(artifact_path, artifact_sha512)
-        import_private_key_from_secret(gpg_home)
+        signer = OpenPgpSigner.from_environment(
+            gpg_home,
+            OpenPgpSigningInput.from_config(
+                require_openpgp_signing(context.release_config)
+            ),
+        )
         asc_path = artifact_path.with_name(f"{artifact_path.name}.asc")
-        detached_ascii_sign(gpg_home, artifact_path, asc_path)
+        signer.sign_file(artifact_path, asc_path)
 
         svn_client = AsfSvnClient.from_environment()
         staging_url = state.candidate_publication_uri.rstrip("/")
@@ -239,6 +247,7 @@ def run_build_source_rc(args: Namespace) -> Path:
                 source_artifact_sha512=artifact_sha512,
                 source_artifact_sha512_path=str(sha512_path),
                 source_artifact_asc_path=str(asc_path),
+                gpg_fingerprint=signer.fingerprint,
                 staging_url=f"{staging_url}/",
             ),
         )

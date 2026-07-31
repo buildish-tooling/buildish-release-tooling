@@ -168,6 +168,7 @@ class BuildSourceRcManifest(CommandActionManifest):
     source_artifact_sha512: NonEmptyString = Field(description="SHA-512 digest of the staged or locally produced source release artifact.")
     source_artifact_sha512_path: NonEmptyString = Field(description="Filesystem path of the `.sha512` sidecar generated for the locally produced source artifact.")
     source_artifact_asc_path: NonEmptyString = Field(description="Filesystem path of the detached OpenPGP signature file for the locally produced source artifact.")
+    gpg_fingerprint: NonEmptyString = Field(description="OpenPGP fingerprint of the signing key Buildish used.")
     staging_url: NonEmptyString = Field(description="ASF dev/dist staging directory URL selected for the current RC.")
 
 

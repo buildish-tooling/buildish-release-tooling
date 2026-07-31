@@ -30,6 +30,7 @@ from buildish_release_tooling.release.command_manifests import (
 from buildish_release_tooling.release.config import (
     CommandContext,
     require_asf_profile,
+    require_openpgp_signing,
     require_vote_materials,
 )
 from buildish_release_tooling.release.email_templates import (
@@ -41,9 +42,8 @@ from buildish_release_tooling.release.platforms.github.selection import Selected
 from buildish_release_tooling.release.platforms.github.text import render_finalized_draft_github_release_body
 from buildish_release_tooling.release.platforms.github.releases import update_release, upload_release_assets
 from buildish_release_tooling.release.signing.openpgp import (
-    detached_ascii_sign,
-    import_private_key_from_secret,
-    secret_key_fingerprint,
+    OpenPgpSigner,
+    OpenPgpSigningInput,
 )
 from buildish_release_tooling.release.contracts import (
     AnySecondaryArtifact,
@@ -248,13 +248,17 @@ def _build_rc_vote_manifest_artifacts(
     keys_url = require_asf_profile(context.release_config).keys_url
     with _temporary_build_dir("finalize-rc-vote-materials") as temp_root:
         gpg_home = temp_root / "gnupg"
-        import_private_key_from_secret(gpg_home)
-        gpg_fingerprint = secret_key_fingerprint(gpg_home)
+        signer = OpenPgpSigner.from_environment(
+            gpg_home,
+            OpenPgpSigningInput.from_config(
+                require_openpgp_signing(context.release_config)
+            ),
+        )
         bootstrap_artifacts = build_verify_rc_bootstrap_artifacts(
             output_dir=output_dir,
             manifest_url=manifest_url,
             keys_url=keys_url,
-            gpg_home=gpg_home,
+            signer=signer,
         )
         _repository_slug, source_repository_url = origin_repository_metadata(
             GitRepository.from_current_worktree()
@@ -278,14 +282,14 @@ def _build_rc_vote_manifest_artifacts(
         manifest_sha512 = sha512(manifest_file_path)
         manifest_sha512_path = write_sha512_file(manifest_file_path, manifest_sha512)
         manifest_signature_path = manifest_file_path.with_name(f"{manifest_file_path.name}.asc")
-        detached_ascii_sign(gpg_home, manifest_file_path, manifest_signature_path)
+        signer.sign_file(manifest_file_path, manifest_signature_path)
         return RcVoteManifestArtifacts(
             manifest_payload=manifest_payload,
             manifest_file_path=manifest_file_path,
             manifest_sha512=manifest_sha512,
             manifest_sha512_path=manifest_sha512_path,
             manifest_signature_path=manifest_signature_path,
-            gpg_fingerprint=gpg_fingerprint,
+            gpg_fingerprint=signer.fingerprint,
             bootstrap_artifacts=bootstrap_artifacts,
             supplemental_file_paths=supplemental_file_paths,
         )

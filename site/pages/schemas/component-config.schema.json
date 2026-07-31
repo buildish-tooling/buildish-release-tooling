@@ -3,7 +3,7 @@
   "$defs": {
     "ArtifactPolicyConfig": {
       "additionalProperties": false,
-      "description": "Produced artifact families and integrity sidecar policy.",
+      "description": "Produced artifact families, integrity sidecars, and signing policy.",
       "properties": {
         "checksums": {
           "description": "Checksums required for produced file artifacts.",
@@ -24,6 +24,18 @@
           },
           "title": "Produced",
           "type": "array"
+        },
+        "signing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/OpenPgpSigningConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional detached-signature policy for produced file artifacts."
         }
       },
       "title": "ArtifactPolicyConfig",
@@ -524,6 +536,66 @@
         }
       },
       "title": "NoSourceSnapshotConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "OpenPgpSigningConfig": {
+      "additionalProperties": false,
+      "description": "OpenPGP detached-signature policy and secret input names.",
+      "properties": {
+        "expected_fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional full OpenPGP fingerprint required for the imported signing key.",
+          "title": "Expected Fingerprint"
+        },
+        "kind": {
+          "const": "openpgp",
+          "default": "openpgp",
+          "description": "Artifact signing mechanism discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "passphrase_env": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional environment variable containing the private-key passphrase. The variable may be absent when the configured key is unprotected.",
+          "title": "Passphrase Env"
+        },
+        "private_key_env": {
+          "description": "Environment variable containing the armored OpenPGP private key.",
+          "title": "Private Key Env",
+          "type": "string"
+        },
+        "signature_format": {
+          "const": "detached-ascii-armored",
+          "default": "detached-ascii-armored",
+          "description": "Detached signature format produced for signed file artifacts.",
+          "title": "Signature Format",
+          "type": "string"
+        }
+      },
+      "required": [
+        "private_key_env"
+      ],
+      "title": "OpenPgpSigningConfig",
       "type": "object",
       "x-buildish-contract": {
         "category": "authored",

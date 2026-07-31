@@ -106,6 +106,7 @@ def _rewrite_step(
     )
     if generated_gpg_fixture:
         env.pop("BUILDISH_GPG_PRIVATE_KEY", None)
+        env.pop("BUILDISH_GPG_PASSPHRASE", None)
     env["BUILDISH_HARNESS_JOB_ID"] = job_id
     env["BUILDISH_HARNESS_STEP_ID"] = step_id
     rewritten["env"] = env

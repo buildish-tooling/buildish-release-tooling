@@ -25,6 +25,8 @@ from pydantic import Field, field_validator, model_validator
 from buildish_release_tooling.docs.documentation import ComponentOwnedAuthoredModel
 
 _CANDIDATE_LABEL_PATTERN = re.compile(r"[a-z][a-z0-9-]*")
+_ENVIRONMENT_VARIABLE_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_OPENPGP_FINGERPRINT_PATTERN = re.compile(r"(?:[0-9A-F]{40}|[0-9A-F]{64})")
 
 
 class ComponentIdentityConfig(ComponentOwnedAuthoredModel):
@@ -223,8 +225,55 @@ class CandidateConfig(ComponentOwnedAuthoredModel):
         return normalized
 
 
+class OpenPgpSigningConfig(ComponentOwnedAuthoredModel):
+    """OpenPGP detached-signature policy and secret input names."""
+
+    kind: Literal["openpgp"] = Field(
+        default="openpgp",
+        description="Artifact signing mechanism discriminator.",
+    )
+    private_key_env: str = Field(
+        description="Environment variable containing the armored OpenPGP private key.",
+    )
+    passphrase_env: str | None = Field(
+        default=None,
+        description=(
+            "Optional environment variable containing the private-key passphrase. "
+            "The variable may be absent when the configured key is unprotected."
+        ),
+    )
+    expected_fingerprint: str | None = Field(
+        default=None,
+        description="Optional full OpenPGP fingerprint required for the imported signing key.",
+    )
+    signature_format: Literal["detached-ascii-armored"] = Field(
+        default="detached-ascii-armored",
+        description="Detached signature format produced for signed file artifacts.",
+    )
+
+    @field_validator("private_key_env", "passphrase_env")
+    @classmethod
+    def _validate_environment_variable_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        if _ENVIRONMENT_VARIABLE_PATTERN.fullmatch(normalized) is None:
+            raise ValueError("signing secret inputs must be valid environment variable names")
+        return normalized
+
+    @field_validator("expected_fingerprint")
+    @classmethod
+    def _normalize_expected_fingerprint(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = "".join(value.split()).upper()
+        if _OPENPGP_FINGERPRINT_PATTERN.fullmatch(normalized) is None:
+            raise ValueError("expected_fingerprint must be a full OpenPGP fingerprint")
+        return normalized
+
+
 class ArtifactPolicyConfig(ComponentOwnedAuthoredModel):
-    """Produced artifact families and integrity sidecar policy."""
+    """Produced artifact families, integrity sidecars, and signing policy."""
 
     produced: list[str] = Field(
         default_factory=list,
@@ -233,6 +282,10 @@ class ArtifactPolicyConfig(ComponentOwnedAuthoredModel):
     checksums: list[Literal["sha256", "sha512"]] = Field(
         default_factory=list,
         description="Checksums required for produced file artifacts.",
+    )
+    signing: OpenPgpSigningConfig | None = Field(
+        default=None,
+        description="Optional detached-signature policy for produced file artifacts.",
     )
 
 
