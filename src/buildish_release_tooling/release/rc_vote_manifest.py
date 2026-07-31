@@ -36,12 +36,12 @@ from buildish_release_tooling.shared.io import (
     read_text_bounded,
 )
 from buildish_release_tooling.release.git_repo import GitRepository
-from buildish_release_tooling.release.github_checks import resolve_repository_slug
+from buildish_release_tooling.release.platforms.github.checks import resolve_repository_slug
 from buildish_release_tooling.release.contracts import (
     AuthoritativeManifestReference,
-    DraftGithubRelease,
+    DraftGitHubRelease,
     IncubatorDisclaimer,
-    GithubWorkflowProvenance,
+    GitHubWorkflowProvenance,
     ManifestProvenance,
     ManifestTrustRoots,
     ManifestVerificationMetadataStrict,
@@ -56,8 +56,9 @@ from buildish_release_tooling.release.contracts import (
     AsfKeysTrustRoot,
     RcVoteManifestV1,
 )
-from buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
-from buildish_release_tooling.release.release_state import derive_specific_release_line
+from buildish_release_tooling.release.config import ReleaseConfig, require_asf_profile
+from buildish_release_tooling.release.core.state import CandidateReleaseState
+from buildish_release_tooling.release.core.naming import derive_specific_release_line
 
 DEFAULT_URI_READ_TIMEOUT_SECONDS = 60.0
 DEFAULT_SVN_CAT_TIMEOUT_SECONDS = 60.0
@@ -120,7 +121,7 @@ def tooling_provenance() -> ToolingProvenance:
     )
 
 
-def github_workflow_provenance(default_repository: str) -> GithubWorkflowProvenance | None:
+def github_workflow_provenance(default_repository: str) -> GitHubWorkflowProvenance | None:
     """Build GitHub Actions workflow provenance when running inside GitHub Actions."""
 
     repository = os.environ.get("GITHUB_REPOSITORY") or default_repository
@@ -134,7 +135,7 @@ def github_workflow_provenance(default_repository: str) -> GithubWorkflowProvena
         else None
     )
     run_attempt = os.environ.get("GITHUB_RUN_ATTEMPT")
-    return GithubWorkflowProvenance(
+    return GitHubWorkflowProvenance(
         repository=repository,
         workflow=os.environ.get("GITHUB_WORKFLOW", ""),
         workflow_ref=os.environ.get("GITHUB_WORKFLOW_REF", ""),
@@ -314,8 +315,8 @@ def trust_root_metadata(keys_uri: str) -> ManifestTrustRoots:
 
 def build_rc_vote_manifest(
     *,
-    component_config: ComponentConfig,
-    state: PrepareRcState,
+    component_config: ReleaseConfig,
+    state: CandidateReleaseState,
     repository_slug: str,
     source_repository_url: str,
     draft_release_tag: str,
@@ -328,15 +329,15 @@ def build_rc_vote_manifest(
     """Build the machine-readable RC inventory staged for vote."""
 
     manifest_filename = "rc-vote-manifest.json"
-    staging_url = state.staging_url.rstrip("/")
+    staging_url = state.candidate_publication_uri.rstrip("/")
     source_artifact_url = f"{staging_url}/{state.source_artifact_name}"
     manifest_url = f"{staging_url}/{manifest_filename}"
     materialized_commit_sha: str | None = None
-    if component_config.final_tag_mode == "detached-materialization-commit":
+    if component_config.tags.final_mode == "detached-materialization-commit":
         materialized_commit_sha = rc_tag_target_commit
     source_reproducibility = (
-        component_config.verify_rc.source.reproducibility
-        if component_config.verify_rc is not None and component_config.verify_rc.source is not None
+        component_config.verification.source.reproducibility
+        if component_config.verification is not None and component_config.verification.source is not None
         else None
     )
     source_artifact_payload = SourceArtifactContract(
@@ -363,7 +364,7 @@ def build_rc_vote_manifest(
         github=github_workflow_provenance(repository_slug),
     )
     return RcVoteManifestV1(
-        component_id=component_config.component_id,
+        component_id=component_config.component.id,
         version=state.final_tag.removeprefix("v"),
         release_line=derive_specific_release_line(state.final_tag.removeprefix("v")),
         release_branch=state.resolved_release_branch,
@@ -372,10 +373,10 @@ def build_rc_vote_manifest(
         source_date_epoch=state.source_date_epoch,
         rc_tag=state.rc_tag,
         final_tag=state.final_tag,
-        final_tag_mode=component_config.final_tag_mode,
+        final_tag_mode=component_config.tags.final_mode,
         provenance=provenance,
-        trust_roots=trust_root_metadata(component_config.asf_keys_url),
-        draft_github_release=DraftGithubRelease(
+        trust_roots=trust_root_metadata(require_asf_profile(component_config).keys_url),
+        draft_github_release=DraftGitHubRelease(
             repository=repository_slug,
             tag=draft_release_tag,
             url=draft_release_url,

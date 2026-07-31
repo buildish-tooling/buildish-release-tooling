@@ -12,406 +12,264 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for component configuration loading."""
+"""Tests for orthogonal release configuration loading and validation."""
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import cast
 import unittest
 
+import yaml
+
 from buildish_release_tooling.release.config import (
-    load_component_config,
-    load_verify_rc_override_config,
-    validate_release_target_base_urls,
+    ReleaseConfig,
+    load_release_config,
+    load_verification_override_config,
+    require_asf_profile,
+    validate_selected_release_targets,
 )
 
-from tests.support import cleanup_sandbox, create_build_test_sandbox, fixture_component_config_path
+from tests.support import (
+    cleanup_sandbox,
+    create_build_test_sandbox,
+    fixture_component_config_path,
+)
 
 
-class LoadComponentConfigTest(unittest.TestCase):
-    """Verify that YAML configuration loading behaves as expected."""
+def _direct_github_payload() -> dict[str, object]:
+    return {
+        "component": {
+            "id": "buildish-example",
+            "display_name": "Buildish Example",
+        },
+        "versioning": {
+            "scheme": "semver",
+            "final_tag_template": "v{version}",
+        },
+        "source": {
+            "selection": "explicit-ref-or-default-branch",
+            "default_branch": "main",
+            "snapshot": {"mode": "platform-generated"},
+            "checks": {
+                "run_selected_ref_tests": True,
+                "require_release_branch_ci": False,
+            },
+        },
+        "lifecycle": {"mode": "direct"},
+        "artifacts": {"produced": [], "checksums": []},
+        "publication": {
+            "authoritative": {
+                "kind": "github-release",
+                "repository": "buildish-tooling/buildish-example",
+            },
+            "convenience": [],
+            "secondary": [],
+        },
+        "tags": {"final_mode": "exact-source-commit", "moving": []},
+        "policy_profiles": {},
+    }
 
-    def test_load_component_config_from_yaml(self) -> None:
+
+def _write_yaml(path: Path, payload: dict[str, object]) -> None:
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
+
+
+class ReleaseConfigTest(unittest.TestCase):
+    """Verify lifecycle and capability dimensions remain independently validated."""
+
+    def test_load_direct_github_config_without_asf_fields(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
-        config_path = sandbox_dir / "component.yaml"
-        config_path.write_text(
-            "\n".join(
-                [
-                    "component_id: buildish-example",
-                    "source_artifact_prefix: apache-buildish-example",
-                    "asf_dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
-                    "asf_dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
-                    "asf_keys_url: https://downloads.apache.org/incubator/buildish/KEYS",
-                    "moving_tags_enabled: true",
-                    "latest_tag_enabled: false",
-                    "secondary_targets:",
-                    "  - github-action",
-                    "final_tag_mode: rc-source-commit",
-                    "vote_release_name: Buildish Example",
-                    "release_verification_guide_url: https://buildish.org/buildish-example/release-verification/",
-                    "verify_rc_instructions: |",
-                    "  verify",
-                    "prepare_rc_runs_tests: false",
-                    "release_branch_ci_required: true",
-                    "verify_rc:",
-                    "  source:",
-                    "    reproducibility:",
-                    "      profile_id: source-release",
-                    "      mode: exact-bytes",
-                    "  profiles:",
-                    "    source-release:",
-                    "      kind: source-artifact",
-                    "      build:",
-                    "        command: [\"./buildish-release-tooling/rebuild-source.sh\"]",
-                    "        output_globs:",
-                    "          - target/apache-example-*.tar.gz",
-                    "      comparison:",
-                    "        mode: exact-bytes",
-                    "atr:",
-                    "  enabled: true",
-                    "  base_url: https://release-test.apache.org",
-                    "  committee: buildish",
-                    "  product_line: buildish-example",
-                    "  strict_checking: false",
-                ]
-            ),
-            encoding="utf-8",
-        )
-        loaded = load_component_config(str(config_path))
-        self.assertEqual("buildish-example", loaded.component_id)
-        self.assertEqual("asf", loaded.release_program)
-        self.assertEqual("tlp", loaded.project_status)
-        self.assertEqual(["github-action"], loaded.secondary_targets)
+        config_path = sandbox_dir / "release-config.yaml"
+        _write_yaml(config_path, _direct_github_payload())
+
+        loaded = load_release_config(str(config_path))
+
+        self.assertEqual("buildish-example", loaded.component.id)
+        self.assertEqual("direct", loaded.lifecycle.mode)
+        self.assertEqual("platform-generated", loaded.source.snapshot.mode)
+        self.assertEqual("github-release", loaded.publication.authoritative.kind)
+        self.assertIsNone(loaded.policy_profiles.asf)
+        self.assertIsNone(loaded.candidate)
+        self.assertIsNone(loaded.vote_materials)
+        validate_selected_release_targets(loaded, allow_test_targets=False)
+
+    def test_candidate_config_defaults_to_one_based_public_candidates(self) -> None:
+        payload = _direct_github_payload()
+        payload["lifecycle"] = {"mode": "candidate"}
+        payload["candidate"] = {}
+
+        loaded = ReleaseConfig.model_validate(payload)
+
+        self.assertIsNotNone(loaded.candidate)
+        self.assertEqual(1, loaded.candidate.start_number if loaded.candidate else None)
         self.assertEqual(
-            "https://buildish.org/buildish-example/release-verification/",
-            loaded.release_verification_guide_url,
-        )
-        self.assertIsNotNone(loaded.verify_rc)
-        self.assertEqual(
-            "source-release",
-            loaded.verify_rc.source.reproducibility.profile_id
-            if loaded.verify_rc is not None and loaded.verify_rc.source is not None and loaded.verify_rc.source.reproducibility is not None
-            else None,
-        )
-        self.assertIsNotNone(loaded.atr)
-        self.assertEqual("buildish-example", loaded.atr.product_line if loaded.atr is not None else None)
-
-    def test_load_component_config_requires_explicit_yaml_path(self) -> None:
-        with self.assertRaises(TypeError):
-            load_component_config(None)  # type: ignore[arg-type]
-
-    def test_validate_release_target_base_urls_uses_parsed_production_url(self) -> None:
-        loaded = load_component_config(str(fixture_component_config_path("buildish-site-pipeline")))
-        validate_release_target_base_urls(
-            loaded,
-            allow_non_production_release_targets=False,
+            "public-prerelease",
+            loaded.candidate.visibility if loaded.candidate else None,
         )
 
-    def test_load_component_config_rejects_incomplete_enabled_atr_config(self) -> None:
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        config_path = sandbox_dir / "component.yaml"
-        config_path.write_text(
-            "\n".join(
-                [
-                    "component_id: buildish-example",
-                    "source_artifact_prefix: apache-buildish-example",
-                    "asf_dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
-                    "asf_dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
-                    "asf_keys_url: https://downloads.apache.org/incubator/buildish/KEYS",
-                    "moving_tags_enabled: true",
-                    "latest_tag_enabled: false",
-                    "secondary_targets:",
-                    "  - github-action",
-                    "final_tag_mode: rc-source-commit",
-                    "vote_release_name: Buildish Example",
-                    "release_verification_guide_url: https://buildish.org/buildish-example/release-verification/",
-                    "verify_rc_instructions: verify",
-                    "prepare_rc_runs_tests: false",
-                    "release_branch_ci_required: true",
-                    "atr:",
-                    "  enabled: true",
-                    "  base_url: https://release-test.apache.org",
-                    "  committee: buildish",
-                ]
-            ),
-            encoding="utf-8",
+    def test_candidate_start_number_may_be_zero(self) -> None:
+        payload = _direct_github_payload()
+        payload["lifecycle"] = {"mode": "candidate"}
+        payload["candidate"] = {"start_number": 0}
+
+        loaded = ReleaseConfig.model_validate(payload)
+
+        self.assertEqual(0, loaded.candidate.start_number if loaded.candidate else None)
+
+    def test_candidate_block_is_required_exactly_for_candidate_lifecycle(self) -> None:
+        missing = _direct_github_payload()
+        missing["lifecycle"] = {"mode": "candidate"}
+        with self.assertRaisesRegex(ValueError, "candidate config must be present exactly"):
+            ReleaseConfig.model_validate(missing)
+
+        unexpected = _direct_github_payload()
+        unexpected["candidate"] = {"start_number": 1}
+        with self.assertRaisesRegex(ValueError, "candidate config must be present exactly"):
+            ReleaseConfig.model_validate(unexpected)
+
+    def test_direct_lifecycle_rejects_vote_materials(self) -> None:
+        payload = _direct_github_payload()
+        payload["vote_materials"] = {
+            "profile": "generic",
+            "release_name": "Buildish Example",
+            "verification_guide_url": "https://example.invalid/verify",
+            "instructions": "verify",
+        }
+
+        with self.assertRaisesRegex(ValueError, "vote_materials requires"):
+            ReleaseConfig.model_validate(payload)
+
+    def test_asf_capabilities_require_explicit_asf_profile(self) -> None:
+        payload = _direct_github_payload()
+        payload["source"] = {
+            "selection": "release-branch",
+            "snapshot": {
+                "mode": "built-asset",
+                "filename_template": "example-{version}-src.tar.gz",
+                "archive_root_template": "example-{version}-src",
+            },
+            "checks": {
+                "run_selected_ref_tests": False,
+                "require_release_branch_ci": True,
+            },
+        }
+        payload["publication"] = {
+            "authoritative": {"kind": "asf-dist-svn"},
+            "convenience": [],
+            "secondary": [],
+        }
+
+        with self.assertRaisesRegex(ValueError, "require policy_profiles.asf"):
+            ReleaseConfig.model_validate(payload)
+
+    def test_asf_dist_requires_a_built_source_snapshot(self) -> None:
+        payload = _direct_github_payload()
+        payload["publication"] = {
+            "authoritative": {"kind": "asf-dist-svn"},
+            "convenience": [],
+            "secondary": [],
+        }
+        payload["policy_profiles"] = {
+            "asf": {
+                "dist_dev_base": "https://dist.apache.org/repos/dist/dev/buildish/example",
+                "dist_release_base": "https://dist.apache.org/repos/dist/release/buildish/example",
+                "keys_url": "https://downloads.apache.org/buildish/KEYS",
+            }
+        }
+
+        with self.assertRaisesRegex(ValueError, "requires source.snapshot.mode built-asset"):
+            ReleaseConfig.model_validate(payload)
+
+    def test_selected_asf_targets_validate_production_and_test_urls(self) -> None:
+        loaded = load_release_config(
+            str(fixture_component_config_path("buildish-site-pipeline"))
         )
+        validate_selected_release_targets(loaded, allow_test_targets=False)
+
+        payload = loaded.model_dump(mode="json")
+        asf_payload = payload["policy_profiles"]["asf"]
+        asf_payload["dist_dev_base"] = "file:///tmp/buildish/dev"
+        asf_payload["dist_release_base"] = "http://localhost/buildish/release"
+        test_target_config = ReleaseConfig.model_validate(payload)
+        validate_selected_release_targets(test_target_config, allow_test_targets=True)
+        with self.assertRaisesRegex(ValueError, "must use https://dist.apache.org"):
+            validate_selected_release_targets(test_target_config, allow_test_targets=False)
+
+    def test_incomplete_enabled_asf_atr_config_is_rejected(self) -> None:
+        loaded = load_release_config(
+            str(fixture_component_config_path("buildish-site-pipeline"))
+        )
+        payload = loaded.model_dump(mode="json")
+        payload["policy_profiles"]["asf"]["atr"] = {
+            "enabled": True,
+            "base_url": "https://release-test.apache.org",
+            "committee": "buildish",
+        }
+
         with self.assertRaisesRegex(ValueError, "product_line"):
-            load_component_config(str(config_path))
+            ReleaseConfig.model_validate(payload)
 
-    def test_load_component_config_rejects_unknown_verify_rc_source_profile(self) -> None:
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        config_path = sandbox_dir / "component.yaml"
-        config_path.write_text(
-            "\n".join(
-                [
-                    "component_id: buildish-example",
-                    "source_artifact_prefix: apache-buildish-example",
-                    "asf_dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
-                    "asf_dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
-                    "asf_keys_url: https://downloads.apache.org/incubator/buildish/KEYS",
-                    "moving_tags_enabled: true",
-                    "latest_tag_enabled: false",
-                    "secondary_targets:",
-                    "  - github-action",
-                    "final_tag_mode: rc-source-commit",
-                    "vote_release_name: Buildish Example",
-                    "release_verification_guide_url: https://buildish.org/buildish-example/release-verification/",
-                    "verify_rc_instructions: verify",
-                    "prepare_rc_runs_tests: false",
-                    "release_branch_ci_required: true",
-                    "verify_rc:",
-                    "  source:",
-                    "    reproducibility:",
-                    "      profile_id: missing-profile",
-                    "  profiles:",
-                    "    source-release:",
-                    "      kind: source-artifact",
-                    "      build:",
-                    "        command: [\"./buildish-release-tooling/rebuild-source.sh\"]",
-                    "        output_globs:",
-                    "          - target/apache-example-*.tar.gz",
-                    "      comparison:",
-                    "        mode: exact-bytes",
-                ]
-            ),
-            encoding="utf-8",
-        )
-        with self.assertRaisesRegex(ValueError, "verify_rc.source.reproducibility.profile_id"):
-            load_component_config(str(config_path))
-
-    def test_load_component_config_rejects_incompatible_verify_rc_comparison_modes(self) -> None:
-        base_lines = [
-            "component_id: buildish-example",
-            "source_artifact_prefix: apache-buildish-example",
-            "asf_dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
-            "asf_dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
-            "asf_keys_url: https://downloads.apache.org/incubator/buildish/KEYS",
-            "moving_tags_enabled: true",
-            "latest_tag_enabled: false",
-            "secondary_targets:",
-            "  - github-action",
-            "final_tag_mode: rc-source-commit",
-            "vote_release_name: Buildish Example",
-            "release_verification_guide_url: https://buildish.org/buildish-example/release-verification/",
-            "verify_rc_instructions: verify",
-            "prepare_rc_runs_tests: false",
-            "release_branch_ci_required: true",
-            "verify_rc:",
-            "  profiles:",
-            "    test-profile:",
-            "      kind: {kind}",
-            "      build:",
-            "        command: [\"./buildish-release-tooling/rebuild.sh\"]",
-            "        output_globs:",
-            "          - dist/output",
-            "      comparison:",
-        ]
-        cases = (
-            (
-                "source-artifact",
-                [
-                    "        mode: platform-digest",
-                    "        image_ref: ghcr.io/buildish-tooling/buildish-example:test",
-                ],
-                "source-artifact, generic-file, python-distribution, and npm-package profiles must use comparison.mode 'exact-bytes'",
-            ),
-            (
-                "generic-file",
-                [
-                    "        mode: repository-tree",
-                    "        repository_dir: .buildish-out/m2repo",
-                ],
-                "source-artifact, generic-file, python-distribution, and npm-package profiles must use comparison.mode 'exact-bytes'",
-            ),
-            (
-                "python-distribution",
-                [
-                    "        mode: repository-tree",
-                    "        repository_dir: .buildish-out/m2repo",
-                ],
-                "source-artifact, generic-file, python-distribution, and npm-package profiles must use comparison.mode 'exact-bytes'",
-            ),
-            (
-                "npm-package",
-                [
-                    "        mode: platform-digest",
-                    "        image_ref: ghcr.io/buildish-tooling/buildish-example:test",
-                ],
-                "source-artifact, generic-file, python-distribution, and npm-package profiles must use comparison.mode 'exact-bytes'",
-            ),
-            (
-                "maven-repository",
-                [
-                    "        mode: exact-bytes",
-                ],
-                "verify_rc maven-repository profiles must use comparison.mode 'repository-tree'",
-            ),
-            (
-                "oci-image",
-                [
-                    "        mode: exact-bytes",
-                ],
-                "verify_rc oci-image profiles must use comparison.mode 'platform-digest' or 'provenance-only'",
-            ),
-        )
-
-        for index, (kind, comparison_lines, expected_error) in enumerate(cases, start=1):
-            with self.subTest(kind=kind):
-                sandbox_dir = create_build_test_sandbox()
-                self.addCleanup(cleanup_sandbox, sandbox_dir)
-                config_path = sandbox_dir / f"component-{index}.yaml"
-                config_path.write_text(
-                    "\n".join(
-                        [line.format(kind=kind) for line in base_lines] + comparison_lines
-                    ),
-                    encoding="utf-8",
-                )
-                with self.assertRaisesRegex(ValueError, expected_error):
-                    load_component_config(str(config_path))
-
-    def test_load_component_config_rejects_escaping_maven_repository_dir(self) -> None:
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        config_path = sandbox_dir / "component.yaml"
-        config_path.write_text(
-            "\n".join(
-                [
-                    "component_id: buildish-example",
-                    "source_artifact_prefix: apache-buildish-example",
-                    "asf_dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
-                    "asf_dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
-                    "asf_keys_url: https://downloads.apache.org/incubator/buildish/KEYS",
-                    "moving_tags_enabled: true",
-                    "latest_tag_enabled: false",
-                    "secondary_targets: []",
-                    "final_tag_mode: rc-source-commit",
-                    "vote_release_name: Buildish Example",
-                    "release_verification_guide_url: https://buildish.org/buildish-example/release-verification/",
-                    "verify_rc_instructions: verify",
-                    "prepare_rc_runs_tests: false",
-                    "release_branch_ci_required: true",
-                    "verify_rc:",
-                    "  profiles:",
-                    "    maven:",
-                    "      kind: maven-repository",
-                    "      build:",
-                    "        command: [\"./build.sh\"]",
-                    "      comparison:",
-                    "        mode: repository-tree",
-                    "        repository_dir: ../m2repo",
-                ]
-            ),
-            encoding="utf-8",
-        )
-
-        with self.assertRaisesRegex(ValueError, "repository_dir"):
-            load_component_config(str(config_path))
-
-    def test_load_checked_in_component_configs(self) -> None:
-        expected_targets = {
-            "buildish-mammoth-cache": ["github-action", "github-release"],
-            "buildish-no-gradle-wrapper-jar": ["github-release-assets"],
-            "buildish-site-pipeline": ["pypi", "dockerhub"],
+    def test_checked_in_fixture_matrix_is_explicitly_asf_candidate_based(self) -> None:
+        expected_start_numbers = {
+            "buildish-mammoth-cache": 1,
+            "buildish-no-gradle-wrapper-jar": 1,
+            "buildish-site-pipeline": 0,
         }
-        expected_final_tag_modes = {
-            "buildish-mammoth-cache": "detached-materialization-commit",
-            "buildish-no-gradle-wrapper-jar": "rc-source-commit",
-            "buildish-site-pipeline": "rc-source-commit",
-        }
-
-        for component_id, secondary_targets in expected_targets.items():
+        for component_id, expected_start_number in expected_start_numbers.items():
             with self.subTest(component=component_id):
-                loaded = load_component_config(str(fixture_component_config_path(component_id)))
-                self.assertEqual(component_id, loaded.component_id)
-                self.assertEqual(secondary_targets, loaded.secondary_targets)
-                self.assertEqual(expected_final_tag_modes[component_id], loaded.final_tag_mode)
-                self.assertTrue(loaded.release_branch_ci_required)
+                loaded = load_release_config(
+                    str(fixture_component_config_path(component_id))
+                )
+                self.assertEqual(component_id, loaded.component.id)
+                self.assertEqual("candidate", loaded.lifecycle.mode)
+                self.assertEqual(
+                    expected_start_number,
+                    loaded.candidate.start_number if loaded.candidate else None,
+                )
+                self.assertEqual("asf", loaded.vote_materials.profile if loaded.vote_materials else None)
+                self.assertEqual(
+                    "https://downloads.apache.org/incubator/buildish/KEYS",
+                    require_asf_profile(loaded).keys_url,
+                )
+
+    def test_unknown_fields_are_rejected_at_nested_boundaries(self) -> None:
+        payload = _direct_github_payload()
+        component = cast(dict[str, object], payload["component"])
+        component["asf_keys_url"] = "https://example.invalid/KEYS"
+
+        with self.assertRaisesRegex(ValueError, "Extra inputs are not permitted"):
+            ReleaseConfig.model_validate(payload)
 
 
-class LoadVerifyRcOverrideConfigTest(unittest.TestCase):
-    """Verify that local reproducibility override YAML loading behaves as expected."""
+class VerificationOverrideConfigTest(unittest.TestCase):
+    """Retain bounded loading for the current verification override contract."""
 
-    def test_load_verify_rc_override_config_from_yaml(self) -> None:
+    def test_load_verification_override_config(self) -> None:
         sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, sandbox_dir)
-        config_path = sandbox_dir / "repro-overrides.yaml"
-        config_path.write_text(
-            "\n".join(
-                [
-                    "verify_rc:",
-                    "  profile_overrides:",
-                    "    bootstrap-zip:",
-                    "      build:",
-                    "        command: [\"./buildish-release-tooling/rebuild-bootstrap-local.sh\"]",
-                    "    pypi-wheel:",
-                    "      build:",
-                    "        working_dir: python-package",
-                    "        env:",
-                    "          PIP_NO_BUILD_ISOLATION: \"1\"",
-                    "        output_globs:",
-                    "          - python-package/dist/*.whl",
-                ]
-            ),
-            encoding="utf-8",
+        config_path = sandbox_dir / "override.yaml"
+        _write_yaml(
+            config_path,
+            {
+                "verify_rc": {
+                    "profile_overrides": {
+                        "source-release": {
+                            "build": {"env": {"BUILD_FLAG": "local"}}
+                        }
+                    }
+                }
+            },
         )
 
-        loaded = load_verify_rc_override_config(str(config_path))
+        loaded = load_verification_override_config(str(config_path))
 
         self.assertEqual(
-            ["./buildish-release-tooling/rebuild-bootstrap-local.sh"],
-            loaded.profile_overrides["bootstrap-zip"].build.command,
-        )
-        self.assertEqual(
-            "python-package",
-            loaded.profile_overrides["pypi-wheel"].build.working_dir,
-        )
-        self.assertEqual(
-            "1",
-            loaded.profile_overrides["pypi-wheel"].build.env["PIP_NO_BUILD_ISOLATION"],
-        )
-        self.assertEqual(
-            ["python-package/dist/*.whl"],
-            loaded.profile_overrides["pypi-wheel"].build.output_globs,
+            "local",
+            loaded.profile_overrides["source-release"].build.env["BUILD_FLAG"],
         )
 
-    def test_load_verify_rc_override_config_rejects_malformed_yaml(self) -> None:
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        config_path = sandbox_dir / "repro-overrides.yaml"
-        config_path.write_text(
-            "\n".join(
-                [
-                    "verify_rc:",
-                    "  profile_overrides:",
-                    "    bootstrap-zip:",
-                    "      build:",
-                    "        command: [\"./broken.sh\"",
-                ]
-            ),
-            encoding="utf-8",
-        )
 
-        with self.assertRaisesRegex(Exception, "while parsing"):
-            load_verify_rc_override_config(str(config_path))
-
-    def test_load_verify_rc_override_config_rejects_empty_build_override(self) -> None:
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        config_path = sandbox_dir / "repro-overrides.yaml"
-        config_path.write_text(
-            "\n".join(
-                [
-                    "verify_rc:",
-                    "  profile_overrides:",
-                    "    bootstrap-zip:",
-                    "      build: {}",
-                ]
-            ),
-            encoding="utf-8",
-        )
-
-        with self.assertRaisesRegex(ValueError, "must change at least one build field"):
-            load_verify_rc_override_config(str(config_path))
+if __name__ == "__main__":
+    unittest.main()

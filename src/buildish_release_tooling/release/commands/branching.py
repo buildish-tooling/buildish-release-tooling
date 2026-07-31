@@ -21,7 +21,7 @@ from argparse import Namespace
 from pathlib import Path
 
 from buildish_release_tooling.release.git_repo import GitRepository
-from buildish_release_tooling.release.github_checks import (
+from buildish_release_tooling.release.platforms.github.checks import (
     assert_ref_ready,
     fetch_check_runs_json,
     fetch_statuses_json,
@@ -51,12 +51,12 @@ def run_create_release_branch(args: Namespace) -> Path:
     if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)?\.x", release_line):
         raise ValueError("release_line must look like 1.x or 1.2.x")
     repo = GitRepository.from_current_worktree()
-    manifest_path = _manifest_path(context.component_config.component_id, "create-release-branch")
+    manifest_path = _manifest_path(context.release_config.component.id, "create-release-branch")
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
         CreateReleaseBranchManifest(
-            component=context.component_config.component_id,
+            component=context.release_config.component.id,
             release_line=release_line,
             release_branch=f"release/{release_line}",
             source_ref=source_ref,
@@ -83,21 +83,21 @@ def run_verify_source_ref_checks(args: Namespace) -> None:
     repo = GitRepository.from_current_worktree()
     version = args.version
     source_sha = args.source_sha
-    state = resolve_prepare_rc_state(repo, context.component_config, version, source_sha)
+    state = resolve_prepare_rc_state(repo, context.release_config, version, source_sha)
     repository_slug = resolve_repository_slug(repo.path)
     check_runs_payload = fetch_check_runs_json(repository_slug, state.resolved_source_ref)
     statuses_payload = fetch_statuses_json(repository_slug, state.resolved_source_ref)
     total_checks = assert_ref_ready(
         check_runs_payload,
         statuses_payload,
-        context.component_config.release_branch_ci_required,
+        context.release_config.source.checks.require_release_branch_ci,
     )
     summary = SummaryWriter.from_environment()
     summary.append_heading(f"Verify GitHub checks for source ref {version}")
     summary.append_key_value_table(
         "Technical details",
         [
-            ("Component", _summary_code(context.component_config.component_id)),
+            ("Component", _summary_code(context.release_config.component.id)),
             ("Version", _summary_code(version)),
             ("Repository", _summary_code(repository_slug)),
             ("Resolved release branch", _summary_code(state.resolved_release_branch)),
@@ -113,11 +113,11 @@ def run_verify_source_ref_checks(args: Namespace) -> None:
         [
             (
                 "Prepare RC runs component tests",
-                str(context.component_config.prepare_rc_runs_tests).lower(),
+                str(context.release_config.source.checks.run_selected_ref_tests).lower(),
             ),
             (
                 "Release-branch CI required",
-                str(context.component_config.release_branch_ci_required).lower(),
+                str(context.release_config.source.checks.require_release_branch_ci).lower(),
             ),
         ],
     )

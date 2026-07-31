@@ -21,7 +21,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from buildish_release_tooling.release.github_releases import (
+from buildish_release_tooling.release.platforms.github.releases import (
     download_release_asset_text,
     release_asset_ids_by_names,
 )
@@ -29,8 +29,7 @@ from buildish_release_tooling.release.contracts import (
     RcVoteManifestV1,
     SourceArtifactContract,
 )
-from buildish_release_tooling.release.models import CommandContext
-from buildish_release_tooling.release.prepare_rc_state import prepare_rc_source_artifact_name
+from buildish_release_tooling.release.config import CommandContext, require_asf_profile
 from buildish_release_tooling.release.rc_vote_manifest import (
     DEFAULT_CHECKSUM_SIDECAR_MAX_BYTES,
     DEFAULT_KEYS_MAX_BYTES,
@@ -40,7 +39,7 @@ from buildish_release_tooling.release.rc_vote_manifest import (
     read_uri_text,
     uri_sha512,
 )
-from buildish_release_tooling.release.release_state import derive_final_tag
+from buildish_release_tooling.release.core.naming import derive_final_tag
 from buildish_release_tooling.release.verification.common import (
     GpgVerifier,
     validate_fetch_uri,
@@ -50,14 +49,13 @@ from buildish_release_tooling.release.verification.common import (
 _RC_VOTE_MANIFEST_NAME = "rc-vote-manifest.json"
 
 
-def required_source_release_file_names(source_artifact_prefix: str, version: str) -> list[str]:
+def required_source_release_file_names(source_artifact_name: str) -> list[str]:
     """Return the mandatory ASF source-release files expected in one staged RC directory."""
 
-    artifact_name = prepare_rc_source_artifact_name(source_artifact_prefix, version)
     return [
-        artifact_name,
-        f"{artifact_name}.sha512",
-        f"{artifact_name}.asc",
+        source_artifact_name,
+        f"{source_artifact_name}.sha512",
+        f"{source_artifact_name}.asc",
     ]
 
 
@@ -91,7 +89,7 @@ def verify_staged_source_release_against_vote_manifest(
     version: str,
     selected_rc_tag: str,
     expected_source_artifact_name: str,
-    allow_non_production_release_targets: bool,
+    test_target_mode: bool,
 ) -> str:
     """Verify staged source-release bytes against the mirrored authoritative vote manifest."""
 
@@ -104,7 +102,7 @@ def verify_staged_source_release_against_vote_manifest(
     staged_manifest_url = f"{source_url}/{_RC_VOTE_MANIFEST_NAME}"
     staged_manifest_text = _read_validated_uri_text(
         staged_manifest_url,
-        allow_non_production_release_targets=allow_non_production_release_targets,
+        test_target_mode=test_target_mode,
         purpose="staged RC vote manifest",
         max_bytes=DEFAULT_MANIFEST_MAX_BYTES,
     )
@@ -116,21 +114,21 @@ def verify_staged_source_release_against_vote_manifest(
         manifest_text=staged_manifest_text,
         checksum_sidecar_text=_read_validated_uri_text(
             f"{staged_manifest_url}.sha512",
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
             purpose="staged RC vote manifest .sha512 sidecar",
             max_bytes=DEFAULT_CHECKSUM_SIDECAR_MAX_BYTES,
         ),
         signature_text=_read_validated_uri_text(
             f"{staged_manifest_url}.asc",
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
             purpose="staged RC vote manifest detached signature",
             max_bytes=DEFAULT_SIGNATURE_MAX_BYTES,
         ),
         source=staged_manifest_url,
-        allow_non_production_release_targets=allow_non_production_release_targets,
+        test_target_mode=test_target_mode,
     )
-    if manifest_payload.component_id != context.component_config.component_id:
-        raise ValueError(f"RC vote manifest component does not match {context.component_config.component_id}")
+    if manifest_payload.component_id != context.release_config.component.id:
+        raise ValueError(f"RC vote manifest component does not match {context.release_config.component.id}")
     if manifest_payload.version != version:
         raise ValueError(f"RC vote manifest version does not match {version}")
     if manifest_payload.rc_tag != selected_rc_tag:
@@ -161,7 +159,7 @@ def verified_mirrored_rc_vote_manifest(
     *,
     repository_slug: str,
     release_payload: dict[str, object],
-    allow_non_production_release_targets: bool,
+    test_target_mode: bool,
 ) -> RcVoteManifestV1 | None:
     """Return a mirrored GitHub Release vote manifest only after checksum and signature verification."""
 
@@ -186,7 +184,7 @@ def verified_mirrored_rc_vote_manifest(
         checksum_sidecar_text=download_release_asset_text(repository_slug, sidecar_id),
         signature_text=download_release_asset_text(repository_slug, signature_id),
         source=f"GitHub Release asset {_RC_VOTE_MANIFEST_NAME}",
-        allow_non_production_release_targets=allow_non_production_release_targets,
+        test_target_mode=test_target_mode,
     )
 
 
@@ -197,7 +195,7 @@ def _verified_rc_vote_manifest_payload(
     checksum_sidecar_text: str,
     signature_text: str,
     source: str,
-    allow_non_production_release_targets: bool,
+    test_target_mode: bool,
 ) -> RcVoteManifestV1:
     """Verify one vote manifest's sidecars before parsing trusted release metadata from it."""
 
@@ -216,10 +214,10 @@ def _verified_rc_vote_manifest_payload(
             algorithm="sha512",
             purpose="RC vote manifest",
         )
-        keys_uri = context.component_config.asf_keys_url
+        keys_uri = require_asf_profile(context.release_config).keys_url
         validate_fetch_uri(
             keys_uri,
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
             purpose="ASF KEYS URL for RC vote manifest verification",
         )
         download_uri_to_path(keys_uri, keys_path, max_bytes=DEFAULT_KEYS_MAX_BYTES)
@@ -229,7 +227,7 @@ def _verified_rc_vote_manifest_payload(
         )
 
     manifest_payload = _rc_vote_manifest_payload(manifest_text, source=source)
-    if manifest_payload.trust_roots.asf_keys.uri != context.component_config.asf_keys_url:
+    if manifest_payload.trust_roots.asf_keys.uri != require_asf_profile(context.release_config).keys_url:
         raise ValueError(
             "RC vote manifest ASF KEYS trust root does not match the component configuration"
         )
@@ -239,7 +237,7 @@ def _verified_rc_vote_manifest_payload(
 def _read_validated_uri_text(
     uri: str,
     *,
-    allow_non_production_release_targets: bool,
+    test_target_mode: bool,
     purpose: str,
     max_bytes: int,
 ) -> str:
@@ -247,7 +245,7 @@ def _read_validated_uri_text(
 
     validate_fetch_uri(
         uri,
-        allow_non_production_release_targets=allow_non_production_release_targets,
+        test_target_mode=test_target_mode,
         purpose=purpose,
     )
     return read_uri_text(uri, max_bytes=max_bytes)

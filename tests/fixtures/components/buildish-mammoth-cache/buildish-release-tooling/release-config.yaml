@@ -12,27 +12,52 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-component_id: buildish-mammoth-cache
-source_artifact_prefix: buildish-mammoth-cache
-asf_dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-mammoth-cache
-asf_dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-mammoth-cache
-asf_keys_url: https://downloads.apache.org/incubator/buildish/KEYS
-moving_tags_enabled: true
-latest_tag_enabled: false
-secondary_targets:
-  - github-action
-  - github-release
-final_tag_mode: detached-materialization-commit
-vote_release_name: Buildish Mammoth Cache
-project_status: incubating
-release_summary_include_final_tag_mode: true
-release_verification_guide_url: https://buildish.org/components/mammoth-cache/release-verification/
-verify_rc_instructions: |
-  Run this bash verification flow on trusted Linux or macOS hardware:
-  1. verify .sha512
-  2. verify .asc
-  3. rebuild source release
-  4. rebuild dist/
-  5. compare staged and rebuilt outputs
-prepare_rc_runs_tests: false
-release_branch_ci_required: true
+component:
+  id: buildish-mammoth-cache
+  display_name: Buildish Mammoth Cache
+versioning:
+  scheme: semver
+  final_tag_template: "v{version}"
+source:
+  selection: release-branch
+  snapshot:
+    mode: built-asset
+    filename_template: "buildish-mammoth-cache-{version}-incubating-src.tar.gz"
+    archive_root_template: "buildish-mammoth-cache-{version}-incubating-src"
+  checks:
+    run_selected_ref_tests: false
+    require_release_branch_ci: true
+lifecycle:
+  mode: candidate
+candidate:
+  label: rc
+  start_number: 1
+  visibility: public-prerelease
+  retention: retain-published
+artifacts:
+  produced: []
+  checksums: [sha512]
+publication:
+  authoritative:
+    kind: asf-dist-svn
+  convenience:
+    - kind: github-release
+  secondary:
+    - kind: github-action
+tags:
+  final_mode: detached-materialization-commit
+  moving: [major, minor]
+  include_final_mode_in_summary: true
+vote_materials:
+  profile: asf
+  release_name: Buildish Mammoth Cache
+  verification_guide_url: https://buildish.org/components/mammoth-cache/release-verification/
+  instructions: |
+    Verify checksums and signatures, rebuild the source release and dist/, and compare outputs.
+policy_profiles:
+  asf:
+    project_status: incubating
+    dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-mammoth-cache
+    dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-mammoth-cache
+    keys_url: https://downloads.apache.org/incubator/buildish/KEYS
+    disclaimer_file: DISCLAIMER

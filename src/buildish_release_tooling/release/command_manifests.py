@@ -313,7 +313,7 @@ ReportAtrChecksManifest.schema_export = _internal_unstable_command_manifest_expo
 )
 
 
-class SyncDraftGithubReleaseManifest(CommandActionManifest):
+class SyncDraftGitHubReleaseManifest(CommandActionManifest):
     """Action manifest emitted after synchronizing the draft GitHub release with staged RC artifacts."""
 
     action: Literal["sync-draft-github-release"] = Field(default="sync-draft-github-release", description="Stable command action identifier written by one Buildish command manifest.")
@@ -331,8 +331,8 @@ class SyncDraftGithubReleaseManifest(CommandActionManifest):
     sync_mode: NonEmptyString = Field(description="Mode that Buildish used when reconciling the selected draft GitHub release with staged RC materials.")
 
 
-SyncDraftGithubReleaseManifest.schema_export = _internal_unstable_command_manifest_export(
-    SyncDraftGithubReleaseManifest,
+SyncDraftGitHubReleaseManifest.schema_export = _internal_unstable_command_manifest_export(
+    SyncDraftGitHubReleaseManifest,
     filename="sync-draft-github-release-manifest.schema.json",
 )
 
@@ -389,7 +389,7 @@ CreateFinalTagManifest.schema_export = _internal_unstable_command_manifest_expor
 )
 
 
-class FinalizeDraftGithubReleaseManifest(CommandActionManifest):
+class FinalizeDraftGitHubReleaseManifest(CommandActionManifest):
     """Action manifest emitted after finalizing a selected GitHub draft release."""
 
     action: Literal["finalize-draft-github-release"] = Field(default="finalize-draft-github-release", description="Stable command action identifier written by one Buildish command manifest.")
@@ -403,8 +403,8 @@ class FinalizeDraftGithubReleaseManifest(CommandActionManifest):
     finalize_mode: NonEmptyString = Field(description="Mode that Buildish used when finalizing the selected draft GitHub release.")
 
 
-FinalizeDraftGithubReleaseManifest.schema_export = _internal_unstable_command_manifest_export(
-    FinalizeDraftGithubReleaseManifest,
+FinalizeDraftGitHubReleaseManifest.schema_export = _internal_unstable_command_manifest_export(
+    FinalizeDraftGitHubReleaseManifest,
     filename="finalize-draft-github-release-manifest.schema.json",
 )
 
@@ -478,7 +478,7 @@ PublishDockerhubMovingTagsManifest.schema_export = _internal_unstable_command_ma
 )
 
 
-class AttachGithubReleaseAssetsManifest(CommandActionManifest):
+class AttachGitHubReleaseAssetsManifest(CommandActionManifest):
     """Action manifest emitted after uploading primary and derived assets to a GitHub release."""
 
     action: Literal["attach-github-release-assets"] = Field(default="attach-github-release-assets", description="Stable command action identifier written by one Buildish command manifest.")
@@ -496,7 +496,7 @@ class AttachGithubReleaseAssetsManifest(CommandActionManifest):
     gpg_fingerprint: str = Field(description="OpenPGP fingerprint of the signing key Buildish used or verified.")
 
 
-AttachGithubReleaseAssetsManifest.schema_export = _internal_unstable_command_manifest_export(
-    AttachGithubReleaseAssetsManifest,
+AttachGitHubReleaseAssetsManifest.schema_export = _internal_unstable_command_manifest_export(
+    AttachGitHubReleaseAssetsManifest,
     filename="attach-github-release-assets-manifest.schema.json",
 )

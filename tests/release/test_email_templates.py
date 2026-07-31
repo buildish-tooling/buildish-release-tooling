@@ -25,55 +25,67 @@ from buildish_release_tooling.release.email_templates import (
     render_project_rc_vote_email,
     render_project_vote_result_email,
 )
-from buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
+from buildish_release_tooling.release.config import ReleaseConfig
+from buildish_release_tooling.release.core.state import CandidateReleaseState
+from tests.release.state_support import candidate_release_state
 
 
 class EmailTemplatesTest(unittest.TestCase):
     """Verify the built-in email templates render the expected ASF-style content."""
 
     @staticmethod
-    def _component_config(*, project_status: str) -> ComponentConfig:
+    def _component_config(*, project_status: str) -> ReleaseConfig:
         """Return a reusable component config for template tests."""
 
-        return ComponentConfig.model_validate(
+        return ReleaseConfig.model_validate(
             {
-                "component_id": "buildish-example",
-                "source_artifact_prefix": "apache-buildish-example",
-                "asf_dist_dev_base": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
-                "asf_dist_release_base": "https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
-                "asf_keys_url": "https://downloads.apache.org/incubator/buildish/KEYS",
-                "moving_tags_enabled": True,
-                "latest_tag_enabled": False,
-                "secondary_targets": ["github-action", "github-release"],
-                "final_tag_mode": "detached-materialization-commit",
-                "vote_release_name": "Buildish Example",
-                "project_status": project_status,
-                "release_summary_include_final_tag_mode": False,
-                "release_verification_guide_url": "https://buildish.org/buildish-example/release-verification/",
-                "verify_rc_instructions": "verify",
-                "prepare_rc_runs_tests": False,
-                "release_branch_ci_required": True,
+                "component": {
+                    "id": "buildish-example",
+                    "display_name": "Buildish Example",
+                },
+                "source": {
+                    "selection": "release-branch",
+                    "snapshot": {
+                        "mode": "built-asset",
+                        "filename_template": "apache-buildish-example-{version}-incubating-src.tar.gz",
+                        "archive_root_template": "apache-buildish-example-{version}-incubating-src",
+                    },
+                    "checks": {"require_release_branch_ci": True},
+                },
+                "lifecycle": {"mode": "candidate"},
+                "candidate": {"start_number": 1},
+                "publication": {
+                    "authoritative": {"kind": "asf-dist-svn"},
+                    "convenience": [{"kind": "github-release"}],
+                    "secondary": [{"kind": "github-action"}],
+                },
+                "tags": {
+                    "final_mode": "detached-materialization-commit",
+                    "moving": ["major", "minor"],
+                    "include_final_mode_in_summary": False,
+                },
+                "vote_materials": {
+                    "profile": "asf",
+                    "release_name": "Buildish Example",
+                    "verification_guide_url": "https://buildish.org/buildish-example/release-verification/",
+                    "instructions": "verify",
+                },
+                "policy_profiles": {
+                    "asf": {
+                        "project_status": project_status,
+                        "dist_dev_base": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+                        "dist_release_base": "https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+                        "keys_url": "https://downloads.apache.org/incubator/buildish/KEYS",
+                    }
+                },
             }
         )
 
     @staticmethod
-    def _prepare_rc_state() -> PrepareRcState:
+    def _prepare_rc_state() -> CandidateReleaseState:
         """Return a reusable resolved RC state for template tests."""
 
-        return PrepareRcState.model_validate(
-            {
-                "resolved_release_branch": "release/1.2.x",
-                "resolved_source_ref": "0123456789abcdef0123456789abcdef01234567",
-                "source_date_epoch": 1714032000,
-                "rc_number": 2,
-                "rc_tag": "v1.2.3-rc2",
-                "final_tag": "v1.2.3",
-                "source_artifact_name": "apache-buildish-example-1.2.3-incubating-src.tar.gz",
-                "source_artifact_root_name": "apache-buildish-example-1.2.3-incubating-src",
-                "source_artifact_prefix_path": "apache-buildish-example-1.2.3-incubating-src/",
-                "staging_url": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/",
-            }
-        )
+        return candidate_release_state()
 
     @staticmethod
     def _manifest_payload() -> RcVoteManifestV1:

@@ -49,7 +49,19 @@ MODEL_SECTION_DEFINITIONS = (
             "including `release-config.yaml` and local verify-rc override payloads."
         ),
         page_slug="release-config-reference",
-        module_prefixes=("buildish_release_tooling.release.models",),
+        module_prefixes=(
+            "buildish_release_tooling.release.config",
+            "buildish_release_tooling.release.core.config",
+            "buildish_release_tooling.release.core.manifests",
+            "buildish_release_tooling.release.core.models",
+            "buildish_release_tooling.release.core.state",
+            "buildish_release_tooling.release.foundations.asf.config",
+            "buildish_release_tooling.release.foundations.asf.manifests",
+            "buildish_release_tooling.release.manifests",
+            "buildish_release_tooling.release.models",
+            "buildish_release_tooling.release.platforms.github.config",
+            "buildish_release_tooling.release.platforms.github.manifests",
+        ),
     ),
     ModelSectionDefinition(
         title="Release manifests, inventories, and verification report types",

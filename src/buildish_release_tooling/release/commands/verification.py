@@ -26,15 +26,16 @@ from typing import Literal, cast
 
 from buildish_release_tooling.release.command_logging import command_log_sink
 from buildish_release_tooling.release.config import (
-    load_component_config,
-    load_verify_rc_override_config,
-    validate_release_target_base_urls,
+    ReleaseConfig,
+    load_release_config,
+    load_verification_override_config,
+    validate_selected_release_targets,
 )
 from buildish_release_tooling.release.contracts import (
     InspectionBundleSection,
 )
 from buildish_release_tooling.release.manifest import write_manifest
-from buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
+from buildish_release_tooling.release.models import VerifyRcOverrideConfig
 from buildish_release_tooling.release.progress import ProgressReporter
 from buildish_release_tooling.release.summary import SummaryWriter
 from buildish_release_tooling.release.verification import VerifyRcPhase1Result, verify_rc_phase1
@@ -94,7 +95,7 @@ def run_verify_rc(args: Namespace) -> None:
             manifest_url=args.rc_vote_manifest_url,
             keys_url=args.keys_url,
             component_config=component_config,
-            allow_non_production_release_targets=args.allow_non_production_release_targets,
+            test_target_mode=args.test_target_mode,
             work_dir=work_dir,
             progress_reporter=progress_reporter,
             requested_mode=cast(
@@ -206,15 +207,15 @@ def run_inspect_repro(args: Namespace) -> str | None:
     return None
 
 
-def _optional_component_config(args: Namespace) -> ComponentConfig | None:
+def _optional_component_config(args: Namespace) -> ReleaseConfig | None:
     config_path = getattr(args, "component_config", None)
     if not config_path:
         return None
-    component_config = load_component_config(config_path)
-    validate_release_target_base_urls(
+    component_config = load_release_config(config_path)
+    validate_selected_release_targets(
         component_config,
-        allow_non_production_release_targets=getattr(
-            args, "allow_non_production_release_targets", False
+        allow_test_targets=getattr(
+            args, "test_target_mode", False
         ),
     )
     return component_config
@@ -223,14 +224,14 @@ def _optional_component_config(args: Namespace) -> ComponentConfig | None:
 def _optional_profile_overrides(
     args: Namespace,
     *,
-    component_config: ComponentConfig | None,
+    component_config: ReleaseConfig | None,
 ) -> VerifyRcOverrideConfig | None:
     override_file = getattr(args, "repro_override_file", None)
     if not override_file:
         return None
     if component_config is None:
         raise ValueError("--repro-override-file requires --component-config")
-    profile_overrides = load_verify_rc_override_config(override_file)
+    profile_overrides = load_verification_override_config(override_file)
     validate_rebuild_profile_overrides(component_config, profile_overrides)
     return profile_overrides
 

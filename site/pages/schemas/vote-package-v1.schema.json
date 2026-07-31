@@ -1,0 +1,856 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "ArtifactReference": {
+      "additionalProperties": false,
+      "description": "Immutable logical artifact identity, digests, size, and locations.",
+      "properties": {
+        "digests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Immutable content digests keyed by algorithm.",
+          "title": "Digests",
+          "type": "object"
+        },
+        "kind": {
+          "description": "Artifact kind discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "locations": {
+          "description": "Known immutable or candidate publication locations.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Locations",
+          "type": "array"
+        },
+        "logical_name": {
+          "description": "Stable logical artifact name.",
+          "title": "Logical Name",
+          "type": "string"
+        },
+        "size_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Artifact size in bytes.",
+          "title": "Size Bytes"
+        }
+      },
+      "required": [
+        "kind",
+        "logical_name"
+      ],
+      "title": "ArtifactReference",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "AsfCandidatePublication": {
+      "additionalProperties": false,
+      "description": "ASF dist/dev publication evidence for one exact candidate.",
+      "properties": {
+        "dist_uri": {
+          "description": "Exact ASF dist/dev candidate directory URI.",
+          "title": "Dist Uri",
+          "type": "string"
+        },
+        "kind": {
+          "const": "asf-candidate-publication",
+          "default": "asf-candidate-publication",
+          "description": "Extension discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "svn_revision": {
+          "description": "Committed ASF dist SVN revision.",
+          "minimum": 1,
+          "title": "Svn Revision",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "dist_uri",
+        "svn_revision"
+      ],
+      "title": "AsfCandidatePublication",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "AsfVoteExtension": {
+      "additionalProperties": false,
+      "description": "ASF-specific vote rendering, trust-root, and disclaimer evidence.",
+      "properties": {
+        "disclaimer_uri": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional Incubator disclaimer evidence URI.",
+          "title": "Disclaimer Uri"
+        },
+        "keys": {
+          "$ref": "#/$defs/AuthenticityReference",
+          "description": "ASF KEYS trust-root reference."
+        },
+        "kind": {
+          "const": "asf-vote",
+          "default": "asf-vote",
+          "description": "Vote extension discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "style": {
+          "description": "ASF vote terminology style.",
+          "enum": [
+            "pmc",
+            "ppmc-ipmc"
+          ],
+          "title": "Style",
+          "type": "string"
+        }
+      },
+      "required": [
+        "style",
+        "keys"
+      ],
+      "title": "AsfVoteExtension",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "AuthenticityReference": {
+      "additionalProperties": false,
+      "description": "Optional signature or attestation reference for a manifest or vote package.",
+      "properties": {
+        "kind": {
+          "description": "Authenticity mechanism discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "signer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional signer identity or key fingerprint.",
+          "title": "Signer"
+        },
+        "uri": {
+          "description": "URI of the signature or attestation.",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "uri"
+      ],
+      "title": "AuthenticityReference",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "CandidateIdentity": {
+      "additionalProperties": false,
+      "description": "Deterministic identity of one exact release candidate.",
+      "properties": {
+        "label": {
+          "description": "Candidate series label.",
+          "title": "Label",
+          "type": "string"
+        },
+        "number": {
+          "description": "Candidate sequence number.",
+          "minimum": 0,
+          "title": "Number",
+          "type": "integer"
+        },
+        "release": {
+          "$ref": "#/$defs/ReleaseIdentity",
+          "description": "Release version proposed by the candidate."
+        },
+        "stable_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Deterministic candidate identifier independent of provider object IDs.",
+          "title": "Stable Id"
+        },
+        "tag": {
+          "$ref": "#/$defs/TagIdentity",
+          "description": "Exact immutable candidate tag."
+        }
+      },
+      "required": [
+        "release",
+        "label",
+        "number",
+        "tag"
+      ],
+      "title": "CandidateIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "CandidateManifestV1": {
+      "additionalProperties": false,
+      "description": "Stable manifest binding one exact candidate to source, artifacts, and publications.",
+      "properties": {
+        "artifacts": {
+          "description": "Immutable candidate artifact inventory.",
+          "items": {
+            "$ref": "#/$defs/ArtifactReference"
+          },
+          "title": "Artifacts",
+          "type": "array"
+        },
+        "candidate": {
+          "$ref": "#/$defs/CandidateIdentity",
+          "description": "Exact candidate identity."
+        },
+        "candidate_tag": {
+          "$ref": "#/$defs/TagIdentity",
+          "description": "Exact immutable candidate tag identity."
+        },
+        "created_at": {
+          "description": "UTC creation timestamp in RFC 3339 form.",
+          "title": "Created At",
+          "type": "string"
+        },
+        "extensions": {
+          "description": "Typed platform or foundation candidate extensions.",
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "asf-candidate-publication": "#/$defs/AsfCandidatePublication",
+                "github-candidate-publication": "#/$defs/GitHubCandidatePublication"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/GitHubCandidatePublication"
+              },
+              {
+                "$ref": "#/$defs/AsfCandidatePublication"
+              }
+            ]
+          },
+          "title": "Extensions",
+          "type": "array"
+        },
+        "kind": {
+          "const": "candidate-manifest",
+          "default": "candidate-manifest",
+          "description": "Manifest kind discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "publications": {
+          "description": "Provider-neutral candidate publication references.",
+          "items": {
+            "$ref": "#/$defs/PublicationReference"
+          },
+          "title": "Publications",
+          "type": "array"
+        },
+        "release": {
+          "$ref": "#/$defs/ReleaseIdentity",
+          "description": "Exact component release identity."
+        },
+        "schema_version": {
+          "const": "1",
+          "default": "1",
+          "description": "Manifest schema version.",
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceRevision",
+          "description": "Exact selected source revision."
+        },
+        "source_date_epoch": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional canonical selected-source timestamp.",
+          "title": "Source Date Epoch"
+        },
+        "tooling": {
+          "$ref": "#/$defs/ToolingInvocationProvenance",
+          "description": "Tooling revision and invocation provenance."
+        },
+        "verification_policy_selectors": {
+          "description": "Selected verification policy identifiers.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Verification Policy Selectors",
+          "type": "array"
+        },
+        "verification_results": {
+          "description": "Candidate verification result references.",
+          "items": {
+            "$ref": "#/$defs/VerificationResultReference"
+          },
+          "title": "Verification Results",
+          "type": "array"
+        }
+      },
+      "required": [
+        "release",
+        "candidate",
+        "source",
+        "candidate_tag",
+        "tooling",
+        "created_at"
+      ],
+      "title": "CandidateManifestV1",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ComponentIdentity": {
+      "additionalProperties": false,
+      "description": "Stable machine and human identity of one released component.",
+      "properties": {
+        "display_name": {
+          "description": "Human-facing component name.",
+          "title": "Display Name",
+          "type": "string"
+        },
+        "id": {
+          "description": "Stable machine identifier of the component.",
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "display_name"
+      ],
+      "title": "ComponentIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "GitHubAssetIdentity": {
+      "additionalProperties": false,
+      "description": "Immutable observed identity of one GitHub Release asset.",
+      "properties": {
+        "asset_id": {
+          "description": "GitHub-issued numeric asset identifier.",
+          "minimum": 1,
+          "title": "Asset Id",
+          "type": "integer"
+        },
+        "digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GitHub-observed or Buildish-verified asset digest.",
+          "title": "Digest"
+        },
+        "name": {
+          "description": "GitHub Release asset filename.",
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "asset_id"
+      ],
+      "title": "GitHubAssetIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "GitHubCandidatePublication": {
+      "additionalProperties": false,
+      "description": "GitHub Release publication evidence for one exact candidate.",
+      "properties": {
+        "assets": {
+          "description": "Observed candidate asset identities.",
+          "items": {
+            "$ref": "#/$defs/GitHubAssetIdentity"
+          },
+          "title": "Assets",
+          "type": "array"
+        },
+        "draft": {
+          "description": "Whether GitHub reports the release as a draft.",
+          "title": "Draft",
+          "type": "boolean"
+        },
+        "kind": {
+          "const": "github-candidate-publication",
+          "default": "github-candidate-publication",
+          "description": "Extension discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "prerelease": {
+          "description": "Whether GitHub reports a pre-release.",
+          "title": "Prerelease",
+          "type": "boolean"
+        },
+        "release_id": {
+          "description": "GitHub Release numeric identifier.",
+          "minimum": 1,
+          "title": "Release Id",
+          "type": "integer"
+        },
+        "release_url": {
+          "description": "User-facing GitHub Release URL.",
+          "title": "Release Url",
+          "type": "string"
+        },
+        "repository": {
+          "description": "GitHub repository in owner/name form.",
+          "title": "Repository",
+          "type": "string"
+        },
+        "tag": {
+          "description": "Exact candidate tag attached to the release.",
+          "title": "Tag",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository",
+        "release_id",
+        "release_url",
+        "tag",
+        "draft",
+        "prerelease"
+      ],
+      "title": "GitHubCandidatePublication",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "ManifestDigestReference": {
+      "additionalProperties": false,
+      "description": "URI and cryptographic digest binding one exact manifest document.",
+      "properties": {
+        "algorithm": {
+          "default": "sha256",
+          "description": "Digest algorithm.",
+          "enum": [
+            "sha256",
+            "sha512"
+          ],
+          "title": "Algorithm",
+          "type": "string"
+        },
+        "digest": {
+          "description": "Lowercase hexadecimal manifest digest.",
+          "title": "Digest",
+          "type": "string"
+        },
+        "uri": {
+          "description": "URI of the exact manifest document.",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "uri",
+        "digest"
+      ],
+      "title": "ManifestDigestReference",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "PublicationReference": {
+      "additionalProperties": false,
+      "description": "Reference to one provider or foundation publication result.",
+      "properties": {
+        "immutable_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional provider-issued immutable publication identifier.",
+          "title": "Immutable Id"
+        },
+        "target_kind": {
+          "description": "Selected publication target discriminator.",
+          "title": "Target Kind",
+          "type": "string"
+        },
+        "uri": {
+          "description": "Primary URI of the publication result.",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_kind",
+        "uri"
+      ],
+      "title": "PublicationReference",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "ReleaseIdentity": {
+      "additionalProperties": false,
+      "description": "Stable identity of one component version.",
+      "properties": {
+        "component": {
+          "$ref": "#/$defs/ComponentIdentity",
+          "description": "Released component identity."
+        },
+        "version": {
+          "description": "Exact component version.",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "version"
+      ],
+      "title": "ReleaseIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "SourceRevision": {
+      "additionalProperties": false,
+      "description": "Exact source repository revision selected for a release.",
+      "properties": {
+        "commit_sha": {
+          "description": "Exact source commit identifier.",
+          "title": "Commit Sha",
+          "type": "string"
+        },
+        "repository": {
+          "description": "Provider-neutral source repository identity or URL.",
+          "title": "Repository",
+          "type": "string"
+        },
+        "source_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional authored or resolved source ref that selected the commit.",
+          "title": "Source Ref"
+        }
+      },
+      "required": [
+        "repository",
+        "commit_sha"
+      ],
+      "title": "SourceRevision",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "TagIdentity": {
+      "additionalProperties": false,
+      "description": "Immutable identity of one Git tag and its exact target commit.",
+      "properties": {
+        "name": {
+          "description": "Exact tag name.",
+          "title": "Name",
+          "type": "string"
+        },
+        "purpose": {
+          "description": "Provider-neutral purpose of the tag.",
+          "enum": [
+            "candidate",
+            "final",
+            "moving-alias"
+          ],
+          "title": "Purpose",
+          "type": "string"
+        },
+        "target_commit": {
+          "description": "Exact commit targeted by the tag.",
+          "title": "Target Commit",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "target_commit",
+        "purpose"
+      ],
+      "title": "TagIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "ToolingInvocationProvenance": {
+      "additionalProperties": false,
+      "description": "Provider-neutral tooling revision and invocation metadata.",
+      "properties": {
+        "invocation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional workflow- or caller-issued invocation identifier.",
+          "title": "Invocation Id"
+        },
+        "revision": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Exact tooling source revision.",
+          "title": "Revision"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Installed tooling version.",
+          "title": "Version"
+        }
+      },
+      "title": "ToolingInvocationProvenance",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "VerificationResultReference": {
+      "additionalProperties": false,
+      "description": "Reference to one machine-readable verification result.",
+      "properties": {
+        "digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional result document digest.",
+          "title": "Digest"
+        },
+        "kind": {
+          "description": "Verification result kind.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "uri": {
+          "description": "URI of the verification result.",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "uri"
+      ],
+      "title": "VerificationResultReference",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    }
+  },
+  "$id": "https://buildish.org/components/release-tooling/schemas/vote-package-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Optional voting materials bound cryptographically to one exact candidate manifest.",
+  "properties": {
+    "authenticity": {
+      "description": "Optional signatures or attestations.",
+      "items": {
+        "$ref": "#/$defs/AuthenticityReference"
+      },
+      "title": "Authenticity",
+      "type": "array"
+    },
+    "candidate_manifest": {
+      "$ref": "#/$defs/ManifestDigestReference",
+      "description": "Cryptographic reference to the exact candidate manifest."
+    },
+    "created_at": {
+      "description": "UTC creation timestamp in RFC 3339 form.",
+      "title": "Created At",
+      "type": "string"
+    },
+    "embedded_candidate_manifest": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/CandidateManifestV1"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional embedded copy of the referenced candidate manifest."
+    },
+    "extensions": {
+      "description": "Typed foundation vote extensions.",
+      "items": {
+        "$ref": "#/$defs/AsfVoteExtension"
+      },
+      "title": "Extensions",
+      "type": "array"
+    },
+    "kind": {
+      "const": "vote-package",
+      "default": "vote-package",
+      "description": "Manifest kind discriminator.",
+      "title": "Kind",
+      "type": "string"
+    },
+    "opening_template": {
+      "description": "Rendered or renderable vote-opening text.",
+      "title": "Opening Template",
+      "type": "string"
+    },
+    "profile_selector": {
+      "description": "Selected vote rendering profile.",
+      "title": "Profile Selector",
+      "type": "string"
+    },
+    "result_template": {
+      "description": "Rendered or renderable vote-result text.",
+      "title": "Result Template",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "description": "Manifest schema version.",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "subject": {
+      "description": "Human-facing vote subject.",
+      "title": "Subject",
+      "type": "string"
+    },
+    "verification_instructions": {
+      "description": "Human-facing candidate verification instructions.",
+      "title": "Verification Instructions",
+      "type": "string"
+    }
+  },
+  "required": [
+    "subject",
+    "profile_selector",
+    "candidate_manifest",
+    "verification_instructions",
+    "opening_template",
+    "result_template",
+    "created_at"
+  ],
+  "title": "Buildish Release Tooling VotePackageV1",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Stable optional vote package bound to one candidate manifest digest."
+  }
+}

@@ -230,7 +230,7 @@ class VerificationRegistryReadersTest(unittest.TestCase):
                 _npm_registry_package_metadata(
                     "https://registry.example.invalid/",
                     "buildish-example",
-                    allow_non_production_release_targets=True,
+                    test_target_mode=True,
                 )
 
     def test_inspect_image_ref_rejects_invalid_external_payload_variants(self) -> None:

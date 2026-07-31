@@ -29,7 +29,7 @@
     "tag",
     "url"
   ],
-  "title": "Buildish Release Tooling DraftGithubReleaseRead",
+  "title": "Buildish Release Tooling DraftGitHubReleaseRead",
   "type": "object",
   "x-buildish-contract": {
     "category": "emitted",

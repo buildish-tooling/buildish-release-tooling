@@ -20,7 +20,7 @@ from tempfile import TemporaryDirectory
 import unittest
 
 from buildish_release_tooling.release.contracts import IncubatorDisclaimer
-from buildish_release_tooling.release.models import ComponentConfig
+from buildish_release_tooling.release.config import ReleaseConfig
 from buildish_release_tooling.release.release_text import (
     incubator_disclaimer_section,
     resolved_incubator_disclaimer,
@@ -31,27 +31,38 @@ class ReleaseTextTest(unittest.TestCase):
     """Verify policy text rendering from component configuration."""
 
     @staticmethod
-    def _component_config(**overrides: object) -> ComponentConfig:
+    def _component_config(*, disclaimer_file: str = "DISCLAIMER") -> ReleaseConfig:
         payload: dict[str, object] = {
-            "component_id": "buildish-example",
-            "source_artifact_prefix": "apache-buildish-example",
-            "asf_dist_dev_base": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
-            "asf_dist_release_base": "https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
-            "asf_keys_url": "https://downloads.apache.org/incubator/buildish/KEYS",
-            "moving_tags_enabled": True,
-            "latest_tag_enabled": False,
-            "secondary_targets": ["github-action"],
-            "final_tag_mode": "rc-source-commit",
-            "vote_release_name": "Buildish Example",
-            "project_status": "incubating",
-            "release_summary_include_final_tag_mode": False,
-            "release_verification_guide_url": "https://buildish.org/buildish-example/release-verification/",
-            "verify_rc_instructions": "verify",
-            "prepare_rc_runs_tests": False,
-            "release_branch_ci_required": True,
+            "component": {"id": "buildish-example", "display_name": "Buildish Example"},
+            "source": {
+                "selection": "release-branch",
+                "snapshot": {
+                    "mode": "built-asset",
+                    "filename_template": "apache-buildish-example-{version}-incubating-src.tar.gz",
+                    "archive_root_template": "apache-buildish-example-{version}-incubating-src",
+                },
+                "checks": {"require_release_branch_ci": True},
+            },
+            "lifecycle": {"mode": "candidate"},
+            "candidate": {"start_number": 1},
+            "publication": {"authoritative": {"kind": "asf-dist-svn"}},
+            "vote_materials": {
+                "profile": "asf",
+                "release_name": "Buildish Example",
+                "verification_guide_url": "https://buildish.org/buildish-example/release-verification/",
+                "instructions": "verify",
+            },
+            "policy_profiles": {
+                "asf": {
+                    "project_status": "incubating",
+                    "dist_dev_base": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+                    "dist_release_base": "https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+                    "keys_url": "https://downloads.apache.org/incubator/buildish/KEYS",
+                    "disclaimer_file": disclaimer_file,
+                }
+            },
         }
-        payload.update(overrides)
-        return ComponentConfig.model_validate(payload)
+        return ReleaseConfig.model_validate(payload)
 
     def test_resolved_incubator_disclaimer_reads_project_file(self) -> None:
         component_config = self._component_config()
@@ -90,8 +101,8 @@ class ReleaseTextTest(unittest.TestCase):
                 resolved_incubator_disclaimer(component_config, project_root=Path(temp_dir))
 
     def test_incubator_disclaimer_file_must_not_escape_project_root(self) -> None:
-        with self.assertRaisesRegex(ValueError, "incubator_disclaimer_file"):
-            self._component_config(incubator_disclaimer_file="../DISCLAIMER")
+        with self.assertRaisesRegex(ValueError, "disclaimer_file"):
+            self._component_config(disclaimer_file="../DISCLAIMER")
 
 
 if __name__ == "__main__":

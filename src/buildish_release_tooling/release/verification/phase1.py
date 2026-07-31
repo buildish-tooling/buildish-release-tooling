@@ -28,7 +28,8 @@ from buildish_release_tooling.release.contracts import (
     RcVoteManifestReadV1,
     SourceArtifactContract,
 )
-from buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
+from buildish_release_tooling.release.config import ReleaseConfig, require_asf_profile
+from buildish_release_tooling.release.models import VerifyRcOverrideConfig
 from buildish_release_tooling.release.path_validation import validate_simple_filename
 from buildish_release_tooling.release.progress import ProgressReporter
 from buildish_release_tooling.release.process import run_logged_command
@@ -78,8 +79,8 @@ def verify_rc_phase1(
     *,
     manifest_url: str,
     keys_url: str,
-    component_config: ComponentConfig | None,
-    allow_non_production_release_targets: bool,
+    component_config: ReleaseConfig | None,
+    test_target_mode: bool,
     work_dir: Path,
     progress_reporter: ProgressReporter,
     requested_mode: Literal["auto", "integrity-only", "full"],
@@ -93,12 +94,12 @@ def verify_rc_phase1(
     work_dir.mkdir(parents=True, exist_ok=True)
     validate_fetch_uri(
         manifest_url,
-        allow_non_production_release_targets=allow_non_production_release_targets,
+        test_target_mode=test_target_mode,
         purpose="RC vote manifest URL",
     )
     validate_fetch_uri(
         keys_url,
-        allow_non_production_release_targets=allow_non_production_release_targets,
+        test_target_mode=test_target_mode,
         purpose="KEYS URL",
     )
 
@@ -264,7 +265,7 @@ def verify_rc_phase1(
     try:
         validate_fetch_uri(
             source_repository_url,
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
             purpose="Source repository URL",
         )
         emit_info(progress_reporter, "Cloning source repository")
@@ -310,7 +311,7 @@ def verify_rc_phase1(
         source_artifact_url = source_artifact.uri
         validate_fetch_uri(
             source_artifact_url,
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
             purpose="Source artifact URL",
         )
         source_artifact_filename = validate_simple_filename(
@@ -360,7 +361,7 @@ def verify_rc_phase1(
             try:
                 validate_fetch_uri(
                     checksum_uri,
-                    allow_non_production_release_targets=allow_non_production_release_targets,
+                    test_target_mode=test_target_mode,
                     purpose="Source artifact checksum sidecar URL",
                 )
                 source_sha512_sidecar_path = work_dir / f"{source_artifact_filename}.sha512"
@@ -392,7 +393,7 @@ def verify_rc_phase1(
             source_signature_uri = _source_signature_uri(source_artifact, source=manifest_url)
             validate_fetch_uri(
                 source_signature_uri,
-                allow_non_production_release_targets=allow_non_production_release_targets,
+                test_target_mode=test_target_mode,
                 purpose="Source artifact signature URL",
             )
             source_signature_path = work_dir / f"{source_artifact_filename}.asc"
@@ -512,7 +513,7 @@ def verify_rc_phase1(
             manifest_url=manifest_url,
             work_dir=work_dir / "secondary-artifacts",
             verifier=verifier,
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
             progress_reporter=progress_reporter,
             component_config=component_config,
             project_root=repository_path,
@@ -606,17 +607,17 @@ def _cross_check_keys_url(
     *,
     manifest_payload: RcVoteManifestReadV1,
     keys_url: str,
-    component_config: ComponentConfig | None,
+    component_config: ReleaseConfig | None,
 ) -> bool | None:
     manifest_keys_url = manifest_payload.trust_roots.asf_keys.uri
     if manifest_keys_url != keys_url:
         raise ValueError(f"manifest KEYS URL does not match the explicit keys_url: {manifest_keys_url} != {keys_url}")
     if component_config is None:
         return None
-    if component_config.asf_keys_url != keys_url:
+    if require_asf_profile(component_config).keys_url != keys_url:
         raise ValueError(
             "component-config asf_keys_url does not match the explicit keys_url: "
-            f"{component_config.asf_keys_url} != {keys_url}"
+            f"{require_asf_profile(component_config).keys_url} != {keys_url}"
     )
     return True
 

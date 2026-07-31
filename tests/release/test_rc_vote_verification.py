@@ -17,10 +17,7 @@ from __future__ import annotations
 
 import unittest
 
-from buildish_release_tooling.release.models import (
-    CommandContext,
-    ComponentConfig,
-)
+from buildish_release_tooling.release.config import CommandContext, ReleaseConfig
 from buildish_release_tooling.release.rc_vote_verification import (
     verified_mirrored_rc_vote_manifest,
 )
@@ -33,21 +30,44 @@ class RcVotePublicationVerificationTest(unittest.TestCase):
         self,
     ) -> None:
         context = CommandContext(
-            component_config=ComponentConfig(
-                component_id="buildish-example",
-                source_artifact_prefix="apache-buildish-example",
-                asf_dist_dev_base="https://dist.apache.org/repos/dist/dev/buildish-example",
-                asf_dist_release_base="https://dist.apache.org/repos/dist/release/buildish-example",
-                asf_keys_url="https://dist.apache.org/repos/dist/release/KEYS",
-                moving_tags_enabled=True,
-                latest_tag_enabled=False,
-                secondary_targets=[],
-                final_tag_mode="rc-source-commit",
-                vote_release_name="Buildish Example",
-                release_verification_guide_url="https://example.invalid/verify",
-                verify_rc_instructions="verify",
-                prepare_rc_runs_tests=True,
-            )
+            release_config=ReleaseConfig.model_validate(
+                {
+                    "component": {
+                        "id": "buildish-example",
+                        "display_name": "Buildish Example",
+                    },
+                    "source": {
+                        "selection": "release-branch",
+                        "snapshot": {
+                            "mode": "built-asset",
+                            "filename_template": "buildish-example-{version}-src.tar.gz",
+                            "archive_root_template": "buildish-example-{version}-src",
+                        },
+                        "checks": {
+                            "run_selected_ref_tests": True,
+                            "require_release_branch_ci": False,
+                        },
+                    },
+                    "lifecycle": {"mode": "candidate"},
+                    "candidate": {},
+                    "publication": {
+                        "authoritative": {"kind": "asf-dist-svn"},
+                    },
+                    "vote_materials": {
+                        "profile": "asf",
+                        "release_name": "Buildish Example",
+                        "verification_guide_url": "https://example.invalid/verify",
+                        "instructions": "verify",
+                    },
+                    "policy_profiles": {
+                        "asf": {
+                            "dist_dev_base": "https://dist.apache.org/repos/dist/dev/buildish-example",
+                            "dist_release_base": "https://dist.apache.org/repos/dist/release/buildish-example",
+                            "keys_url": "https://dist.apache.org/repos/dist/release/KEYS",
+                        }
+                    },
+                }
+            ),
         )
 
         with self.assertRaisesRegex(
@@ -63,7 +83,7 @@ class RcVotePublicationVerificationTest(unittest.TestCase):
                         {"id": 202, "name": "rc-vote-manifest.json.asc"},
                     ]
                 },
-                allow_non_production_release_targets=False,
+                test_target_mode=False,
             )
 
 

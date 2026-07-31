@@ -33,7 +33,8 @@ from buildish_release_tooling.release.contracts import (
     PythonIndexResolutionReport,
 )
 from buildish_release_tooling.release.external_json import validate_json_object_model_text
-from buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
+from buildish_release_tooling.release.config import ReleaseConfig
+from buildish_release_tooling.release.models import VerifyRcOverrideConfig
 from buildish_release_tooling.release.path_validation import validate_simple_filename
 from buildish_release_tooling.release.rc_vote_manifest import (
     DEFAULT_CHECKSUM_SIDECAR_MAX_BYTES,
@@ -109,8 +110,8 @@ def verify_python_distribution(
     *,
     manifest_url: str,
     work_dir: Path,
-    allow_non_production_release_targets: bool,
-    component_config: ComponentConfig | None,
+    test_target_mode: bool,
+    component_config: ReleaseConfig | None,
     project_root: Path | None,
     source_date_epoch: int | None,
     build_checks_allowed: bool,
@@ -143,7 +144,7 @@ def verify_python_distribution(
     try:
         validate_fetch_uri(
             artifact_uri,
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
             purpose=f"python distribution URL for {artifact_id}",
         )
         downloaded_artifact_path = work_dir / filename
@@ -172,7 +173,7 @@ def verify_python_distribution(
         try:
             validate_fetch_uri(
                 checksum_uri,
-                allow_non_production_release_targets=allow_non_production_release_targets,
+                test_target_mode=test_target_mode,
                 purpose=f"python distribution checksum sidecar URL for {artifact_id}",
             )
             sidecar_path = work_dir / f"{filename}.{checksum_algorithm}"
@@ -199,7 +200,7 @@ def verify_python_distribution(
     try:
         validate_fetch_uri(
             project_index_url,
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
             purpose=f"python simple index URL for {artifact_id}",
         )
         project_index_entries = _simple_index_entries(project_index_url)

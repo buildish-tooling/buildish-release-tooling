@@ -32,7 +32,7 @@ from buildish_release_tooling.release.artifact_registration.kinds.oci_image impo
 from buildish_release_tooling.release.artifact_registration.kinds.python_distribution import (
     build_python_distribution_registration,
 )
-from buildish_release_tooling.release.gpg_signing import (
+from buildish_release_tooling.release.signing.openpgp import (
     _effective_home,
     secret_key_fingerprint,
 )
@@ -877,7 +877,7 @@ class VerificationCommandsIntegrationTestBase(ReleaseCommandsIntegrationTestSupp
             "verify-rc",
             "--component-config",
             str(fixture.config_path),
-            "--allow-non-production-release-targets",
+            "--test-target-mode",
         ]
         if mode is not None:
             command.extend(["--mode", mode])

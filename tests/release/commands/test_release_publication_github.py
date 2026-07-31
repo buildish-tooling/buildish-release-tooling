@@ -181,7 +181,7 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
                 "Final tag: v1.2.3",
                 f"Resolved source ref: {expected_commit}",
                 "ASF SVN staging URL: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/",
-                "Final tag mode: rc-source-commit",
+                "Final tag mode: exact-source-commit",
                 "",
                 "This draft release is convenience metadata only and must remain unpublished until the ASF vote passes.",
             ]
@@ -311,7 +311,7 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
                 "Final tag: v1.2.3",
                 f"Resolved source ref: {expected_commit}",
                 "ASF SVN staging URL: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc0/",
-                "Final tag mode: rc-source-commit",
+                "Final tag mode: exact-source-commit",
                 "",
                 "This draft release is convenience metadata only and must remain unpublished until the ASF vote passes.",
             ]
@@ -488,7 +488,7 @@ class GitHubReleasePublicationCommandIntegrationTest(ReleasePublicationCommandTe
                 "finalize-draft-github-release",
                 "--component-config",
                 str(config_path),
-                "--allow-non-production-release-targets",
+                "--test-target-mode",
                 "1.2.3",
             ],
             cwd=clone_dir,

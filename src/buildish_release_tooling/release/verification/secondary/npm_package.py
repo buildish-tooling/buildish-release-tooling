@@ -32,7 +32,8 @@ from buildish_release_tooling.release.contracts import (
     NpmRegistryResolutionReport,
 )
 from buildish_release_tooling.release.external_json import validate_json_object_model_text
-from buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
+from buildish_release_tooling.release.config import ReleaseConfig
+from buildish_release_tooling.release.models import VerifyRcOverrideConfig
 from buildish_release_tooling.release.path_validation import validate_simple_filename
 from buildish_release_tooling.release.rc_vote_manifest import (
     DEFAULT_CHECKSUM_SIDECAR_MAX_BYTES,
@@ -125,8 +126,8 @@ def verify_npm_package(
     *,
     manifest_url: str,
     work_dir: Path,
-    allow_non_production_release_targets: bool,
-    component_config: ComponentConfig | None,
+    test_target_mode: bool,
+    component_config: ReleaseConfig | None,
     project_root: Path | None,
     source_date_epoch: int | None,
     build_checks_allowed: bool,
@@ -164,7 +165,7 @@ def verify_npm_package(
     try:
         validate_fetch_uri(
             artifact_uri,
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
             purpose=f"npm package URL for {artifact_id}",
         )
         downloaded_artifact_path = work_dir / filename
@@ -228,7 +229,7 @@ def verify_npm_package(
         try:
             validate_fetch_uri(
                 checksum_uri,
-                allow_non_production_release_targets=allow_non_production_release_targets,
+                test_target_mode=test_target_mode,
                 purpose=f"npm package checksum sidecar URL for {artifact_id}",
             )
             sidecar_path = work_dir / f"{filename}.{checksum_algorithm}"
@@ -257,7 +258,7 @@ def verify_npm_package(
         metadata_entry = _npm_registry_package_metadata(
             registry_url,
             package_name,
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
         )
         metadata_url = metadata_entry.metadata_url
         found_via = metadata_entry.found_via
@@ -391,13 +392,13 @@ def _npm_registry_package_metadata(
     registry_url: str,
     package_name: str,
     *,
-    allow_non_production_release_targets: bool,
+    test_target_mode: bool,
 ) -> _NpmRegistryMetadataEntry:
     fetch_errors: list[str] = []
     for metadata_url, found_via in _npm_registry_metadata_urls(registry_url, package_name):
         validate_fetch_uri(
             metadata_url,
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
             purpose=f"npm registry metadata URL for {package_name}",
         )
         try:

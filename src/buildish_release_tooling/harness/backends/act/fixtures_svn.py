@@ -63,8 +63,14 @@ def prepare_local_svn_fixture(
     if not component_config_path.is_file():
         return
     config_payload = _load_github_actions_yaml(component_config_path)
-    dev_base_relpath = _svn_repository_relpath(str(config_payload["asf_dist_dev_base"]))
-    release_base_relpath = _svn_repository_relpath(str(config_payload["asf_dist_release_base"]))
+    policy_profiles = config_payload.get("policy_profiles")
+    if not isinstance(policy_profiles, dict):
+        return
+    asf_profile = policy_profiles.get("asf")
+    if not isinstance(asf_profile, dict):
+        return
+    dev_base_relpath = _svn_repository_relpath(str(asf_profile["dist_dev_base"]))
+    release_base_relpath = _svn_repository_relpath(str(asf_profile["dist_release_base"]))
     fixture = workflow.svn_fixture
     directories_to_create = _svn_fixture_directories(
         fixture=fixture,
@@ -85,10 +91,16 @@ def overlay_release_config_for_local_svn(workspace: HarnessWorkspace) -> None:
     if not component_config_path.is_file():
         return
     config_payload = _load_github_actions_yaml(component_config_path)
-    dev_base_relpath = _svn_repository_relpath(str(config_payload["asf_dist_dev_base"]))
-    release_base_relpath = _svn_repository_relpath(str(config_payload["asf_dist_release_base"]))
-    config_payload["asf_dist_dev_base"] = (workspace.svn_repository_dir / dev_base_relpath).as_uri()
-    config_payload["asf_dist_release_base"] = (
+    policy_profiles = config_payload.get("policy_profiles")
+    if not isinstance(policy_profiles, dict):
+        return
+    asf_profile = policy_profiles.get("asf")
+    if not isinstance(asf_profile, dict):
+        return
+    dev_base_relpath = _svn_repository_relpath(str(asf_profile["dist_dev_base"]))
+    release_base_relpath = _svn_repository_relpath(str(asf_profile["dist_release_base"]))
+    asf_profile["dist_dev_base"] = (workspace.svn_repository_dir / dev_base_relpath).as_uri()
+    asf_profile["dist_release_base"] = (
         workspace.svn_repository_dir / release_base_relpath
     ).as_uri()
     component_config_path.write_text(

@@ -38,12 +38,49 @@ from buildish_release_tooling.harness import config as harness_config_models
 from buildish_release_tooling.harness import models as harness_models
 from buildish_release_tooling.harness import shim_builtins as harness_shim_models
 from buildish_release_tooling.release import command_manifests as release_command_manifests
+from buildish_release_tooling.release import config as release_config_models
 from buildish_release_tooling.release import contracts as release_contracts
 from buildish_release_tooling.release import models as release_models
+from buildish_release_tooling.release import manifests as release_manifest_models
+from buildish_release_tooling.release.core import config as release_core_config_models
+from buildish_release_tooling.release.core import manifests as release_core_manifest_models
+from buildish_release_tooling.release.core import models as release_core_models
+from buildish_release_tooling.release.core import state as release_core_state_models
+from buildish_release_tooling.release.foundations.asf import config as asf_config_models
+from buildish_release_tooling.release.foundations.asf import manifests as asf_manifest_models
+from buildish_release_tooling.release.platforms.github import config as github_config_models
+from buildish_release_tooling.release.platforms.github import manifests as github_manifest_models
+
+_TRANSITIONAL_UNEXPORTED_MODELS = {
+    "AsfKeysTrustRoot",
+    "AuthoritativeManifestReference",
+    "DraftGitHubRelease",
+    "GitHubWorkflowProvenance",
+    "IncubatorDisclaimer",
+    "ManifestProvenance",
+    "ManifestTrustRoots",
+    "ManifestVerificationMetadataStrict",
+    "RcVoteManifestV1",
+    "SourceArtifactContract",
+    "SourceArtifactContractRead",
+    "ToolingProvenance",
+    "VoteMaterialsRead",
+    "VoteMaterialsStrict",
+}
 
 
 def _reference_model_roots() -> tuple[type[DocumentedContractModel], ...]:
     modules = (
+        release_config_models,
+        release_core_config_models,
+        release_core_manifest_models,
+        release_core_models,
+        release_core_state_models,
+        asf_config_models,
+        asf_manifest_models,
+        github_config_models,
+        github_manifest_models,
+        release_manifest_models,
         release_models,
         release_contracts,
         release_command_manifests,
@@ -58,6 +95,7 @@ def _reference_model_roots() -> tuple[type[DocumentedContractModel], ...]:
                 isinstance(candidate, type)
                 and issubclass(candidate, DocumentedContractModel)
                 and candidate.__module__ == module.__name__
+                and candidate.__name__ not in _TRANSITIONAL_UNEXPORTED_MODELS
             ):
                 models.append(candidate)
     return tuple(sorted(models, key=lambda model: (model.__module__, model.__name__)))
@@ -103,8 +141,14 @@ class SchemaExportTests(unittest.TestCase):
             },
         )
         self.assertEqual(
-            component_schema["properties"]["component_id"]["description"],
-            "Stable component identifier used across Buildish manifests, reports, and release-state records.",
+            component_schema["properties"]["component"]["description"],
+            "Stable component identity.",
+        )
+        self.assertEqual(
+            component_schema["$defs"]["ComponentIdentityConfig"]["properties"]["id"][
+                "description"
+            ],
+            "Stable machine identifier used in release state and manifests.",
         )
 
         command_export = next(
@@ -171,7 +215,7 @@ class SchemaExportTests(unittest.TestCase):
                 generated_reference_dir / "release-config-reference.md"
             ).read_text(encoding="utf-8")
             self.assertIn(
-                "| <a id=\"componentconfig-component-id\"></a>`component_id` | str | yes |",
+                "| <a id=\"releaseconfig-component\"></a>`component` | [ComponentIdentityConfig](#componentidentityconfig) | yes |",
                 config_reference_text,
             )
 
@@ -179,12 +223,21 @@ class SchemaExportTests(unittest.TestCase):
         export_names = {export.filename for export in schema_exports()}
 
         self.assertIn("component-config.schema.json", export_names)
-        self.assertIn("rc-vote-manifest-v1.schema.json", export_names)
+        self.assertIn("candidate-manifest-v1.schema.json", export_names)
+        self.assertIn("vote-package-v1.schema.json", export_names)
+        self.assertIn("release-manifest-v1.schema.json", export_names)
+        self.assertNotIn("rc-vote-manifest-v1.schema.json", export_names)
+        self.assertNotIn("vote-materials-read.schema.json", export_names)
+        self.assertNotIn("vote-materials-strict.schema.json", export_names)
         self.assertIn("verify-rc-report-v1.schema.json", export_names)
         self.assertIn("inspection-bundle-manifest-v1.schema.json", export_names)
         self.assertIn("harness-scenario.schema.json", export_names)
         self.assertIn("command-action-manifest.schema.json", export_names)
-        self.assertIn("prepare-rc-manifest.schema.json", export_names)
+        self.assertIn("candidate-release-state.schema.json", export_names)
+        self.assertIn("direct-release-state.schema.json", export_names)
+        self.assertIn("promotion-state.schema.json", export_names)
+        self.assertNotIn("prepare-rc-state.schema.json", export_names)
+        self.assertNotIn("release-version-state.schema.json", export_names)
         self.assertGreaterEqual(len(export_names), 20)
 
         authored_names = {export.filename for export in authored_schema_exports()}
@@ -224,8 +277,9 @@ class SchemaExportTests(unittest.TestCase):
             scalar_entries=(),
         )
 
-        self.assertIn("ComponentConfig", anchors.type_anchors)
-        self.assertIn(("ComponentConfig", "component_id"), anchors.field_anchors)
+        self.assertIn("ReleaseConfig", anchors.type_anchors)
+        self.assertIn(("ReleaseConfig", "component"), anchors.field_anchors)
+        self.assertIn(("ComponentIdentityConfig", "id"), anchors.field_anchors)
         self.assertIn(("PrepareRcManifest", "source_date_epoch"), anchors.field_anchors)
 
     def test_main_uses_parser_defaults_and_prints_written_paths(self) -> None:

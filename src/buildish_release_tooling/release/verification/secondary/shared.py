@@ -115,7 +115,7 @@ def verified_openpgp_signatures(
     artifact_path: Path,
     work_dir: Path,
     verifier: GpgVerifier,
-    allow_non_production_release_targets: bool,
+    test_target_mode: bool,
     require_signature: bool,
 ) -> tuple[SignatureVerification, ...]:
     raw_signatures = _signature_references(artifact_entry)
@@ -149,7 +149,7 @@ def verified_openpgp_signatures(
     for index, signature_uri in enumerate(signature_uris, start=1):
         validate_fetch_uri(
             signature_uri,
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
             purpose=f"secondary artifact signature URL for {artifact_id}",
         )
         signature_path = work_dir / f"{artifact_path.name}.{index}.asc"
@@ -173,7 +173,7 @@ def downloaded_inventory(
     manifest_url: str,
     artifact_id: str,
     work_dir: Path,
-    allow_non_production_release_targets: bool,
+    test_target_mode: bool,
 ) -> DownloadedInventory | None:
     raw_inventory = _inventory_reference(artifact_entry)
     if raw_inventory is None:
@@ -190,7 +190,7 @@ def downloaded_inventory(
     )
     validate_fetch_uri(
         inventory_uri,
-        allow_non_production_release_targets=allow_non_production_release_targets,
+        test_target_mode=test_target_mode,
         purpose=f"secondary artifact inventory URL for {artifact_id}",
     )
     work_dir.mkdir(parents=True, exist_ok=True)

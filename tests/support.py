@@ -113,8 +113,9 @@ def write_fixture_component_config(
     """Write a copy of a fixture component config with test-specific ASF SVN URLs."""
 
     payload = yaml.safe_load(fixture_component_config_path(component_id).read_text(encoding="utf-8")) or {}
-    payload["asf_dist_dev_base"] = asf_dist_dev_base
-    payload["asf_dist_release_base"] = asf_dist_release_base
+    asf_profile = payload.setdefault("policy_profiles", {}).setdefault("asf", {})
+    asf_profile["dist_dev_base"] = asf_dist_dev_base
+    asf_profile["dist_release_base"] = asf_dist_release_base
     destination_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return destination_path
 

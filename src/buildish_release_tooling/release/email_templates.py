@@ -33,7 +33,12 @@ from buildish_release_tooling.release.contracts import (
     SourceArtifactContract,
     IncubatorDisclaimer,
 )
-from buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
+from buildish_release_tooling.release.config import (
+    ReleaseConfig,
+    require_asf_profile,
+    require_vote_materials,
+)
+from buildish_release_tooling.release.core.state import CandidateReleaseState
 from buildish_release_tooling.release.release_text import incubator_disclaimer_section
 
 
@@ -45,18 +50,18 @@ class RenderedEmail:
     body: str
 
 
-def _display_version(component_config: ComponentConfig, version: str) -> str:
+def _display_version(component_config: ReleaseConfig, version: str) -> str:
     """Render the human-facing release version label for one component."""
 
-    if component_config.is_incubating:
+    if require_asf_profile(component_config).is_incubating:
         return f"{version}-incubating"
     return version
 
 
-def _release_display_name(component_config: ComponentConfig, version: str) -> str:
+def _release_display_name(component_config: ReleaseConfig, version: str) -> str:
     """Render the full human-facing release name used in emails."""
 
-    return f"{component_config.vote_release_name} {_display_version(component_config, version)}"
+    return f"{component_config.component.display_name} {_display_version(component_config, version)}"
 
 
 def _rc_label(rc_number: int) -> str:
@@ -200,10 +205,10 @@ def _verification_bootstrap_block(
     )
 
 
-def _project_vote_binding_text(component_config: ComponentConfig) -> str:
+def _project_vote_binding_text(component_config: ReleaseConfig) -> str:
     """Render the binding-vote guidance for a project vote email."""
 
-    if component_config.is_incubating:
+    if require_asf_profile(component_config).is_incubating:
         return (
             "Only PPMC members and mentors have binding votes, but other community\n"
             "members are encouraged to cast non-binding votes. This vote will pass if\n"
@@ -236,8 +241,8 @@ def _incubator_disclaimer_email_block(
 
 def render_project_rc_vote_email(
     *,
-    component_config: ComponentConfig,
-    state: PrepareRcState,
+    component_config: ReleaseConfig,
+    state: CandidateReleaseState,
     rc_tag_target_commit: str,
     manifest_payload: RcVoteManifestV1,
     draft_release_url: str,
@@ -310,7 +315,7 @@ def render_project_rc_vote_email(
             "source_commit_lines": "\n".join(source_commit_lines),
             "release_branch": state.resolved_release_branch,
             "final_tag": state.final_tag,
-            "staging_url": state.staging_url,
+            "staging_url": state.candidate_publication_uri,
             "source_artifacts_block": _artifact_block("Source artifacts", source_artifacts),
             "secondary_artifacts_block": _artifact_block(
                 "Secondary artifacts under vote",
@@ -325,7 +330,7 @@ def render_project_rc_vote_email(
                 bootstrap_script_url=bootstrap_script_url,
                 bootstrap_invoker=bootstrap_invoker,
             ),
-            "release_verification_guide_url": component_config.release_verification_guide_url,
+            "release_verification_guide_url": require_vote_materials(component_config).verification_guide_url,
             "binding_vote_text": _project_vote_binding_text(component_config),
         },
     )
@@ -337,8 +342,8 @@ def render_project_rc_vote_email(
 
 def render_incubator_rc_vote_email(
     *,
-    component_config: ComponentConfig,
-    state: PrepareRcState,
+    component_config: ReleaseConfig,
+    state: CandidateReleaseState,
     manifest_payload: RcVoteManifestV1,
     bootstrap_script_url: str | None = None,
     bootstrap_invoker: str | None = None,
@@ -383,7 +388,7 @@ def render_incubator_rc_vote_email(
         <name>
         """,
         {
-            "project_name": component_config.vote_release_name,
+            "project_name": component_config.component.display_name,
             "release_display_name": release_display_name,
             "rc_label": _rc_label(state.rc_number),
             "incubator_disclaimer_block": _incubator_disclaimer_email_block(
@@ -394,7 +399,7 @@ def render_incubator_rc_vote_email(
                 bootstrap_script_url=bootstrap_script_url,
                 bootstrap_invoker=bootstrap_invoker,
             ),
-            "release_verification_guide_url": component_config.release_verification_guide_url,
+            "release_verification_guide_url": require_vote_materials(component_config).verification_guide_url,
             "binding_vote_text": _incubator_vote_binding_text(),
         },
     )
@@ -406,7 +411,7 @@ def render_incubator_rc_vote_email(
 
 def render_project_vote_result_email(
     *,
-    component_config: ComponentConfig,
+    component_config: ReleaseConfig,
     version: str,
     rc_number: int,
 ) -> RenderedEmail:
@@ -444,7 +449,7 @@ def render_project_vote_result_email(
 
 def render_announce_email(
     *,
-    component_config: ComponentConfig,
+    component_config: ReleaseConfig,
     version: str,
     incubator_disclaimer: IncubatorDisclaimer | None = None,
 ) -> RenderedEmail:
@@ -462,7 +467,7 @@ def render_announce_email(
         <TODO: add release-specific announcement content>
         """,
         {
-            "project_name": component_config.vote_release_name,
+            "project_name": component_config.component.display_name,
             "release_display_name": release_display_name,
             "incubator_disclaimer_block": _incubator_disclaimer_email_block(incubator_disclaimer),
         },

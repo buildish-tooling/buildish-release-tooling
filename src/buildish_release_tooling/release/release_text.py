@@ -20,19 +20,19 @@ import hashlib
 from pathlib import Path
 
 from buildish_release_tooling.release.contracts import IncubatorDisclaimer
-from buildish_release_tooling.release.models import ComponentConfig
+from buildish_release_tooling.release.config import ReleaseConfig, require_asf_profile
 
 
 def resolved_incubator_disclaimer(
-    component_config: ComponentConfig,
+    component_config: ReleaseConfig,
     *,
     project_root: Path,
 ) -> IncubatorDisclaimer | None:
     """Read and snapshot the Incubator disclaimer text for an incubating component."""
 
-    if not component_config.is_incubating:
+    if not require_asf_profile(component_config).is_incubating:
         return None
-    source_path = Path(component_config.incubator_disclaimer_file)
+    source_path = Path(require_asf_profile(component_config).disclaimer_file)
     disclaimer_path = project_root / source_path
     if not disclaimer_path.is_file():
         raise ValueError(f"incubator disclaimer file does not exist: {disclaimer_path}")

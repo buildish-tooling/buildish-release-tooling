@@ -154,7 +154,7 @@ def emit_failure(reporter: ProgressReporter, message: str) -> None:
 def validate_fetch_uri(
     uri: str,
     *,
-    allow_non_production_release_targets: bool,
+    test_target_mode: bool,
     purpose: str,
 ) -> None:
     """Validate that one fetched URI uses an allowed scheme for the current mode."""
@@ -162,10 +162,10 @@ def validate_fetch_uri(
     parsed = urlparse(uri)
     if parsed.scheme == "https":
         return
-    if allow_non_production_release_targets and parsed.scheme in {"file", "http"}:
+    if test_target_mode and parsed.scheme in {"file", "http"}:
         return
     raise ValueError(
-        f"{purpose} must use https; pass --allow-non-production-release-targets only for local file:// or http:// test inputs: {uri}"
+        f"{purpose} must use https; pass --test-target-mode only for local file:// or http:// test inputs: {uri}"
     )
 
 

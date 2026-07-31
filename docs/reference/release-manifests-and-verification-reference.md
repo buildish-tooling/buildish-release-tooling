@@ -32,19 +32,14 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [ArtifactReproducibilityEffectiveExecutionReport](#artifactreproducibilityeffectiveexecutionreport) — Effective execution details for one reproducibility run.
 - [ArtifactReproducibilityOverrideReport](#artifactreproducibilityoverridereport) — Structured local override metadata for one reproducibility run.
 - [ArtifactReproducibilityReport](#artifactreproducibilityreport) — Observed local rebuild comparison results for one artifact.
-- [AsfKeysTrustRoot](#asfkeystrustroot) — Pinned ASF KEYS metadata used as a trust root.
 - [AsfKeysTrustRootRead](#asfkeystrustrootread) — Tolerant ASF KEYS trust-root subset accepted by verify-rc readers.
-- [AuthoritativeManifestReference](#authoritativemanifestreference) — Reference to the authoritative signed manifest file and sidecars.
 - [AuthoritativeManifestReferenceRead](#authoritativemanifestreferenceread) — Tolerant authoritative-manifest reference accepted by verify-rc readers.
 - [ChecksumVerificationReport](#checksumverificationreport) — Observed checksum verification results for one downloaded artifact.
-- [DraftGithubRelease](#draftgithubrelease) — Convenience pointer to the matching draft GitHub Release.
-- [DraftGithubReleaseRead](#draftgithubreleaseread) — Tolerant draft-release pointer accepted by verify-rc readers.
+- [DraftGitHubReleaseRead](#draftgithubreleaseread) — Tolerant draft-release pointer accepted by verify-rc readers.
 - [FileLikeReproducibilityMetadata](#filelikereproducibilitymetadata) — Retained comparison metadata for one file-like reproducibility failure or drift.
 - [GenericFileSecondaryArtifact](#genericfilesecondaryartifact) — A standalone file artifact tracked in the signed vote manifest.
 - [GenericFileVerificationReport](#genericfileverificationreport) — Verification report for one generic secondary file.
 - [GenericFileWithOpenPgpSecondaryArtifact](#genericfilewithopenpgpsecondaryartifact) — A standalone file artifact that requires at least one detached signature.
-- [GithubWorkflowProvenance](#githubworkflowprovenance) — GitHub Actions provenance embedded in emitted manifests.
-- [IncubatorDisclaimer](#incubatordisclaimer) — Exact Apache Incubator disclaimer text resolved for one RC.
 - [InspectReproCountSummary](#inspectreprocountsummary) — One count bucket emitted by inspect-repro machine-readable summaries.
 - [InspectReproReportV1](#inspectreproreportv1) — Machine-readable inspect-repro output for automation and post-processing.
 - [InspectReproSummaryV1](#inspectreprosummaryv1) — Top-level summary block for machine-readable inspect-repro output.
@@ -58,9 +53,6 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [InventoryVerificationReport](#inventoryverificationreport) — Verification results for one downloaded inventory attachment.
 - [LiveMavenRepositoryReport](#livemavenrepositoryreport) — Observed live-repository comparison results for a Maven staging repository.
 - [LiveRepositorySignatureVerification](#liverepositorysignatureverification) — One detached signature verified in the live Maven repository.
-- [ManifestProvenance](#manifestprovenance) — Top-level provenance block for the RC vote manifest.
-- [ManifestTrustRoots](#manifesttrustroots) — Trust roots referenced by the signed manifest.
-- [ManifestVerificationMetadataStrict](#manifestverificationmetadatastrict) — Strict verification metadata emitted by finalize-rc-vote-materials.
 - [ManifestVerificationSection](#manifestverificationsection) — Manifest-authenticity and tag-binding section of the verify-rc report.
 - [MavenRepositoryInventoryEntry](#mavenrepositoryinventoryentry) — One file entry in a signed Maven repository inventory.
 - [MavenRepositoryInventoryV1](#mavenrepositoryinventoryv1) — A signed Maven repository inventory attachment.
@@ -83,7 +75,6 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [PythonDistributionSecondaryArtifact](#pythondistributionsecondaryartifact) — A published Python distribution file.
 - [PythonDistributionVerificationReport](#pythondistributionverificationreport) — Verification report for one Python distribution.
 - [PythonIndexResolutionReport](#pythonindexresolutionreport) — Resolution details for one Python simple-index lookup.
-- [RcVoteManifestV1](#rcvotemanifestv1) — Strict authoritative RC vote manifest emitted by buildish-release-tooling.
 - [RebuiltOutputSnapshot](#rebuiltoutputsnapshot) — One rebuilt output file described inside an inspection-bundle metadata document.
 - [ReproducibilityExecutionSection](#reproducibilityexecutionsection) — Run-level policy and execution summary for build-based reproducibility checks.
 - [ReproducibilitySelector](#reproducibilityselector) — Signed manifest selector for one canonical local reproducibility profile.
@@ -97,16 +88,11 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [ShallowArchiveAnalysisReport](#shallowarchiveanalysisreport) — Durable shallow archive-comparison findings for one retained artifact pair.
 - [SignatureReference](#signaturereference) — One detached OpenPGP signature reference.
 - [SignatureVerificationPayload](#signatureverificationpayload) — Serialized detached-signature verification details.
-- [SourceArtifactContract](#sourceartifactcontract) — The single source artifact under vote.
-- [SourceArtifactContractRead](#sourceartifactcontractread) — Tolerant source-artifact contract accepted by verify-rc readers.
 - [SourceArtifactReproducibilityMetadata](#sourceartifactreproducibilitymetadata) — Retained comparison metadata for source-artifact reproducibility inspection.
 - [SourceArtifactVerificationSection](#sourceartifactverificationsection) — Source-artifact verification section of the verify-rc report.
 - [SupplementalInventoryReference](#supplementalinventoryreference) — One staged supplemental inventory attachment.
-- [ToolingProvenance](#toolingprovenance) — Tooling repository provenance embedded in emitted manifests.
 - [VerificationFailurePayload](#verificationfailurepayload) — One collected verification failure.
 - [VerifyRcReportV1](#verifyrcreportv1) — Machine-readable Phase 1a RC verification report.
-- [VoteMaterialsRead](#votematerialsread) — Tolerant vote-materials block used by verify-rc readers.
-- [VoteMaterialsStrict](#votematerialsstrict) — Strict vote-materials block for authored and emitted manifests.
 
 <a id="artifactreproducibilitybuildoverridereport"></a>
 ### ArtifactReproducibilityBuildOverrideReport
@@ -220,21 +206,6 @@ Observed local rebuild comparison results for one artifact.
 | <a id="artifactreproducibilityreport-evidence"></a>`evidence` | list[[InspectionEvidenceReference](#inspectionevidencereference)] | no | Inspection-bundle evidence references retained for one reproducibility result. |
 | <a id="artifactreproducibilityreport-issues"></a>`issues` | list[str] | no | Collected human-readable issues observed for the related verification, inspection, or reproducibility subject. |
 
-<a id="asfkeystrustroot"></a>
-### AsfKeysTrustRoot
-
-Pinned ASF KEYS metadata used as a trust root.
-
-- category: `emitted`
-- ownership: `tooling-derived`
-- file contract: (inner type)
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| <a id="asfkeystrustroot-uri"></a>`uri` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Canonical artifact or signature URI recorded in a Buildish manifest or verification report. |
-| <a id="asfkeystrustroot-known-length-bytes"></a>`known_length_bytes` | int | yes | Expected byte length of the pinned ASF KEYS file when Buildish establishes the trust root. |
-| <a id="asfkeystrustroot-known-prefix-sha512"></a>`known_prefix_sha512` | [Sha512Hex](../release-shared-types-reference/#sha512hex) | yes | Pinned SHA-512 digest prefix that Buildish expects the ASF KEYS file to start with. |
-
 <a id="asfkeystrustrootread"></a>
 ### AsfKeysTrustRootRead
 
@@ -252,21 +223,6 @@ Tolerant ASF KEYS trust-root subset accepted by verify-rc readers.
 | <a id="asfkeystrustrootread-uri"></a>`uri` | object | yes | Canonical artifact or signature URI recorded in a Buildish manifest or verification report. |
 | <a id="asfkeystrustrootread-known-length-bytes"></a>`known_length_bytes` | object | yes | Expected byte length of the pinned ASF KEYS file when Buildish establishes the trust root. |
 | <a id="asfkeystrustrootread-known-prefix-sha512"></a>`known_prefix_sha512` | object | yes | Pinned SHA-512 digest prefix that Buildish expects the ASF KEYS file to start with. |
-
-<a id="authoritativemanifestreference"></a>
-### AuthoritativeManifestReference
-
-Reference to the authoritative signed manifest file and sidecars.
-
-- category: `emitted`
-- ownership: `tooling-derived`
-- file contract: (inner type)
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| <a id="authoritativemanifestreference-uri"></a>`uri` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Canonical artifact or signature URI recorded in a Buildish manifest or verification report. |
-| <a id="authoritativemanifestreference-checksum-uris"></a>`checksum_uris` | dict[Literal['sha512'], [NonEmptyString](../release-shared-types-reference/#nonemptystring)] | yes | Manifest-relative or absolute URIs of checksum sidecars associated with the authoritative staged manifest. |
-| <a id="authoritativemanifestreference-signatures"></a>`signatures` | list[[SignatureReference](#signaturereference)] | yes | Declared detached signature references associated with the related artifact or manifest. |
 
 <a id="authoritativemanifestreferenceread"></a>
 ### AuthoritativeManifestReferenceRead
@@ -302,23 +258,8 @@ Observed checksum verification results for one downloaded artifact.
 | <a id="checksumverificationreport-matches-manifest"></a>`matches_manifest` | bool | no | Whether the observed checksum or digest matched the value declared in the authoritative manifest or inventory. |
 | <a id="checksumverificationreport-sidecar-verified"></a>`sidecar_verified` | bool | no | Whether the detached checksum sidecar associated with this report entry was fetched and verified successfully. |
 
-<a id="draftgithubrelease"></a>
-### DraftGithubRelease
-
-Convenience pointer to the matching draft GitHub Release.
-
-- category: `emitted`
-- ownership: `tooling-derived`
-- file contract: (inner type)
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| <a id="draftgithubrelease-repository"></a>`repository` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Repository identifier or repository name associated with the related provenance or external-auth record. |
-| <a id="draftgithubrelease-tag"></a>`tag` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Tag name associated with the related release, workflow fixture, or synthetic GitHub tag-object payload. |
-| <a id="draftgithubrelease-url"></a>`url` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Canonical browser or download URL associated with the related record. |
-
 <a id="draftgithubreleaseread"></a>
-### DraftGithubReleaseRead
+### DraftGitHubReleaseRead
 
 Tolerant draft-release pointer accepted by verify-rc readers.
 
@@ -430,39 +371,6 @@ A standalone file artifact that requires at least one detached signature.
 | <a id="genericfilewithopenpgpsecondaryartifact-uri"></a>`uri` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Canonical artifact or signature URI recorded in a Buildish manifest or verification report. |
 | <a id="genericfilewithopenpgpsecondaryartifact-checksums"></a>`checksums` | [Sha512Checksums](#sha512checksums) | yes | Declared checksum sidecars or signed checksum values associated with this artifact. |
 | <a id="genericfilewithopenpgpsecondaryartifact-signatures"></a>`signatures` | list[[SignatureReference](#signaturereference)] | no | Declared detached signature references associated with the related artifact or manifest. |
-
-<a id="githubworkflowprovenance"></a>
-### GithubWorkflowProvenance
-
-GitHub Actions provenance embedded in emitted manifests.
-
-- category: `emitted`
-- ownership: `tooling-derived`
-- file contract: (inner type)
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| <a id="githubworkflowprovenance-repository"></a>`repository` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Repository identifier or repository name associated with the related provenance or external-auth record. |
-| <a id="githubworkflowprovenance-workflow"></a>`workflow` | str | yes | Nested workflow block for an `act` harness scenario, or the workflow name recorded in provenance. |
-| <a id="githubworkflowprovenance-workflow-ref"></a>`workflow_ref` | str | yes | GitHub Actions workflow ref associated with the related provenance record. |
-| <a id="githubworkflowprovenance-run-id"></a>`run_id` | int | yes | GitHub Actions run id associated with the related provenance record. |
-| <a id="githubworkflowprovenance-run-attempt"></a>`run_attempt` | int | no | GitHub Actions run attempt number associated with the related provenance record. |
-| <a id="githubworkflowprovenance-run-url"></a>`run_url` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | no | Browser URL of the related GitHub Actions workflow run. |
-
-<a id="incubatordisclaimer"></a>
-### IncubatorDisclaimer
-
-Exact Apache Incubator disclaimer text resolved for one RC.
-
-- category: `emitted`
-- ownership: `tooling-derived`
-- file contract: (inner type)
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| <a id="incubatordisclaimer-source-path"></a>`source_path` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Project-root-relative file path that supplied the incubating disclaimer text. |
-| <a id="incubatordisclaimer-text"></a>`text` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Exact incubating disclaimer text carried through release communication surfaces. |
-| <a id="incubatordisclaimer-sha512"></a>`sha512` | [Sha512Hex](../release-shared-types-reference/#sha512hex) | yes | SHA-512 checksum payload associated with the related artifact. |
 
 <a id="inspectreprocountsummary"></a>
 ### InspectReproCountSummary
@@ -700,48 +608,6 @@ One detached signature verified in the live Maven repository.
 | <a id="liverepositorysignatureverification-path"></a>`path` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Filesystem path, relative artifact path, or retained evidence path associated with the related record. |
 | <a id="liverepositorysignatureverification-target-path"></a>`target_path` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Target path that the related detached signature or copy operation refers to. |
 | <a id="liverepositorysignatureverification-signature"></a>`signature` | [SignatureVerificationPayload](#signatureverificationpayload) | yes | Signature verification details for the related artifact or manifest. |
-
-<a id="manifestprovenance"></a>
-### ManifestProvenance
-
-Top-level provenance block for the RC vote manifest.
-
-- category: `emitted`
-- ownership: `tooling-derived`
-- file contract: (inner type)
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| <a id="manifestprovenance-created-at"></a>`created_at` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Timestamp when Buildish created the enclosing manifest or provenance record. |
-| <a id="manifestprovenance-tooling"></a>`tooling` | [ToolingProvenance](#toolingprovenance) | yes | Buildish tooling provenance details embedded in the authoritative manifest. |
-| <a id="manifestprovenance-github"></a>`github` | [GithubWorkflowProvenance](#githubworkflowprovenance) | no | GitHub workflow provenance metadata embedded in or read from the RC vote manifest. |
-
-<a id="manifesttrustroots"></a>
-### ManifestTrustRoots
-
-Trust roots referenced by the signed manifest.
-
-- category: `emitted`
-- ownership: `tooling-derived`
-- file contract: (inner type)
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| <a id="manifesttrustroots-asf-keys"></a>`asf_keys` | [AsfKeysTrustRoot](#asfkeystrustroot) | yes | Pinned ASF KEYS trust-root details that Buildish should use when verifying the RC manifest signature chain. |
-
-<a id="manifestverificationmetadatastrict"></a>
-### ManifestVerificationMetadataStrict
-
-Strict verification metadata emitted by finalize-rc-vote-materials.
-
-- category: `emitted`
-- ownership: `tooling-derived`
-- file contract: (inner type)
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| <a id="manifestverificationmetadatastrict-staging-svn-url"></a>`staging_svn_url` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | ASF SVN staging directory URL associated with the authoritative RC materials. |
-| <a id="manifestverificationmetadatastrict-authoritative-manifest"></a>`authoritative_manifest` | [AuthoritativeManifestReference](#authoritativemanifestreference) | yes | Canonical authoritative RC vote-manifest reference or verification block associated with the enclosing payload. |
 
 <a id="manifestverificationsection"></a>
 ### ManifestVerificationSection
@@ -1196,40 +1062,6 @@ Resolution details for one Python simple-index lookup.
 | <a id="pythonindexresolutionreport-found-via"></a>`found_via` | str | no | Short note describing how the related package URL or artifact metadata was discovered during verification. |
 | <a id="pythonindexresolutionreport-sha256-matches-index"></a>`sha256_matches_index` | bool | no | Whether the distribution hash from the Python simple index matched the digest declared in the signed manifest. |
 
-<a id="rcvotemanifestv1"></a>
-### RcVoteManifestV1
-
-Strict authoritative RC vote manifest emitted by buildish-release-tooling.
-
-- category: `emitted`
-- ownership: `tooling-derived`
-- schema file: [`rc-vote-manifest-v1.schema.json`](/components/release-tooling/schemas/rc-vote-manifest-v1.schema.json)
-- audience: `supported`
-- stability: `stable`
-- file contract: `rc-vote-manifest.json`
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| <a id="rcvotemanifestv1-schema-version"></a>`schema_version` | [SchemaVersionV1](../release-shared-types-reference/#schemaversionv1) | no | Schema version of the enclosing Buildish JSON or YAML contract. |
-| <a id="rcvotemanifestv1-manifest-type"></a>`manifest_type` | Literal['rc-vote'] | no | Stable manifest contract discriminator for one Buildish file format. |
-| <a id="rcvotemanifestv1-component-id"></a>`component_id` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Stable component identifier used across Buildish manifests, reports, and release-state records. |
-| <a id="rcvotemanifestv1-version"></a>`version` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Release version string without a leading `v` prefix. |
-| <a id="rcvotemanifestv1-release-line"></a>`release_line` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Maintenance-line identifier used to group related versions, branches, and moving tags. |
-| <a id="rcvotemanifestv1-release-branch"></a>`release_branch` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Git branch name that Buildish resolved as the authoritative release branch. |
-| <a id="rcvotemanifestv1-source-repository-url"></a>`source_repository_url` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Canonical source repository URL recorded in the RC vote manifest or verification report. |
-| <a id="rcvotemanifestv1-source-commit-sha"></a>`source_commit_sha` | [GitCommitSha](../release-shared-types-reference/#gitcommitsha) | yes | Resolved source Git commit SHA recorded in the authoritative RC manifest or verify-rc report. |
-| <a id="rcvotemanifestv1-source-date-epoch"></a>`source_date_epoch` | int | yes | Canonical `SOURCE_DATE_EPOCH` integer carried through RC production and verification. |
-| <a id="rcvotemanifestv1-rc-tag"></a>`rc_tag` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Exact RC Git tag, including the leading `v` prefix and `-rcN` suffix. |
-| <a id="rcvotemanifestv1-final-tag"></a>`final_tag` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Final immutable Git tag that Buildish intends to publish for the released version. |
-| <a id="rcvotemanifestv1-final-tag-mode"></a>`final_tag_mode` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Configured or recorded policy describing how the final immutable release tag should be created for this component or release run. |
-| <a id="rcvotemanifestv1-provenance"></a>`provenance` | [ManifestProvenance](#manifestprovenance) | yes | Tooling, workflow, or publication provenance block embedded in or read from the related Buildish contract. |
-| <a id="rcvotemanifestv1-trust-roots"></a>`trust_roots` | [ManifestTrustRoots](#manifesttrustroots) | yes | Pinned trust-root material that verify-rc uses to establish authenticity for the authoritative RC vote manifest. |
-| <a id="rcvotemanifestv1-draft-github-release"></a>`draft_github_release` | [DraftGithubRelease](#draftgithubrelease) | yes | Draft GitHub release metadata embedded in or read from the RC vote manifest. |
-| <a id="rcvotemanifestv1-incubator-disclaimer"></a>`incubator_disclaimer` | [IncubatorDisclaimer](#incubatordisclaimer) | no | Exact incubating disclaimer text resolved and signed for this RC. |
-| <a id="rcvotemanifestv1-vote-materials"></a>`vote_materials` | [VoteMaterialsStrict](#votematerialsstrict) | yes | Vote-materials reference block embedded in or read from the authoritative RC vote manifest. |
-| <a id="rcvotemanifestv1-verification"></a>`verification` | [ManifestVerificationMetadataStrict](#manifestverificationmetadatastrict) | yes | Verification metadata block nested inside the authoritative RC vote manifest. |
-| <a id="rcvotemanifestv1-materialized-commit-sha"></a>`materialized_commit_sha` | [GitCommitSha](../release-shared-types-reference/#gitcommitsha) | no | Git commit SHA of the materialized tree that Buildish created for the RC tagging workflow. |
-
 <a id="rebuiltoutputsnapshot"></a>
 ### RebuiltOutputSnapshot
 
@@ -1446,46 +1278,6 @@ Serialized detached-signature verification details.
 | <a id="signatureverificationpayload-key-algorithm"></a>`key_algorithm` | str | no | Public-key algorithm reported for the signing key that verified the related detached signature. |
 | <a id="signatureverificationpayload-key-size-bits"></a>`key_size_bits` | int | no | Public-key size, in bits, reported for the signing key that verified the related detached signature. |
 
-<a id="sourceartifactcontract"></a>
-### SourceArtifactContract
-
-The single source artifact under vote.
-
-- category: `emitted`
-- ownership: `tooling-derived`
-- file contract: (inner type)
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| <a id="sourceartifactcontract-role"></a>`role` | Literal['asf-source-release'] | no | Artifact role within the RC manifest, such as source artifact, vote-manifest supplement, or convenience artifact. |
-| <a id="sourceartifactcontract-filename"></a>`filename` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Artifact filename as seen in staging, manifests, or retained evidence. |
-| <a id="sourceartifactcontract-uri"></a>`uri` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Canonical artifact or signature URI recorded in a Buildish manifest or verification report. |
-| <a id="sourceartifactcontract-artifact-origin"></a>`artifact_origin` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Origin classification describing whether the artifact came from a source build, registry, or repository staging area. |
-| <a id="sourceartifactcontract-git-commit-sha"></a>`git_commit_sha` | [GitCommitSha](../release-shared-types-reference/#gitcommitsha) | yes | Git commit SHA recorded for the related artifact, manifest, or provenance block. |
-| <a id="sourceartifactcontract-reproducibility"></a>`reproducibility` | [ReproducibilitySelector](#reproducibilityselector) | no | Reproducibility policy or result block associated with the related source or secondary artifact. |
-| <a id="sourceartifactcontract-checksums"></a>`checksums` | [Sha512Checksums](#sha512checksums) | yes | Declared checksum sidecars or signed checksum values associated with this artifact. |
-| <a id="sourceartifactcontract-signatures"></a>`signatures` | list[[SignatureReference](#signaturereference)] | yes | Declared detached signature references associated with the related artifact or manifest. |
-
-<a id="sourceartifactcontractread"></a>
-### SourceArtifactContractRead
-
-Tolerant source-artifact contract accepted by verify-rc readers.
-
-- category: `emitted`
-- ownership: `tooling-derived`
-- file contract: (inner type)
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| <a id="sourceartifactcontractread-role"></a>`role` | object | no | Artifact role within the RC manifest, such as source artifact, vote-manifest supplement, or convenience artifact. |
-| <a id="sourceartifactcontractread-filename"></a>`filename` | object | yes | Artifact filename as seen in staging, manifests, or retained evidence. |
-| <a id="sourceartifactcontractread-uri"></a>`uri` | object | yes | Canonical artifact or signature URI recorded in a Buildish manifest or verification report. |
-| <a id="sourceartifactcontractread-artifact-origin"></a>`artifact_origin` | object | yes | Origin classification describing whether the artifact came from a source build, registry, or repository staging area. |
-| <a id="sourceartifactcontractread-git-commit-sha"></a>`git_commit_sha` | object | yes | Git commit SHA recorded for the related artifact, manifest, or provenance block. |
-| <a id="sourceartifactcontractread-reproducibility"></a>`reproducibility` | object | no | Reproducibility policy or result block associated with the related source or secondary artifact. |
-| <a id="sourceartifactcontractread-checksums"></a>`checksums` | object | yes | Declared checksum sidecars or signed checksum values associated with this artifact. |
-| <a id="sourceartifactcontractread-signatures"></a>`signatures` | object | yes | Declared detached signature references associated with the related artifact or manifest. |
-
 <a id="sourceartifactreproducibilitymetadata"></a>
 ### SourceArtifactReproducibilityMetadata
 
@@ -1548,23 +1340,6 @@ One staged supplemental inventory attachment.
 | <a id="supplementalinventoryreference-entry-count"></a>`entry_count` | int | no | Number of entries recorded in the related inventory, repository snapshot, or artifact collection. |
 | <a id="supplementalinventoryreference-total-size-bytes"></a>`total_size_bytes` | int | no | Total size, in bytes, recorded for the related artifact collection or inventory. |
 
-<a id="toolingprovenance"></a>
-### ToolingProvenance
-
-Tooling repository provenance embedded in emitted manifests.
-
-- category: `emitted`
-- ownership: `tooling-derived`
-- file contract: (inner type)
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| <a id="toolingprovenance-repository"></a>`repository` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Repository identifier or repository name associated with the related provenance or external-auth record. |
-| <a id="toolingprovenance-repository-url"></a>`repository_url` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Canonical clone or browser URL for the related repository. |
-| <a id="toolingprovenance-git-commit-sha"></a>`git_commit_sha` | [GitCommitSha](../release-shared-types-reference/#gitcommitsha) | yes | Git commit SHA recorded for the related artifact, manifest, or provenance block. |
-| <a id="toolingprovenance-git-ref"></a>`git_ref` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | no | Git ref name recorded in tooling provenance for the related manifest or emitted file. |
-| <a id="toolingprovenance-version"></a>`version` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | no | Release version string without a leading `v` prefix. |
-
 <a id="verificationfailurepayload"></a>
 ### VerificationFailurePayload
 
@@ -1612,38 +1387,4 @@ Machine-readable Phase 1a RC verification report.
 | <a id="verifyrcreportv1-reproducibility-execution"></a>`reproducibility_execution` | [ReproducibilityExecutionSection](#reproducibilityexecutionsection) | yes | Run-level reproducibility execution policy and outcome block retained in the verify-rc report. |
 | <a id="verifyrcreportv1-inspection-bundle"></a>`inspection_bundle` | [InspectionBundleSection](#inspectionbundlesection) | no | Inspection-bundle location block retained in the verify-rc report for later inspect-repro analysis. |
 | <a id="verifyrcreportv1-secondary-artifact-verifications"></a>`secondary_artifact_verifications` | list[AnySecondaryArtifactVerification] | no | Per-artifact verification sections for all secondary artifacts processed during verify-rc. |
-
-<a id="votematerialsread"></a>
-### VoteMaterialsRead
-
-Tolerant vote-materials block used by verify-rc readers.
-
-- category: `emitted`
-- ownership: `tooling-derived`
-- schema file: [`vote-materials-read.schema.json`](/components/release-tooling/schemas/vote-materials-read.schema.json)
-- audience: `internal`
-- stability: `stable`
-- file contract: (inner type)
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| <a id="votematerialsread-source-artifacts"></a>`source_artifacts` | list[[SourceArtifactContractRead](#sourceartifactcontractread)] | yes | Manifest entries that describe the primary staged source artifact and any additional source-release materials. |
-| <a id="votematerialsread-secondary-artifacts"></a>`secondary_artifacts` | list[AnySecondaryArtifact \| SecondaryArtifactEnvelopeRead] | no | Declared secondary artifacts retained in the RC vote manifest or secondary-artifact manifest, including tolerant read-side envelopes for malformed entries. |
-
-<a id="votematerialsstrict"></a>
-### VoteMaterialsStrict
-
-Strict vote-materials block for authored and emitted manifests.
-
-- category: `emitted`
-- ownership: `tooling-derived`
-- schema file: [`vote-materials-strict.schema.json`](/components/release-tooling/schemas/vote-materials-strict.schema.json)
-- audience: `internal`
-- stability: `stable`
-- file contract: (inner type)
-
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| <a id="votematerialsstrict-source-artifacts"></a>`source_artifacts` | list[[SourceArtifactContract](#sourceartifactcontract)] | yes | Manifest entries that describe the primary staged source artifact and any additional source-release materials. |
-| <a id="votematerialsstrict-secondary-artifacts"></a>`secondary_artifacts` | list[AnySecondaryArtifact] | no | Declared secondary artifacts retained in the RC vote manifest or secondary-artifact manifest. |
 

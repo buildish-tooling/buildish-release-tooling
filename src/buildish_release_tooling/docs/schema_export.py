@@ -246,6 +246,19 @@ def write_schema_files(output_dir: Path) -> tuple[Path, ...]:
     """Write the checked-in JSON Schema files to ``output_dir``."""
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    expected_names = {export.filename for export in schema_exports()}
+    for existing_path in output_dir.glob("*.json"):
+        if existing_path.name in expected_names:
+            continue
+        try:
+            existing_payload = json.loads(existing_path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError):
+            continue
+        if (
+            isinstance(existing_payload, dict)
+            and existing_payload.get("$comment") == _GENERATED_COMMENT
+        ):
+            existing_path.unlink()
     written_paths: list[Path] = []
     for export in schema_exports():
         output_path = output_dir / export.filename

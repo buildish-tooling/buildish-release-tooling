@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any, cast
 from unittest import mock
 
-from buildish_release_tooling.release.asf_svn import AsfSvnClient
+from buildish_release_tooling.release.foundations.asf.dist import AsfSvnClient
 from buildish_release_tooling.release.git_materialization import (
     delete_remote_ref_best_effort,
     push_remote_ref,
@@ -242,29 +242,60 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
     ) -> None:
         """Write a minimal component configuration used by CLI integration tests."""
 
+        normalized_final_tag_mode = {
+            "rc-source-commit": "exact-source-commit",
+            "release-materialization-commit": "detached-materialization-commit",
+        }.get(final_tag_mode, final_tag_mode)
+        nested_atr_lines = tuple(f"    {line}" for line in atr_lines)
+        nested_verification_lines = tuple(
+            "verification:" if line == "verify_rc:" else line for line in verify_rc_lines
+        )
+
         config_path.write_text(
             "\n".join(
                 [
-                    f"component_id: {component_id}",
-                    f"source_artifact_prefix: apache-{component_id}",
-                    f"asf_dist_dev_base: {dev_base_url}",
-                    f"asf_dist_release_base: {release_base_url}",
-                    f"asf_keys_url: {asf_keys_url or release_base_url.rsplit('/', 1)[0] + '/KEYS'}",
-                    f"moving_tags_enabled: {'true' if moving_tags_enabled else 'false'}",
-                    f"latest_tag_enabled: {'true' if latest_tag_enabled else 'false'}",
-                    "secondary_targets:",
-                    *[f"  - {target}" for target in secondary_targets],
-                    f"final_tag_mode: {final_tag_mode}",
-                    f"vote_release_name: {vote_release_name}",
-                    f"project_status: {project_status}",
-                    f"incubator_disclaimer_file: {incubator_disclaimer_file}",
-                    f"candidate_start_number: {candidate_start_number}",
-                    "release_verification_guide_url: https://buildish.org/buildish-example/release-verification/",
-                    "verify_rc_instructions: verify",
-                    "prepare_rc_runs_tests: false",
-                    "release_branch_ci_required: true",
-                    *atr_lines,
-                    *verify_rc_lines,
+                    "component:",
+                    f"  id: {component_id}",
+                    f"  display_name: {vote_release_name}",
+                    "source:",
+                    "  selection: explicit-ref-or-default-branch",
+                    "  default_branch: main",
+                    "  snapshot:",
+                    "    mode: built-asset",
+                    f"    filename_template: apache-{component_id}-{{version}}-incubating-src.tar.gz",
+                    f"    archive_root_template: apache-{component_id}-{{version}}-incubating-src",
+                    "  checks:",
+                    "    run_selected_ref_tests: false",
+                    "    require_release_branch_ci: true",
+                    "lifecycle:",
+                    "  mode: candidate",
+                    "candidate:",
+                    f"  start_number: {candidate_start_number}",
+                    "  visibility: draft",
+                    "publication:",
+                    "  authoritative:",
+                    "    kind: asf-dist-svn",
+                    "  secondary:",
+                    *[f"    - kind: {target}" for target in secondary_targets],
+                    "tags:",
+                    f"  final_mode: {normalized_final_tag_mode}",
+                    "  moving:" if moving_tags_enabled or latest_tag_enabled else "  moving: []",
+                    *(["    - major", "    - minor"] if moving_tags_enabled else []),
+                    *(["    - latest"] if latest_tag_enabled else []),
+                    "vote_materials:",
+                    "  profile: asf",
+                    f"  release_name: {vote_release_name}",
+                    "  verification_guide_url: https://buildish.org/buildish-example/release-verification/",
+                    "  instructions: verify",
+                    "policy_profiles:",
+                    "  asf:",
+                    f"    project_status: {project_status}",
+                    f"    dist_dev_base: {dev_base_url}",
+                    f"    dist_release_base: {release_base_url}",
+                    f"    keys_url: {asf_keys_url or release_base_url.rsplit('/', 1)[0] + '/KEYS'}",
+                    f"    disclaimer_file: {incubator_disclaimer_file}",
+                    *nested_atr_lines,
+                    *nested_verification_lines,
                 ]
             ),
             encoding="utf-8",

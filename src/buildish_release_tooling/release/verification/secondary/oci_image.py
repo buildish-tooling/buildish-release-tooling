@@ -33,8 +33,8 @@ from buildish_release_tooling.release.contracts import (
     OciInspectionReport,
     OciPlatformDigest,
 )
+from buildish_release_tooling.release.config import ReleaseConfig
 from buildish_release_tooling.release.models import (
-    ComponentConfig,
     VerifyRcOciImageComparisonConfig,
     VerifyRcOverrideConfig,
 )
@@ -56,7 +56,7 @@ def verify_oci_image(
     artifact_entry: OciImageSecondaryArtifact,
     *,
     work_dir: Path,
-    component_config: ComponentConfig | None,
+    component_config: ReleaseConfig | None,
     project_root: Path | None,
     source_date_epoch: int | None,
     build_checks_allowed: bool,
@@ -146,7 +146,7 @@ def _verify_oci_image_reproducibility(
     artifact_id: str,
     declared_digest: str,
     expected_platform_digests: list[OciPlatformDigest],
-    component_config: ComponentConfig | None,
+    component_config: ReleaseConfig | None,
     project_root: Path | None,
     source_date_epoch: int | None,
     inspection_bundle_root: Path | None,

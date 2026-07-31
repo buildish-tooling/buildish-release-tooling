@@ -12,28 +12,53 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-component_id: buildish-site-pipeline
-source_artifact_prefix: buildish-site-pipeline
-asf_dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-site-pipeline
-asf_dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-site-pipeline
-asf_keys_url: https://downloads.apache.org/incubator/buildish/KEYS
-moving_tags_enabled: true
-latest_tag_enabled: false
-secondary_targets:
-  - pypi
-  - dockerhub
-final_tag_mode: rc-source-commit
-vote_release_name: Buildish Site Pipeline
-project_status: tlp
-release_summary_include_final_tag_mode: false
-release_verification_guide_url: https://buildish.org/components/site-pipeline/release-verification/
-verify_rc_instructions: |
-  Run this bash verification flow on trusted Linux or macOS hardware:
-  1. verify .sha512
-  2. verify .asc
-  3. rebuild source release
-  4. rebuild wheel/sdist
-  5. rebuild container image metadata
-  6. compare staged and rebuilt outputs
-prepare_rc_runs_tests: false
-release_branch_ci_required: true
+component:
+  id: buildish-site-pipeline
+  display_name: Buildish Site Pipeline
+versioning:
+  scheme: semver
+  final_tag_template: "v{version}"
+source:
+  selection: release-branch
+  snapshot:
+    mode: built-asset
+    filename_template: "buildish-site-pipeline-{version}-src.tar.gz"
+    archive_root_template: "buildish-site-pipeline-{version}-src"
+  checks:
+    run_selected_ref_tests: false
+    require_release_branch_ci: true
+lifecycle:
+  mode: candidate
+candidate:
+  label: rc
+  start_number: 0
+  visibility: public-prerelease
+  retention: retain-published
+artifacts:
+  produced: []
+  checksums: [sha512]
+publication:
+  authoritative:
+    kind: asf-dist-svn
+  convenience:
+    - kind: github-release
+  secondary:
+    - kind: pypi
+    - kind: dockerhub
+tags:
+  final_mode: exact-source-commit
+  moving: [major, minor]
+  include_final_mode_in_summary: false
+vote_materials:
+  profile: asf
+  release_name: Buildish Site Pipeline
+  verification_guide_url: https://buildish.org/components/site-pipeline/release-verification/
+  instructions: |
+    Verify checksums and signatures, rebuild the source release, Python distributions, and image metadata.
+policy_profiles:
+  asf:
+    project_status: tlp
+    dist_dev_base: https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-site-pipeline
+    dist_release_base: https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-site-pipeline
+    keys_url: https://downloads.apache.org/incubator/buildish/KEYS
+    disclaimer_file: DISCLAIMER

@@ -28,24 +28,28 @@ from collections.abc import Mapping
 from contextlib import contextmanager
 from pathlib import Path
 
-from buildish_release_tooling.release.asf_svn import AsfSvnClient
+from buildish_release_tooling.release.foundations.asf.dist import AsfSvnClient
 from buildish_release_tooling.release.config import (
-    load_component_config,
-    validate_release_target_base_urls,
+    CommandContext,
+    latest_tag_enabled,
+    load_release_config,
+    moving_tags_enabled,
+    require_asf_profile,
+    secondary_target_kinds,
+    validate_selected_release_targets,
 )
 from buildish_release_tooling.release.git_repo import GitRepository
-from buildish_release_tooling.release.github_checks import resolve_repository_slug
-from buildish_release_tooling.release.github_git_refs import (
+from buildish_release_tooling.release.platforms.github.checks import resolve_repository_slug
+from buildish_release_tooling.release.platforms.github.refs import (
     create_annotated_tag_object,
     create_ref,
     update_ref,
 )
-from buildish_release_tooling.release.github_release_selection import selected_github_release
-from buildish_release_tooling.release.models import CommandContext, PrepareRcState, ReleaseVersionState
+from buildish_release_tooling.release.platforms.github.selection import selected_github_release
+from buildish_release_tooling.release.core.state import CandidateReleaseState, FinalReleasePlan
 from buildish_release_tooling.release.prepare_rc_state import resolve_prepare_rc_state
-from buildish_release_tooling.release.release_state import (
+from buildish_release_tooling.release.core.naming import (
     compare_versions,
-    derive_final_tag,
     derive_moving_tags,
     derive_specific_release_line,
     is_version_in_release_line,
@@ -59,16 +63,16 @@ from buildish_release_tooling.release.release_state import (
 
 def _context(args: Namespace) -> CommandContext:
     config_path = args.component_config
-    config = load_component_config(config_path)
-    validate_release_target_base_urls(
+    config = load_release_config(config_path)
+    validate_selected_release_targets(
         config,
-        allow_non_production_release_targets=getattr(
-            args, "allow_non_production_release_targets", False
+        allow_test_targets=getattr(
+            args, "test_target_mode", False
         ),
     )
     return CommandContext(
-        component_config=config,
-        component_config_path=Path(config_path),
+        release_config=config,
+        release_config_path=Path(config_path),
     )
 
 
@@ -131,7 +135,7 @@ def _resolve_prepare_rc_state_from_args(
     args: Namespace,
     context: CommandContext,
     repo: GitRepository,
-) -> tuple[str, PrepareRcState]:
+) -> tuple[str, CandidateReleaseState]:
     """Resolve one RC workflow state from common CLI arguments."""
 
     version = args.version
@@ -139,7 +143,7 @@ def _resolve_prepare_rc_state_from_args(
         version,
         resolve_prepare_rc_state(
             repo,
-            context.component_config,
+            context.release_config,
             version,
             getattr(args, "source_sha", None),
             getattr(args, "rc_tag", None),
@@ -161,7 +165,7 @@ def _matching_dev_rc_entries(entries: Iterable[str], version: str) -> list[str]:
 
 def _published_release_versions(context: CommandContext) -> list[str]:
     svn_client = AsfSvnClient.from_environment()
-    release_base_url = context.component_config.asf_dist_release_base.rstrip("/")
+    release_base_url = require_asf_profile(context.release_config).dist_release_base.rstrip("/")
     if not svn_client.path_exists(release_base_url):
         return []
     return published_versions_from_entries(svn_client.list_entries(release_base_url))
@@ -172,7 +176,7 @@ def _resolve_release_version_state(
     repo: GitRepository,
     version: str,
     expected_selected_rc_tag: str | None = None,
-) -> tuple[str, ReleaseVersionState]:
+) -> tuple[str, FinalReleasePlan]:
     version = require_semantic_version(version)
     selected_release = selected_github_release(
         repo=repo,
@@ -183,18 +187,20 @@ def _resolve_release_version_state(
     published_versions = _published_release_versions(context)
     return (
         release_line,
-        ReleaseVersionState(
-            selected_rc_tag=selected_release.selected_rc_tag,
-            final_tag=derive_final_tag(version),
+        FinalReleasePlan(
+            selected_candidate_tag=selected_release.selected_rc_tag,
+            final_tag_name=context.release_config.versioning.final_tag_template.format(
+                version=version
+            ),
             archive_versions=versions_to_archive_for_line(
                 release_line, version, published_versions
             ),
-            release_url=f"{context.component_config.asf_dist_release_base.rstrip('/')}/{version}/",
-            moving_tags=derive_moving_tags(
+            primary_publication_uri=f"{require_asf_profile(context.release_config).dist_release_base.rstrip('/')}/{version}/",
+            moving_aliases=derive_moving_tags(
                 version,
-                context.component_config.secondary_targets,
-                context.component_config.moving_tags_enabled,
-                context.component_config.latest_tag_enabled,
+                secondary_target_kinds(context.release_config),
+                moving_tags_enabled(context.release_config),
+                latest_tag_enabled(context.release_config),
             ),
         ),
     )
@@ -206,7 +212,7 @@ def _latest_rc_directory_name(version: str, latest_rc_tag: str) -> str:
 
 
 def _release_name(context: CommandContext, version: str) -> str:
-    return f"{context.component_config.vote_release_name} {version}"
+    return f"{context.release_config.component.display_name} {version}"
 
 
 def _repository_slug_or_none(repo: GitRepository) -> str | None:
@@ -325,7 +331,7 @@ def _rc_tag_message(context: CommandContext, version: str, rc_tag: str) -> str:
     """Render the standard annotated-message text for one RC tag."""
 
     return (
-        f"Release candidate {context.component_config.vote_release_name} "
+        f"Release candidate {context.release_config.component.display_name} "
         f"{version}-rc{rc_tag.removeprefix(f'v{version}-rc')}"
     )
 

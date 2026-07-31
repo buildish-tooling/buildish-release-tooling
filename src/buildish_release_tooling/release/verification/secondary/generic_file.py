@@ -26,7 +26,8 @@ from buildish_release_tooling.release.contracts import (
     GenericFileVerificationReport,
     GenericFileWithOpenPgpSecondaryArtifact,
 )
-from buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
+from buildish_release_tooling.release.config import ReleaseConfig
+from buildish_release_tooling.release.models import VerifyRcOverrideConfig
 from buildish_release_tooling.release.path_validation import validate_simple_filename
 from buildish_release_tooling.release.rc_vote_manifest import (
     DEFAULT_CHECKSUM_SIDECAR_MAX_BYTES,
@@ -53,9 +54,9 @@ def verify_generic_file(
     manifest_url: str,
     work_dir: Path,
     verifier: GpgVerifier,
-    allow_non_production_release_targets: bool,
+    test_target_mode: bool,
     require_signature: bool,
-    component_config: ComponentConfig | None,
+    component_config: ReleaseConfig | None,
     project_root: Path | None,
     source_date_epoch: int | None,
     build_checks_allowed: bool,
@@ -82,7 +83,7 @@ def verify_generic_file(
     try:
         validate_fetch_uri(
             artifact_uri,
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
             purpose=f"secondary artifact URL for {artifact_id}",
         )
         downloaded_artifact_path = work_dir / filename
@@ -105,7 +106,7 @@ def verify_generic_file(
         try:
             validate_fetch_uri(
                 checksum_uri,
-                allow_non_production_release_targets=allow_non_production_release_targets,
+                test_target_mode=test_target_mode,
                 purpose=f"secondary artifact checksum sidecar URL for {artifact_id}",
             )
             sidecar_path = work_dir / f"{filename}.{checksum_algorithm}"
@@ -132,7 +133,7 @@ def verify_generic_file(
             artifact_path=artifact_path,
             work_dir=work_dir,
             verifier=verifier,
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
             require_signature=require_signature,
         )
         issues.extend(signature_issues)
@@ -144,7 +145,7 @@ def verify_generic_file(
             manifest_url=manifest_url,
             artifact_id=artifact_id,
             work_dir=work_dir,
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
         )
     except Exception as exc:
         issues.append(str(exc))
@@ -192,7 +193,7 @@ def _generic_file_reproducibility(
     kind: Literal["generic-file", "generic-file-with-openpgp"],
     artifact_path: Path | None,
     work_dir: Path,
-    component_config: ComponentConfig | None,
+    component_config: ReleaseConfig | None,
     project_root: Path | None,
     source_date_epoch: int | None,
     inspection_bundle_root: Path | None,
@@ -221,7 +222,7 @@ def _signature_verifications_with_issues(
     artifact_path: Path,
     work_dir: Path,
     verifier: GpgVerifier,
-    allow_non_production_release_targets: bool,
+    test_target_mode: bool,
     require_signature: bool,
 ) -> tuple[tuple[SignatureVerification, ...], list[str]]:
     issues: list[str] = []
@@ -232,7 +233,7 @@ def _signature_verifications_with_issues(
             signature_uri = signature_reference.uri
             validate_fetch_uri(
                 signature_uri,
-                allow_non_production_release_targets=allow_non_production_release_targets,
+                test_target_mode=test_target_mode,
                 purpose=f"secondary artifact signature URL for {artifact_id}",
             )
             signature_path = work_dir / f"{artifact_path.name}.{index}.asc"

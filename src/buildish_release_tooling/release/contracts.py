@@ -311,7 +311,7 @@ class ToolingProvenance(BuildishContractModel):
     version: NonEmptyString | None = Field(default=None, description="Release version string without a leading `v` prefix.")
 
 
-class GithubWorkflowProvenance(BuildishContractModel):
+class GitHubWorkflowProvenance(BuildishContractModel):
     """GitHub Actions provenance embedded in emitted manifests."""
 
     repository: NonEmptyString = Field(description="Repository identifier or repository name associated with the related provenance or external-auth record.")
@@ -327,7 +327,7 @@ class ManifestProvenance(BuildishContractModel):
 
     created_at: NonEmptyString = Field(description="Timestamp when Buildish created the enclosing manifest or provenance record.")
     tooling: ToolingProvenance = Field(description="Buildish tooling provenance details embedded in the authoritative manifest.")
-    github: GithubWorkflowProvenance | None = Field(default=None, description="GitHub workflow provenance metadata embedded in or read from the RC vote manifest.")
+    github: GitHubWorkflowProvenance | None = Field(default=None, description="GitHub workflow provenance metadata embedded in or read from the RC vote manifest.")
 
 
 class _BuildishTolerantReadModel(BaseModel):
@@ -346,7 +346,7 @@ class ToolingProvenanceRead(_BuildishTolerantReadModel):
     version: str | None = Field(default=None, description="Release version string without a leading `v` prefix.")
 
 
-class GithubWorkflowProvenanceRead(_BuildishTolerantReadModel):
+class GitHubWorkflowProvenanceRead(_BuildishTolerantReadModel):
     """Tolerant GitHub workflow provenance subset accepted by verify-rc readers."""
 
     repository: str | None = Field(default=None, description="Repository identifier or repository name associated with the related provenance or external-auth record.")
@@ -362,7 +362,7 @@ class ManifestProvenanceRead(_BuildishTolerantReadModel):
 
     created_at: str | None = Field(default=None, description="Timestamp when Buildish created the enclosing manifest or provenance record.")
     tooling: ToolingProvenanceRead = Field(description="Buildish tooling provenance details embedded in the authoritative manifest.")
-    github: GithubWorkflowProvenanceRead | None = Field(default=None, description="GitHub workflow provenance metadata embedded in or read from the RC vote manifest.")
+    github: GitHubWorkflowProvenanceRead | None = Field(default=None, description="GitHub workflow provenance metadata embedded in or read from the RC vote manifest.")
 
 
 class AsfKeysTrustRoot(BuildishContractModel):
@@ -391,7 +391,7 @@ class ManifestTrustRootsRead(_BuildishTolerantReadModel):
     asf_keys: AsfKeysTrustRootRead = Field(description="Pinned ASF KEYS trust-root details that Buildish should use when verifying the RC manifest signature chain.")
 
 
-class DraftGithubRelease(BuildishContractModel):
+class DraftGitHubRelease(BuildishContractModel):
     """Convenience pointer to the matching draft GitHub Release."""
 
     repository: NonEmptyString = Field(description="Repository identifier or repository name associated with the related provenance or external-auth record.")
@@ -399,7 +399,7 @@ class DraftGithubRelease(BuildishContractModel):
     url: NonEmptyString = Field(description="Canonical browser or download URL associated with the related record.")
 
 
-class DraftGithubReleaseRead(DraftGithubRelease):
+class DraftGitHubReleaseRead(DraftGitHubRelease):
     """Tolerant draft-release pointer accepted by verify-rc readers."""
 
     model_config = ConfigDict(extra="allow")
@@ -551,7 +551,7 @@ class RcVoteManifestV1(BuildishContractModel):
     final_tag_mode: NonEmptyString = Field(description="Configured or recorded policy describing how the final immutable release tag should be created for this component or release run.")
     provenance: ManifestProvenance = Field(description="Tooling, workflow, or publication provenance block embedded in or read from the related Buildish contract.")
     trust_roots: ManifestTrustRoots = Field(description="Pinned trust-root material that verify-rc uses to establish authenticity for the authoritative RC vote manifest.")
-    draft_github_release: DraftGithubRelease = Field(description="Draft GitHub release metadata embedded in or read from the RC vote manifest.")
+    draft_github_release: DraftGitHubRelease = Field(description="Draft GitHub release metadata embedded in or read from the RC vote manifest.")
     incubator_disclaimer: IncubatorDisclaimer | None = Field(default=None, description="Exact incubating disclaimer text resolved and signed for this RC.")
     vote_materials: VoteMaterialsStrict = Field(description="Vote-materials reference block embedded in or read from the authoritative RC vote manifest.")
     verification: ManifestVerificationMetadataStrict = Field(description="Verification metadata block nested inside the authoritative RC vote manifest.")
@@ -575,7 +575,7 @@ class RcVoteManifestReadV1(_BuildishTolerantReadModel):
     final_tag_mode: NonEmptyString = Field(description="Configured or recorded policy describing how the final immutable release tag should be created for this component or release run.")
     provenance: ManifestProvenanceRead = Field(description="Tooling, workflow, or publication provenance block embedded in or read from the related Buildish contract.")
     trust_roots: ManifestTrustRootsRead = Field(description="Pinned trust-root material that verify-rc uses to establish authenticity for the authoritative RC vote manifest.")
-    draft_github_release: DraftGithubReleaseRead = Field(description="Draft GitHub release metadata embedded in or read from the RC vote manifest.")
+    draft_github_release: DraftGitHubReleaseRead = Field(description="Draft GitHub release metadata embedded in or read from the RC vote manifest.")
     incubator_disclaimer: IncubatorDisclaimer | None = Field(default=None, description="Exact incubating disclaimer text resolved and signed for this RC.")
     vote_materials: VoteMaterialsRead = Field(description="Vote-materials reference block embedded in or read from the authoritative RC vote manifest.")
     verification: ManifestVerificationMetadataRead = Field(description="Verification metadata block nested inside the authoritative RC vote manifest.")
@@ -1190,34 +1190,17 @@ AsfKeysTrustRootRead.schema_export = SchemaExportSpecification(
     stability="stable",
     summary="Tolerant read model for ASF KEYS trust-root references carried through vote-materials loading.",
 )
-DraftGithubReleaseRead.schema_export = SchemaExportSpecification(
+DraftGitHubReleaseRead.schema_export = SchemaExportSpecification(
     filename="draft-github-release-read.schema.json",
     audience="internal",
     stability="stable",
     summary="Tolerant read model for draft GitHub release coordinates recorded in vote materials.",
-)
-VoteMaterialsStrict.schema_export = SchemaExportSpecification(
-    filename="vote-materials-strict.schema.json",
-    audience="internal",
-    stability="stable",
-    summary="Strict typed vote-materials bundle assembled by release-tooling before RC publication.",
-)
-VoteMaterialsRead.schema_export = SchemaExportSpecification(
-    filename="vote-materials-read.schema.json",
-    audience="internal",
-    stability="stable",
-    summary="Tolerant read model for vote materials consumed during verification and bootstrap workflows.",
 )
 AuthoritativeManifestReferenceRead.schema_export = SchemaExportSpecification(
     filename="authoritative-manifest-reference-read.schema.json",
     audience="internal",
     stability="stable",
     summary="Tolerant read model for the authoritative signed manifest reference used by vote-materials loading.",
-)
-RcVoteManifestV1.schema_export = SchemaExportSpecification(
-    filename="rc-vote-manifest-v1.schema.json",
-    file_path="rc-vote-manifest.json",
-    summary="Signed RC vote manifest that declares the source artifact, trust roots, and secondary artifacts that verifiers must inspect.",
 )
 MavenRepositoryInventoryV1.schema_export = SchemaExportSpecification(
     filename="maven-repository-inventory-v1.schema.json",
@@ -1292,13 +1275,13 @@ __all__ = [
     "AnySecondaryArtifact",
     "AnySecondaryArtifactVerification",
     "BuildishContractModel",
-    "DraftGithubRelease",
+    "DraftGitHubRelease",
     "ArtifactReproducibilityReport",
     "GenericFileSecondaryArtifact",
     "GenericFileVerificationReport",
     "FileLikeReproducibilityMetadata",
     "GenericFileWithOpenPgpSecondaryArtifact",
-    "GithubWorkflowProvenance",
+    "GitHubWorkflowProvenance",
     "InvalidSecondaryArtifactVerificationReport",
     "InspectReproCountSummary",
     "InspectReproReportV1",

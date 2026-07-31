@@ -124,7 +124,7 @@ class RcPreparationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
                 "cleanup-dev-svn-rcs",
                 "--component-config",
                 str(config_path),
-                "--allow-non-production-release-targets",
+                "--test-target-mode",
                 "1.2.3",
             ],
             cwd=sandbox_dir,
@@ -170,7 +170,7 @@ class RcPreparationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
             env=cli_env(manifest_path),
         )
         self.assertEqual(1, completed.returncode)
-        self.assertIn("--allow-non-production-release-targets", completed.stderr)
+        self.assertIn("--test-target-mode", completed.stderr)
 
     def test_prepare_rc_allows_non_production_release_targets_with_opt_in(self) -> None:
         sandbox_dir = create_build_test_sandbox()
@@ -195,7 +195,7 @@ class RcPreparationCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport
                 "prepare-rc",
                 "--component-config",
                 str(config_path),
-                "--allow-non-production-release-targets",
+                "--test-target-mode",
                 "1.2.3",
             ],
             cwd=clone_dir,

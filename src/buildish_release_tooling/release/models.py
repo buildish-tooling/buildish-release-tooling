@@ -16,68 +16,16 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from buildish_release_tooling.docs.documentation import (
     ComponentOwnedAuthoredModel,
     ConsumerOwnedAuthoredModel,
-    RuntimeDerivedModel,
     SchemaExportSpecification,
 )
 from buildish_release_tooling.release.path_validation import validate_project_relative_path
-
-ReleaseProgram = Literal["asf"]
-ProjectStatus = Literal["tlp", "incubating"]
-
-
-class AtrConfig(ComponentOwnedAuthoredModel):
-    """Validated optional ATR integration policy and release coordinates."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    enabled: bool = Field(default=False, description="Whether the related optional integration or policy block is enabled for this component.")
-    base_url: str | None = Field(default=None, description="Base URL used to discover or publish the related artifact or service resource.")
-    committee: str | None = Field(default=None, description="ASF committee slug that owns the component or ATR publication target.")
-    product_line: str | None = Field(default=None, description="ATR product-line identifier used for the related candidate publication.")
-    source_artifact_paths: list[str] = Field(description="Path globs that select staged source artifacts for the related ATR publication or verification policy.", default_factory=list)
-    binary_artifact_paths: list[str] = Field(description="Path globs that select staged binary artifacts for ATR publication.", default_factory=list)
-    strict_checking: bool = Field(default=False, description="Whether the related check or reporting step should fail the command when warnings or failures are present.")
-    license_check_mode: str = Field(default="both", description="ATR license-check flavor that Buildish should request or report for the related publication run.")
-
-    @field_validator("source_artifact_paths", "binary_artifact_paths", mode="before")
-    @classmethod
-    def _normalize_path_patterns(cls, value: Any) -> list[str]:
-        if value is None:
-            return []
-        if isinstance(value, str):
-            return [item for item in value.splitlines() if item.strip()]
-        if isinstance(value, list):
-            return [str(item) for item in value]
-        raise TypeError("ATR path patterns must be a newline-separated string or a list")
-
-    @field_validator("license_check_mode")
-    @classmethod
-    def _validate_license_check_mode(cls, value: str) -> str:
-        normalized = value.strip().lower()
-        if normalized not in {"both", "lightweight", "rat"}:
-            raise ValueError("ATR license_check_mode must be one of: both, lightweight, rat")
-        return normalized
-
-    @model_validator(mode="after")
-    def _validate_enabled_config(self) -> AtrConfig:
-        if not self.enabled:
-            return self
-        if not self.base_url:
-            raise ValueError("ATR config must define base_url when enabled")
-        if not self.committee:
-            raise ValueError("ATR config must define committee when enabled")
-        if not self.product_line:
-            raise ValueError("ATR config must define product_line when enabled")
-        return self
-
 
 class VerifyRcSelectionConfig(ComponentOwnedAuthoredModel):
     """One canonical reproducibility profile selection."""
@@ -328,127 +276,9 @@ class VerifyRcOverrideFileConfig(ConsumerOwnedAuthoredModel):
     verify_rc: VerifyRcOverrideConfig = Field(description="Nested verify-rc configuration block for the component or local override file.")
 
 
-class ComponentConfig(ComponentOwnedAuthoredModel):
-    """Validated component policy and release-target configuration."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    component_id: str = Field(description="Stable component identifier used across Buildish manifests, reports, and release-state records.")
-    source_artifact_prefix: str = Field(description="Configured top-level directory prefix that the component's source archive should unpack to.")
-    asf_dist_dev_base: str = Field(description="Configured ASF `dist/dev` base URL under which RC materials are staged for this component.")
-    asf_dist_release_base: str = Field(description="Configured ASF `dist/release` base URL under which final source releases are published for this component.")
-    asf_keys_url: str = Field(description="Configured ASF KEYS URL that this component treats as authoritative for RC signature verification.")
-    moving_tags_enabled: bool = Field(description="Whether this component maintains moving release-line tags that are updated during final release publication.")
-    latest_tag_enabled: bool = Field(description="Whether this component publishes a moving `latest` tag in addition to line-specific moving tags.")
-    secondary_targets: list[str] = Field(description="Configured secondary target families that the component publishes in addition to the source artifact.")
-    final_tag_mode: str = Field(description="Configured or recorded policy describing how the final immutable release tag should be created for this component or release run.")
-    vote_release_name: str = Field(description="Human-facing release name that Buildish should use in vote mails, release summaries, and other user-visible output.")
-    release_program: ReleaseProgram = Field(default="asf", description="Release-governance program whose policy model Buildish should apply to this component.")
-    project_status: ProjectStatus = Field(default="tlp", description="Project lifecycle status within the configured release program.")
-    incubator_disclaimer_file: str = Field(default="DISCLAIMER", description="Project-root-relative file path that supplies the approved incubating disclaimer text.")
-    candidate_start_number: int = Field(default=0, description="First numeric candidate suffix to use when no matching candidate tag exists for a version and label.", ge=0)
-    release_summary_include_final_tag_mode: bool = Field(default=False, description="Whether release summary output should explicitly include the configured final-tag mode.")
-    release_verification_guide_url: str = Field(description="User-facing guide URL that Buildish should include when pointing verifiers at the release verification instructions.")
-    verify_rc_instructions: str = Field(description="Human-facing verification instructions that Buildish should include for this component's RC vote materials.")
-    prepare_rc_runs_tests: bool = Field(default=False, description="Whether the component's canonical prepare-rc workflow is expected to run project test steps.")
-    release_branch_ci_required: bool = Field(default=False, description="Whether this component requires a green release-branch CI signal before final publication can proceed.")
-    atr: AtrConfig | None = Field(default=None, description="Nested ATR integration configuration for this component.")
-    verify_rc: VerifyRcConfig | None = Field(default=None, description="Nested verify-rc configuration block for the component or local override file.")
-
-    @property
-    def is_incubating(self) -> bool:
-        """Return whether ASF incubating release policy applies."""
-
-        return self.release_program == "asf" and self.project_status == "incubating"
-
-    @field_validator("secondary_targets", mode="before")
-    @classmethod
-    def _normalize_secondary_targets(cls, value: Any) -> list[str]:
-        if isinstance(value, str):
-            return [item for item in value.split() if item]
-        if isinstance(value, list):
-            return [str(item) for item in value]
-        raise TypeError("secondary_targets must be a whitespace-separated string or a list")
-
-    @field_validator("incubator_disclaimer_file")
-    @classmethod
-    def _validate_incubator_disclaimer_file(cls, value: str) -> str:
-        return validate_project_relative_path(value, field_name="incubator_disclaimer_file")
-
-    @model_validator(mode="after")
-    def _validate_ci_policy(self) -> ComponentConfig:
-        if not self.prepare_rc_runs_tests and not self.release_branch_ci_required:
-            raise ValueError(
-                "component policy must enable prepare_rc_runs_tests or release_branch_ci_required"
-            )
-        return self
-
-
-class PrepareRcState(RuntimeDerivedModel):
-    """Resolved source and artifact state for an RC workflow run."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    resolved_release_branch: str = Field(description="Release branch name that Buildish resolved for the selected version.")
-    resolved_source_ref: str = Field(description="Resolved source Git commit SHA that Buildish selected for release production or verification.")
-    source_date_epoch: int = Field(description="Canonical `SOURCE_DATE_EPOCH` integer carried through RC production and verification.", ge=0)
-    candidate_label: str = Field(default="rc", description="Candidate-series label used in the selected candidate tag.")
-    rc_number: int = Field(description="Numeric RC sequence selected for the related version.", ge=0)
-    rc_tag: str = Field(description="Exact RC Git tag, including the leading `v` prefix and `-rcN` suffix.")
-    final_tag: str = Field(description="Final immutable Git tag that Buildish intends to publish for the released version.")
-    source_artifact_name: str = Field(description="Filename of the staged source release artifact.")
-    source_artifact_root_name: str = Field(description="Root directory name that the source release archive should unpack to.")
-    source_artifact_prefix_path: str = Field(description="Top-level path prefix inside the source release archive.")
-    staging_url: str = Field(description="ASF dev/dist staging directory URL selected for the current RC.")
-
-
-class ReleaseVersionState(RuntimeDerivedModel):
-    """Resolved final-release state for a release workflow run."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    selected_rc_tag: str = Field(description="RC tag that Buildish selected as the winning release candidate for a final release action.")
-    final_tag: str = Field(description="Final immutable Git tag that Buildish intends to publish for the released version.")
-    archive_versions: list[str] = Field(description="Older same-line release versions that Buildish resolved for archival pruning.")
-    release_url: str = Field(description="Primary user-facing URL of the related GitHub release or published release artifact.")
-    moving_tags: list[str] = Field(description="Derived moving tags or aliases that should point at the final released version.")
-
-
-class CommandContext(RuntimeDerivedModel):
-    """Common runtime context passed into command handlers."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
-
-    component_config: ComponentConfig = Field(description="Validated component configuration resolved for the current Buildish command run.")
-    component_config_path: Path | None = Field(default=None, description="Filesystem path of the component configuration file used for the current Buildish command run.")
-
-
 VerifyRcOverrideFileConfig.schema_export = SchemaExportSpecification(
     filename="verify-rc-override-file-config.schema.json",
     audience="internal",
     stability="stable",
     summary="Local non-canonical verify-rc reproducibility override file passed through `--repro-override-file`.",
-)
-ComponentConfig.schema_export = SchemaExportSpecification(
-    filename="component-config.schema.json",
-    file_path="release-config.yaml",
-    summary="Component-authored `release-config.yaml` contract for release policy and target integration settings.",
-)
-PrepareRcState.schema_export = SchemaExportSpecification(
-    filename="prepare-rc-state.schema.json",
-    audience="internal",
-    stability="stable",
-    summary="Resolved prepare-rc state persisted between release workflow steps.",
-)
-ReleaseVersionState.schema_export = SchemaExportSpecification(
-    filename="release-version-state.schema.json",
-    audience="internal",
-    stability="stable",
-    summary="Resolved release-version state persisted across final release workflow steps.",
-)
-CommandContext.schema_export = SchemaExportSpecification(
-    filename="command-context.schema.json",
-    audience="internal",
-    stability="stable",
-    summary="Runtime command context built from CLI arguments and validated component configuration.",
 )

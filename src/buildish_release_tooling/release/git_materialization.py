@@ -24,7 +24,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 from buildish_release_tooling.release.git_repo import GitRepository
-from buildish_release_tooling.release.models import PrepareRcState
+from buildish_release_tooling.release.core.state import CandidateReleaseState
 from buildish_release_tooling.release.process import CommandExecutionError, run_logged_command
 
 
@@ -42,7 +42,7 @@ def validate_full_ref_name(ref_name: str) -> str:
     return ref_name
 
 
-def default_materialized_ref_name(state: PrepareRcState) -> str:
+def default_materialized_ref_name(state: CandidateReleaseState) -> str:
     """Derive one temporary remote ref name for a detached materialization commit."""
 
     run_id = os.environ.get("GITHUB_RUN_ID", "").strip()

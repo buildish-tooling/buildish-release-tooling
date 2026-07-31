@@ -247,7 +247,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
                 / "buildish"
                 / "buildish-release-tooling"
             ).as_uri(),
-            config_payload["asf_dist_dev_base"],
+            config_payload["policy_profiles"]["asf"]["dist_dev_base"],
         )
         self.assertEqual(
             (
@@ -259,7 +259,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
                 / "buildish"
                 / "buildish-release-tooling"
             ).as_uri(),
-            config_payload["asf_dist_release_base"],
+            config_payload["policy_profiles"]["asf"]["dist_release_base"],
         )
         self.assertTrue(
             (

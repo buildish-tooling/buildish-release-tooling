@@ -26,6 +26,8 @@ from urllib.parse import urlparse
 
 import yaml
 
+from buildish_release_tooling.release.config import CommandContext, require_asf_profile
+from buildish_release_tooling.release.foundations.asf.config import AsfAtrConfig
 from buildish_release_tooling.release.command_manifests import (
     PublishAtrCandidateManifest,
     ReportAtrChecksManifest,
@@ -33,7 +35,7 @@ from buildish_release_tooling.release.command_manifests import (
 from buildish_release_tooling.release.external_json import parse_json_object
 from buildish_release_tooling.release.git_repo import GitRepository
 from buildish_release_tooling.release.manifest import write_manifest
-from buildish_release_tooling.release.models import AtrConfig, CommandContext, PrepareRcState
+from buildish_release_tooling.release.core.state import CandidateReleaseState
 from buildish_release_tooling.release.process import run_logged_command
 from buildish_release_tooling.release.rc_vote_manifest import (
     DEFAULT_MANIFEST_MAX_BYTES,
@@ -81,8 +83,8 @@ class AtrCheckSummary:
         return self.counts.get("failure", 0) + self.counts.get("exception", 0)
 
 
-def _required_atr_config(context: CommandContext) -> AtrConfig:
-    atr = context.component_config.atr
+def _required_atr_config(context: CommandContext) -> AsfAtrConfig:
+    atr = require_asf_profile(context.release_config).atr
     if atr is None or not atr.enabled:
         raise ValueError("ATR integration is not enabled for this component configuration")
     return atr
@@ -297,12 +299,11 @@ def _atr_check_status(
     )
 
 
-def _staged_candidate_file_urls(context: CommandContext, state: PrepareRcState, version: str) -> list[tuple[str, str]]:
-    staging_root = state.staging_url.rstrip("/")
+def _staged_candidate_file_urls(context: CommandContext, state: CandidateReleaseState, version: str) -> list[tuple[str, str]]:
+    staging_root = state.candidate_publication_uri.rstrip("/")
     file_names = [
         *required_source_release_file_names(
-            context.component_config.source_artifact_prefix,
-            version,
+            state.source_artifact_name,
         ),
         *required_rc_vote_manifest_file_names(),
     ]
@@ -311,7 +312,7 @@ def _staged_candidate_file_urls(context: CommandContext, state: PrepareRcState, 
 
 def _download_staged_candidate_files(
     context: CommandContext,
-    state: PrepareRcState,
+    state: CandidateReleaseState,
     *,
     version: str,
     download_root: Path,
@@ -352,7 +353,7 @@ def _append_publish_atr_summary(
     *,
     runtime: AtrRuntimeConfig,
     version: str,
-    state: PrepareRcState,
+    state: CandidateReleaseState,
     release_mode: str,
     uploaded_files: list[Path],
     latest_revision: str | None,
@@ -392,7 +393,7 @@ def run_publish_atr_candidate(args: Namespace) -> Path:
     repo = GitRepository.from_current_worktree()
     version, state = _resolve_prepare_rc_state_from_args(args, context, repo)
     runtime = _resolve_atr_runtime_config(context)
-    manifest_path = _manifest_path(context.component_config.component_id, "publish-atr-candidate")
+    manifest_path = _manifest_path(context.release_config.component.id, "publish-atr-candidate")
     summary = SummaryWriter.from_environment()
     with _temporary_build_dir("publish-atr-candidate") as temp_root:
         atr_config_path = temp_root / "atr.yaml"
@@ -440,7 +441,7 @@ def run_publish_atr_candidate(args: Namespace) -> Path:
     write_manifest(
         manifest_path,
         PublishAtrCandidateManifest(
-            component=context.component_config.component_id,
+            component=context.release_config.component.id,
             version=version,
             rc_tag=state.rc_tag,
             atr_base_url=runtime.base_url,
@@ -526,7 +527,7 @@ def run_report_atr_checks(args: Namespace) -> Path:
     repo = GitRepository.from_current_worktree()
     version, state = _resolve_prepare_rc_state_from_args(args, context, repo)
     runtime = _resolve_atr_runtime_config(context)
-    manifest_path = _manifest_path(context.component_config.component_id, "report-atr-checks")
+    manifest_path = _manifest_path(context.release_config.component.id, "report-atr-checks")
     summary = SummaryWriter.from_environment()
     with _temporary_build_dir("report-atr-checks") as temp_root:
         atr_config_path = temp_root / "atr.yaml"
@@ -547,7 +548,7 @@ def run_report_atr_checks(args: Namespace) -> Path:
     write_manifest(
         manifest_path,
         ReportAtrChecksManifest(
-            component=context.component_config.component_id,
+            component=context.release_config.component.id,
             version=version,
             rc_tag=state.rc_tag,
             atr_base_url=runtime.base_url,

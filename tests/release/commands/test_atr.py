@@ -89,7 +89,7 @@ class AtrCommandsIntegrationTest(ReleaseCommandsIntegrationTestSupport):
                 "publish-atr-candidate",
                 "--component-config",
                 str(config_path),
-                "--allow-non-production-release-targets",
+                "--test-target-mode",
                 "--wait-for-checks",
                 "--rc-tag",
                 "v1.2.3-rc0",

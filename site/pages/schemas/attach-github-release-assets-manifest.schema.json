@@ -118,7 +118,7 @@
     "checksum_algorithms",
     "gpg_fingerprint"
   ],
-  "title": "Buildish Release Tooling AttachGithubReleaseAssetsManifest",
+  "title": "Buildish Release Tooling AttachGitHubReleaseAssetsManifest",
   "type": "object",
   "x-buildish-contract": {
     "category": "emitted",

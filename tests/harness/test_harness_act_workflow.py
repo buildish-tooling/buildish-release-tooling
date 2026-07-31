@@ -246,7 +246,7 @@ class ActWorkflowRewriteUnitTest(unittest.TestCase):
         self.assertIn('case "$command_name" in', script)
         self.assertIn("create-release-branch|verify-rc)", script)
         self.assertIn(
-            'if [[ "$command_name" == "--allow-non-production-release-targets" ]]; then',
+            'if [[ "$command_name" == "--test-target-mode" ]]; then',
             script,
         )
         self.assertIn(
@@ -312,7 +312,7 @@ class ActWorkflowRewriteUnitTest(unittest.TestCase):
                 "--frozen",
                 "buildish-release-tooling",
                 "create-release-branch",
-                "--allow-non-production-release-targets",
+                "--test-target-mode",
                 "--component-config",
                 str(
                     workspace.root / "buildish-release-tooling" / "release-config.yaml"

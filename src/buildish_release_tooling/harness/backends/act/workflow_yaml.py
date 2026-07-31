@@ -37,31 +37,31 @@ class WorkflowJobDefinition:
     needs: list[str]
 
 
-class _GithubActionsYamlLoader(yaml.SafeLoader):
+class _GitHubActionsYamlLoader(yaml.SafeLoader):
     """YAML loader that keeps GitHub Actions keys like `on` as plain strings."""
 
 
-class _GithubActionsYamlDumper(yaml.SafeDumper):
+class _GitHubActionsYamlDumper(yaml.SafeDumper):
     """YAML dumper that renders multiline shell snippets as literal blocks."""
 
 
-_GithubActionsYamlLoader.yaml_implicit_resolvers = copy.deepcopy(
+_GitHubActionsYamlLoader.yaml_implicit_resolvers = copy.deepcopy(
     yaml.SafeLoader.yaml_implicit_resolvers
 )
-for _first_char, _resolvers in list(_GithubActionsYamlLoader.yaml_implicit_resolvers.items()):
-    _GithubActionsYamlLoader.yaml_implicit_resolvers[_first_char] = [
+for _first_char, _resolvers in list(_GitHubActionsYamlLoader.yaml_implicit_resolvers.items()):
+    _GitHubActionsYamlLoader.yaml_implicit_resolvers[_first_char] = [
         (tag, pattern) for tag, pattern in _resolvers if tag != "tag:yaml.org,2002:bool"
     ]
 yaml.add_implicit_resolver(
     "tag:yaml.org,2002:bool",
     re.compile(r"^(?:true|True|TRUE|false|False|FALSE)$"),
     list("tTfF"),
-    Loader=_GithubActionsYamlLoader,
+    Loader=_GitHubActionsYamlLoader,
 )
 
 
 def _represent_workflow_string(
-    dumper: _GithubActionsYamlDumper,
+    dumper: _GitHubActionsYamlDumper,
     value: str,
 ) -> yaml.nodes.ScalarNode:
     """Represent multiline workflow strings as literal blocks for readable `run:` scripts."""
@@ -70,7 +70,7 @@ def _represent_workflow_string(
     return dumper.represent_scalar("tag:yaml.org,2002:str", value, style=style)
 
 
-_GithubActionsYamlDumper.add_representer(str, _represent_workflow_string)
+_GitHubActionsYamlDumper.add_representer(str, _represent_workflow_string)
 
 
 def _load_github_actions_yaml(path: Path) -> YamlMapping:
@@ -79,7 +79,7 @@ def _load_github_actions_yaml(path: Path) -> YamlMapping:
     return require_yaml_mapping(
         yaml.load(  # noqa: S506
             read_text_file_bounded(path, max_bytes=DEFAULT_CONFIG_PARSE_MAX_BYTES),
-            Loader=_GithubActionsYamlLoader,  # noqa: S506
+            Loader=_GitHubActionsYamlLoader,  # noqa: S506
         ),
         source=f"workflow {path}",
     )
@@ -145,7 +145,7 @@ def _dump_workflow_yaml(payload: YamlMapping) -> str:
 
     rendered = yaml.dump(
         payload,
-        Dumper=_GithubActionsYamlDumper,
+        Dumper=_GitHubActionsYamlDumper,
         sort_keys=False,
         width=1000,
     )

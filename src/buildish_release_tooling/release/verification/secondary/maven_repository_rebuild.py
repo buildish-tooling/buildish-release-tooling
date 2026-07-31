@@ -32,8 +32,8 @@ from buildish_release_tooling.release.contracts import (
     MavenRepositoryInventoryV1,
     MavenRepositorySecondaryArtifact,
 )
+from buildish_release_tooling.release.config import ReleaseConfig
 from buildish_release_tooling.release.models import (
-    ComponentConfig,
     VerifyRcMavenRepositoryComparisonConfig,
     VerifyRcOverrideConfig,
 )
@@ -64,7 +64,7 @@ def verify_maven_repository_reproducibility(
     *,
     artifact_id: str,
     work_dir: Path,
-    component_config: ComponentConfig | None,
+    component_config: ReleaseConfig | None,
     project_root: Path | None,
     source_date_epoch: int | None,
     inspection_bundle_root: Path | None,

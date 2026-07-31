@@ -31,8 +31,8 @@ from buildish_release_tooling.release.contracts import (
     ArtifactReproducibilityBuildOverrideReport,
     ArtifactReproducibilityOverrideReport,
 )
+from buildish_release_tooling.release.config import ReleaseConfig
 from buildish_release_tooling.release.models import (
-    ComponentConfig,
     VerifyRcBuildConfig,
     VerifyRcBuildOverrideConfig,
     VerifyRcOverrideConfig,
@@ -116,14 +116,14 @@ class ResolvedRebuildProfile:
 
 
 def resolve_rebuild_profile(
-    component_config: ComponentConfig,
+    component_config: ReleaseConfig,
     profile_id: str,
     *,
     expected_kinds: Collection[str],
 ) -> VerifyRcProfileConfig:
     """Resolve one configured reproducibility profile and validate its declared kind."""
 
-    verify_rc = component_config.verify_rc
+    verify_rc = component_config.verification
     if verify_rc is None:
         raise ValueError("component config does not define any verify_rc reproducibility profiles")
     try:
@@ -142,7 +142,7 @@ def resolve_rebuild_profile(
 
 
 def resolve_effective_rebuild_profile(
-    component_config: ComponentConfig,
+    component_config: ReleaseConfig,
     profile_id: str,
     *,
     expected_kinds: Collection[str],
@@ -184,12 +184,12 @@ def resolve_effective_rebuild_profile(
 
 
 def validate_rebuild_profile_overrides(
-    component_config: ComponentConfig,
+    component_config: ReleaseConfig,
     profile_overrides: VerifyRcOverrideConfig,
 ) -> None:
     """Validate that all local override profile_ids exist in the canonical component config."""
 
-    verify_rc = component_config.verify_rc
+    verify_rc = component_config.verification
     if verify_rc is None:
         raise ValueError("component config does not define any verify_rc reproducibility profiles")
     known_profile_ids = set(verify_rc.profiles)

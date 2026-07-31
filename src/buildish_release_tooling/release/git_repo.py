@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from buildish_release_tooling.release.process import run_logged_command
-from buildish_release_tooling.release.release_state import (
+from buildish_release_tooling.release.core.naming import (
     highest_existing_rc_number_or_zero,
     latest_rc_tag_from_tags,
     next_candidate_number_from_tags,

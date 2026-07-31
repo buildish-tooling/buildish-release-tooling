@@ -25,8 +25,8 @@ from typing import Any, cast
 from unittest.mock import patch
 
 from buildish_release_tooling.release.command_logging import command_log_sink
+from buildish_release_tooling.release.config import ReleaseConfig
 from buildish_release_tooling.release.models import (
-    ComponentConfig,
     VerifyRcBuildConfig,
     VerifyRcBuildOverrideConfig,
     VerifyRcOverrideConfig,
@@ -42,29 +42,38 @@ from buildish_release_tooling.release.verification.rebuild import (
 )
 
 
+def _release_config_with_profiles(profiles: dict[str, object]) -> ReleaseConfig:
+    return ReleaseConfig.model_validate(
+        {
+            "component": {
+                "id": "buildish-example",
+                "display_name": "Buildish Example",
+            },
+            "source": {
+                "selection": "explicit-ref-or-default-branch",
+                "default_branch": "main",
+                "snapshot": {"mode": "platform-generated"},
+                "checks": {
+                    "run_selected_ref_tests": True,
+                    "require_release_branch_ci": False,
+                },
+            },
+            "lifecycle": {"mode": "direct"},
+            "publication": {
+                "authoritative": {"kind": "github-release"},
+            },
+            "verification": {"profiles": profiles},
+        }
+    )
+
+
 class VerificationRebuildTest(unittest.TestCase):
     """Coverage for reproducibility profile resolution and host-direct rebuild execution."""
 
     @staticmethod
-    def _component_config_with_rebuild_profiles() -> ComponentConfig:
-        return ComponentConfig.model_validate(
+    def _component_config_with_rebuild_profiles() -> ReleaseConfig:
+        return _release_config_with_profiles(
             {
-                "component_id": "buildish-example",
-                "source_artifact_prefix": "apache-buildish-example",
-                "asf_dist_dev_base": "https://dist.apache.org/repos/dist/dev/incubator/buildish",
-                "asf_dist_release_base": "https://downloads.apache.org/incubator/buildish",
-                "asf_keys_url": "https://downloads.apache.org/incubator/buildish/KEYS",
-                "moving_tags_enabled": True,
-                "latest_tag_enabled": False,
-                "secondary_targets": ["github-action"],
-                "final_tag_mode": "rc-source-commit",
-                "vote_release_name": "Buildish Example",
-                "release_verification_guide_url": "https://example.invalid/release-verification",
-                "verify_rc_instructions": "verify",
-                "prepare_rc_runs_tests": False,
-                "release_branch_ci_required": True,
-                "verify_rc": {
-                    "profiles": {
                         "bootstrap-zip": {
                             "kind": "generic-file",
                             "build": {
@@ -92,30 +101,12 @@ class VerificationRebuildTest(unittest.TestCase):
                                 "mode": "exact-bytes",
                             },
                         },
-                    }
-                },
             }
         )
 
     def test_resolve_rebuild_profile_requires_matching_kind(self) -> None:
-        component_config = ComponentConfig.model_validate(
+        component_config = _release_config_with_profiles(
             {
-                "component_id": "buildish-example",
-                "source_artifact_prefix": "apache-buildish-example",
-                "asf_dist_dev_base": "https://dist.apache.org/repos/dist/dev/incubator/buildish",
-                "asf_dist_release_base": "https://downloads.apache.org/incubator/buildish",
-                "asf_keys_url": "https://downloads.apache.org/incubator/buildish/KEYS",
-                "moving_tags_enabled": True,
-                "latest_tag_enabled": False,
-                "secondary_targets": ["github-action"],
-                "final_tag_mode": "rc-source-commit",
-                "vote_release_name": "Buildish Example",
-                "release_verification_guide_url": "https://example.invalid/release-verification",
-                "verify_rc_instructions": "verify",
-                "prepare_rc_runs_tests": False,
-                "release_branch_ci_required": True,
-                "verify_rc": {
-                    "profiles": {
                         "bootstrap-zip": {
                             "kind": "generic-file",
                             "build": {
@@ -126,8 +117,6 @@ class VerificationRebuildTest(unittest.TestCase):
                                 "mode": "exact-bytes",
                             },
                         }
-                    }
-                },
             }
         )
 
@@ -320,24 +309,8 @@ class VerificationRebuildTest(unittest.TestCase):
         )
 
     def test_validate_rebuild_profile_overrides_rejects_unknown_profile_id(self) -> None:
-        component_config = ComponentConfig.model_validate(
+        component_config = _release_config_with_profiles(
             {
-                "component_id": "buildish-example",
-                "source_artifact_prefix": "apache-buildish-example",
-                "asf_dist_dev_base": "https://dist.apache.org/repos/dist/dev/incubator/buildish",
-                "asf_dist_release_base": "https://downloads.apache.org/incubator/buildish",
-                "asf_keys_url": "https://downloads.apache.org/incubator/buildish/KEYS",
-                "moving_tags_enabled": True,
-                "latest_tag_enabled": False,
-                "secondary_targets": ["github-action"],
-                "final_tag_mode": "rc-source-commit",
-                "vote_release_name": "Buildish Example",
-                "release_verification_guide_url": "https://example.invalid/release-verification",
-                "verify_rc_instructions": "verify",
-                "prepare_rc_runs_tests": False,
-                "release_branch_ci_required": True,
-                "verify_rc": {
-                    "profiles": {
                         "bootstrap-zip": {
                             "kind": "generic-file",
                             "build": {
@@ -346,8 +319,6 @@ class VerificationRebuildTest(unittest.TestCase):
                             },
                             "comparison": {"mode": "exact-bytes"},
                         }
-                    }
-                },
             }
         )
         profile_overrides = VerifyRcOverrideConfig.model_validate(
@@ -452,24 +423,8 @@ class VerificationRebuildTest(unittest.TestCase):
             script_dir.mkdir(parents=True)
             work_dir.mkdir()
 
-            component_config = ComponentConfig.model_validate(
+            component_config = _release_config_with_profiles(
                 {
-                    "component_id": "buildish-example",
-                    "source_artifact_prefix": "apache-buildish-example",
-                    "asf_dist_dev_base": "https://dist.apache.org/repos/dist/dev/incubator/buildish",
-                    "asf_dist_release_base": "https://downloads.apache.org/incubator/buildish",
-                    "asf_keys_url": "https://downloads.apache.org/incubator/buildish/KEYS",
-                    "moving_tags_enabled": True,
-                    "latest_tag_enabled": False,
-                    "secondary_targets": ["github-action"],
-                    "final_tag_mode": "rc-source-commit",
-                    "vote_release_name": "Buildish Example",
-                    "release_verification_guide_url": "https://example.invalid/release-verification",
-                    "verify_rc_instructions": "verify",
-                    "prepare_rc_runs_tests": False,
-                    "release_branch_ci_required": True,
-                    "verify_rc": {
-                        "profiles": {
                             "bootstrap-zip": {
                                 "kind": "generic-file",
                                 "build": {
@@ -486,12 +441,10 @@ class VerificationRebuildTest(unittest.TestCase):
                                     "mode": "exact-bytes",
                                 },
                             }
-                        }
-                    },
                 }
             )
-            self.assertIsNotNone(component_config.verify_rc)
-            verify_rc = cast(Any, component_config.verify_rc)
+            self.assertIsNotNone(component_config.verification)
+            verify_rc = cast(Any, component_config.verification)
             profile = verify_rc.profiles["bootstrap-zip"]
 
             with patch.dict(

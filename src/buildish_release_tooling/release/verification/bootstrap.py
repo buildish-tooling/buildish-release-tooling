@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from textwrap import dedent
 
-from buildish_release_tooling.release.gpg_signing import detached_ascii_sign
+from buildish_release_tooling.release.signing.openpgp import detached_ascii_sign
 from buildish_release_tooling.release.source_artifact import sha512, write_sha512_file
 
 VERIFY_RC_BOOTSTRAP_SCRIPT_NAME = "verify-rc-bootstrap.sh"

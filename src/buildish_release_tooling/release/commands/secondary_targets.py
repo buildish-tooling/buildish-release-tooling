@@ -17,32 +17,38 @@
 from __future__ import annotations
 
 from argparse import Namespace
+
+from buildish_release_tooling.release.config import (
+    latest_tag_enabled,
+    moving_tags_enabled,
+    secondary_target_kinds,
+)
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
 from buildish_release_tooling.release.dockerhub import parse_image_reference, publish_moving_aliases
 from buildish_release_tooling.release.git_repo import GitRepository
-from buildish_release_tooling.release.github_checks import resolve_repository_slug
-from buildish_release_tooling.release.github_release_selection import asset_release_url
-from buildish_release_tooling.release.github_releases import (
+from buildish_release_tooling.release.platforms.github.checks import resolve_repository_slug
+from buildish_release_tooling.release.platforms.github.selection import asset_release_url
+from buildish_release_tooling.release.platforms.github.releases import (
     list_releases,
     release_by_tag,
     upload_release_assets,
 )
-from buildish_release_tooling.release.gpg_signing import (
+from buildish_release_tooling.release.signing.openpgp import (
     detached_ascii_sign,
     import_private_key_from_secret,
     secret_key_fingerprint,
 )
 from buildish_release_tooling.release.command_manifests import (
-    AttachGithubReleaseAssetsManifest,
+    AttachGitHubReleaseAssetsManifest,
     PublishDockerhubMovingTagsManifest,
     UpdateMovingImageAliasesManifest,
     UpdateMovingTagsManifest,
 )
 from buildish_release_tooling.release.manifest import write_manifest
-from buildish_release_tooling.release.release_state import derive_final_tag, derive_moving_tags
+from buildish_release_tooling.release.core.naming import derive_final_tag, derive_moving_tags
 from buildish_release_tooling.release.source_artifact import checksum, write_checksum_file
 from buildish_release_tooling.release.summary import SummaryWriter
 
@@ -160,7 +166,7 @@ def run_update_moving_tags(args: Namespace) -> Path:
     context = _context(args)
     repo = GitRepository.from_current_worktree()
     version = args.version
-    if "github-action" not in context.component_config.secondary_targets:
+    if "github-action" not in secondary_target_kinds(context.release_config):
         raise ValueError("update-moving-tags currently supports only github-action aliases")
     final_tag = derive_final_tag(version)
     if not repo.tag_exists(final_tag):
@@ -169,9 +175,9 @@ def run_update_moving_tags(args: Namespace) -> Path:
     repository_slug = _repository_slug_or_none(repo)
     moving_tags = derive_moving_tags(
         version,
-        context.component_config.secondary_targets,
-        context.component_config.moving_tags_enabled,
-        context.component_config.latest_tag_enabled,
+        secondary_target_kinds(context.release_config),
+        moving_tags_enabled(context.release_config),
+        latest_tag_enabled(context.release_config),
     )
     updated_tags: list[str] = []
     skipped_tags: list[str] = []
@@ -195,12 +201,12 @@ def run_update_moving_tags(args: Namespace) -> Path:
         )
         updated_tags.append(moving_tag)
         tag_update_modes.append(f"{moving_tag}:{tag_update_mode}")
-    manifest_path = _manifest_path(context.component_config.component_id, "update-moving-tags")
+    manifest_path = _manifest_path(context.release_config.component.id, "update-moving-tags")
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
         UpdateMovingTagsManifest(
-            component=context.component_config.component_id,
+            component=context.release_config.component.id,
             version=version,
             final_tag=final_tag,
             target_commit=target_commit,
@@ -224,16 +230,16 @@ def run_update_moving_image_aliases(args: Namespace) -> Path:
     version = args.version
     image_aliases = derive_moving_tags(
         version,
-        context.component_config.secondary_targets,
-        context.component_config.moving_tags_enabled,
-        context.component_config.latest_tag_enabled,
+        secondary_target_kinds(context.release_config),
+        moving_tags_enabled(context.release_config),
+        latest_tag_enabled(context.release_config),
     )
-    manifest_path = _manifest_path(context.component_config.component_id, "update-moving-image-aliases")
+    manifest_path = _manifest_path(context.release_config.component.id, "update-moving-image-aliases")
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
         UpdateMovingImageAliasesManifest(
-            component=context.component_config.component_id,
+            component=context.release_config.component.id,
             version=version,
             exact_image_tag=version,
             image_aliases=image_aliases,
@@ -252,7 +258,7 @@ def run_publish_dockerhub_moving_tags(args: Namespace) -> Path:
     """Publish moving Docker Hub aliases for one already-pushed exact image reference."""
 
     context = _context(args)
-    if "dockerhub" not in context.component_config.secondary_targets:
+    if "dockerhub" not in secondary_target_kinds(context.release_config):
         raise ValueError("publish-dockerhub-moving-tags requires the dockerhub secondary target")
     version = args.version
     source_image = args.source_image
@@ -269,21 +275,21 @@ def run_publish_dockerhub_moving_tags(args: Namespace) -> Path:
         )
     image_aliases = derive_moving_tags(
         version,
-        context.component_config.secondary_targets,
-        context.component_config.moving_tags_enabled,
-        context.component_config.latest_tag_enabled,
+        secondary_target_kinds(context.release_config),
+        moving_tags_enabled(context.release_config),
+        latest_tag_enabled(context.release_config),
     )
     target_alias_refs = [f"{image_reference.repository}:{alias}" for alias in image_aliases]
     published_alias_refs = publish_moving_aliases(
         source_image=source_image,
         target_alias_refs=target_alias_refs,
     )
-    manifest_path = _manifest_path(context.component_config.component_id, "publish-dockerhub-moving-tags")
+    manifest_path = _manifest_path(context.release_config.component.id, "publish-dockerhub-moving-tags")
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
         PublishDockerhubMovingTagsManifest(
-            component=context.component_config.component_id,
+            component=context.release_config.component.id,
             version=version,
             source_image=source_image,
             image_repository=image_reference.repository,
@@ -326,15 +332,15 @@ def run_attach_github_release_assets(args: Namespace) -> Path:
         clobber=True,
     )
 
-    manifest_path = _manifest_path(context.component_config.component_id, "attach-github-release-assets")
+    manifest_path = _manifest_path(context.release_config.component.id, "attach-github-release-assets")
     summary = SummaryWriter.from_environment()
     release_name = release_payload.get("name")
     release_tag = release_payload.get("tag_name")
     release_url = asset_release_url(release_payload)
     write_manifest(
         manifest_path,
-        AttachGithubReleaseAssetsManifest(
-            component=context.component_config.component_id,
+        AttachGitHubReleaseAssetsManifest(
+            component=context.release_config.component.id,
             version=version,
             repository_slug=repository_slug,
             release_id=str(release_id),

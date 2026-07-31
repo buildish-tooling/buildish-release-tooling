@@ -22,7 +22,7 @@ import unittest
 from dataclasses import dataclass
 from pathlib import Path
 
-from buildish_release_tooling.release.asf_svn import AsfSvnClient
+from buildish_release_tooling.release.foundations.asf.dist import AsfSvnClient
 
 from tests.support import (
     checkout_svn_repo,
@@ -90,7 +90,7 @@ COMPONENT_CASES = (
         prepare_rc_tags=("v1.2.3-rc0",),
         expected_prepare_rc_number="1",
         expected_prepare_rc_tag="v1.2.3-rc1",
-        expected_final_tag_mode="rc-source-commit",
+        expected_final_tag_mode="exact-source-commit",
         release_version_tags=("v1.2.3-rc0",),
         expected_selected_rc_tag="v1.2.3-rc0",
         published_release_versions=("1.2.1", "1.2.2", "1.3.0"),
@@ -104,7 +104,7 @@ COMPONENT_CASES = (
         prepare_rc_tags=(),
         expected_prepare_rc_number="0",
         expected_prepare_rc_tag="v1.2.3-rc0",
-        expected_final_tag_mode="rc-source-commit",
+        expected_final_tag_mode="exact-source-commit",
         release_version_tags=("v1.2.3-rc1",),
         expected_selected_rc_tag="v1.2.3-rc1",
         published_release_versions=("1.2.1", "1.2.2", "1.3.0"),
@@ -264,7 +264,7 @@ class ComponentMatrixIntegrationTest(unittest.TestCase):
                         "release-version",
                         "--component-config",
                         str(config_path),
-                        "--allow-non-production-release-targets",
+                        "--test-target-mode",
                         case.version,
                     ],
                     cwd=clone_dir,

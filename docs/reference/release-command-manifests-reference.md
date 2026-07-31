@@ -25,7 +25,7 @@ Back to the [reference overview](../release-model-schema-reference/).
 
 ## Type index
 
-- [AttachGithubReleaseAssetsManifest](#attachgithubreleaseassetsmanifest) — Action manifest emitted after uploading primary and derived assets to a GitHub release.
+- [AttachGitHubReleaseAssetsManifest](#attachgithubreleaseassetsmanifest) — Action manifest emitted after uploading primary and derived assets to a GitHub release.
 - [BuildSourceRcManifest](#buildsourcercmanifest) — Action manifest emitted after building and staging the signed source RC bundle.
 - [CleanupDevSvnRcsManifest](#cleanupdevsvnrcsmanifest) — Action manifest emitted after old or conflicting RC staging directories are removed.
 - [CommandActionManifest](#commandactionmanifest) — Common top-level shape for command action manifests.
@@ -33,7 +33,7 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [CreateRcMaterializationTagManifest](#creatercmaterializationtagmanifest) — Action manifest emitted after tagging one detached RC materialization commit.
 - [CreateReleaseBranchManifest](#createreleasebranchmanifest) — Action manifest emitted after resolving or creating a release branch.
 - [CreateSourceArtifactManifest](#createsourceartifactmanifest) — Action manifest emitted after creating one local source release artifact.
-- [FinalizeDraftGithubReleaseManifest](#finalizedraftgithubreleasemanifest) — Action manifest emitted after finalizing a selected GitHub draft release.
+- [FinalizeDraftGitHubReleaseManifest](#finalizedraftgithubreleasemanifest) — Action manifest emitted after finalizing a selected GitHub draft release.
 - [FinalizeRcVoteMaterialsManifest](#finalizercvotematerialsmanifest) — Action manifest emitted after publishing and signing final RC vote materials.
 - [MaterializeRcGitContentManifest](#materializercgitcontentmanifest) — Action manifest emitted after building detached RC materialization Git content.
 - [PrepareRcManifest](#preparercmanifest) — Action manifest emitted after prepare-rc resolves one RC workflow state bundle.
@@ -44,12 +44,12 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [RecordArtifactManifest](#recordartifactmanifest) — Action manifest emitted after writing one typed secondary-artifact bundle.
 - [ReleaseVersionManifest](#releaseversionmanifest) — Action manifest emitted after a full release-version orchestration run completes.
 - [ReportAtrChecksManifest](#reportatrchecksmanifest) — Action manifest emitted after summarizing ATR checks for one candidate revision.
-- [SyncDraftGithubReleaseManifest](#syncdraftgithubreleasemanifest) — Action manifest emitted after synchronizing the draft GitHub release with staged RC artifacts.
+- [SyncDraftGitHubReleaseManifest](#syncdraftgithubreleasemanifest) — Action manifest emitted after synchronizing the draft GitHub release with staged RC artifacts.
 - [UpdateMovingImageAliasesManifest](#updatemovingimagealiasesmanifest) — Action manifest emitted after resolving moving OCI image aliases for publication.
 - [UpdateMovingTagsManifest](#updatemovingtagsmanifest) — Action manifest emitted after updating moving Git tags for a final release.
 
 <a id="attachgithubreleaseassetsmanifest"></a>
-### AttachGithubReleaseAssetsManifest
+### AttachGitHubReleaseAssetsManifest
 
 Action manifest emitted after uploading primary and derived assets to a GitHub release.
 
@@ -234,7 +234,7 @@ Action manifest emitted after creating one local source release artifact.
 | <a id="createsourceartifactmanifest-source-artifact-sha512"></a>`source_artifact_sha512` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | SHA-512 digest of the staged or locally produced source release artifact. |
 
 <a id="finalizedraftgithubreleasemanifest"></a>
-### FinalizeDraftGithubReleaseManifest
+### FinalizeDraftGitHubReleaseManifest
 
 Action manifest emitted after finalizing a selected GitHub draft release.
 
@@ -520,7 +520,7 @@ Action manifest emitted after summarizing ATR checks for one candidate revision.
 | <a id="reportatrchecksmanifest-would-block-release"></a>`would_block_release` | Literal['true', 'false'] | yes | Whether the related check result would block release publication under the requested strictness policy. |
 
 <a id="syncdraftgithubreleasemanifest"></a>
-### SyncDraftGithubReleaseManifest
+### SyncDraftGitHubReleaseManifest
 
 Action manifest emitted after synchronizing the draft GitHub release with staged RC artifacts.
 

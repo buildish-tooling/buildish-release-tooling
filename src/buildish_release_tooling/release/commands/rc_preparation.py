@@ -19,7 +19,8 @@ from __future__ import annotations
 from argparse import Namespace
 from pathlib import Path
 
-from buildish_release_tooling.release.asf_svn import AsfSvnClient, url_join
+from buildish_release_tooling.release.config import require_asf_profile
+from buildish_release_tooling.release.foundations.asf.dist import AsfSvnClient, url_join
 from buildish_release_tooling.release.command_manifests import (
     BuildSourceRcManifest,
     CleanupDevSvnRcsManifest,
@@ -27,7 +28,7 @@ from buildish_release_tooling.release.command_manifests import (
     PrepareRcManifest,
 )
 from buildish_release_tooling.release.git_repo import GitRepository
-from buildish_release_tooling.release.gpg_signing import (
+from buildish_release_tooling.release.signing.openpgp import (
     detached_ascii_sign,
     import_private_key_from_secret,
 )
@@ -57,10 +58,10 @@ def run_prepare_rc(args: Namespace) -> Path:
     context = _context(args)
     repo = GitRepository.from_current_worktree()
     version, state = _resolve_prepare_rc_state_from_args(args, context, repo)
-    manifest_path = _manifest_path(context.component_config.component_id, "prepare-rc")
+    manifest_path = _manifest_path(context.release_config.component.id, "prepare-rc")
     summary = SummaryWriter.from_environment()
     manifest_entries = PrepareRcManifest(
-        component=context.component_config.component_id,
+        component=context.release_config.component.id,
         version=version,
         resolved_source_ref=state.resolved_source_ref,
         source_date_epoch=str(state.source_date_epoch),
@@ -71,8 +72,8 @@ def run_prepare_rc(args: Namespace) -> Path:
         source_artifact_name=state.source_artifact_name,
         source_artifact_root_name=state.source_artifact_root_name,
         source_artifact_prefix_path=state.source_artifact_prefix_path,
-        staging_url=state.staging_url,
-        final_tag_mode=context.component_config.final_tag_mode,
+        staging_url=state.candidate_publication_uri,
+        final_tag_mode=context.release_config.tags.final_mode,
     )
     write_manifest(manifest_path, manifest_entries)
     _append_github_outputs(
@@ -89,7 +90,7 @@ def run_prepare_rc(args: Namespace) -> Path:
     summary.append_plaintext_block("RC identity", state.rc_tag)
     summary.append_plaintext_block(
         "ASF SVN staging cleanup",
-        f"Delete and recreate {state.staging_url} before staging the new RC.",
+        f"Delete and recreate {state.candidate_publication_uri} before staging the new RC.",
     )
     summary.append_plaintext_block(
         "Email templates",
@@ -105,7 +106,7 @@ def run_cleanup_dev_svn_rcs(args: Namespace) -> Path:
     context = _context(args)
     version = args.version
     svn_client = AsfSvnClient.from_environment()
-    dev_base_url = context.component_config.asf_dist_dev_base.rstrip("/")
+    dev_base_url = require_asf_profile(context.release_config).dist_dev_base.rstrip("/")
     if svn_client.path_exists(dev_base_url):
         deleted_rc_entries = _matching_dev_rc_entries(svn_client.list_entries(dev_base_url), version)
     else:
@@ -113,14 +114,14 @@ def run_cleanup_dev_svn_rcs(args: Namespace) -> Path:
     for entry in deleted_rc_entries:
         svn_client.delete_url(
             url_join(dev_base_url, entry),
-            f"delete pre-existing RC staging for {context.component_config.component_id} {version}",
+            f"delete pre-existing RC staging for {context.release_config.component.id} {version}",
         )
-    manifest_path = _manifest_path(context.component_config.component_id, "cleanup-dev-svn-rcs")
+    manifest_path = _manifest_path(context.release_config.component.id, "cleanup-dev-svn-rcs")
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
         CleanupDevSvnRcsManifest(
-            component=context.component_config.component_id,
+            component=context.release_config.component.id,
             version=version,
             dev_base_url=f"{dev_base_url}/",
             deleted_rc_directories=deleted_rc_entries,
@@ -130,7 +131,7 @@ def run_cleanup_dev_svn_rcs(args: Namespace) -> Path:
     summary.append_key_value_table(
         "Technical details",
         [
-            ("Component", _summary_code(context.component_config.component_id)),
+            ("Component", _summary_code(context.release_config.component.id)),
             ("Version", _summary_code(version)),
             ("ASF SVN dev base", _summary_code(f"{dev_base_url}/")),
             ("Deleted RC directory count", str(len(deleted_rc_entries))),
@@ -160,16 +161,16 @@ def run_create_source_artifact(args: Namespace) -> Path:
     context = _context(args)
     repo = GitRepository.from_current_worktree()
     version, state = _resolve_prepare_rc_state_from_args(args, context, repo)
-    output_dir = _artifact_output_dir(context.component_config.component_id)
+    output_dir = _artifact_output_dir(context.release_config.component.id)
     artifact_path = output_dir / state.source_artifact_name
     create_from_git(repo.path, state.resolved_source_ref, state.source_artifact_prefix_path, artifact_path)
     artifact_sha512 = sha512(artifact_path)
-    manifest_path = _manifest_path(context.component_config.component_id, "create-source-artifact")
+    manifest_path = _manifest_path(context.release_config.component.id, "create-source-artifact")
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
         CreateSourceArtifactManifest(
-            component=context.component_config.component_id,
+            component=context.release_config.component.id,
             version=version,
             resolved_source_ref=state.resolved_source_ref,
             source_date_epoch=str(state.source_date_epoch),
@@ -192,7 +193,7 @@ def run_build_source_rc(args: Namespace) -> Path:
     context = _context(args)
     repo = GitRepository.from_current_worktree()
     version, state = _resolve_prepare_rc_state_from_args(args, context, repo)
-    output_dir = _artifact_output_dir(context.component_config.component_id)
+    output_dir = _artifact_output_dir(context.release_config.component.id)
     artifact_path = output_dir / state.source_artifact_name
     with _temporary_build_dir("build-source-rc") as temp_root:
         gpg_home = temp_root / "gnupg"
@@ -205,15 +206,15 @@ def run_build_source_rc(args: Namespace) -> Path:
         detached_ascii_sign(gpg_home, artifact_path, asc_path)
 
         svn_client = AsfSvnClient.from_environment()
-        staging_url = state.staging_url.rstrip("/")
+        staging_url = state.candidate_publication_uri.rstrip("/")
         if svn_client.path_exists(staging_url):
             svn_client.delete_url(
                 staging_url,
-                f"delete existing RC staging for {context.component_config.component_id} {version}",
+                f"delete existing RC staging for {context.release_config.component.id} {version}",
             )
         svn_client.mkdir_url(
             staging_url,
-            f"create RC staging for {context.component_config.component_id} {version}",
+            f"create RC staging for {context.release_config.component.id} {version}",
         )
         svn_client.checkout_url(staging_url, staging_wc)
         svn_client.working_copy_put_file(staging_wc, artifact_path, artifact_path.name)
@@ -221,14 +222,14 @@ def run_build_source_rc(args: Namespace) -> Path:
         svn_client.working_copy_put_file(staging_wc, asc_path, asc_path.name)
         svn_client.commit_working_copy(
             staging_wc,
-            f"stage RC source artifacts for {context.component_config.component_id} {version}",
+            f"stage RC source artifacts for {context.release_config.component.id} {version}",
         )
-        manifest_path = _manifest_path(context.component_config.component_id, "build-source-rc")
+        manifest_path = _manifest_path(context.release_config.component.id, "build-source-rc")
         summary = SummaryWriter.from_environment()
         write_manifest(
             manifest_path,
             BuildSourceRcManifest(
-                component=context.component_config.component_id,
+                component=context.release_config.component.id,
                 version=version,
                 resolved_source_ref=state.resolved_source_ref,
                 source_date_epoch=str(state.source_date_epoch),

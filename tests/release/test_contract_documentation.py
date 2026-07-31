@@ -29,7 +29,7 @@ from buildish_release_tooling.harness.config import ReleaseHarnessConfig
 from buildish_release_tooling.release.contracts import VerifyRcReportV1
 
 _SKIPPED_MODEL_MODULE_PREFIXES = (
-    "buildish_release_tooling.release.github_api_models",
+    "buildish_release_tooling.release.platforms.github.models",
 )
 
 

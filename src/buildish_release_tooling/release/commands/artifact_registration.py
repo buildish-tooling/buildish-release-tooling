@@ -79,15 +79,15 @@ def run_record_artifact(args: Namespace) -> Path:
     """Write one typed secondary-artifact manifest fragment."""
 
     context = _context(args)
-    bundle = _registration_bundle(args, component_id=context.component_config.component_id)
+    bundle = _registration_bundle(args, component_id=context.release_config.component.id)
     action_manifest_path = _manifest_path(
-        context.component_config.component_id,
+        context.release_config.component.id,
         f"record-artifact-{args.artifact_id}",
     )
     write_manifest(
         action_manifest_path,
         RecordArtifactManifest(
-            component=context.component_config.component_id,
+            component=context.release_config.component.id,
             artifact_id=args.artifact_id,
             kind=args.kind,
             artifact_manifest_path=str(bundle.manifest_path),

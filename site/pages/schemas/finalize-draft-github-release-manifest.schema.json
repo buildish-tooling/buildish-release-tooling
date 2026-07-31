@@ -79,7 +79,7 @@
     "deleted_asset_names",
     "finalize_mode"
   ],
-  "title": "Buildish Release Tooling FinalizeDraftGithubReleaseManifest",
+  "title": "Buildish Release Tooling FinalizeDraftGitHubReleaseManifest",
   "type": "object",
   "x-buildish-contract": {
     "category": "emitted",

@@ -39,7 +39,7 @@ def _common_parser() -> argparse.ArgumentParser:
         help="YAML component configuration path.",
     )
     parser.add_argument(
-        "--allow-non-production-release-targets",
+        "--test-target-mode",
         action="store_true",
         help="Allow file:// and http:// ASF dist target URLs for local harness-style test runs.",
     )
@@ -620,7 +620,7 @@ def _register_verification_commands(subparsers: Subparsers) -> None:
         help="Optional YAML component configuration path used to cross-check the explicit KEYS URL.",
     )
     verify_rc.add_argument(
-        "--allow-non-production-release-targets",
+        "--test-target-mode",
         action="store_true",
         help="Allow file:// and http:// manifest, KEYS, source-artifact, and source-repository URLs for local harness-style test runs.",
     )

@@ -38,7 +38,8 @@ from buildish_release_tooling.release.command_manifests import (
     CreateRcMaterializationTagManifest,
     MaterializeRcGitContentManifest,
 )
-from buildish_release_tooling.release.models import CommandContext, PrepareRcState
+from buildish_release_tooling.release.config import CommandContext
+from buildish_release_tooling.release.core.state import CandidateReleaseState
 from buildish_release_tooling.release.process import run_logged_command
 from buildish_release_tooling.release.summary import SummaryWriter
 
@@ -67,7 +68,7 @@ class MaterializedGitContent:
 def _materialize_rc_git_content(
     repo: GitRepository,
     *,
-    state: PrepareRcState,
+    state: CandidateReleaseState,
     repository_slug: str | None,
     materialized_paths: list[str],
     materialized_ref_name: str,
@@ -125,14 +126,14 @@ def _materialize_rc_git_content(
 
 def _resolve_materialization_tag_target(
     context: CommandContext,
-    state: PrepareRcState,
+    state: CandidateReleaseState,
     target_commit: str | None,
 ) -> tuple[str, Literal["materialized-commit", "source-commit"]]:
     """Resolve the commit to tag and whether it comes from source or detached materialization."""
 
     if target_commit is not None:
         if (
-            context.component_config.final_tag_mode != "detached-materialization-commit"
+            context.release_config.tags.final_mode != "detached-materialization-commit"
             and target_commit != state.resolved_source_ref
         ):
             raise ValueError("target_commit override is only valid for detached-materialization components")
@@ -140,7 +141,7 @@ def _resolve_materialization_tag_target(
             "materialized-commit" if target_commit != state.resolved_source_ref else "source-commit"
         )
         return target_commit, tag_target_origin
-    if context.component_config.final_tag_mode == "detached-materialization-commit":
+    if context.release_config.tags.final_mode == "detached-materialization-commit":
         raise ValueError("detached-materialization components require --target-commit")
     return state.resolved_source_ref, "source-commit"
 
@@ -149,7 +150,7 @@ def run_materialize_rc_git_content(args: Namespace) -> Path:
     """Create one detached RC materialization commit from release-only generated Git paths."""
 
     context = _context(args)
-    if context.component_config.final_tag_mode != "detached-materialization-commit":
+    if context.release_config.tags.final_mode != "detached-materialization-commit":
         raise ValueError(
             "materialize-rc-git-content is valid only for detached-materialization components"
         )
@@ -173,10 +174,10 @@ def run_materialize_rc_git_content(args: Namespace) -> Path:
         materialized_ref_name=materialized_ref_name,
         run_command=run_command,
     )
-    manifest_path = _manifest_path(context.component_config.component_id, "materialize-rc-git-content")
+    manifest_path = _manifest_path(context.release_config.component.id, "materialize-rc-git-content")
     summary = SummaryWriter.from_environment()
     manifest_entries = MaterializeRcGitContentManifest(
-        component=context.component_config.component_id,
+        component=context.release_config.component.id,
         version=version,
         resolved_source_ref=state.resolved_source_ref,
         rc_tag=state.rc_tag,
@@ -238,12 +239,12 @@ def run_create_rc_materialization_tag(args: Namespace) -> Path:
                 repository_slug=repository_slug,
                 ref_name=cleanup_materialized_ref_name,
             )
-    manifest_path = _manifest_path(context.component_config.component_id, "create-rc-materialization-tag")
+    manifest_path = _manifest_path(context.release_config.component.id, "create-rc-materialization-tag")
     summary = SummaryWriter.from_environment()
     write_manifest(
         manifest_path,
         CreateRcMaterializationTagManifest(
-            component=context.component_config.component_id,
+            component=context.release_config.component.id,
             version=version,
             resolved_source_ref=state.resolved_source_ref,
             rc_tag=state.rc_tag,

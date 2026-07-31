@@ -24,13 +24,14 @@ from typing import IO, cast
 
 from buildish_release_tooling.release.contracts import (
     GenericFileSecondaryArtifact,
-    GithubWorkflowProvenance,
+    GitHubWorkflowProvenance,
     ManifestTrustRoots,
     RcVoteManifestReadV1,
     RcVoteManifestV1,
     ToolingProvenance,
 )
-from buildish_release_tooling.release.models import ComponentConfig, PrepareRcState
+from buildish_release_tooling.release.config import ReleaseConfig
+from tests.release.state_support import candidate_release_state
 from buildish_release_tooling.release.rc_vote_manifest import (
     DEFAULT_SVN_CAT_TIMEOUT_SECONDS,
     build_rc_vote_manifest,
@@ -157,23 +158,42 @@ class RcVoteManifestTest(unittest.TestCase):
         )
 
     def test_build_rc_vote_manifest_emits_expected_shape(self) -> None:
-        component_config = ComponentConfig.model_validate(
+        component_config = ReleaseConfig.model_validate(
             {
-                "component_id": "buildish-example",
-                "source_artifact_prefix": "apache-buildish-example",
-                "asf_dist_dev_base": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
-                "asf_dist_release_base": "https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
-                "asf_keys_url": "https://downloads.apache.org/incubator/buildish/KEYS",
-                "moving_tags_enabled": True,
-                "latest_tag_enabled": False,
-                "secondary_targets": ["github-action"],
-                "final_tag_mode": "detached-materialization-commit",
-                "vote_release_name": "Buildish Example",
-                "release_verification_guide_url": "https://buildish.org/buildish-example/release-verification/",
-                "verify_rc_instructions": "verify",
-                "prepare_rc_runs_tests": False,
-                "release_branch_ci_required": True,
-                "verify_rc": {
+                "component": {"id": "buildish-example", "display_name": "Buildish Example"},
+                "source": {
+                    "selection": "release-branch",
+                    "snapshot": {
+                        "mode": "built-asset",
+                        "filename_template": "apache-buildish-example-{version}-incubating-src.tar.gz",
+                        "archive_root_template": "apache-buildish-example-{version}-incubating-src",
+                    },
+                    "checks": {"require_release_branch_ci": True},
+                },
+                "lifecycle": {"mode": "candidate"},
+                "candidate": {"start_number": 1},
+                "publication": {
+                    "authoritative": {"kind": "asf-dist-svn"},
+                    "secondary": [{"kind": "github-action"}],
+                },
+                "tags": {
+                    "final_mode": "detached-materialization-commit",
+                    "moving": ["major", "minor"],
+                },
+                "vote_materials": {
+                    "profile": "asf",
+                    "release_name": "Buildish Example",
+                    "verification_guide_url": "https://buildish.org/buildish-example/release-verification/",
+                    "instructions": "verify",
+                },
+                "policy_profiles": {
+                    "asf": {
+                        "dist_dev_base": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example",
+                        "dist_release_base": "https://dist.apache.org/repos/dist/release/incubator/buildish/buildish-example",
+                        "keys_url": "https://downloads.apache.org/incubator/buildish/KEYS",
+                    }
+                },
+                "verification": {
                     "source": {
                         "reproducibility": {
                             "profile_id": "source-release",
@@ -195,20 +215,7 @@ class RcVoteManifestTest(unittest.TestCase):
                 },
             }
         )
-        state = PrepareRcState.model_validate(
-            {
-                "resolved_release_branch": "release/1.2.x",
-                "resolved_source_ref": "0123456789abcdef0123456789abcdef01234567",
-                "source_date_epoch": 1714032000,
-                "rc_number": 2,
-                "rc_tag": "v1.2.3-rc2",
-                "final_tag": "v1.2.3",
-                "source_artifact_name": "apache-buildish-example-1.2.3-incubating-src.tar.gz",
-                "source_artifact_root_name": "apache-buildish-example-1.2.3-incubating-src",
-                "source_artifact_prefix_path": "apache-buildish-example-1.2.3-incubating-src/",
-                "staging_url": "https://dist.apache.org/repos/dist/dev/incubator/buildish/buildish-example/1.2.3-rc2/",
-            }
-        )
+        state = candidate_release_state()
         with (
             mock.patch(
                 "buildish_release_tooling.release.rc_vote_manifest.tooling_provenance",
@@ -221,7 +228,7 @@ class RcVoteManifestTest(unittest.TestCase):
             ),
             mock.patch(
                 "buildish_release_tooling.release.rc_vote_manifest.github_workflow_provenance",
-                return_value=GithubWorkflowProvenance(
+                return_value=GitHubWorkflowProvenance(
                     repository="buildish-tooling/buildish-example",
                     workflow="Releasey Prepare RC",
                     workflow_ref="buildish-tooling/buildish-example/.github/workflows/releasey-20-prepare-rc.yml@refs/heads/main",

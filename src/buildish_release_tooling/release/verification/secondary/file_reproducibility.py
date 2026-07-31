@@ -33,7 +33,8 @@ from buildish_release_tooling.release.contracts import (
     RetainedArtifactSnapshot,
     ShallowArchiveAnalysisReport,
 )
-from buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
+from buildish_release_tooling.release.config import ReleaseConfig
+from buildish_release_tooling.release.models import VerifyRcOverrideConfig
 from buildish_release_tooling.release.source_artifact import checksum
 from buildish_release_tooling.release.verification.inspection_bundle import (
     retain_evidence_file,
@@ -74,7 +75,7 @@ def verify_host_direct_single_file_reproducibility(
     ],
     artifact_path: Path | None,
     work_dir: Path,
-    component_config: ComponentConfig | None,
+    component_config: ReleaseConfig | None,
     project_root: Path | None,
     source_date_epoch: int | None,
     inspection_bundle_root: Path | None,

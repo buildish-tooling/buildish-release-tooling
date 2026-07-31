@@ -34,7 +34,8 @@ from buildish_release_tooling.release.contracts import (
     MavenRepositorySecondaryArtifact,
     MavenRepositoryVerificationReport,
 )
-from buildish_release_tooling.release.models import ComponentConfig, VerifyRcOverrideConfig
+from buildish_release_tooling.release.config import ReleaseConfig
+from buildish_release_tooling.release.models import VerifyRcOverrideConfig
 from buildish_release_tooling.release.progress import ProgressReporter
 from buildish_release_tooling.release.verification.common import emit_info, emit_success, update_info
 from buildish_release_tooling.shared.downloader import DownloadSession
@@ -63,9 +64,9 @@ def verify_maven_repository(
     manifest_url: str,
     work_dir: Path,
     verifier: GpgVerifier,
-    allow_non_production_release_targets: bool,
+    test_target_mode: bool,
     progress_reporter: ProgressReporter,
-    component_config: ComponentConfig | None,
+    component_config: ReleaseConfig | None,
     project_root: Path | None,
     source_date_epoch: int | None,
     build_checks_allowed: bool,
@@ -81,7 +82,7 @@ def verify_maven_repository(
     try:
         validate_fetch_uri(
             base_url,
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
             purpose=f"maven repository base URL for {artifact_id}",
         )
         _validated_repository_root(base_url, staging_repository_id)
@@ -94,7 +95,7 @@ def verify_maven_repository(
             manifest_url=manifest_url,
             artifact_id=artifact_id,
             work_dir=work_dir,
-            allow_non_production_release_targets=allow_non_production_release_targets,
+            test_target_mode=test_target_mode,
         )
         if fetched_inventory is None:
             raise ValueError(f"manifest maven-repository artifact is missing inventory: {artifact_id}")
