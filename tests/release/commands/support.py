@@ -250,6 +250,20 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
         nested_verification_lines = tuple(
             "verification:" if line == "verify_rc:" else line for line in verify_rc_lines
         )
+        secondary_lines: list[str] = []
+        for target in secondary_targets:
+            secondary_lines.append(f"    - kind: {target}")
+            if target == "pypi":
+                secondary_lines.extend(
+                    [
+                        f"      project_name: {component_id}",
+                        "      trusted_publisher:",
+                        "        kind: GitHub",
+                        "        repository: example/example",
+                        "        workflow: release.yml",
+                        "        environment: pypi",
+                    ]
+                )
 
         config_path.write_text(
             "\n".join(
@@ -283,7 +297,7 @@ class ReleaseCommandsIntegrationTestSupport(unittest.TestCase):
                     "  authoritative:",
                     "    kind: asf-dist-svn",
                     "  secondary:",
-                    *[f"    - kind: {target}" for target in secondary_targets],
+                    *secondary_lines,
                     "tags:",
                     f"  final_mode: {normalized_final_tag_mode}",
                     "  moving:" if moving_tags_enabled or latest_tag_enabled else "  moving: []",

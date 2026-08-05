@@ -37,16 +37,22 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [FinalizeRcVoteMaterialsManifest](#finalizercvotematerialsmanifest) — Action manifest emitted after publishing and signing final RC vote materials.
 - [MaterializeRcGitContentManifest](#materializercgitcontentmanifest) — Action manifest emitted after building detached RC materialization Git content.
 - [PrepareRcManifest](#preparercmanifest) — Action manifest emitted after prepare-rc resolves one RC workflow state bundle.
+- [PrepareReleaseAssetsManifest](#preparereleaseassetsmanifest) — Action manifest emitted after preparing checksummed and signed release assets.
 - [PruneOlderLineReleasesManifest](#pruneolderlinereleasesmanifest) — Action manifest emitted after pruning older same-line releases from dist/release.
 - [PublishAtrCandidateManifest](#publishatrcandidatemanifest) — Action manifest emitted after publishing one release candidate to ATR.
 - [PublishDockerhubMovingTagsManifest](#publishdockerhubmovingtagsmanifest) — Action manifest emitted after publishing moving Docker Hub image aliases.
 - [PublishSourceReleaseSvnManifest](#publishsourcereleasesvnmanifest) — Action manifest emitted after promoting a verified source artifact into dist/release.
+- [PyPiAttestationFileEvidence](#pypiattestationfileevidence) — Durable verified PyPI publish-attestation evidence for one distribution.
+- [PyPiAttestationPublisher](#pypiattestationpublisher) — Expected GitHub Trusted Publisher identity verified for PyPI attestations.
+- [PyPiPublishAttestationEvidence](#pypipublishattestationevidence) — Exact selected PyPI Publish Attestations retained as release evidence.
 - [RecordArtifactManifest](#recordartifactmanifest) — Action manifest emitted after writing one typed secondary-artifact bundle.
 - [ReleaseVersionManifest](#releaseversionmanifest) — Action manifest emitted after a full release-version orchestration run completes.
 - [ReportAtrChecksManifest](#reportatrchecksmanifest) — Action manifest emitted after summarizing ATR checks for one candidate revision.
 - [SyncDraftGitHubReleaseManifest](#syncdraftgithubreleasemanifest) — Action manifest emitted after synchronizing the draft GitHub release with staged RC artifacts.
 - [UpdateMovingImageAliasesManifest](#updatemovingimagealiasesmanifest) — Action manifest emitted after resolving moving OCI image aliases for publication.
 - [UpdateMovingTagsManifest](#updatemovingtagsmanifest) — Action manifest emitted after updating moving Git tags for a final release.
+- [VerifyPyPiAttestationsManifest](#verifypypiattestationsmanifest) — Action manifest binding verified PyPI PEP 740 provenance to distributions.
+- [VerifyPyPiPublicationManifest](#verifypypipublicationmanifest) — Action manifest proving exact distributions published through the PyPI API.
 
 <a id="attachgithubreleaseassetsmanifest"></a>
 ### AttachGitHubReleaseAssetsManifest
@@ -71,6 +77,7 @@ Action manifest emitted after uploading primary and derived assets to a GitHub r
 | <a id="attachgithubreleaseassetsmanifest-release-tag"></a>`release_tag` | str | yes | GitHub release tag name as stored on the related release record. |
 | <a id="attachgithubreleaseassetsmanifest-release-url"></a>`release_url` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Primary user-facing URL of the related GitHub release or published release artifact. |
 | <a id="attachgithubreleaseassetsmanifest-primary-asset-names"></a>`primary_asset_names` | list[[NonEmptyString](../release-shared-types-reference/#nonemptystring)] | yes | Primary release asset names that Buildish attached or expected to attach to the selected GitHub release. |
+| <a id="attachgithubreleaseassetsmanifest-primary-assets"></a>`primary_assets` | list[[ArtifactReference](../release-config-reference/#artifactreference)] | yes | Exact primary release assets attached, including size and SHA-256. |
 | <a id="attachgithubreleaseassetsmanifest-uploaded-asset-names"></a>`uploaded_asset_names` | list[[NonEmptyString](../release-shared-types-reference/#nonemptystring)] | yes | GitHub release asset names that Buildish uploaded during the related command. |
 | <a id="attachgithubreleaseassetsmanifest-generated-checksum-asset-names"></a>`generated_checksum_asset_names` | list[[NonEmptyString](../release-shared-types-reference/#nonemptystring)] | yes | Generated checksum asset names that Buildish attached or expected to attach to the GitHub release. |
 | <a id="attachgithubreleaseassetsmanifest-generated-signature-asset-names"></a>`generated_signature_asset_names` | list[[NonEmptyString](../release-shared-types-reference/#nonemptystring)] | yes | Generated detached-signature asset names that Buildish attached or expected to attach to the GitHub release. |
@@ -345,6 +352,30 @@ Action manifest emitted after prepare-rc resolves one RC workflow state bundle.
 | <a id="preparercmanifest-draft-release-action"></a>`draft_release_action` | Literal['recreate'] | no | Draft GitHub release convergence action that prepare-rc used when emitting new vote materials. |
 | <a id="preparercmanifest-final-tag-mode"></a>`final_tag_mode` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Configured or recorded policy describing how the final immutable release tag should be created for this component or release run. |
 
+<a id="preparereleaseassetsmanifest"></a>
+### PrepareReleaseAssetsManifest
+
+Action manifest emitted after preparing checksummed and signed release assets.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`prepare-release-assets-manifest.schema.json`](/components/release-tooling/schemas/prepare-release-assets-manifest.schema.json)
+- audience: `internal`
+- stability: `unstable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="preparereleaseassetsmanifest-component"></a>`component` | object | yes | Component identifier for the Buildish command manifest or emitted action record. |
+| <a id="preparereleaseassetsmanifest-action"></a>`action` | Literal['prepare-release-assets'] | no | Stable command action identifier written by one Buildish command manifest. |
+| <a id="preparereleaseassetsmanifest-output-directory"></a>`output_directory` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Directory containing the complete prepared release-asset set. |
+| <a id="preparereleaseassetsmanifest-primary-asset-names"></a>`primary_asset_names` | list[[NonEmptyString](../release-shared-types-reference/#nonemptystring)] | yes | Primary release assets copied into the prepared output directory. |
+| <a id="preparereleaseassetsmanifest-prepared-asset-names"></a>`prepared_asset_names` | list[[NonEmptyString](../release-shared-types-reference/#nonemptystring)] | yes | Complete prepared asset inventory including checksum and signature sidecars. |
+| <a id="preparereleaseassetsmanifest-generated-checksum-asset-names"></a>`generated_checksum_asset_names` | list[[NonEmptyString](../release-shared-types-reference/#nonemptystring)] | yes | Generated checksum sidecar names. |
+| <a id="preparereleaseassetsmanifest-generated-signature-asset-names"></a>`generated_signature_asset_names` | list[[NonEmptyString](../release-shared-types-reference/#nonemptystring)] | yes | Generated detached OpenPGP signature names. |
+| <a id="preparereleaseassetsmanifest-checksum-algorithms"></a>`checksum_algorithms` | list[[NonEmptyString](../release-shared-types-reference/#nonemptystring)] | yes | Checksum algorithms applied to each primary asset. |
+| <a id="preparereleaseassetsmanifest-gpg-fingerprint"></a>`gpg_fingerprint` | str | yes | OpenPGP fingerprint selected for signing, or an empty string when signing is disabled. |
+
 <a id="pruneolderlinereleasesmanifest"></a>
 ### PruneOlderLineReleasesManifest
 
@@ -440,6 +471,63 @@ Action manifest emitted after promoting a verified source artifact into dist/rel
 | <a id="publishsourcereleasesvnmanifest-target-url"></a>`target_url` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Destination URL that Buildish published or copied content to. |
 | <a id="publishsourcereleasesvnmanifest-verified-source-artifact-sha512"></a>`verified_source_artifact_sha512` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Verified SHA-512 digest of the source release artifact promoted to ASF dist/release. |
 | <a id="publishsourcereleasesvnmanifest-publish-mode"></a>`publish_mode` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Mode that Buildish used when publishing the verified source artifact to ASF `dist/release`. |
+
+<a id="pypiattestationfileevidence"></a>
+### PyPiAttestationFileEvidence
+
+Durable verified PyPI publish-attestation evidence for one distribution.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="pypiattestationfileevidence-filename"></a>`filename` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Exact distribution filename. |
+| <a id="pypiattestationfileevidence-distribution-sha256"></a>`distribution_sha256` | LowercaseSha256 | yes | SHA-256 of the verified distribution bytes. |
+| <a id="pypiattestationfileevidence-evidence-filename"></a>`evidence_filename` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | GitHub Release asset name containing selected publish attestations. |
+| <a id="pypiattestationfileevidence-evidence-sha256"></a>`evidence_sha256` | LowercaseSha256 | yes | SHA-256 of the exact retained publish-attestation document. |
+| <a id="pypiattestationfileevidence-evidence-size-bytes"></a>`evidence_size_bytes` | int | yes | Size of the retained publish-attestation document. |
+| <a id="pypiattestationfileevidence-source-provenance-url"></a>`source_provenance_url` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Mutable PyPI Integrity API provenance URL used as the evidence source. |
+| <a id="pypiattestationfileevidence-publish-attestation-count"></a>`publish_attestation_count` | int | yes | Number of verified PyPI Publish Attestations retained. |
+
+<a id="pypiattestationpublisher"></a>
+### PyPiAttestationPublisher
+
+Expected GitHub Trusted Publisher identity verified for PyPI attestations.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="pypiattestationpublisher-kind"></a>`kind` | Literal['GitHub'] | yes | Trusted Publisher kind. |
+| <a id="pypiattestationpublisher-repository"></a>`repository` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | GitHub repository owner/name identity. |
+| <a id="pypiattestationpublisher-workflow"></a>`workflow` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | GitHub Actions workflow filename identity. |
+| <a id="pypiattestationpublisher-environment"></a>`environment` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | GitHub Environment identity. |
+
+<a id="pypipublishattestationevidence"></a>
+### PyPiPublishAttestationEvidence
+
+Exact selected PyPI Publish Attestations retained as release evidence.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`pypi-publish-attestation-evidence.schema.json`](/components/release-tooling/schemas/pypi-publish-attestation-evidence.schema.json)
+- audience: `supported`
+- stability: `stable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="pypipublishattestationevidence-kind"></a>`kind` | Literal['pypi-publish-attestation-evidence'] | no | Evidence-document discriminator. |
+| <a id="pypipublishattestationevidence-schema-version"></a>`schema_version` | Literal['1'] | no | Evidence schema version. |
+| <a id="pypipublishattestationevidence-publisher"></a>`publisher` | [PyPiAttestationPublisher](#pypiattestationpublisher) | yes | Exact verified Trusted Publisher identity. |
+| <a id="pypipublishattestationevidence-distribution-filename"></a>`distribution_filename` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Exact verified distribution filename. |
+| <a id="pypipublishattestationevidence-distribution-sha256"></a>`distribution_sha256` | LowercaseSha256 | yes | SHA-256 of the verified distribution bytes. |
+| <a id="pypipublishattestationevidence-source-provenance-url"></a>`source_provenance_url` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Mutable PyPI provenance URL from which attestations were selected. |
+| <a id="pypipublishattestationevidence-attestations"></a>`attestations` | list[dict[str, object]] | yes | Exact cryptographically verified PyPI Publish Attestation objects. |
 
 <a id="recordartifactmanifest"></a>
 ### RecordArtifactManifest
@@ -591,4 +679,54 @@ Action manifest emitted after updating moving Git tags for a final release.
 | <a id="updatemovingtagsmanifest-updated-tags"></a>`updated_tags` | list[[NonEmptyString](../release-shared-types-reference/#nonemptystring)] | yes | Moving tags that Buildish updated during the related tag-publication action. |
 | <a id="updatemovingtagsmanifest-skipped-tags"></a>`skipped_tags` | list[[NonEmptyString](../release-shared-types-reference/#nonemptystring)] | yes | Moving tags that Buildish intentionally left unchanged during the related update operation. |
 | <a id="updatemovingtagsmanifest-tag-update-modes"></a>`tag_update_modes` | list[[NonEmptyString](../release-shared-types-reference/#nonemptystring)] | yes | Per-tag update outcomes describing how each moving tag was handled during the related publication run. |
+
+<a id="verifypypiattestationsmanifest"></a>
+### VerifyPyPiAttestationsManifest
+
+Action manifest binding verified PyPI PEP 740 provenance to distributions.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`verify-pypi-attestations-manifest.schema.json`](/components/release-tooling/schemas/verify-pypi-attestations-manifest.schema.json)
+- audience: `internal`
+- stability: `unstable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifypypiattestationsmanifest-component"></a>`component` | object | yes | Component identifier for the Buildish command manifest or emitted action record. |
+| <a id="verifypypiattestationsmanifest-action"></a>`action` | Literal['verify-pypi-attestations'] | no | Stable command action identifier written by one Buildish command manifest. |
+| <a id="verifypypiattestationsmanifest-kind"></a>`kind` | Literal['pypi-attestation-verification'] | no | Evidence-document discriminator. |
+| <a id="verifypypiattestationsmanifest-schema-version"></a>`schema_version` | Literal['1'] | no | Evidence schema version. |
+| <a id="verifypypiattestationsmanifest-project-name"></a>`project_name` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | PyPI project name. |
+| <a id="verifypypiattestationsmanifest-version"></a>`version` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Published project version. |
+| <a id="verifypypiattestationsmanifest-integrity-base-url"></a>`integrity_base_url` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | PyPI Integrity API base URL. |
+| <a id="verifypypiattestationsmanifest-publisher"></a>`publisher` | [PyPiAttestationPublisher](#pypiattestationpublisher) | yes | Exact verified Trusted Publisher identity. |
+| <a id="verifypypiattestationsmanifest-files"></a>`files` | list[[PyPiAttestationFileEvidence](#pypiattestationfileevidence)] | yes | Exact distributions and retained publish attestations verified successfully. |
+
+<a id="verifypypipublicationmanifest"></a>
+### VerifyPyPiPublicationManifest
+
+Action manifest proving exact distributions published through the PyPI API.
+
+- category: `emitted`
+- ownership: `tooling-derived`
+- schema file: [`verify-pypi-publication-manifest.schema.json`](/components/release-tooling/schemas/verify-pypi-publication-manifest.schema.json)
+- audience: `internal`
+- stability: `unstable`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="verifypypipublicationmanifest-component"></a>`component` | object | yes | Component identifier for the Buildish command manifest or emitted action record. |
+| <a id="verifypypipublicationmanifest-action"></a>`action` | Literal['verify-pypi-publication'] | no | Stable command action identifier written by one Buildish command manifest. |
+| <a id="verifypypipublicationmanifest-project-name"></a>`project_name` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | PyPI project name. |
+| <a id="verifypypipublicationmanifest-version"></a>`version` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Published project version. |
+| <a id="verifypypipublicationmanifest-repository-api-url"></a>`repository_api_url` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | PyPI JSON API base URL used for verification. |
+| <a id="verifypypipublicationmanifest-project-url"></a>`project_url` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Human-facing immutable project-version URL. |
+| <a id="verifypypipublicationmanifest-lifecycle"></a>`lifecycle` | Literal['direct', 'candidate-promotion'] | yes | Buildish lifecycle state kind that authorized the publication. |
+| <a id="verifypypipublicationmanifest-source-commit"></a>`source_commit` | [NonEmptyString](../release-shared-types-reference/#nonemptystring) | yes | Exact source commit bound by the authorizing release state. |
+| <a id="verifypypipublicationmanifest-release-state-sha256"></a>`release_state_sha256` | LowercaseSha256 | yes | SHA-256 of the exact DirectReleaseState or PromotionState input. |
+| <a id="verifypypipublicationmanifest-publication-state"></a>`publication_state` | Literal['absent', 'partial', 'complete'] | yes | Observed PyPI state relative to the expected distribution set. |
+| <a id="verifypypipublicationmanifest-published-files"></a>`published_files` | list[[ArtifactReference](../release-config-reference/#artifactreference)] | yes | Exact distribution files and SHA-256 digests verified through PyPI. |
 

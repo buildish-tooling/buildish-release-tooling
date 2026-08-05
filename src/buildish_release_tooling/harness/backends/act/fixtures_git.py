@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -25,6 +26,9 @@ from buildish_release_tooling.harness.process import run_harness_command
 from buildish_release_tooling.harness.runtime import HarnessWorkspace
 
 from .workflow import _repository_slug
+
+_WORKING_TREE_SNAPSHOT_MESSAGE = "Buildish release harness working-tree snapshot"
+_WORKING_TREE_SNAPSHOT_TIMESTAMP = "2000-01-01T00:00:00Z"
 
 
 def stage_repository_sources(
@@ -86,6 +90,40 @@ def stage_repository_sources(
         if source_dir.exists():
             shutil.rmtree(source_dir)
         materialize_source_tree(binding.local_path, source_dir)
+
+
+def synchronize_self_repository_sources(
+    workspace: HarnessWorkspace,
+    bindings: ResolvedReleaseHarnessConfig,
+) -> None:
+    """Expose the workspace's final source snapshot through local self-repository clones."""
+
+    self_source_dir = workspace.repo_sources_dir / _repository_slug(
+        bindings.self_repository.repository_id
+    )
+    for destination_root in (workspace.git_origins_dir / "self", self_source_dir):
+        if not (destination_root / ".git").is_dir():
+            continue
+        run_harness_command(
+            [
+                "git",
+                "-C",
+                str(destination_root),
+                "fetch",
+                "--no-tags",
+                str(workspace.root),
+                "HEAD",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        run_harness_command(
+            ["git", "-C", str(destination_root), "reset", "--hard", "FETCH_HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
 
 
 def apply_workflow_repository_fixture(
@@ -165,7 +203,7 @@ def apply_workflow_repository_fixture(
 
 
 def materialize_git_checkout(source_root: Path, destination_root: Path) -> None:
-    """Clone one local Git repository and overlay the current working-tree files on top."""
+    """Clone a local repository and commit any overlaid working-tree differences."""
 
     run_harness_command(
         ["git", "clone", "--local", str(source_root), str(destination_root)],
@@ -175,6 +213,7 @@ def materialize_git_checkout(source_root: Path, destination_root: Path) -> None:
     )
     _configure_git_identity(destination_root)
     _overlay_working_tree(source_root, destination_root)
+    commit_git_working_tree_snapshot(destination_root)
 
 
 def materialize_git_repository_state(source_root: Path, destination_root: Path) -> None:
@@ -187,6 +226,13 @@ def materialize_git_repository_state(source_root: Path, destination_root: Path) 
         text=True,
     )
     _configure_git_identity(destination_root)
+
+
+def overlay_git_working_tree(source_root: Path, destination_root: Path) -> None:
+    """Overlay and commit current source files in an existing disposable clone."""
+
+    _overlay_working_tree(source_root, destination_root)
+    commit_git_working_tree_snapshot(destination_root)
 
 
 def materialize_source_tree(source_root: Path, destination_root: Path) -> None:
@@ -205,6 +251,12 @@ def _configure_git_identity(repository_root: Path) -> None:
         capture_output=True,
         text=True,
     )
+    exclude_path = repository_root / ".git" / "info" / "exclude"
+    exclude_entry = ".buildish-release-harness/"
+    exclude_lines = exclude_path.read_text(encoding="utf-8").splitlines()
+    if exclude_entry not in exclude_lines:
+        with exclude_path.open("a", encoding="utf-8") as exclude_file:
+            exclude_file.write(f"{exclude_entry}\n")
     run_harness_command(
         [
             "git",
@@ -229,9 +281,11 @@ def _overlay_working_tree(source_root: Path, destination_root: Path) -> None:
         ".ruff_cache",
         ".venv",
         "__pycache__",
+        ".agents",
         "build",
         "dist",
     }
+    _remove_deleted_tracked_paths(source_root, destination_root)
     for child in source_root.iterdir():
         if child.name in ignore_names:
             continue
@@ -243,3 +297,72 @@ def _overlay_working_tree(source_root: Path, destination_root: Path) -> None:
         elif child.is_file():
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(child, destination)
+
+
+def _remove_deleted_tracked_paths(source_root: Path, destination_root: Path) -> None:
+    """Mirror tracked paths deleted from the source working tree into the overlay."""
+
+    deleted = run_harness_command(
+        [
+            "git",
+            "-C",
+            str(source_root),
+            "diff",
+            "--name-only",
+            "--diff-filter=D",
+            "-z",
+            "HEAD",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    for relative_path in deleted.stdout.split("\0"):
+        if not relative_path:
+            continue
+        destination = destination_root / relative_path
+        if destination.is_dir() and not destination.is_symlink():
+            shutil.rmtree(destination)
+        else:
+            destination.unlink(missing_ok=True)
+
+
+def commit_git_working_tree_snapshot(repository_root: Path) -> None:
+    """Commit a deterministic disposable snapshot when an overlay changed the clone."""
+
+    run_harness_command(
+        ["git", "-C", str(repository_root), "add", "--all"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    unchanged = run_harness_command(
+        ["git", "-C", str(repository_root), "diff", "--cached", "--quiet"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if unchanged.returncode == 0:
+        return
+    if unchanged.returncode != 1:
+        raise RuntimeError("unable to inspect the harness working-tree snapshot")
+    commit_env = {
+        **os.environ,
+        "GIT_AUTHOR_DATE": _WORKING_TREE_SNAPSHOT_TIMESTAMP,
+        "GIT_COMMITTER_DATE": _WORKING_TREE_SNAPSHOT_TIMESTAMP,
+    }
+    run_harness_command(
+        [
+            "git",
+            "-C",
+            str(repository_root),
+            "commit",
+            "--no-gpg-sign",
+            "-m",
+            _WORKING_TREE_SNAPSHOT_MESSAGE,
+        ],
+        env=commit_env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )

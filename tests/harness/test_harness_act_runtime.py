@@ -19,8 +19,12 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
+import tarfile
+import tomllib
 import unittest
-from io import StringIO
+import zipfile
+from io import BytesIO, StringIO
 from pathlib import Path
 from unittest import mock
 
@@ -44,8 +48,22 @@ from buildish_release_tooling.harness.config import (
     load_release_harness_config,
 )
 from buildish_release_tooling.harness.errors import HarnessExternalToolError
-from buildish_release_tooling.harness.models import HarnessScenario
+from buildish_release_tooling.harness.models import (
+    HarnessScenario,
+    HarnessShimState,
+    WorkflowScenario,
+)
 from buildish_release_tooling.harness.scenario import load_scenario
+from buildish_release_tooling.release.core.models import (
+    ComponentIdentity,
+    PublicationReference,
+    ReleaseIdentity,
+    SourceRevision,
+    TagIdentity,
+    ToolingInvocationProvenance,
+    VerificationResultReference,
+)
+from buildish_release_tooling.release.manifests import ReleaseManifestV1
 from tests.support import (
     cleanup_sandbox,
     component_root,
@@ -103,7 +121,15 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             bindings,
             seed_workspace=None,
         )
-        act_backend._prepare_workflow_execution(workspace, scenario, bindings)
+        if filename == "release-promote.yaml":
+            with mock.patch.object(
+                act_backend,
+                "_seeded_candidate_tag",
+                return_value="v0.1.0-rc1",
+            ):
+                act_backend._prepare_workflow_execution(workspace, scenario, bindings)
+        else:
+            act_backend._prepare_workflow_execution(workspace, scenario, bindings)
         return scenario, workspace
 
     def test_write_secrets_file_ignores_host_github_tokens(self) -> None:
@@ -136,6 +162,185 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             "BUILDISH_SVN_DEV_USERNAME=release-user\nGITHUB_TOKEN=scenario-token\n",
             secrets_path.read_text(encoding="utf-8"),
         )
+
+    def test_load_existing_workspace_normalizes_a_relative_path(self) -> None:
+        """Reruns should pass absolute paths to act and file-URI adapters."""
+
+        workspace = runtime.create_workspace(self.sandbox_dir)
+        relative_root = workspace.root.relative_to(Path.cwd())
+
+        loaded = runtime.load_existing_workspace(relative_root)
+
+        self.assertTrue(loaded.root.is_absolute())
+        self.assertEqual(workspace.root.resolve(), loaded.root)
+
+    def test_materialized_dirty_source_tree_gets_deterministic_snapshot_commit(
+        self,
+    ) -> None:
+        """Built archive bytes should be reachable from the recorded disposable commit."""
+
+        source = self.sandbox_dir / "source"
+        source.mkdir()
+        subprocess.run(
+            ["git", "init", "--initial-branch=main", str(source)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(source), "config", "user.name", "Test Author"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(source), "config", "user.email", "test@example.invalid"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        (source / "modified.txt").write_text("original\n", encoding="utf-8")
+        (source / "deleted.txt").write_text("delete me\n", encoding="utf-8")
+        subprocess.run(
+            ["git", "-C", str(source), "add", "."],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(source), "commit", "-m", "initial"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        source_head = subprocess.run(
+            ["git", "-C", str(source), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+        clean_checkout = self.sandbox_dir / "clean-checkout"
+        act_fixtures.materialize_git_checkout(source, clean_checkout)
+        clean_head = subprocess.run(
+            ["git", "-C", str(clean_checkout), "rev-parse", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        self.assertEqual(source_head, clean_head)
+
+        (source / "modified.txt").write_text("modified bytes\n", encoding="utf-8")
+        (source / "untracked.txt").write_text("untracked bytes\n", encoding="utf-8")
+        (source / "deleted.txt").unlink()
+        snapshot_heads: list[str] = []
+        for name in ("snapshot-one", "snapshot-two"):
+            checkout = self.sandbox_dir / name
+            act_fixtures.materialize_git_checkout(source, checkout)
+            snapshot_head = subprocess.run(
+                ["git", "-C", str(checkout), "rev-parse", "main"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            snapshot_heads.append(snapshot_head)
+            archive = subprocess.run(
+                ["git", "-C", str(checkout), "archive", snapshot_head],
+                check=True,
+                capture_output=True,
+            ).stdout
+            with tarfile.open(fileobj=BytesIO(archive), mode="r:") as tar:
+                modified_member = tar.extractfile("modified.txt")
+                untracked_member = tar.extractfile("untracked.txt")
+                self.assertIsNotNone(modified_member)
+                self.assertIsNotNone(untracked_member)
+                if modified_member is None or untracked_member is None:
+                    self.fail("snapshot archive lacks expected source files")
+                self.assertEqual(b"modified bytes\n", modified_member.read())
+                self.assertEqual(b"untracked bytes\n", untracked_member.read())
+                self.assertNotIn("deleted.txt", tar.getnames())
+            status = subprocess.run(
+                ["git", "-C", str(checkout), "status", "--porcelain"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual("", status.stdout)
+
+        self.assertNotEqual(source_head, snapshot_heads[0])
+        self.assertEqual(snapshot_heads[0], snapshot_heads[1])
+
+    def test_workflow_inputs_resolve_project_version_and_one_seeded_candidate(
+        self,
+    ) -> None:
+        """Promotion placeholders should bind one exact retained candidate without recency."""
+
+        workspace = runtime.create_workspace(self.sandbox_dir)
+        (workspace.root / "pyproject.toml").write_text(
+            '[project]\nname = "example"\nversion = "2.3.4"\n',
+            encoding="utf-8",
+        )
+
+        def release(tag: str, release_id: int) -> dict[str, object]:
+            return {
+                "id": release_id,
+                "repository": "example/project",
+                "tag_name": tag,
+                "name": tag,
+                "body": "Synthetic candidate",
+                "draft": False,
+                "prerelease": True,
+                "html_url": f"https://example.invalid/releases/tag/{tag}",
+                "url": f"https://api.example.invalid/releases/{release_id}",
+                "published_at": "2026-01-01T00:00:00Z",
+                "assets": [
+                    {
+                        "id": release_id,
+                        "name": "candidate-manifest.json",
+                        "size": 1,
+                        "digest": f"sha256:{'a' * 64}",
+                        "stored_path": f"assets/{tag}/candidate-manifest.json",
+                    }
+                ],
+            }
+
+        state_payload: dict[str, object] = {
+            "workspace_root": str(workspace.root),
+            "trace_file": str(workspace.trace_file),
+            "gh_releases": {"v2.3.4-rc2": release("v2.3.4-rc2", 1)},
+        }
+        workspace.state_file.write_text(
+            HarnessShimState.model_validate(state_payload).model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        workflow = WorkflowScenario(
+            path=".github/workflows/release-promote.yml",
+            harness_config="buildish-release-tooling/harness/release-harness.yaml",
+            inputs={
+                "version": "harness:project-version",
+                "candidate_tag": "harness:seeded-candidate-tag",
+                "candidate_manifest_digest": (
+                    "harness:seeded-release-asset-sha256:candidate-manifest.json"
+                ),
+            },
+        )
+
+        resolved = act_backend._resolved_workflow_inputs(workspace, workflow)
+
+        self.assertEqual("2.3.4", resolved["version"])
+        self.assertEqual("v2.3.4-rc2", resolved["candidate_tag"])
+        self.assertEqual("a" * 64, resolved["candidate_manifest_digest"])
+
+        state_payload["gh_releases"] = {
+            "v2.3.4-rc2": release("v2.3.4-rc2", 1),
+            "v2.3.4-rc3": release("v2.3.4-rc3", 2),
+        }
+        workspace.state_file.write_text(
+            HarnessShimState.model_validate(state_payload).model_dump_json(indent=2),
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ValueError, "exactly one finalized candidate"):
+            act_backend._resolved_workflow_inputs(workspace, workflow)
 
     def test_run_scenario_rewrites_workflow_for_local_composite_actions(self) -> None:
         """Workspace preparation should rewrite the checked-in workflow before any `act` run."""
@@ -200,7 +405,11 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         self.assertTrue(original_copy_path.is_file())
         self.assertEqual(
             (
-                component_root() / ".github" / "workflows" / "release-direct.yml"
+                component_root()
+                / "buildish-release-tooling"
+                / "harness"
+                / "workflows"
+                / "release-direct.yml"
             ).read_text(encoding="utf-8"),
             original_copy_path.read_text(encoding="utf-8"),
         )
@@ -247,7 +456,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         )
 
     def test_candidate_scenario_uses_one_based_numbering(self) -> None:
-        """The default candidate harness fixture should begin at candidate one."""
+        """The candidate fixture should derive metadata and expose one source commit."""
 
         _scenario, workspace = self._prepare_workspace_for_scenario(
             "release-candidate.yaml"
@@ -258,6 +467,278 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         config_payload = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         self.assertEqual("candidate", config_payload["lifecycle"]["mode"])
         self.assertEqual(1, config_payload["candidate"]["start_number"])
+        self.assertEqual(
+            "buildish-release-tooling/release-notes/{version}.md",
+            config_payload["release_notes"]["path_template"],
+        )
+        with (workspace.root / "pyproject.toml").open("rb") as pyproject_file:
+            pyproject = tomllib.load(pyproject_file)
+        event = json.loads(
+            (workspace.harness_dir / "act-event.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(pyproject["project"]["version"], event["inputs"]["version"])
+        source_roots = (
+            workspace.root,
+            workspace.git_origins_dir / "self",
+            workspace.repo_sources_dir / "buildish-tooling__buildish-release-tooling",
+        )
+        source_commits = {
+            subprocess.run(
+                ["git", "-C", str(source_root), "rev-parse", "main"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            for source_root in source_roots
+        }
+        self.assertEqual(1, len(source_commits))
+
+    def test_promotion_scenario_uses_local_package_index_composition(self) -> None:
+        """The production workflow should retain package and attestation handoffs locally."""
+
+        _scenario, workspace = self._prepare_workspace_for_scenario(
+            "release-promote.yaml"
+        )
+        rewritten = act_fixtures._active_workflow_path(workspace).read_text(
+            encoding="utf-8"
+        )
+
+        self.assertNotIn("pypa/gh-action-pypi-publish@", rewritten)
+        self.assertIn("local-pypi-publish", rewritten)
+        self.assertIn(
+            "file://$GITHUB_WORKSPACE/.buildish-release-harness/pypi-index/api",
+            rewritten,
+        )
+        self.assertIn(
+            ".buildish-release-harness/tools/verify-pypi-attestations.sh",
+            rewritten,
+        )
+        self.assertIn(
+            "https://packages.buildish-release-harness.invalid/project/{project}/{version}/",
+            rewritten,
+        )
+        self.assertNotIn("https://pypi.org/integrity", rewritten)
+        verifier = (
+            workspace.harness_dir / "tools" / "verify-pypi-attestations.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "https://integrity.buildish-release-harness.invalid/integrity",
+            verifier,
+        )
+        self.assertIn("synthetic-pypi-publish-attestation", verifier)
+
+    def test_harness_pypi_attestation_shim_derives_component_configuration(
+        self,
+    ) -> None:
+        _scenario, workspace = self._prepare_workspace_for_scenario(
+            "release-promote.yaml"
+        )
+        config_path = (
+            workspace.root / "buildish-release-tooling" / "release-config.yaml"
+        )
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        config["component"]["id"] = "other-component"
+        target = config["publication"]["secondary"][0]
+        target["project_name"] = "other-project"
+        target["trusted_publisher"] = {
+            "kind": "GitHub",
+            "repository": "other/project",
+            "workflow": "publish.yml",
+            "environment": "packages",
+        }
+        config_path.write_text(
+            yaml.safe_dump(config, sort_keys=False), encoding="utf-8"
+        )
+        distributions = workspace.root / "other-distributions"
+        distributions.mkdir()
+        wheel = distributions / "other_project-0.1.0-py3-none-any.whl"
+        wheel.write_bytes(b"wheel\n")
+        manifest_path = workspace.root / "attestations" / "evidence.json"
+        verifier_path = workspace.harness_dir / "tools" / "verify-pypi-attestations.sh"
+        workspace_python = workspace.root / ".venv" / "bin" / "python"
+        workspace_python.parent.mkdir(parents=True)
+        workspace_python.write_text(
+            f'#!/bin/sh\nexec "{sys.executable}" "$@"\n', encoding="utf-8"
+        )
+        workspace_python.chmod(0o755)
+        failing_bin = workspace.root / "failing-bin"
+        failing_bin.mkdir()
+        failing_python = failing_bin / "python3"
+        failing_python.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+        failing_python.chmod(0o755)
+
+        completed = subprocess.run(  # noqa: S603
+            [
+                str(verifier_path),
+                "--provenance-dir",
+                str(manifest_path.parent / "provenance"),
+                "0.1.0",
+                str(wheel),
+            ],
+            env={
+                **os.environ,
+                "BUILDISH_COMPONENT_CONFIG_PATH": str(config_path),
+                "GITHUB_WORKSPACE": str(workspace.root),
+                "MANIFEST_PATH": str(manifest_path),
+                "PATH": f"{failing_bin}:{os.environ['PATH']}",
+            },
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        evidence = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual("other-component", evidence["component"])
+        self.assertEqual("other-project", evidence["project_name"])
+        self.assertEqual("other/project", evidence["publisher"]["repository"])
+        self.assertEqual("publish.yml", evidence["publisher"]["workflow"])
+        self.assertEqual("packages", evidence["publisher"]["environment"])
+
+    def test_retained_promotion_artifact_requires_synthetic_release_manifest(
+        self,
+    ) -> None:
+        """Successful harness promotion evidence should be typed and unmistakably local."""
+
+        workspace = runtime.create_workspace(self.sandbox_dir)
+        artifact_dir = (
+            workspace.harness_dir / "workflow-artifacts" / "promoted-release-manifest-1"
+        )
+        artifact_dir.mkdir(parents=True)
+        manifest_path = artifact_dir / "release-manifest-v1.json"
+        manifest_path.write_text(
+            '{"component":"example","action":"attach-github-release-manifest"}\n',
+            encoding="utf-8",
+        )
+
+        with self.assertRaises(ValueError):
+            act_backend.workflow._validate_retained_release_manifest_artifacts(
+                workspace
+            )
+
+        commit_sha = "0123456789abcdef0123456789abcdef01234567"
+        manifest = ReleaseManifestV1(
+            release=ReleaseIdentity(
+                component=ComponentIdentity(id="example", display_name="Example"),
+                version="1.2.3",
+            ),
+            source=SourceRevision(
+                repository="https://code.example/example",
+                commit_sha=commit_sha,
+                source_ref="main",
+            ),
+            final_tag=TagIdentity(
+                name="v1.2.3", target_commit=commit_sha, purpose="final"
+            ),
+            secondary_publications=[
+                PublicationReference(
+                    target_kind="pypi",
+                    uri=(
+                        "https://packages.buildish-release-harness.invalid/"
+                        "project/example/1.2.3/"
+                    ),
+                    immutable_id="example==1.2.3",
+                )
+            ],
+            verification_results=[
+                VerificationResultReference(
+                    kind="pypi-publish-attestation",
+                    uri=(
+                        "https://github.com/example/example/releases/download/"
+                        "v1.2.3/buildish-verification-evidence--"
+                        "example.whl.publish-attestations.json"
+                    ),
+                    digest="a" * 64,
+                    claims={
+                        "integrity_base_url": (
+                            "https://integrity.buildish-release-harness.invalid/"
+                            "integrity"
+                        )
+                    },
+                )
+            ],
+            tooling=ToolingInvocationProvenance(
+                version="0.1.0", revision="fedcba9876543210"
+            ),
+            created_at="2026-08-05T12:00:00Z",
+        )
+        manifest_path.write_text(
+            manifest.model_dump_json(indent=2) + "\n", encoding="utf-8"
+        )
+
+        act_backend.workflow._validate_retained_release_manifest_artifacts(workspace)
+
+        manifest.secondary_publications[
+            0
+        ].uri = "https://pypi.org/project/example/1.2.3/"
+        manifest_path.write_text(
+            manifest.model_dump_json(indent=2) + "\n", encoding="utf-8"
+        )
+        with self.assertRaisesRegex(ValueError, "production PyPI service"):
+            act_backend.workflow._validate_retained_release_manifest_artifacts(
+                workspace
+            )
+
+    def test_successful_promotion_requires_a_retained_release_manifest(self) -> None:
+        """A green promotion should fail its postcondition when evidence is absent."""
+
+        workspace = runtime.create_workspace(self.sandbox_dir)
+
+        with self.assertRaisesRegex(
+            ValueError, "must retain a promoted release manifest artifact"
+        ):
+            act_backend.workflow._validate_retained_release_manifest_artifacts(
+                workspace,
+                require_promoted_manifest=True,
+            )
+
+    def test_local_pypi_publish_action_publishes_exact_wheel_and_sdist(self) -> None:
+        """The local publisher should expose exact distribution metadata to later jobs."""
+
+        _scenario, workspace = self._prepare_workspace_for_scenario(
+            "release-promote.yaml"
+        )
+        distributions = workspace.root / "fixture-distributions"
+        distributions.mkdir()
+        wheel = distributions / "buildish_release_tooling-0.1.0-py3-none-any.whl"
+        with zipfile.ZipFile(wheel, mode="w") as archive:
+            archive.writestr(
+                "buildish_release_tooling-0.1.0.dist-info/METADATA",
+                "Metadata-Version: 2.4\nName: buildish-release-tooling\nVersion: 0.1.0\n",
+            )
+        sdist = distributions / "buildish_release_tooling-0.1.0.tar.gz"
+        sdist.write_bytes(b"synthetic sdist bytes\n")
+        publisher = workspace.actions_dir / "local-pypi-publish" / "publish.py"
+
+        completed = subprocess.run(  # noqa: S603
+            ["python3", str(publisher)],
+            env={
+                **os.environ,
+                "GITHUB_WORKSPACE": str(workspace.root),
+                "INPUT_PACKAGES-DIR": str(distributions),
+            },
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        endpoint = (
+            workspace.harness_dir
+            / "pypi-index"
+            / "api"
+            / "buildish-release-tooling"
+            / "0.1.0"
+            / "json"
+        )
+        payload = json.loads(endpoint.read_text(encoding="utf-8"))
+        self.assertEqual(
+            {wheel.name, sdist.name},
+            {item["filename"] for item in payload["urls"]},
+        )
+        self.assertTrue(
+            all(len(item["digests"]["sha256"]) == 64 for item in payload["urls"])
+        )
 
     def test_rerun_failed_jobs_reinvokes_act_for_failed_jobs_and_dependents(
         self,
@@ -280,13 +761,30 @@ class ActHarnessIntegrationTest(unittest.TestCase):
                 clear=False,
             ),
             mock.patch("sys.stderr", StringIO()),
+            mock.patch.object(
+                act_backend,
+                "_seeded_candidate_tag",
+                return_value="v0.1.0-rc1",
+            ),
+            mock.patch.object(
+                act_backend.workflow,
+                "_validate_retained_release_manifest_artifacts",
+            ) as retained_manifest_validator,
         ):
             first_result = run_scenario(scenario, workspace_root=self.sandbox_dir)
             rerun_result = rerun_failed_jobs(scenario, first_result.workspace.root)
 
         self.assertEqual(["create-final-tag"], first_result.failed_job_ids)
         self.assertEqual(
-            ["stage", "verify-final", "publish", "manifest"],
+            [
+                "stage",
+                "verify-final",
+                "inspect-pypi",
+                "publish",
+                "publish-pypi",
+                "verify-pypi",
+                "manifest",
+            ],
             first_result.blocked_job_ids,
         )
         self.assertEqual(
@@ -294,13 +792,20 @@ class ActHarnessIntegrationTest(unittest.TestCase):
                 "create-final-tag",
                 "stage",
                 "verify-final",
+                "inspect-pypi",
                 "publish",
+                "publish-pypi",
+                "verify-pypi",
                 "manifest",
             ],
             rerun_result.selected_job_ids,
         )
         self.assertEqual([], rerun_result.failed_job_ids)
         self.assertEqual([], rerun_result.blocked_job_ids)
+        retained_manifest_validator.assert_called_once_with(
+            rerun_result.workspace,
+            require_promoted_manifest=True,
+        )
 
         rerun_invocation = json.loads(
             (state_dir / "invocation-2.json").read_text(encoding="utf-8")
@@ -310,7 +815,10 @@ class ActHarnessIntegrationTest(unittest.TestCase):
                 "create-final-tag",
                 "stage",
                 "verify-final",
+                "inspect-pypi",
                 "publish",
+                "publish-pypi",
+                "verify-pypi",
                 "manifest",
             ],
             rerun_invocation["selected_jobs"],
@@ -612,6 +1120,11 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             ),
             mock.patch("sys.stderr", stderr),
             mock.patch("sys.stdout", stdout),
+            mock.patch.object(
+                act_backend,
+                "_seeded_candidate_tag",
+                return_value="v0.1.0-rc1",
+            ),
         ):
             with self.assertRaises(SystemExit) as exc_info:
                 harness_main(

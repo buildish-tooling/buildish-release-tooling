@@ -100,6 +100,8 @@ Synthetic GitHub Release retained by the stateful harness shim.
 | <a id="harnessbuiltinghrelease-prerelease"></a>`prerelease` | bool | yes | Whether the release is a prerelease. |
 | <a id="harnessbuiltinghrelease-html-url"></a>`html_url` | str | yes | Synthetic browser-facing release URL. |
 | <a id="harnessbuiltinghrelease-url"></a>`url` | str | yes | Synthetic API-facing release URL. |
+| <a id="harnessbuiltinghrelease-created-at"></a>`created_at` | str | no | Deterministic UTC creation timestamp for the synthetic release. |
+| <a id="harnessbuiltinghrelease-published-at"></a>`published_at` | str | no | Deterministic UTC publication timestamp once the release is public. |
 | <a id="harnessbuiltinghrelease-assets"></a>`assets` | list[[HarnessBuiltinGhReleaseAsset](#harnessbuiltinghreleaseasset)] | no | Synthetic assets currently attached to the retained GitHub Release. |
 
 <a id="harnessbuiltinghreleaseasset"></a>

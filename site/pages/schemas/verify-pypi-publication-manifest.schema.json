@@ -1,0 +1,162 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "ArtifactReference": {
+      "additionalProperties": false,
+      "description": "Immutable logical artifact identity, digests, size, and locations.",
+      "properties": {
+        "digests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Immutable content digests keyed by algorithm.",
+          "title": "Digests",
+          "type": "object"
+        },
+        "kind": {
+          "description": "Artifact kind discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "locations": {
+          "description": "Known immutable or candidate publication locations.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Locations",
+          "type": "array"
+        },
+        "logical_name": {
+          "description": "Stable logical artifact name.",
+          "title": "Logical Name",
+          "type": "string"
+        },
+        "size_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Artifact size in bytes.",
+          "title": "Size Bytes"
+        }
+      },
+      "required": [
+        "kind",
+        "logical_name"
+      ],
+      "title": "ArtifactReference",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    }
+  },
+  "$id": "https://buildish.org/components/release-tooling/schemas/verify-pypi-publication-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest proving exact distributions published through the PyPI API. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "verify-pypi-publication",
+      "default": "verify-pypi-publication",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "lifecycle": {
+      "description": "Buildish lifecycle state kind that authorized the publication.",
+      "enum": [
+        "direct",
+        "candidate-promotion"
+      ],
+      "title": "Lifecycle",
+      "type": "string"
+    },
+    "project_name": {
+      "description": "PyPI project name.",
+      "minLength": 1,
+      "title": "Project Name",
+      "type": "string"
+    },
+    "project_url": {
+      "description": "Human-facing immutable project-version URL.",
+      "minLength": 1,
+      "title": "Project Url",
+      "type": "string"
+    },
+    "publication_state": {
+      "description": "Observed PyPI state relative to the expected distribution set.",
+      "enum": [
+        "absent",
+        "partial",
+        "complete"
+      ],
+      "title": "Publication State",
+      "type": "string"
+    },
+    "published_files": {
+      "description": "Exact distribution files and SHA-256 digests verified through PyPI.",
+      "items": {
+        "$ref": "#/$defs/ArtifactReference"
+      },
+      "title": "Published Files",
+      "type": "array"
+    },
+    "release_state_sha256": {
+      "description": "SHA-256 of the exact DirectReleaseState or PromotionState input.",
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Release State Sha256",
+      "type": "string"
+    },
+    "repository_api_url": {
+      "description": "PyPI JSON API base URL used for verification.",
+      "minLength": 1,
+      "title": "Repository Api Url",
+      "type": "string"
+    },
+    "source_commit": {
+      "description": "Exact source commit bound by the authorizing release state.",
+      "minLength": 1,
+      "title": "Source Commit",
+      "type": "string"
+    },
+    "version": {
+      "description": "Published project version.",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "project_name",
+    "version",
+    "repository_api_url",
+    "project_url",
+    "lifecycle",
+    "source_commit",
+    "release_state_sha256",
+    "publication_state",
+    "published_files"
+  ],
+  "title": "Buildish Release Tooling VerifyPyPiPublicationManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `verify-pypi-publication`."
+  }
+}

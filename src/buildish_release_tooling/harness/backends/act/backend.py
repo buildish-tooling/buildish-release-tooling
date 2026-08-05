@@ -23,6 +23,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import tomllib
 from pathlib import Path
 from typing import IO
 
@@ -45,6 +46,7 @@ from buildish_release_tooling.harness.runtime import (
     write_job_statuses,
     write_job_summaries,
 )
+from buildish_release_tooling.release.core.naming import parse_candidate_tag
 from buildish_release_tooling.shared.parsing import (
     DEFAULT_CONFIG_PARSE_MAX_BYTES,
     read_pydantic_json_file_bounded,
@@ -98,6 +100,13 @@ class ActBackend(Backend):
             job_definitions=job_definitions,
             act_exit_code=act_exit_code,
         )
+        if not result.failed_job_ids and not result.blocked_job_ids:
+            workflow._validate_retained_release_manifest_artifacts(
+                workspace,
+                require_promoted_manifest=_requires_retained_promoted_manifest(
+                    job_definitions
+                ),
+            )
         write_job_statuses(workspace, result.job_statuses)
         write_job_summaries(
             workspace,
@@ -141,12 +150,27 @@ class ActBackend(Backend):
             job_definitions=job_definitions,
             act_exit_code=act_exit_code,
         )
+        if not result.failed_job_ids and not result.blocked_job_ids:
+            workflow._validate_retained_release_manifest_artifacts(
+                workspace,
+                require_promoted_manifest=_requires_retained_promoted_manifest(
+                    job_definitions
+                ),
+            )
         write_job_statuses(workspace, result.job_statuses)
         write_job_summaries(
             workspace,
             workflow._act_step_order_by_job(fixtures._active_workflow_path(workspace)),
         )
         return result
+
+
+def _requires_retained_promoted_manifest(
+    job_definitions: list[workflow.WorkflowJobDefinition],
+) -> bool:
+    """Return whether a workflow scenario executes the promotion lifecycle."""
+
+    return any(definition.id == "resolve-promotion" for definition in job_definitions)
 
 
 def _require_workflow(scenario: HarnessScenario) -> WorkflowScenario:
@@ -168,6 +192,8 @@ def _prepare_workflow_execution(
     workflow._write_setup_uv_noop_action(workspace)
     workflow._write_local_checkout_action(workspace)
     workflow._write_local_artifact_actions(workspace)
+    workflow._write_local_pypi_publish_action(workspace)
+    workflow._write_local_package_attestation_verifier(workspace)
     rewritten_workflow = workflow._rewrite_workflow(
         workspace=workspace,
         workflow_path=Path(workflow_scenario.path),
@@ -193,11 +219,24 @@ def _resolved_workflow_inputs(
     """Resolve explicit harness-only inputs from retained seeded provider state."""
 
     inputs = dict(workflow.inputs)
-    prefix = "harness:seeded-release-asset-sha256:"
     for input_name, value in tuple(inputs.items()):
-        if not value.startswith(prefix):
+        if value == "harness:project-version":
+            inputs[input_name] = _project_version(workspace)
+
+    for input_name, value in tuple(inputs.items()):
+        if value == "harness:seeded-candidate-tag":
+            version = inputs.get("version", "")
+            if not version:
+                raise ValueError(
+                    "seeded candidate tag resolution requires a version input"
+                )
+            inputs[input_name] = _seeded_candidate_tag(workspace, version)
+
+    asset_digest_prefix = "harness:seeded-release-asset-sha256:"
+    for input_name, value in tuple(inputs.items()):
+        if not value.startswith(asset_digest_prefix):
             continue
-        asset_name = value.removeprefix(prefix)
+        asset_name = value.removeprefix(asset_digest_prefix)
         candidate_tag = inputs.get("candidate_tag", "")
         state = read_pydantic_json_file_bounded(
             HarnessShimState,
@@ -217,6 +256,48 @@ def _resolved_workflow_inputs(
             raise ValueError("seeded GitHub Release asset lacks a SHA-256 digest")
         inputs[input_name] = digest
     return inputs
+
+
+def _project_version(workspace: HarnessWorkspace) -> str:
+    """Read the static project version from the disposable checkout metadata."""
+
+    pyproject_path = workspace.root / "pyproject.toml"
+    with pyproject_path.open("rb") as pyproject_file:
+        payload = tomllib.load(pyproject_file)
+    project = payload.get("project")
+    version = project.get("version") if isinstance(project, dict) else None
+    if not isinstance(version, str) or not version.strip():
+        raise ValueError(f"project.version is missing from {pyproject_path}")
+    return version
+
+
+def _seeded_candidate_tag(workspace: HarnessWorkspace, version: str) -> str:
+    """Resolve exactly one retained, finalized candidate for an exact version."""
+
+    state = read_pydantic_json_file_bounded(
+        HarnessShimState,
+        workspace.state_file,
+        max_bytes=DEFAULT_CONFIG_PARSE_MAX_BYTES,
+    )
+    matches: list[str] = []
+    for tag, release in state.gh_releases.items():
+        if release.tag_name != tag or release.draft or not release.prerelease:
+            continue
+        try:
+            parse_candidate_tag(version, tag)
+        except ValueError:
+            continue
+        if (
+            sum(asset.name == "candidate-manifest.json" for asset in release.assets)
+            == 1
+        ):
+            matches.append(tag)
+    if len(matches) != 1:
+        raise ValueError(
+            "seeded provider state requires exactly one finalized candidate "
+            f"with candidate-manifest.json for version {version}; found {len(matches)}"
+        )
+    return matches[0]
 
 
 def _run_act(
@@ -239,6 +320,11 @@ def _run_act(
         str(workspace.harness_dir / "act-event.json"),
         "--secret-file",
         str(_write_secrets_file(workspace, scenario)),
+        "--action-cache-path",
+        str(workspace.harness_dir / "act-action-cache"),
+        "--cache-server-path",
+        str(workspace.harness_dir / "act-cache"),
+        "--pull=false",
         "--rm",
         *_runner_image_args(),
     ]

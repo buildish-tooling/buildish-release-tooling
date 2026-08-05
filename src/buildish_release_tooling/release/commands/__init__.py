@@ -29,6 +29,10 @@ from buildish_release_tooling.release.commands.materialization import (
     run_create_rc_materialization_tag,
     run_materialize_rc_git_content,
 )
+from buildish_release_tooling.release.commands.pypi import (
+    run_verify_pypi_attestations,
+    run_verify_pypi_publication,
+)
 from buildish_release_tooling.release.commands.lifecycle import (
     run_create_candidate_manifest,
     run_create_release_manifest,
@@ -52,6 +56,7 @@ from buildish_release_tooling.release.commands.release_publication import (
 )
 from buildish_release_tooling.release.commands.secondary_targets import (
     run_attach_github_release_assets,
+    run_prepare_release_assets,
     run_publish_dockerhub_moving_tags,
     run_update_moving_image_aliases,
     run_update_moving_tags,
@@ -100,6 +105,7 @@ __all__ = [
     "run_materialize_rc_git_content",
     "run_publish_atr_candidate",
     "run_prepare_rc",
+    "run_prepare_release_assets",
     "run_prune_older_line_releases",
     "run_publish_dockerhub_moving_tags",
     "run_publish_github_final_release",
@@ -119,5 +125,7 @@ __all__ = [
     "run_verify_rc",
     "run_verify_github_final_release",
     "run_verify_github_candidate",
+    "run_verify_pypi_attestations",
+    "run_verify_pypi_publication",
     "run_verify_source_ref_checks",
 ]

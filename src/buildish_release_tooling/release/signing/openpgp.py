@@ -71,6 +71,7 @@ class OpenPgpSigner:
 
     gpg_home: Path
     fingerprint: str
+    _force_exact_key: bool
     _passphrase: str | None = field(repr=False, compare=False)
     _passphrase_supplied: bool
     _private_key_env: str
@@ -120,20 +121,32 @@ class OpenPgpSigner:
             detail = sanitize_text(str(exc), import_secret_values)
             raise OpenPgpSigningError(f"OpenPGP private-key import failed: {detail}") from exc
 
-        fingerprint = _default_secret_key_fingerprint(
+        primary_fingerprint, signing_subkey_fingerprints = _secret_key_fingerprints(
             effective_home,
             child_env=child_env,
             secret_values=import_secret_values,
         )
         expected_fingerprint = signing_input.expected_fingerprint
-        if expected_fingerprint is not None and fingerprint != expected_fingerprint:
-            raise OpenPgpSigningError(
-                "imported OpenPGP signing fingerprint does not match expected_fingerprint: "
-                f"expected {expected_fingerprint}, found {fingerprint}"
-            )
+        force_exact_key = False
+        fingerprint = primary_fingerprint
+        if expected_fingerprint is not None:
+            if expected_fingerprint == primary_fingerprint:
+                fingerprint = primary_fingerprint
+            elif expected_fingerprint in signing_subkey_fingerprints:
+                fingerprint = expected_fingerprint
+                force_exact_key = True
+            else:
+                available_subkeys = ", ".join(signing_subkey_fingerprints) or "<none>"
+                raise OpenPgpSigningError(
+                    "imported OpenPGP signing fingerprint does not match "
+                    "expected_fingerprint: "
+                    f"expected {expected_fingerprint}, found {primary_fingerprint}; "
+                    f"available signing subkeys: {available_subkeys}"
+                )
         return cls(
             gpg_home=effective_home,
             fingerprint=fingerprint,
+            _force_exact_key=force_exact_key,
             _passphrase=passphrase,
             _passphrase_supplied=passphrase_supplied,
             _private_key_env=signing_input.private_key_env,
@@ -154,7 +167,7 @@ class OpenPgpSigner:
             "--passphrase-fd",
             "0",
             "--local-user",
-            self.fingerprint,
+            f"{self.fingerprint}!" if self._force_exact_key else self.fingerprint,
             "--armor",
             "--detach-sign",
             "--output",
@@ -244,12 +257,12 @@ def _temporary_signature_path(output_path: Path) -> Path:
     return Path(temporary_name)
 
 
-def _default_secret_key_fingerprint(
+def _secret_key_fingerprints(
     gpg_home: Path,
     *,
     child_env: dict[str, str] | None = None,
     secret_values: tuple[str, ...] = (),
-) -> str:
+) -> tuple[str, list[str]]:
     effective_home = _effective_home(gpg_home)
     completed = run_logged_command(
         ["gpg", "--batch", "--with-colons", "--fingerprint", "--list-secret-keys"],
@@ -258,27 +271,50 @@ def _default_secret_key_fingerprint(
         extra_secret_values=secret_values,
     )
     primary_fingerprints: list[str] = []
-    awaiting_primary_fingerprint = False
+    signing_subkey_fingerprints: list[str] = []
+    awaiting_record: tuple[str, bool] | None = None
     for line in completed.stdout.splitlines():
         parts = line.split(":")
         record_type = parts[0]
         if record_type == "sec":
-            awaiting_primary_fingerprint = True
+            capabilities = parts[11].lower() if len(parts) > 11 else ""
+            awaiting_record = ("primary", "s" in capabilities)
         elif record_type == "ssb":
-            awaiting_primary_fingerprint = False
-        elif record_type == "fpr" and awaiting_primary_fingerprint:
+            capabilities = parts[11].lower() if len(parts) > 11 else ""
+            awaiting_record = ("subkey", "s" in capabilities)
+        elif record_type == "fpr" and awaiting_record is not None:
             fingerprint = parts[9].upper() if len(parts) > 9 else ""
             if _FINGERPRINT_PATTERN.fullmatch(fingerprint) is None:
-                raise OpenPgpSigningError("GnuPG returned an invalid primary-key fingerprint")
-            primary_fingerprints.append(fingerprint)
-            awaiting_primary_fingerprint = False
+                raise OpenPgpSigningError("GnuPG returned an invalid secret-key fingerprint")
+            record_kind, signing_capable = awaiting_record
+            if record_kind == "primary":
+                primary_fingerprints.append(fingerprint)
+            elif signing_capable:
+                signing_subkey_fingerprints.append(fingerprint)
+            awaiting_record = None
     if not primary_fingerprints:
         raise OpenPgpSigningError(f"no secret signing key available in {gpg_home}")
     if len(primary_fingerprints) != 1:
         raise OpenPgpSigningError(
             "OpenPGP private-key input must contain exactly one primary secret key"
         )
-    return primary_fingerprints[0]
+    return primary_fingerprints[0], signing_subkey_fingerprints
+
+
+def _default_secret_key_fingerprint(
+    gpg_home: Path,
+    *,
+    child_env: dict[str, str] | None = None,
+    secret_values: tuple[str, ...] = (),
+) -> str:
+    """Return the sole primary fingerprint from imported secret-key material."""
+
+    primary_fingerprint, _signing_subkeys = _secret_key_fingerprints(
+        gpg_home,
+        child_env=child_env,
+        secret_values=secret_values,
+    )
+    return primary_fingerprint
 
 
 def secret_key_fingerprint(gpg_home: Path) -> str:
@@ -294,6 +330,7 @@ def detached_ascii_sign(gpg_home: Path, input_path: Path, output_path: Path) -> 
     signer = OpenPgpSigner(
         gpg_home=_effective_home(gpg_home),
         fingerprint=fingerprint,
+        _force_exact_key=False,
         _passphrase=None,
         _passphrase_supplied=False,
         _private_key_env="BUILDISH_GPG_PRIVATE_KEY",

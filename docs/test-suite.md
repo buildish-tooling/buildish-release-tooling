@@ -32,6 +32,8 @@ schema and documentation checks, and GitHub workflow simulation.
 - `tests/release/platforms/github/` covers GitHub checks, refs, Releases, direct publication, and
   candidate publication.
 - `tests/release/foundations/asf/` covers ASF dist behavior and URL enforcement.
+- `tests/release/publications/pypi/` covers PyPI JSON API polling, exact distribution matching,
+  pooled-session reuse, PEP 740 evidence composition, and final-manifest revalidation.
 - `tests/release/signing/` covers isolated OpenPGP import and signing.
 - `tests/release/commands/` covers bounded CLI operations, lifecycle resolution, exact candidate
   promotion, publication, artifact registration, voting materials, and verification.
@@ -46,6 +48,13 @@ reproducibility, report, bundle, schema, and generated-documentation contracts.
 `act`-based workflow execution. Checked-in scenarios under `buildish-release-tooling/harness/`
 exercise direct release, candidate publication, exact promotion, and read-only candidate
 verification.
+
+`make release-integration-check` executes the production candidate and promotion workflows in
+sequence through `act`. It builds and signs the real wheel and sdist, retains candidate assets,
+promotes their exact bytes, uses a workspace-local package-index fixture, and binds deterministic
+local provenance evidence into the final manifest. This service-isolated evidence tests workflow
+composition; the live TestPyPI run remains the Trusted Publisher and PEP 740 service integration
+gate. The runner may still need network access for actions, tools, and container images.
 
 Harness tests replace external writes with controlled local state. They do not verify repository
 settings, GitHub Environment reviewers, service availability, or real credentials.

@@ -541,6 +541,45 @@
           "minItems": 1,
           "title": "Required",
           "type": "array"
+        },
+        "trusted_branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional head branch required for the trusted GitHub Actions workflow run.",
+          "title": "Trusted Branch"
+        },
+        "trusted_event": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional GitHub Actions event name required for the trusted workflow run.",
+          "title": "Trusted Event"
+        },
+        "trusted_workflow_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional repository-relative GitHub Actions workflow path that must have produced every required check run.",
+          "title": "Trusted Workflow Path"
         }
       },
       "required": [
@@ -729,7 +768,7 @@
                 "dockerhub": "#/$defs/DockerHubPublicationConfig",
                 "github-action": "#/$defs/GitHubActionPublicationConfig",
                 "github-release-assets": "#/$defs/GitHubReleaseAssetsPublicationConfig",
-                "pypi": "#/$defs/PythonPackagePublicationConfig"
+                "pypi": "#/$defs/PyPiPublicationConfig"
               },
               "propertyName": "kind"
             },
@@ -741,7 +780,7 @@
                 "$ref": "#/$defs/GitHubReleaseAssetsPublicationConfig"
               },
               {
-                "$ref": "#/$defs/PythonPackagePublicationConfig"
+                "$ref": "#/$defs/PyPiPublicationConfig"
               },
               {
                 "$ref": "#/$defs/DockerHubPublicationConfig"
@@ -762,19 +801,96 @@
         "ownership": "component-owned"
       }
     },
-    "PythonPackagePublicationConfig": {
+    "PyPiPublicationConfig": {
       "additionalProperties": false,
-      "description": "Secondary publication to the configured Python package index.",
+      "description": "Secondary publication to PyPI or TestPyPI.",
       "properties": {
+        "integrity_api_url": {
+          "default": "https://pypi.org/integrity",
+          "description": "PyPI Integrity API base URL.",
+          "minLength": 1,
+          "title": "Integrity Api Url",
+          "type": "string"
+        },
         "kind": {
           "const": "pypi",
           "default": "pypi",
           "description": "Secondary publication target discriminator.",
           "title": "Kind",
           "type": "string"
+        },
+        "project_name": {
+          "description": "PyPI project name.",
+          "minLength": 1,
+          "title": "Project Name",
+          "type": "string"
+        },
+        "project_url_template": {
+          "default": "https://pypi.org/project/{project}/{version}/",
+          "description": "Immutable project-version URL template.",
+          "minLength": 1,
+          "title": "Project Url Template",
+          "type": "string"
+        },
+        "repository_api_url": {
+          "default": "https://pypi.org/pypi",
+          "description": "PyPI JSON API base URL.",
+          "minLength": 1,
+          "title": "Repository Api Url",
+          "type": "string"
+        },
+        "trusted_publisher": {
+          "$ref": "#/$defs/PyPiTrustedPublisherConfig",
+          "description": "Exact Trusted Publisher identity required for provenance."
         }
       },
-      "title": "PythonPackagePublicationConfig",
+      "required": [
+        "project_name",
+        "trusted_publisher"
+      ],
+      "title": "PyPiPublicationConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
+    "PyPiTrustedPublisherConfig": {
+      "additionalProperties": false,
+      "description": "Expected GitHub Trusted Publisher identity for one PyPI target.",
+      "properties": {
+        "environment": {
+          "description": "GitHub Environment identity.",
+          "minLength": 1,
+          "title": "Environment",
+          "type": "string"
+        },
+        "kind": {
+          "const": "GitHub",
+          "default": "GitHub",
+          "description": "PyPI Trusted Publisher kind.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "repository": {
+          "description": "GitHub owner/repository identity.",
+          "minLength": 1,
+          "title": "Repository",
+          "type": "string"
+        },
+        "workflow": {
+          "description": "GitHub workflow filename identity.",
+          "minLength": 1,
+          "title": "Workflow",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository",
+        "workflow",
+        "environment"
+      ],
+      "title": "PyPiTrustedPublisherConfig",
       "type": "object",
       "x-buildish-contract": {
         "category": "authored",
@@ -831,6 +947,18 @@
         "publication": {
           "$ref": "#/$defs/PublicationConfig",
           "description": "Authoritative and additional publication targets."
+        },
+        "release_notes": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ReleaseNotesConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional version-specific release notes. When configured, the selected source commit must contain valid non-empty notes."
         },
         "source": {
           "$ref": "#/$defs/SourceConfig",
@@ -897,6 +1025,26 @@
         "ownership": "component-owned"
       }
     },
+    "ReleaseNotesConfig": {
+      "additionalProperties": false,
+      "description": "Optional version-specific release-note source selected from the release commit.",
+      "properties": {
+        "path_template": {
+          "description": "Repository-relative UTF-8 Markdown path template containing the required `{version}` placeholder.",
+          "title": "Path Template",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path_template"
+      ],
+      "title": "ReleaseNotesConfig",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "authored",
+        "ownership": "component-owned"
+      }
+    },
     "SourceConfig": {
       "additionalProperties": false,
       "description": "Source selection, snapshot, and optional hosting-platform check policy.",
@@ -925,6 +1073,12 @@
           "default": null,
           "description": "Optional default branch used when source selection permits it.",
           "title": "Default Branch"
+        },
+        "require_default_branch_ancestor": {
+          "default": false,
+          "description": "Whether the selected source commit must already be reachable from the configured default branch.",
+          "title": "Require Default Branch Ancestor",
+          "type": "boolean"
         },
         "selection": {
           "description": "Policy used to resolve the exact release source revision.",

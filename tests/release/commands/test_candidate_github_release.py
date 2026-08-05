@@ -186,6 +186,7 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
                 "https://github.com/apache/example-project/releases/tag/"
                 f"{state.candidate.tag.name}"
             ),
+            "created_at": "2026-08-05T08:00:00Z",
             "assets": assets,
         }
 
@@ -287,6 +288,41 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
             prerelease=False,
             assets=[asset_payload, manifest_asset],
         )
+        mismatched_manifest = json.loads(manifest_text)
+        mismatched_markdown = "Different release notes.\n"
+        mismatched_manifest["release_notes"] = {
+            "source_path": "release-notes/1.2.3.md",
+            "sha256": hashlib.sha256(mismatched_markdown.encode("utf-8")).hexdigest(),
+            "markdown": mismatched_markdown,
+        }
+        mismatched_manifest_path = (
+            self.sandbox_dir / "mismatched-candidate-manifest.json"
+        )
+        mismatched_manifest_path.write_text(
+            json.dumps(mismatched_manifest) + "\n", encoding="utf-8"
+        )
+        gh_path, gh_state_dir = self._fake_gh(
+            state,
+            list_response=[draft_with_asset],
+        )
+        completed = self._run(
+            [
+                "attach-github-candidate-manifest",
+                "--candidate-state",
+                str(state_path),
+                "--candidate-manifest",
+                str(mismatched_manifest_path),
+            ],
+            result_path=self.sandbox_dir / "mismatched-candidate-attach.json",
+            gh_path=gh_path,
+            gh_state_dir=gh_state_dir,
+        )
+        self.assertNotEqual(0, completed.returncode)
+        self.assertIn(
+            "candidate manifest release notes do not match candidate state",
+            completed.stderr,
+        )
+
         gh_path, gh_state_dir = self._fake_gh(
             state,
             list_response=[draft_with_asset],
@@ -568,6 +604,7 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
                     "https://github.com/apache/example-project/releases/tag/"
                     f"{state.candidate.tag.name}"
                 ),
+                created_at="2026-08-05T08:00:00Z",
                 tag=state.candidate.tag.name,
                 draft=True,
                 prerelease=False,
@@ -797,6 +834,7 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
             "html_url": (
                 "https://github.com/apache/example-project/releases/tag/v1.2.3"
             ),
+            "created_at": "2026-08-05T09:00:00Z",
             "assets": [],
         }
         gh_path, gh_state_dir = self._fake_final_gh(
@@ -812,7 +850,11 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
 
-        final_public = {**final_draft, "draft": False}
+        final_public = {
+            **final_draft,
+            "draft": False,
+            "published_at": "2026-08-05T09:05:00Z",
+        }
         gh_path, gh_state_dir = self._fake_final_gh(
             promotion,
             list_response=[final_draft, public_candidate],
@@ -855,6 +897,10 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
             "same-source-revision",
             release_manifest["promotion_evidence"][0]["relation"],
         )
+        self.assertEqual(
+            "2026-08-05T08:00:00Z", json.loads(manifest_text)["created_at"]
+        )
+        self.assertEqual("2026-08-05T09:05:00Z", release_manifest["created_at"])
 
 
 if __name__ == "__main__":

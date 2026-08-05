@@ -19,7 +19,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from buildish_release_tooling.docs.documentation import (
     ComponentOwnedAuthoredModel,
@@ -49,25 +49,20 @@ from buildish_release_tooling.release.models import (
     VerifyRcOverrideConfig,
     VerifyRcOverrideFileConfig,
 )
+from buildish_release_tooling.release.release_notes import render_release_notes_path
 from buildish_release_tooling.release.platforms.github.config import (
     GitHubActionPublicationConfig,
     GitHubReleaseAssetsPublicationConfig,
     GitHubReleasePublicationConfig,
     GitHubSourceChecksConfig,
 )
+from buildish_release_tooling.release.publications.pypi.config import (
+    PyPiPublicationConfig,
+)
 from buildish_release_tooling.shared.parsing import (
     DEFAULT_CONFIG_PARSE_MAX_BYTES,
     read_yaml_mapping_file_bounded,
 )
-
-
-class PythonPackagePublicationConfig(ComponentOwnedAuthoredModel):
-    """Secondary publication to the configured Python package index."""
-
-    kind: Literal["pypi"] = Field(
-        default="pypi",
-        description="Secondary publication target discriminator.",
-    )
 
 
 class DockerHubPublicationConfig(ComponentOwnedAuthoredModel):
@@ -86,7 +81,7 @@ PrimaryPublicationTargetConfig = Annotated[
 SecondaryPublicationTargetConfig = Annotated[
     GitHubActionPublicationConfig
     | GitHubReleaseAssetsPublicationConfig
-    | PythonPackagePublicationConfig
+    | PyPiPublicationConfig
     | DockerHubPublicationConfig,
     Field(discriminator="kind"),
 ]
@@ -111,6 +106,19 @@ class PublicationConfig(ComponentOwnedAuthoredModel):
         description="Additional package, image, action, or asset publication targets.",
     )
 
+    @model_validator(mode="after")
+    def require_unique_secondary_target_kinds(self) -> PublicationConfig:
+        """Keep routing unambiguous: one configured target per provider kind."""
+
+        kinds = [target.kind for target in self.secondary]
+        duplicates = sorted({kind for kind in kinds if kinds.count(kind) > 1})
+        if duplicates:
+            raise ValueError(
+                "publication.secondary permits one target per kind; duplicates: "
+                + ", ".join(duplicates)
+            )
+        return self
+
 
 class PolicyProfilesConfig(ComponentOwnedAuthoredModel):
     """Explicit foundation policy profiles selected by a component."""
@@ -133,6 +141,13 @@ class SourceConfig(ComponentOwnedAuthoredModel):
         default=None,
         description="Optional default branch used when source selection permits it.",
     )
+    require_default_branch_ancestor: bool = Field(
+        default=False,
+        description=(
+            "Whether the selected source commit must already be reachable from the "
+            "configured default branch."
+        ),
+    )
     snapshot: SourceSnapshotConfig = Field(
         description="Policy for source material exposed to release consumers.",
     )
@@ -147,11 +162,31 @@ class SourceConfig(ComponentOwnedAuthoredModel):
 
     @model_validator(mode="after")
     def _validate_default_branch(self) -> SourceConfig:
-        if self.selection == "explicit-ref-or-default-branch" and not self.default_branch:
+        if (
+            self.selection == "explicit-ref-or-default-branch"
+            or self.require_default_branch_ancestor
+        ) and not self.default_branch:
             raise ValueError(
-                "source.default_branch is required for explicit-ref-or-default-branch selection"
+                "source.default_branch is required by the configured source policy"
             )
         return self
+
+
+class ReleaseNotesConfig(ComponentOwnedAuthoredModel):
+    """Optional version-specific release-note source selected from the release commit."""
+
+    path_template: str = Field(
+        description=(
+            "Repository-relative UTF-8 Markdown path template containing the "
+            "required `{version}` placeholder."
+        )
+    )
+
+    @field_validator("path_template")
+    @classmethod
+    def _validate_path_template(cls, value: str) -> str:
+        render_release_notes_path(value, "0.0.0")
+        return value
 
 
 class ReleaseConfig(ComponentOwnedAuthoredModel):
@@ -166,6 +201,13 @@ class ReleaseConfig(ComponentOwnedAuthoredModel):
     )
     source: SourceConfig = Field(description="Source selection and snapshot policy.")
     lifecycle: LifecycleConfig = Field(description="Direct or candidate release lifecycle.")
+    release_notes: ReleaseNotesConfig | None = Field(
+        default=None,
+        description=(
+            "Optional version-specific release notes. When configured, the selected "
+            "source commit must contain valid non-empty notes."
+        ),
+    )
     candidate: CandidateConfig | None = Field(
         default=None,
         description="Candidate policy required only for the candidate lifecycle.",

@@ -1,0 +1,189 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "PyPiAttestationFileEvidence": {
+      "additionalProperties": false,
+      "description": "Durable verified PyPI publish-attestation evidence for one distribution.",
+      "properties": {
+        "distribution_sha256": {
+          "description": "SHA-256 of the verified distribution bytes.",
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Distribution Sha256",
+          "type": "string"
+        },
+        "evidence_filename": {
+          "description": "GitHub Release asset name containing selected publish attestations.",
+          "minLength": 1,
+          "title": "Evidence Filename",
+          "type": "string"
+        },
+        "evidence_sha256": {
+          "description": "SHA-256 of the exact retained publish-attestation document.",
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Evidence Sha256",
+          "type": "string"
+        },
+        "evidence_size_bytes": {
+          "description": "Size of the retained publish-attestation document.",
+          "minimum": 1,
+          "title": "Evidence Size Bytes",
+          "type": "integer"
+        },
+        "filename": {
+          "description": "Exact distribution filename.",
+          "minLength": 1,
+          "title": "Filename",
+          "type": "string"
+        },
+        "publish_attestation_count": {
+          "description": "Number of verified PyPI Publish Attestations retained.",
+          "minimum": 1,
+          "title": "Publish Attestation Count",
+          "type": "integer"
+        },
+        "source_provenance_url": {
+          "description": "Mutable PyPI Integrity API provenance URL used as the evidence source.",
+          "minLength": 1,
+          "title": "Source Provenance Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "filename",
+        "distribution_sha256",
+        "evidence_filename",
+        "evidence_sha256",
+        "evidence_size_bytes",
+        "source_provenance_url",
+        "publish_attestation_count"
+      ],
+      "title": "PyPiAttestationFileEvidence",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    },
+    "PyPiAttestationPublisher": {
+      "additionalProperties": false,
+      "description": "Expected GitHub Trusted Publisher identity verified for PyPI attestations.",
+      "properties": {
+        "environment": {
+          "description": "GitHub Environment identity.",
+          "minLength": 1,
+          "title": "Environment",
+          "type": "string"
+        },
+        "kind": {
+          "const": "GitHub",
+          "description": "Trusted Publisher kind.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "repository": {
+          "description": "GitHub repository owner/name identity.",
+          "minLength": 1,
+          "title": "Repository",
+          "type": "string"
+        },
+        "workflow": {
+          "description": "GitHub Actions workflow filename identity.",
+          "minLength": 1,
+          "title": "Workflow",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "repository",
+        "workflow",
+        "environment"
+      ],
+      "title": "PyPiAttestationPublisher",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    }
+  },
+  "$id": "https://buildish.org/components/release-tooling/schemas/verify-pypi-attestations-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest binding verified PyPI PEP 740 provenance to distributions. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "verify-pypi-attestations",
+      "default": "verify-pypi-attestations",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "files": {
+      "description": "Exact distributions and retained publish attestations verified successfully.",
+      "items": {
+        "$ref": "#/$defs/PyPiAttestationFileEvidence"
+      },
+      "minItems": 1,
+      "title": "Files",
+      "type": "array"
+    },
+    "integrity_base_url": {
+      "description": "PyPI Integrity API base URL.",
+      "minLength": 1,
+      "title": "Integrity Base Url",
+      "type": "string"
+    },
+    "kind": {
+      "const": "pypi-attestation-verification",
+      "default": "pypi-attestation-verification",
+      "description": "Evidence-document discriminator.",
+      "title": "Kind",
+      "type": "string"
+    },
+    "project_name": {
+      "description": "PyPI project name.",
+      "minLength": 1,
+      "title": "Project Name",
+      "type": "string"
+    },
+    "publisher": {
+      "$ref": "#/$defs/PyPiAttestationPublisher",
+      "description": "Exact verified Trusted Publisher identity."
+    },
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "description": "Evidence schema version.",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "version": {
+      "description": "Published project version.",
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "component",
+    "project_name",
+    "version",
+    "integrity_base_url",
+    "publisher",
+    "files"
+  ],
+  "title": "Buildish Release Tooling VerifyPyPiAttestationsManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `verify-pypi-attestations`."
+  }
+}

@@ -60,6 +60,7 @@ class _FakeHTTPResponse:
         self._payload = payload
         self._offset = 0
         self.released = False
+        self.closed = False
 
     def read(self, size: int | None = None) -> bytes:
         if size is None:
@@ -70,6 +71,12 @@ class _FakeHTTPResponse:
 
     def release_conn(self) -> None:
         self.released = True
+
+    def close(self) -> None:
+        self.closed = True
+
+    def isclosed(self) -> bool:
+        return self._offset >= len(self._payload)
 
 
 class _FakePoolManager:

@@ -18,9 +18,9 @@ RELEASE_LEGAL_OUT_DIR ?= dist-release-legal/preliminary
 RELEASE_LEGAL_DETAILS_OUT_DIR ?= dist/release-legal-preliminary
 HELP_TARGETS = $(MAKEFILE_LIST)
 HELP_PUBLIC_CHECK_TARGETS := lint typecheck test rat release-legal-preliminary-check check schemas
-HELP_PUBLIC_RELEASE_TARGETS := release-legal-preliminary
+HELP_PUBLIC_RELEASE_TARGETS := release-integration-check release-legal-preliminary
 
-.PHONY: help lint typecheck test rat release-legal-preliminary-check check schemas release-legal-preliminary
+.PHONY: help lint typecheck test rat release-legal-preliminary-check check schemas release-integration-check release-legal-preliminary
 
 help: ## Show curated Make targets for buildish-release-tooling.
 	@desc_for() { awk -v target="$$1" 'BEGIN {FS = ":.*## "} $$1 == target {print $$2; exit}' $(HELP_TARGETS); }; \
@@ -50,12 +50,17 @@ release-legal-preliminary-check: ## Verify the checked-in preliminary release-le
 	diff -ru "$(RELEASE_LEGAL_OUT_DIR)" "$$tmp_dir/tracked"
 
 test: ## Run the Python unit and integration test suite.
-	$(UV_RUN) python -m pytest tests -n $(PYTEST_WORKERS) -q
+	$(UV_RUN) --group release-attestation python -m pytest tests -n $(PYTEST_WORKERS) -q
 
 check: lint typecheck test rat release-legal-preliminary-check ## Run lint, type checks, tests, RAT, and legal-artifact verification.
 
 schemas: ## Regenerate checked-in JSON Schema files and the Markdown model reference.
 	$(UV_RUN) python -m buildish_release_tooling.docs.schema_export --output-dir site/pages/schemas
+
+release-integration-check: ## Run the service-isolated production candidate-to-promotion workflow composition.
+	$(UV_RUN) --group release-attestation buildish-release-harness run-sequence \
+		buildish-release-tooling/harness/scenarios/release-candidate.yaml \
+		buildish-release-tooling/harness/scenarios/release-promote.yaml
 
 release-legal-preliminary: ## Generate preliminary wheel legal drafts from the runtime dependency set.
 	$(UV_RUN) python3 -m buildish_release_tooling.legal.release_legal --output-dir $(RELEASE_LEGAL_OUT_DIR) --details-output-dir $(RELEASE_LEGAL_DETAILS_OUT_DIR)

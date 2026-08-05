@@ -50,6 +50,12 @@
           "title": "Body",
           "type": "string"
         },
+        "created_at": {
+          "default": "2026-01-01T00:00:00Z",
+          "description": "Deterministic UTC creation timestamp for the synthetic release.",
+          "title": "Created At",
+          "type": "string"
+        },
         "draft": {
           "description": "Whether the release remains a draft.",
           "title": "Draft",
@@ -75,6 +81,19 @@
           "description": "Whether the release is a prerelease.",
           "title": "Prerelease",
           "type": "boolean"
+        },
+        "published_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Deterministic UTC publication timestamp once the release is public.",
+          "title": "Published At"
         },
         "repository": {
           "description": "GitHub repository identity associated with the release.",

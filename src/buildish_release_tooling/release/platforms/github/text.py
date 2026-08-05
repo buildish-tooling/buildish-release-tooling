@@ -62,6 +62,8 @@ def render_direct_final_release_body(
                 f"Candidate manifest SHA-256: {state.candidate_manifest_digest}",
             ]
         )
+    if state.release_notes is not None:
+        lines.extend(["", "## Release notes", "", state.release_notes.markdown])
     if state.artifacts:
         lines.extend(
             [
@@ -95,6 +97,8 @@ def render_candidate_release_body(
         f"Candidate tag: {state.candidate.tag.name}",
         f"Source commit: {state.source.commit_sha}",
     ]
+    if state.release_notes is not None:
+        lines.extend(["", "## Release notes", "", state.release_notes.markdown])
     if artifacts:
         lines.extend(
             [

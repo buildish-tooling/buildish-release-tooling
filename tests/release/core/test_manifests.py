@@ -84,6 +84,34 @@ class StableManifestTest(unittest.TestCase):
         self.assertNotIn("asf_", serialized)
         self.assertNotIn("github_", serialized)
 
+    def test_stable_manifest_timestamps_require_valid_utc_rfc3339(self) -> None:
+        for invalid in (
+            "not-a-timeZ",
+            "2026-13-31T12:00:00Z",
+            "2026-07-31T12:00:00+02:00",
+            "2026-07-31 12:00:00Z",
+        ):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    CandidateManifestV1(
+                        release=self.release,
+                        candidate=self.candidate,
+                        source=self.source,
+                        candidate_tag=self.candidate_tag,
+                        tooling=self.tooling,
+                        created_at=invalid,
+                    )
+
+        manifest = CandidateManifestV1(
+            release=self.release,
+            candidate=self.candidate,
+            source=self.source,
+            candidate_tag=self.candidate_tag,
+            tooling=self.tooling,
+            created_at="2026-07-31T12:00:00.123456Z",
+        )
+        self.assertEqual("2026-07-31T12:00:00.123456Z", manifest.created_at)
+
     def test_direct_release_manifest_omits_promoted_candidate_block(self) -> None:
         manifest = ReleaseManifestV1(
             release=self.release,

@@ -27,6 +27,7 @@ from buildish_release_tooling.release.core.manifests import ManifestDigestRefere
 from buildish_release_tooling.release.core.models import (
     ArtifactReference,
     CandidateIdentity,
+    UtcRfc3339Timestamp,
 )
 
 
@@ -60,6 +61,9 @@ class GitHubCandidatePublication(ToolingDerivedModel):
     repository: str = Field(description="GitHub repository in owner/name form.")
     release_id: int = Field(ge=1, description="GitHub Release numeric identifier.")
     release_url: str = Field(description="User-facing GitHub Release URL.")
+    created_at: UtcRfc3339Timestamp = Field(
+        description="UTC creation timestamp reported by GitHub for the candidate Release."
+    )
     tag: str = Field(description="Exact candidate tag attached to the release.")
     draft: bool = Field(description="Whether GitHub reports the release as a draft.")
     prerelease: bool = Field(description="Whether GitHub reports a pre-release.")
@@ -77,6 +81,13 @@ class GitHubFinalPublication(ToolingDerivedModel):
     repository: str = Field(description="GitHub repository in owner/name form.")
     release_id: int = Field(ge=1, description="GitHub Release numeric identifier.")
     release_url: str = Field(description="User-facing GitHub Release URL.")
+    created_at: UtcRfc3339Timestamp = Field(
+        description="UTC creation timestamp reported by GitHub for the final Release."
+    )
+    published_at: UtcRfc3339Timestamp | None = Field(
+        default=None,
+        description="UTC publication timestamp reported by GitHub, absent while the Release is a draft.",
+    )
     tag: str = Field(description="Exact immutable final tag attached to the release.")
     draft: bool = Field(description="Whether GitHub reports the release as a draft.")
     prerelease: bool = Field(description="Whether GitHub reports a pre-release.")

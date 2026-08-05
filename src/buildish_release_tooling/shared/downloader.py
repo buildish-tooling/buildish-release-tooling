@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
@@ -66,6 +66,8 @@ class DownloadTransport(Protocol):
         uri: str,
         *,
         max_bytes: int,
+        deadline_monotonic: float | None = None,
+        headers: Mapping[str, str] | None = None,
         max_redirects: int = 0,
         redirect_validator: RedirectValidator | None = None,
     ) -> bytes:
@@ -112,7 +114,9 @@ class DownloadSession:
 
         return cls(
             policy=DownloadPolicy(allowed_schemes=frozenset({"https"})),
-            transport=_ResourceDownloader.create(max_connections=max_connections, timeout=timeout),
+            transport=_ResourceDownloader.create(
+                max_connections=max_connections, timeout=timeout
+            ),
         )
 
     @classmethod
@@ -126,7 +130,9 @@ class DownloadSession:
 
         return cls(
             policy=DownloadPolicy(allowed_schemes=frozenset({"https", "http", "file"})),
-            transport=_ResourceDownloader.create(max_connections=max_connections, timeout=timeout),
+            transport=_ResourceDownloader.create(
+                max_connections=max_connections, timeout=timeout
+            ),
         )
 
     @classmethod
@@ -189,13 +195,30 @@ class DownloadSession:
             redirect_validator=self._validate_redirect,
         )
 
-    def read_bytes(self, uri: str, *, max_bytes: int) -> bytes:
-        """Read one URI as bounded bytes after applying this session's policy."""
+    def read_bytes(
+        self,
+        uri: str,
+        *,
+        max_bytes: int,
+        deadline_monotonic: float | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> bytes:
+        """Read bounded bytes with non-sensitive content-negotiation headers only."""
 
         self._validate_uri(uri)
+        unsupported_headers = sorted(
+            name for name in (headers or {}) if name.lower() != "accept"
+        )
+        if unsupported_headers:
+            raise ValueError(
+                "download headers are restricted to Accept; unsupported: "
+                + ", ".join(unsupported_headers)
+            )
         return self.transport.read_bytes(
             uri,
             max_bytes=max_bytes,
+            deadline_monotonic=deadline_monotonic,
+            headers=headers,
             max_redirects=self.policy.max_redirects,
             redirect_validator=self._validate_redirect,
         )
@@ -229,7 +252,9 @@ class DownloadSession:
             and target.scheme == "http"
             and not self.policy.allow_https_to_http_redirect
         ):
-            raise ValueError(f"HTTPS download must not redirect to HTTP: {source_uri} -> {target_uri}")
+            raise ValueError(
+                f"HTTPS download must not redirect to HTTP: {source_uri} -> {target_uri}"
+            )
 
     def _validate_uri(self, uri: str) -> None:
         parsed = urlparse(uri)

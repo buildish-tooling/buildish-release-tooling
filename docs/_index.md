@@ -43,6 +43,8 @@ The candidate suffix identifies the candidate only; it does not change the final
 
 - [Workflow composition](release-workflows/) explains job boundaries, artifact handoff, permissions,
   concurrency, optional GitHub Environments, and external gates.
+- [Self-releasing Buildish Release Tooling](self-release/) documents the project's reference
+  deployment, including its live workflows and required GitHub and PyPI settings.
 - [Source artifacts and signing](source-artifacts-and-signing/) covers platform-generated source
   snapshots, separately built source archives, and protected or unprotected OpenPGP keys.
 - [GitHub release policy](github-release-policy/) documents current GitHub candidate and final

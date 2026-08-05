@@ -264,6 +264,12 @@
           "title": "Assets",
           "type": "array"
         },
+        "created_at": {
+          "description": "UTC creation timestamp reported by GitHub for the final Release.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+          "title": "Created At",
+          "type": "string"
+        },
         "draft": {
           "description": "Whether GitHub reports the release as a draft.",
           "title": "Draft",
@@ -280,6 +286,20 @@
           "description": "Whether GitHub reports a pre-release.",
           "title": "Prerelease",
           "type": "boolean"
+        },
+        "published_at": {
+          "anyOf": [
+            {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "UTC publication timestamp reported by GitHub, absent while the Release is a draft.",
+          "title": "Published At"
         },
         "release_id": {
           "description": "GitHub Release numeric identifier.",
@@ -307,6 +327,7 @@
         "repository",
         "release_id",
         "release_url",
+        "created_at",
         "tag",
         "draft",
         "prerelease"
@@ -475,6 +496,38 @@
         "version"
       ],
       "title": "ReleaseIdentity",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
+    "ReleaseNotes": {
+      "additionalProperties": false,
+      "description": "Exact human-readable notes selected from one release source revision.",
+      "properties": {
+        "markdown": {
+          "description": "Exact non-empty UTF-8 Markdown fragment.",
+          "title": "Markdown",
+          "type": "string"
+        },
+        "sha256": {
+          "description": "Lowercase SHA-256 of the exact UTF-8 Markdown bytes.",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "source_path": {
+          "description": "Repository-relative path of the notes in the selected source revision.",
+          "title": "Source Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_path",
+        "sha256",
+        "markdown"
+      ],
+      "title": "ReleaseNotes",
       "type": "object",
       "x-buildish-contract": {
         "category": "runtime",
@@ -657,6 +710,14 @@
       "additionalProperties": false,
       "description": "Reference to one machine-readable verification result.",
       "properties": {
+        "claims": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Verified identity or subject claims bound to the result document.",
+          "title": "Claims",
+          "type": "object"
+        },
         "digest": {
           "anyOf": [
             {
@@ -707,7 +768,8 @@
       "type": "array"
     },
     "created_at": {
-      "description": "UTC creation timestamp in RFC 3339 form.",
+      "description": "UTC timestamp of the authoritative final publication in RFC 3339 form.",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
       "title": "Created At",
       "type": "string"
     },
@@ -801,6 +863,18 @@
     "release": {
       "$ref": "#/$defs/ReleaseIdentity",
       "description": "Exact component release identity."
+    },
+    "release_notes": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReleaseNotes"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional exact release notes published for the final release."
     },
     "schema_version": {
       "const": "1",

@@ -29,6 +29,7 @@ from buildish_release_tooling.release.platforms.github.checks import (
     assert_ref_ready,
     fetch_check_runs_json,
     fetch_statuses_json,
+    fetch_workflow_runs_json,
     resolve_repository_slug,
 )
 from buildish_release_tooling.release.manifest import write_manifest
@@ -100,10 +101,22 @@ def run_verify_source_ref_checks(args: Namespace) -> None:
     required_checks = source_checks.required if source_checks is not None else []
     check_runs_payload = fetch_check_runs_json(repository_slug, source_commit)
     statuses_payload = fetch_statuses_json(repository_slug, source_commit)
+    trusted_workflow_path = (
+        source_checks.trusted_workflow_path if source_checks is not None else None
+    )
+    workflow_runs_payload = (
+        fetch_workflow_runs_json(repository_slug, source_commit)
+        if trusted_workflow_path is not None
+        else None
+    )
     total_checks = assert_ref_ready(
         check_runs_payload,
         statuses_payload,
         required_checks,
+        trusted_workflow_path=trusted_workflow_path,
+        trusted_event=(source_checks.trusted_event if source_checks is not None else None),
+        trusted_branch=(source_checks.trusted_branch if source_checks is not None else None),
+        workflow_runs_payload=workflow_runs_payload,
     )
     summary = SummaryWriter.from_environment()
     summary.append_heading(f"Verify GitHub checks for source ref {version}")

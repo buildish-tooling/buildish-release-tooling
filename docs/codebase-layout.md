@@ -49,6 +49,20 @@ A future GitLab or Forgejo implementation belongs under `platforms/`. A future f
 belongs under `foundations/`. Core orchestration may depend on an adapter interface or typed union,
 but must not silently adopt one adapter's vocabulary.
 
+## Secondary publication adapters
+
+- `publications/evidence.py` dispatches adapter-owned command evidence and exposes only neutral
+  publication and verification references to lifecycle orchestration.
+- `publications/pypi/` contains the PyPI config, JSON API verification, PEP 740 evidence contracts,
+  and final-manifest revalidation.
+
+The PyPI adapter owns distribution filename rules, PyPI JSON and Integrity API semantics, and
+Trusted Publisher evidence. It reuses one policy-constrained pooled download session while polling.
+Neither the provider-neutral lifecycle nor a hosting-platform adapter should parse those contracts.
+A selected PyPI target configures the exact project, service URLs, and Trusted Publisher identity;
+the adapter then formally selects only wheel and sdist filenames for that project and version.
+Cryptographic PEP 740 verification is available through the installable `pypi` extra.
+
 ## CLI orchestration
 
 - `cli.py` registers commands and normalizes arguments.
@@ -85,6 +99,8 @@ production release backend and not proof of GitHub Environment settings.
 - Put GitHub, GitLab, Forgejo, or another host's protocol and data under `platforms/<provider>/`.
 - Put ASF or another foundation's policy-specific fields and operations under
   `foundations/<foundation>/` with explicit type names and discriminator values.
+- Put package indexes, registries, and other secondary publication protocols under
+  `publications/<provider>/`; expose their results through provider-neutral references.
 - Put credentials in runtime integration, never authored config values.
 - Add CLI flags in `cli.py` and bounded orchestration in the relevant `commands/` module.
 - Update schemas, public contract docs, and tests together when a supported file contract changes.

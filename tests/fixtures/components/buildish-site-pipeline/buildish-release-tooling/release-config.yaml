@@ -52,6 +52,12 @@ publication:
     - kind: github-release
   secondary:
     - kind: pypi
+      project_name: buildish-release-tooling
+      trusted_publisher:
+        kind: GitHub
+        repository: example/buildish-release-tooling
+        workflow: release.yml
+        environment: pypi
     - kind: dockerhub
 tags:
   final_mode: exact-source-commit

@@ -25,7 +25,7 @@ tool_behaviors:
       result:
         stdout: '{"statuses":[]}'
 workflow:
-  path: ../../../.github/workflows/release-direct.yml
+  path: ../workflows/release-direct.yml
   harness_config: ../release-harness.yaml
   inputs:
     version: 1.2.3
@@ -39,3 +39,32 @@ workflow:
     - publish-github-final-release
     - create-release-manifest
     - attach-github-release-manifest
+  release_config:
+    component:
+      id: buildish-release-tooling
+      display_name: Buildish Release Tooling
+    versioning:
+      scheme: semver
+      final_tag_template: "v{version}"
+    source:
+      selection: explicit-ref-or-default-branch
+      default_branch: main
+      snapshot:
+        mode: platform-generated
+      checks:
+        platform: github
+        required:
+          - Required Checks
+    lifecycle:
+      mode: direct
+    artifacts:
+      produced: []
+      checksums: []
+    publication:
+      authoritative:
+        kind: github-release
+        repository: buildish-tooling/buildish-release-tooling
+    tags:
+      final_mode: exact-source-commit
+      moving: []
+    policy_profiles: {}

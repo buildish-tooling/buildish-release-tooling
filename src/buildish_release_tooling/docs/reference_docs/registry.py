@@ -61,6 +61,7 @@ MODEL_SECTION_DEFINITIONS = (
             "buildish_release_tooling.release.models",
             "buildish_release_tooling.release.platforms.github.config",
             "buildish_release_tooling.release.platforms.github.manifests",
+            "buildish_release_tooling.release.publications.pypi.config",
         ),
     ),
     ModelSectionDefinition(
@@ -79,7 +80,10 @@ MODEL_SECTION_DEFINITIONS = (
             "These are Buildish-owned internal input/output contracts and are intentionally unstable."
         ),
         page_slug="release-command-manifests-reference",
-        module_prefixes=("buildish_release_tooling.release.command_manifests",),
+        module_prefixes=(
+            "buildish_release_tooling.release.command_manifests",
+            "buildish_release_tooling.release.publications.pypi.manifests",
+        ),
     ),
     ModelSectionDefinition(
         title="Harness configuration types",

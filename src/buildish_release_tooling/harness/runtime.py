@@ -137,7 +137,7 @@ def create_workspace(root_dir: Path | None = None) -> HarnessWorkspace:
 def load_existing_workspace(workspace_root: Path) -> HarnessWorkspace:
     """Reconstruct a workspace descriptor for a previously initialized workspace."""
 
-    return workspace_paths(workspace_root)
+    return workspace_paths(workspace_root.resolve())
 
 
 def workspace_paths(workspace_root: Path) -> HarnessWorkspace:

@@ -18,8 +18,8 @@ workflow:
   path: ../../../.github/workflows/release-promote.yml
   harness_config: ../release-harness.yaml
   inputs:
-    version: 1.2.3
-    candidate_tag: v1.2.3-rc2
+    version: harness:project-version
+    candidate_tag: harness:seeded-candidate-tag
     candidate_manifest_digest: harness:seeded-release-asset-sha256:candidate-manifest.json
   real_cli_commands:
     - verify-github-candidate
@@ -28,6 +28,7 @@ workflow:
     - stage-github-final-release
     - verify-github-final-release
     - publish-github-final-release
+    - verify-pypi-publication
     - create-release-manifest
     - attach-github-release-manifest
   release_config:
@@ -44,18 +45,37 @@ workflow:
         mode: platform-generated
     lifecycle:
       mode: candidate
+    release_notes:
+      path_template: buildish-release-tooling/release-notes/{version}.md
     candidate:
       label: rc
       start_number: 1
       visibility: public-prerelease
       retention: retain-published
     artifacts:
-      produced: []
-      checksums: []
+      produced:
+        - python-wheel
+        - python-sdist
+      checksums:
+        - sha256
+        - sha512
+      signing:
+        kind: openpgp
+        private_key_env: BUILDISH_GPG_PRIVATE_KEY
+        passphrase_env: BUILDISH_GPG_PASSPHRASE
+        signature_format: detached-ascii-armored
     publication:
       authoritative:
         kind: github-release
         repository: buildish-tooling/buildish-release-tooling
+      secondary:
+        - kind: pypi
+          project_name: buildish-release-tooling
+          trusted_publisher:
+            kind: GitHub
+            repository: buildish-tooling/buildish-release-tooling
+            workflow: release-promote.yml
+            environment: pypi
     tags:
       final_mode: exact-source-commit
       moving: []

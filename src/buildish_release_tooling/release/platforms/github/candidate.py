@@ -22,6 +22,7 @@ from pathlib import Path
 from buildish_release_tooling.release.core.models import ArtifactReference
 from buildish_release_tooling.release.core.state import CandidateReleaseState
 from buildish_release_tooling.release.platforms.github.direct import (
+    _release_created_at,
     expected_release_artifacts,
     observed_release_assets,
     validate_observed_release_assets,
@@ -123,6 +124,7 @@ def validate_candidate_release(
         repository=repository,
         release_id=release_id,
         release_url=release_url,
+        created_at=_release_created_at(release_payload),
         tag=state.candidate.tag.name,
         draft=draft,
         prerelease=prerelease,

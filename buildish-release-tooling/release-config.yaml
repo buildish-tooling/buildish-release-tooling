@@ -21,23 +21,52 @@ versioning:
 source:
   selection: explicit-ref-or-default-branch
   default_branch: main
+  # Self-release source must already be on main and carry CI's trusted check suite.
+  require_default_branch_ancestor: true
   snapshot:
     mode: platform-generated
   checks:
     platform: github
+    trusted_workflow_path: .github/workflows/ci.yml
+    trusted_event: push
+    trusted_branch: main
     required:
       - Required Checks
 lifecycle:
-  mode: direct
+  mode: candidate
+release_notes:
+  path_template: buildish-release-tooling/release-notes/{version}.md
+candidate:
+  label: rc
+  start_number: 1
+  visibility: public-prerelease
+  retention: retain-published
 artifacts:
-  produced: []
-  checksums: []
+  produced:
+    - python-wheel
+    - python-sdist
+  checksums:
+    - sha256
+    - sha512
+  signing:
+    kind: openpgp
+    private_key_env: BUILDISH_GPG_PRIVATE_KEY
+    passphrase_env: BUILDISH_GPG_PASSPHRASE
+    expected_fingerprint: D52A35E355AB82E26B879B629890F738DF4BB337
+    signature_format: detached-ascii-armored
 publication:
   authoritative:
     kind: github-release
     repository: buildish-tooling/buildish-release-tooling
   convenience: []
-  secondary: []
+  secondary:
+    - kind: pypi
+      project_name: buildish-release-tooling
+      trusted_publisher:
+        kind: GitHub
+        repository: buildish-tooling/buildish-release-tooling
+        workflow: release-promote.yml
+        environment: pypi
 tags:
   final_mode: exact-source-commit
   moving: []

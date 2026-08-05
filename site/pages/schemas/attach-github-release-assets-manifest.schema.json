@@ -1,5 +1,63 @@
 {
   "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "ArtifactReference": {
+      "additionalProperties": false,
+      "description": "Immutable logical artifact identity, digests, size, and locations.",
+      "properties": {
+        "digests": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Immutable content digests keyed by algorithm.",
+          "title": "Digests",
+          "type": "object"
+        },
+        "kind": {
+          "description": "Artifact kind discriminator.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "locations": {
+          "description": "Known immutable or candidate publication locations.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Locations",
+          "type": "array"
+        },
+        "logical_name": {
+          "description": "Stable logical artifact name.",
+          "title": "Logical Name",
+          "type": "string"
+        },
+        "size_bytes": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Artifact size in bytes.",
+          "title": "Size Bytes"
+        }
+      },
+      "required": [
+        "kind",
+        "logical_name"
+      ],
+      "title": "ArtifactReference",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    }
+  },
   "$id": "https://buildish.org/components/release-tooling/schemas/attach-github-release-assets-manifest.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
@@ -59,6 +117,14 @@
       "title": "Primary Asset Names",
       "type": "array"
     },
+    "primary_assets": {
+      "description": "Exact primary release assets attached, including size and SHA-256.",
+      "items": {
+        "$ref": "#/$defs/ArtifactReference"
+      },
+      "title": "Primary Assets",
+      "type": "array"
+    },
     "release_id": {
       "description": "GitHub release id associated with the related draft or final release record.",
       "minLength": 1,
@@ -112,6 +178,7 @@
     "release_tag",
     "release_url",
     "primary_asset_names",
+    "primary_assets",
     "uploaded_asset_names",
     "generated_checksum_asset_names",
     "generated_signature_asset_names",

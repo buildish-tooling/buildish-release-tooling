@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import hashlib
 from argparse import Namespace
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -45,6 +44,7 @@ from buildish_release_tooling.release.manifests import (
     ReleaseManifestV1,
     VotePackageV1,
 )
+from buildish_release_tooling.release.release_notes import validate_release_notes_binding
 from buildish_release_tooling.release.core.models import (
     PublicationReference,
     ToolingInvocationProvenance,
@@ -62,6 +62,9 @@ from buildish_release_tooling.release.platforms.github.manifests import (
     GitHubCandidatePublication,
     PublishGitHubFinalReleaseResult,
     StageGitHubCandidateResult,
+)
+from buildish_release_tooling.release.publications.evidence import (
+    compose_secondary_release_evidence,
 )
 from buildish_release_tooling.release.summary import SummaryWriter
 from buildish_release_tooling.shared.io import read_text_file_bounded
@@ -113,11 +116,28 @@ def run_create_candidate_manifest(args: Namespace) -> Path:
         max_bytes=DEFAULT_MANIFEST_PARSE_MAX_BYTES,
     )
     if state.release.component.id != context.release_config.component.id:
-        raise ValueError("candidate state component does not match release configuration")
-    if stage.component != state.release.component.id or stage.version != state.release.version:
-        raise ValueError("candidate stage result release does not match candidate state")
-    if stage.candidate != state.candidate or stage.source_commit != state.source.commit_sha:
-        raise ValueError("candidate stage result identity does not match candidate state")
+        raise ValueError(
+            "candidate state component does not match release configuration"
+        )
+    validate_release_notes_binding(
+        context.release_config,
+        state.release_notes,
+        version=state.release.version,
+    )
+    if (
+        stage.component != state.release.component.id
+        or stage.version != state.release.version
+    ):
+        raise ValueError(
+            "candidate stage result release does not match candidate state"
+        )
+    if (
+        stage.candidate != state.candidate
+        or stage.source_commit != state.source.commit_sha
+    ):
+        raise ValueError(
+            "candidate stage result identity does not match candidate state"
+        )
     expected_asset_names = {artifact.logical_name for artifact in stage.artifacts}
     publication_assets = [
         asset
@@ -125,24 +145,30 @@ def run_create_candidate_manifest(args: Namespace) -> Path:
         if asset.name != CANDIDATE_MANIFEST_ASSET_NAME
     ]
     if len(publication_assets) != len(stage.publication.assets):
-        raise ValueError("candidate manifest already exists; reuse its exact published bytes")
+        raise ValueError(
+            "candidate manifest already exists; reuse its exact published bytes"
+        )
     if {asset.name for asset in publication_assets} != expected_asset_names:
-        raise ValueError("candidate publication assets do not match staged artifact inventory")
+        raise ValueError(
+            "candidate publication assets do not match staged artifact inventory"
+        )
     for artifact in stage.artifacts:
         asset = next(
             item for item in publication_assets if item.name == artifact.logical_name
         )
         if asset.size_bytes != artifact.size_bytes:
-            raise ValueError("candidate publication asset size does not match artifact inventory")
+            raise ValueError(
+                "candidate publication asset size does not match artifact inventory"
+            )
         if asset.digest != f"sha256:{artifact.digests.get('sha256', '')}":
-            raise ValueError("candidate publication digest does not match artifact inventory")
-    created_at = datetime.fromtimestamp(state.source_date_epoch, tz=UTC).isoformat().replace(
-        "+00:00", "Z"
-    )
+            raise ValueError(
+                "candidate publication digest does not match artifact inventory"
+            )
     manifest = CandidateManifestV1(
         release=state.release,
         candidate=state.candidate,
         source=state.source,
+        release_notes=state.release_notes,
         candidate_tag=state.candidate.tag,
         source_date_epoch=state.source_date_epoch,
         artifacts=stage.artifacts,
@@ -155,10 +181,12 @@ def run_create_candidate_manifest(args: Namespace) -> Path:
             )
         ],
         tooling=state.tooling or ToolingInvocationProvenance(),
-        created_at=created_at,
+        created_at=stage.publication.created_at,
         extensions=[stage.publication],
     )
-    result_path = _manifest_path(state.release.component.id, "create-candidate-manifest")
+    result_path = _manifest_path(
+        state.release.component.id, "create-candidate-manifest"
+    )
     write_manifest(result_path, manifest, exclude_none=True)
     summary = SummaryWriter.from_environment()
     summary.append_heading("Create candidate manifest")
@@ -180,7 +208,9 @@ def run_resolve_promotion(args: Namespace) -> Path:
     actual_digest = hashlib.sha256(manifest_bytes).hexdigest()
     expected_digest = args.candidate_manifest_digest.lower()
     if actual_digest != expected_digest:
-        raise ValueError("candidate manifest bytes do not match selected SHA-256 digest")
+        raise ValueError(
+            "candidate manifest bytes do not match selected SHA-256 digest"
+        )
     manifest = CandidateManifestV1.model_validate_json(manifest_bytes)
     state = resolve_promotion_state(
         context.release_config,
@@ -215,10 +245,7 @@ def _candidate_manifest_reference(
             "candidate manifest requires exactly one GitHub candidate publication"
         )
     return ManifestDigestReference(
-        uri=(
-            f"{github_extensions[0].release_url}#"
-            f"{CANDIDATE_MANIFEST_ASSET_NAME}"
-        ),
+        uri=(f"{github_extensions[0].release_url}#{CANDIDATE_MANIFEST_ASSET_NAME}"),
         algorithm="sha256",
         digest=digest,
     )
@@ -239,7 +266,9 @@ def run_create_vote_package(args: Namespace) -> Path:
     manifest_digest = hashlib.sha256(manifest_bytes).hexdigest()
     manifest = CandidateManifestV1.model_validate_json(manifest_bytes)
     if manifest.release.component.id != context.release_config.component.id:
-        raise ValueError("candidate manifest component does not match release configuration")
+        raise ValueError(
+            "candidate manifest component does not match release configuration"
+        )
     reference = _candidate_manifest_reference(manifest, digest=manifest_digest)
     candidate_label = f"{manifest.candidate.label}{manifest.candidate.number}"
     release_name = f"{vote_config.release_name} {manifest.release.version}"
@@ -332,8 +361,30 @@ def run_create_release_manifest(args: Namespace) -> Path:
         Path(args.publication_result),
         max_bytes=DEFAULT_MANIFEST_PARSE_MAX_BYTES,
     )
+    secondary_evidence = compose_secondary_release_evidence(
+        state,
+        Path(args.release_state),
+        tuple(context.release_config.publication.secondary),
+        tuple(Path(argument) for argument in args.secondary_publication_result),
+        tuple(
+            Path(argument)
+            for argument in getattr(args, "secondary_verification_result", [])
+        ),
+        test_target_mode=args.test_target_mode,
+        evidence_publication_results=tuple(
+            Path(argument)
+            for argument in getattr(
+                args, "verification_evidence_publication_result", []
+            )
+        ),
+    )
     if state.release.component.id != context.release_config.component.id:
         raise ValueError("final-release state component does not match configuration")
+    validate_release_notes_binding(
+        context.release_config,
+        state.release_notes,
+        version=state.release.version,
+    )
     if (
         publication_result.component != state.release.component.id
         or publication_result.version != state.release.version
@@ -356,8 +407,7 @@ def run_create_release_manifest(args: Namespace) -> Path:
             candidate=state.candidate,
             manifest=ManifestDigestReference(
                 uri=(
-                    f"{candidate_publications[0].uri}#"
-                    f"{CANDIDATE_MANIFEST_ASSET_NAME}"
+                    f"{candidate_publications[0].uri}#{CANDIDATE_MANIFEST_ASSET_NAME}"
                 ),
                 algorithm="sha256",
                 digest=state.candidate_manifest_digest,
@@ -380,12 +430,13 @@ def run_create_release_manifest(args: Namespace) -> Path:
                     source_commit_sha=state.source.commit_sha,
                 )
             )
-    created_at = datetime.now(tz=UTC).replace(microsecond=0).isoformat().replace(
-        "+00:00", "Z"
-    )
+    published_at = publication_result.publication.published_at
+    if published_at is None:
+        raise ValueError("final publication result has no publication timestamp")
     manifest = ReleaseManifestV1(
         release=state.release,
         source=state.source,
+        release_notes=state.release_notes,
         final_tag=state.final_tag,
         artifacts=state.artifacts,
         publications=[
@@ -395,11 +446,15 @@ def run_create_release_manifest(args: Namespace) -> Path:
                 immutable_id=str(publication_result.publication.release_id),
             )
         ],
-        verification_results=state.verification_results,
+        verification_results=[
+            *state.verification_results,
+            *secondary_evidence.verification_results,
+        ],
         promoted_candidate=promoted_candidate,
         promotion_evidence=promotion_evidence,
+        secondary_publications=list(secondary_evidence.publications),
         tooling=state.tooling or ToolingInvocationProvenance(),
-        created_at=created_at,
+        created_at=published_at,
         extensions=[publication_result.publication],
     )
     result_path = _manifest_path(state.release.component.id, "create-release-manifest")

@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import unittest
 from typing import Any
@@ -27,6 +28,7 @@ from tests.support import (
     git_create_annotated_tag,
     init_git_origin_and_clone,
     run_cli,
+    run_quiet,
     set_github_origin_url,
 )
 
@@ -106,6 +108,42 @@ class CandidateResolutionIntegrationTest(unittest.TestCase):
 
         self.assertEqual("preview", state["candidate"]["label"])
         self.assertEqual("v1.2.3-preview1", state["candidate"]["tag"]["name"])
+
+    def test_configured_notes_are_bound_from_selected_commit(self) -> None:
+        config_text = self.config_path.read_text(encoding="utf-8")
+        self.config_path.write_text(
+            config_text.replace(
+                "lifecycle:\n",
+                "release_notes:\n"
+                "  path_template: release-notes/{version}.md\n"
+                "lifecycle:\n",
+            ),
+            encoding="utf-8",
+        )
+        notes_path = self.clone_dir / "release-notes" / "1.2.3.md"
+        notes_path.parent.mkdir(parents=True, exist_ok=True)
+        reviewed = "Reviewed candidate notes.\n"
+        notes_path.write_text(reviewed, encoding="utf-8")
+        run_quiet(
+            ["git", "-C", str(self.clone_dir), "add", "release-notes/1.2.3.md"],
+            check=True,
+        )
+        run_quiet(
+            ["git", "-C", str(self.clone_dir), "commit", "-m", "add release notes"],
+            check=True,
+        )
+        notes_path.write_text("uncommitted drift\n", encoding="utf-8")
+
+        state = self._resolve("candidate-with-notes.json")
+
+        self.assertEqual(
+            {
+                "source_path": "release-notes/1.2.3.md",
+                "sha256": hashlib.sha256(reviewed.encode("utf-8")).hexdigest(),
+                "markdown": reviewed,
+            },
+            state["release_notes"],
+        )
 
 
 if __name__ == "__main__":

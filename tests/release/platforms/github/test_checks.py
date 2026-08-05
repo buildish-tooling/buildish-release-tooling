@@ -60,6 +60,78 @@ class GitHubChecksTest(unittest.TestCase):
             ),
         )
 
+    def test_trusted_workflow_rejects_same_name_from_wrong_producer(self) -> None:
+        trusted_runs = {
+            "workflow_runs": [
+                {
+                    "check_suite_id": 41,
+                    "path": ".github/workflows/ci.yml@main",
+                    "event": "push",
+                    "head_branch": "main",
+                }
+            ]
+        }
+        valid_check = {
+            "name": "Required Checks",
+            "status": "completed",
+            "conclusion": "success",
+            "app": {"slug": "github-actions"},
+            "check_suite": {"id": 41},
+        }
+        self.assertEqual(
+            1,
+            assert_ref_ready(
+                {"check_runs": [valid_check]},
+                {"statuses": []},
+                ["Required Checks"],
+                trusted_workflow_path=".github/workflows/ci.yml",
+                trusted_event="push",
+                trusted_branch="main",
+                workflow_runs_payload=trusted_runs,
+            ),
+        )
+        for untrusted_check in (
+            {**valid_check, "check_suite": {"id": 99}},
+            {**valid_check, "app": {"slug": "other-app"}},
+        ):
+            with self.subTest(untrusted_check=untrusted_check):
+                with self.assertRaisesRegex(
+                    ValueError, "required GitHub checks not found"
+                ):
+                    assert_ref_ready(
+                        {"check_runs": [untrusted_check]},
+                        {
+                            "statuses": [
+                                {"context": "Required Checks", "state": "success"}
+                            ]
+                        },
+                        ["Required Checks"],
+                        trusted_workflow_path=".github/workflows/ci.yml",
+                        trusted_event="push",
+                        trusted_branch="main",
+                        workflow_runs_payload=trusted_runs,
+                    )
+        wrong_branch_runs = {
+            "workflow_runs": [
+                {
+                    "check_suite_id": 41,
+                    "path": ".github/workflows/ci.yml@release/test",
+                    "event": "push",
+                    "head_branch": "release/test",
+                }
+            ]
+        }
+        with self.assertRaisesRegex(ValueError, "required GitHub checks not found"):
+            assert_ref_ready(
+                {"check_runs": [valid_check]},
+                {"statuses": []},
+                ["Required Checks"],
+                trusted_workflow_path=".github/workflows/ci.yml",
+                trusted_event="push",
+                trusted_branch="main",
+                workflow_runs_payload=wrong_branch_runs,
+            )
+
     def test_assert_ref_ready_rejects_invalid_results(self) -> None:
         with self.assertRaisesRegex(ValueError, "invalid GitHub check runs"):
             assert_ref_ready(

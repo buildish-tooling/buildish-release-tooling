@@ -48,10 +48,12 @@ from buildish_release_tooling.harness.backends.act.workflow import (
 
 from .fixtures_git import (
     apply_workflow_repository_fixture,
+    commit_git_working_tree_snapshot,
     materialize_git_checkout,
     materialize_git_repository_state,
-    materialize_source_tree,
+    overlay_git_working_tree,
     stage_repository_sources,
+    synchronize_self_repository_sources,
 )
 from . import fixtures_svn
 from .fixtures_svn import (
@@ -83,7 +85,7 @@ def _create_workspace(
         materialize_git_checkout(self_repository_root, workspace_root)
     else:
         materialize_git_repository_state(seed_workspace.root, workspace_root)
-        materialize_source_tree(self_repository_root, workspace_root)
+        overlay_git_working_tree(self_repository_root, workspace_root)
     workspace = workspace_paths(workspace_root)
     ensure_workspace_directories(workspace)
     if seed_workspace is not None:
@@ -138,7 +140,6 @@ def _bootstrap_workspace(
             yaml.safe_dump(workflow.release_config, sort_keys=False),
             encoding="utf-8",
         )
-    apply_workflow_repository_fixture(workspace, scenario)
     for file_fixture in scenario.workspace_files:
         write_workspace_file(
             workspace.root,
@@ -146,6 +147,9 @@ def _bootstrap_workspace(
             file_fixture.content,
             file_fixture.executable,
         )
+    commit_git_working_tree_snapshot(workspace.root)
+    synchronize_self_repository_sources(workspace, bindings)
+    apply_workflow_repository_fixture(workspace, scenario)
     for repository in scenario.git_repositories:
         init_git_repository(workspace.root, repository)
     seed_state = (

@@ -35,6 +35,7 @@ from buildish_release_tooling.harness.backends.act.workflow import (
 )
 from buildish_release_tooling.harness.backends.act.workflow_helpers import (
     _step_identifier,
+    _write_generic_tool_shims,
 )
 from buildish_release_tooling.harness.backends.act.workflow_yaml import (
     _load_job_definitions,
@@ -44,7 +45,7 @@ from buildish_release_tooling.harness.config import (
     ResolvedReleaseHarnessConfig,
     ResolvedRepositoryBinding,
 )
-from buildish_release_tooling.harness.models import WorkflowScenario
+from buildish_release_tooling.harness.models import HarnessScenario, WorkflowScenario
 from tests.support import (
     cleanup_sandbox,
     cli_env,
@@ -259,6 +260,31 @@ class ActWorkflowRewriteUnitTest(unittest.TestCase):
             script,
         )
 
+    def test_generic_tool_shims_prefer_the_workspace_virtualenv(self) -> None:
+        """Tool shims should retain dependencies installed by the real release CLI."""
+
+        workspace = runtime.workspace_paths(self.sandbox_dir / "workspace")
+        runtime.ensure_workspace_directories(workspace)
+        scenario = HarnessScenario(
+            name="generic-tool-shim",
+            backend="act",
+            workflow=WorkflowScenario(
+                path=str(self._workflow_path()),
+                harness_config=str(
+                    component_root()
+                    / "buildish-release-tooling"
+                    / "harness"
+                    / "release-harness.yaml"
+                ),
+            ),
+        )
+
+        _write_generic_tool_shims(workspace, scenario)
+
+        script = (workspace.shims_dir / "gh").read_text(encoding="utf-8")
+        self.assertIn('$GITHUB_WORKSPACE/.venv/bin/python', script)
+        self.assertIn('exec "$shim_python" -m', script)
+
     def test_generated_uv_shim_can_execute_create_release_branch_for_real(self) -> None:
         """The act uv shim should be able to invoke the real CLI entrypoint."""
 
@@ -345,7 +371,13 @@ class ActWorkflowRewriteUnitTest(unittest.TestCase):
     def _workflow_path(self) -> Path:
         """Return one checked-in workflow path used only to satisfy the scenario model."""
 
-        return component_root() / ".github" / "workflows" / "release-direct.yml"
+        return (
+            component_root()
+            / "buildish-release-tooling"
+            / "harness"
+            / "workflows"
+            / "release-direct.yml"
+        )
 
     def _initialize_git_repository(self, path: Path) -> None:
         """Create a disposable repository with a single `main` commit."""

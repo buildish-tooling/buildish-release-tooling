@@ -70,12 +70,15 @@ Back to the [reference overview](../release-model-schema-reference/).
 - [PublicationConfig](#publicationconfig) — Authoritative, convenience, and secondary publication targets.
 - [PublicationReference](#publicationreference) — Reference to one provider or foundation publication result.
 - [PublishGitHubFinalReleaseResult](#publishgithubfinalreleaseresult) — Result of publishing or revalidating one exact GitHub final release.
-- [PythonPackagePublicationConfig](#pythonpackagepublicationconfig) — Secondary publication to the configured Python package index.
+- [PyPiPublicationConfig](#pypipublicationconfig) — Secondary publication to PyPI or TestPyPI.
+- [PyPiTrustedPublisherConfig](#pypitrustedpublisherconfig) — Expected GitHub Trusted Publisher identity for one PyPI target.
 - [ReadGitHubFinalReleaseResult](#readgithubfinalreleaseresult) — Exact observed state of one GitHub final release.
 - [RegistryIdentityPromotionEvidence](#registryidentitypromotionevidence) — Evidence that an immutable package or registry identity is unchanged.
 - [ReleaseConfig](#releaseconfig) — Component-authored release lifecycle and capability configuration.
 - [ReleaseIdentity](#releaseidentity) — Stable identity of one component version.
 - [ReleaseManifestV1](#releasemanifestv1) — Stable final release manifest for either direct publication or exact promotion.
+- [ReleaseNotes](#releasenotes) — Exact human-readable notes selected from one release source revision.
+- [ReleaseNotesConfig](#releasenotesconfig) — Optional version-specific release-note source selected from the release commit.
 - [SameSourceRevisionPromotionEvidence](#samesourcerevisionpromotionevidence) — Evidence that candidate and final snapshots resolve to the same source commit.
 - [SourceArtifactPlan](#sourceartifactplan) — Resolved built-source archive names for one release run.
 - [SourceConfig](#sourceconfig) — Source selection, snapshot, and optional hosting-platform check policy.
@@ -403,6 +406,7 @@ Stable manifest binding one exact candidate to source, artifacts, and publicatio
 | <a id="candidatemanifestv1-release"></a>`release` | [ReleaseIdentity](#releaseidentity) | yes | Exact component release identity. |
 | <a id="candidatemanifestv1-candidate"></a>`candidate` | [CandidateIdentity](#candidateidentity) | yes | Exact candidate identity. |
 | <a id="candidatemanifestv1-source"></a>`source` | [SourceRevision](#sourcerevision) | yes | Exact selected source revision. |
+| <a id="candidatemanifestv1-release-notes"></a>`release_notes` | [ReleaseNotes](#releasenotes) | no | Optional exact release notes bound to the candidate. |
 | <a id="candidatemanifestv1-candidate-tag"></a>`candidate_tag` | [TagIdentity](#tagidentity) | yes | Exact immutable candidate tag identity. |
 | <a id="candidatemanifestv1-source-date-epoch"></a>`source_date_epoch` | int | no | Optional canonical selected-source timestamp. |
 | <a id="candidatemanifestv1-artifacts"></a>`artifacts` | list[[ArtifactReference](#artifactreference)] | no | Immutable candidate artifact inventory. |
@@ -410,7 +414,7 @@ Stable manifest binding one exact candidate to source, artifacts, and publicatio
 | <a id="candidatemanifestv1-verification-results"></a>`verification_results` | list[[VerificationResultReference](#verificationresultreference)] | no | Candidate verification result references. |
 | <a id="candidatemanifestv1-publications"></a>`publications` | list[[PublicationReference](#publicationreference)] | no | Provider-neutral candidate publication references. |
 | <a id="candidatemanifestv1-tooling"></a>`tooling` | [ToolingInvocationProvenance](#toolinginvocationprovenance) | yes | Tooling revision and invocation provenance. |
-| <a id="candidatemanifestv1-created-at"></a>`created_at` | str | yes | UTC creation timestamp in RFC 3339 form. |
+| <a id="candidatemanifestv1-created-at"></a>`created_at` | UtcRfc3339Timestamp | yes | UTC timestamp of the authoritative candidate publication in RFC 3339 form. |
 | <a id="candidatemanifestv1-extensions"></a>`extensions` | list[CandidateExtension] | no | Typed platform or foundation candidate extensions. |
 
 <a id="candidatereleasestate"></a>
@@ -429,6 +433,7 @@ Exact source, candidate, artifact naming, and publication state.
 | --- | --- | --- | --- |
 | <a id="candidatereleasestate-release"></a>`release` | [ReleaseIdentity](#releaseidentity) | yes | Exact component release identity. |
 | <a id="candidatereleasestate-source"></a>`source` | [SourceRevision](#sourcerevision) | yes | Exact selected source revision. |
+| <a id="candidatereleasestate-release-notes"></a>`release_notes` | [ReleaseNotes](#releasenotes) | no | Optional exact release notes read from the selected source revision. |
 | <a id="candidatereleasestate-source-date-epoch"></a>`source_date_epoch` | int | yes | Canonical selected-source timestamp. |
 | <a id="candidatereleasestate-candidate"></a>`candidate` | [CandidateIdentity](#candidateidentity) | yes | Exact candidate identity. |
 | <a id="candidatereleasestate-final-tag-identity"></a>`final_tag_identity` | [TagIdentity](#tagidentity) | yes | Intended immutable final tag. |
@@ -533,6 +538,7 @@ Exact source and final-tag state for a direct release.
 | --- | --- | --- | --- |
 | <a id="directreleasestate-release"></a>`release` | [ReleaseIdentity](#releaseidentity) | yes | Exact component release identity. |
 | <a id="directreleasestate-source"></a>`source` | [SourceRevision](#sourcerevision) | yes | Exact selected source revision. |
+| <a id="directreleasestate-release-notes"></a>`release_notes` | [ReleaseNotes](#releasenotes) | no | Optional exact release notes read from the selected source revision. |
 | <a id="directreleasestate-final-tag"></a>`final_tag` | [TagIdentity](#tagidentity) | yes | Exact immutable final tag. |
 | <a id="directreleasestate-source-date-epoch"></a>`source_date_epoch` | int | no | Optional canonical source timestamp. |
 | <a id="directreleasestate-source-artifact"></a>`source_artifact` | [SourceArtifactPlan](#sourceartifactplan) | no | Optional resolved built-source archive plan. |
@@ -636,6 +642,7 @@ GitHub Release publication evidence for one exact candidate.
 | <a id="githubcandidatepublication-repository"></a>`repository` | <class 'str'> | yes | GitHub repository in owner/name form. |
 | <a id="githubcandidatepublication-release-id"></a>`release_id` | <class 'int'> | yes | GitHub Release numeric identifier. |
 | <a id="githubcandidatepublication-release-url"></a>`release_url` | <class 'str'> | yes | User-facing GitHub Release URL. |
+| <a id="githubcandidatepublication-created-at"></a>`created_at` | typing.Annotated[str, StringConstraints(strip_whitespace=None, to_upper=None, to_lower=None, strict=None, min_length=None, max_length=None, pattern='^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$', ascii_only=None), AfterValidator(func=<function _validate_utc_rfc3339_timestamp at 0x7aed583a6020>)] | yes | UTC creation timestamp reported by GitHub for the candidate Release. |
 | <a id="githubcandidatepublication-tag"></a>`tag` | <class 'str'> | yes | Exact candidate tag attached to the release. |
 | <a id="githubcandidatepublication-draft"></a>`draft` | <class 'bool'> | yes | Whether GitHub reports the release as a draft. |
 | <a id="githubcandidatepublication-prerelease"></a>`prerelease` | <class 'bool'> | yes | Whether GitHub reports a pre-release. |
@@ -656,6 +663,8 @@ GitHub Release publication evidence for one final release.
 | <a id="githubfinalpublication-repository"></a>`repository` | <class 'str'> | yes | GitHub repository in owner/name form. |
 | <a id="githubfinalpublication-release-id"></a>`release_id` | <class 'int'> | yes | GitHub Release numeric identifier. |
 | <a id="githubfinalpublication-release-url"></a>`release_url` | <class 'str'> | yes | User-facing GitHub Release URL. |
+| <a id="githubfinalpublication-created-at"></a>`created_at` | typing.Annotated[str, StringConstraints(strip_whitespace=None, to_upper=None, to_lower=None, strict=None, min_length=None, max_length=None, pattern='^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$', ascii_only=None), AfterValidator(func=<function _validate_utc_rfc3339_timestamp at 0x7aed583a6020>)] | yes | UTC creation timestamp reported by GitHub for the final Release. |
+| <a id="githubfinalpublication-published-at"></a>`published_at` | typing.Annotated[str, StringConstraints(strip_whitespace=None, to_upper=None, to_lower=None, strict=None, min_length=None, max_length=None, pattern='^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$', ascii_only=None), AfterValidator(func=<function _validate_utc_rfc3339_timestamp at 0x7aed583a6020>)] | no | UTC publication timestamp reported by GitHub, absent while the Release is a draft. |
 | <a id="githubfinalpublication-tag"></a>`tag` | <class 'str'> | yes | Exact immutable final tag attached to the release. |
 | <a id="githubfinalpublication-draft"></a>`draft` | <class 'bool'> | yes | Whether GitHub reports the release as a draft. |
 | <a id="githubfinalpublication-prerelease"></a>`prerelease` | <class 'bool'> | yes | Whether GitHub reports a pre-release. |
@@ -701,6 +710,9 @@ GitHub check runs or status contexts required for one source revision.
 | --- | --- | --- | --- |
 | <a id="githubsourcechecksconfig-platform"></a>`platform` | Literal['github'] | yes | Source-check hosting-platform discriminator. |
 | <a id="githubsourcechecksconfig-required"></a>`required` | list[str] | yes | Exact GitHub check-run or legacy status-context names required on the selected revision. |
+| <a id="githubsourcechecksconfig-trusted-workflow-path"></a>`trusted_workflow_path` | str | no | Optional repository-relative GitHub Actions workflow path that must have produced every required check run. |
+| <a id="githubsourcechecksconfig-trusted-event"></a>`trusted_event` | str | no | Optional GitHub Actions event name required for the trusted workflow run. |
+| <a id="githubsourcechecksconfig-trusted-branch"></a>`trusted_branch` | str | no | Optional head branch required for the trusted GitHub Actions workflow run. |
 
 <a id="manifestdigestreference"></a>
 ### ManifestDigestReference
@@ -803,6 +815,8 @@ Exact candidate evidence and final-tag state for promotion.
 | --- | --- | --- | --- |
 | <a id="promotionstate-release"></a>`release` | [ReleaseIdentity](#releaseidentity) | yes | Exact component release identity. |
 | <a id="promotionstate-source"></a>`source` | [SourceRevision](#sourcerevision) | yes | Exact source revision proven by the candidate. |
+| <a id="promotionstate-release-notes"></a>`release_notes` | [ReleaseNotes](#releasenotes) | no | Optional exact release notes inherited from the candidate manifest. |
+| <a id="promotionstate-source-date-epoch"></a>`source_date_epoch` | int | yes | Canonical timestamp inherited from the promoted candidate. |
 | <a id="promotionstate-candidate"></a>`candidate` | [CandidateIdentity](#candidateidentity) | yes | Exact candidate selected for promotion. |
 | <a id="promotionstate-candidate-manifest-digest"></a>`candidate_manifest_digest` | str | yes | Lowercase SHA-256 or SHA-512 digest of the exact candidate manifest. |
 | <a id="promotionstate-final-tag"></a>`final_tag` | [TagIdentity](#tagidentity) | yes | Exact immutable final tag. |
@@ -862,10 +876,10 @@ Result of publishing or revalidating one exact GitHub final release.
 | <a id="publishgithubfinalreleaseresult-action"></a>`action` | typing.Literal['publish-github-final-release'] | no | Command action discriminator. |
 | <a id="publishgithubfinalreleaseresult-outcome"></a>`outcome` | typing.Literal['published', 'already-complete'] | yes | Idempotent final publication outcome. |
 
-<a id="pythonpackagepublicationconfig"></a>
-### PythonPackagePublicationConfig
+<a id="pypipublicationconfig"></a>
+### PyPiPublicationConfig
 
-Secondary publication to the configured Python package index.
+Secondary publication to PyPI or TestPyPI.
 
 - category: `authored`
 - ownership: `component-owned`
@@ -873,7 +887,28 @@ Secondary publication to the configured Python package index.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| <a id="pythonpackagepublicationconfig-kind"></a>`kind` | Literal['pypi'] | no | Secondary publication target discriminator. |
+| <a id="pypipublicationconfig-kind"></a>`kind` | Literal['pypi'] | no | Secondary publication target discriminator. |
+| <a id="pypipublicationconfig-project-name"></a>`project_name` | str | yes | PyPI project name. |
+| <a id="pypipublicationconfig-repository-api-url"></a>`repository_api_url` | str | no | PyPI JSON API base URL. |
+| <a id="pypipublicationconfig-project-url-template"></a>`project_url_template` | str | no | Immutable project-version URL template. |
+| <a id="pypipublicationconfig-integrity-api-url"></a>`integrity_api_url` | str | no | PyPI Integrity API base URL. |
+| <a id="pypipublicationconfig-trusted-publisher"></a>`trusted_publisher` | [PyPiTrustedPublisherConfig](#pypitrustedpublisherconfig) | yes | Exact Trusted Publisher identity required for provenance. |
+
+<a id="pypitrustedpublisherconfig"></a>
+### PyPiTrustedPublisherConfig
+
+Expected GitHub Trusted Publisher identity for one PyPI target.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="pypitrustedpublisherconfig-kind"></a>`kind` | Literal['GitHub'] | no | PyPI Trusted Publisher kind. |
+| <a id="pypitrustedpublisherconfig-repository"></a>`repository` | str | yes | GitHub owner/repository identity. |
+| <a id="pypitrustedpublisherconfig-workflow"></a>`workflow` | str | yes | GitHub workflow filename identity. |
+| <a id="pypitrustedpublisherconfig-environment"></a>`environment` | str | yes | GitHub Environment identity. |
 
 <a id="readgithubfinalreleaseresult"></a>
 ### ReadGitHubFinalReleaseResult
@@ -930,6 +965,7 @@ Component-authored release lifecycle and capability configuration.
 | <a id="releaseconfig-versioning"></a>`versioning` | [VersioningConfig](#versioningconfig) | no | Version and final-tag naming policy. |
 | <a id="releaseconfig-source"></a>`source` | [SourceConfig](#sourceconfig) | yes | Source selection and snapshot policy. |
 | <a id="releaseconfig-lifecycle"></a>`lifecycle` | LifecycleConfig | yes | Direct or candidate release lifecycle. |
+| <a id="releaseconfig-release-notes"></a>`release_notes` | [ReleaseNotesConfig](#releasenotesconfig) | no | Optional version-specific release notes. When configured, the selected source commit must contain valid non-empty notes. |
 | <a id="releaseconfig-candidate"></a>`candidate` | [CandidateConfig](#candidateconfig) | no | Candidate policy required only for the candidate lifecycle. |
 | <a id="releaseconfig-artifacts"></a>`artifacts` | [ArtifactPolicyConfig](#artifactpolicyconfig) | no | Produced artifact and checksum policy. |
 | <a id="releaseconfig-publication"></a>`publication` | [PublicationConfig](#publicationconfig) | yes | Authoritative and additional publication targets. |
@@ -970,6 +1006,7 @@ Stable final release manifest for either direct publication or exact promotion.
 | <a id="releasemanifestv1-kind"></a>`kind` | Literal['release-manifest'] | no | Manifest kind discriminator. |
 | <a id="releasemanifestv1-release"></a>`release` | [ReleaseIdentity](#releaseidentity) | yes | Exact component release identity. |
 | <a id="releasemanifestv1-source"></a>`source` | [SourceRevision](#sourcerevision) | yes | Exact final release source revision. |
+| <a id="releasemanifestv1-release-notes"></a>`release_notes` | [ReleaseNotes](#releasenotes) | no | Optional exact release notes published for the final release. |
 | <a id="releasemanifestv1-final-tag"></a>`final_tag` | [TagIdentity](#tagidentity) | yes | Exact immutable final tag identity. |
 | <a id="releasemanifestv1-artifacts"></a>`artifacts` | list[[ArtifactReference](#artifactreference)] | no | Immutable final artifact inventory. |
 | <a id="releasemanifestv1-publications"></a>`publications` | list[[PublicationReference](#publicationreference)] | no | Provider-neutral final publication references. |
@@ -979,8 +1016,36 @@ Stable final release manifest for either direct publication or exact promotion.
 | <a id="releasemanifestv1-secondary-publications"></a>`secondary_publications` | list[[PublicationReference](#publicationreference)] | no | Secondary package or registry publication results. |
 | <a id="releasemanifestv1-moving-alias-results"></a>`moving_alias_results` | list[[PublicationReference](#publicationreference)] | no | Moving tag or alias update results. |
 | <a id="releasemanifestv1-tooling"></a>`tooling` | [ToolingInvocationProvenance](#toolinginvocationprovenance) | yes | Tooling revision and invocation provenance. |
-| <a id="releasemanifestv1-created-at"></a>`created_at` | str | yes | UTC creation timestamp in RFC 3339 form. |
+| <a id="releasemanifestv1-created-at"></a>`created_at` | UtcRfc3339Timestamp | yes | UTC timestamp of the authoritative final publication in RFC 3339 form. |
 | <a id="releasemanifestv1-extensions"></a>`extensions` | list[ReleaseExtension] | no | Typed platform or foundation final extensions. |
+
+<a id="releasenotes"></a>
+### ReleaseNotes
+
+Exact human-readable notes selected from one release source revision.
+
+- category: `runtime`
+- ownership: `runtime-derived`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="releasenotes-source-path"></a>`source_path` | str | yes | Repository-relative path of the notes in the selected source revision. |
+| <a id="releasenotes-sha256"></a>`sha256` | str | yes | Lowercase SHA-256 of the exact UTF-8 Markdown bytes. |
+| <a id="releasenotes-markdown"></a>`markdown` | str | yes | Exact non-empty UTF-8 Markdown fragment. |
+
+<a id="releasenotesconfig"></a>
+### ReleaseNotesConfig
+
+Optional version-specific release-note source selected from the release commit.
+
+- category: `authored`
+- ownership: `component-owned`
+- file contract: (inner type)
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| <a id="releasenotesconfig-path-template"></a>`path_template` | str | yes | Repository-relative UTF-8 Markdown path template containing the required `{version}` placeholder. |
 
 <a id="samesourcerevisionpromotionevidence"></a>
 ### SameSourceRevisionPromotionEvidence
@@ -1026,6 +1091,7 @@ Source selection, snapshot, and optional hosting-platform check policy.
 | --- | --- | --- | --- |
 | <a id="sourceconfig-selection"></a>`selection` | Literal['explicit-ref-or-default-branch', 'explicit-ref', 'release-branch'] | yes | Policy used to resolve the exact release source revision. |
 | <a id="sourceconfig-default-branch"></a>`default_branch` | str | no | Optional default branch used when source selection permits it. |
+| <a id="sourceconfig-require-default-branch-ancestor"></a>`require_default_branch_ancestor` | bool | no | Whether the selected source commit must already be reachable from the configured default branch. |
 | <a id="sourceconfig-snapshot"></a>`snapshot` | SourceSnapshotConfig | yes | Policy for source material exposed to release consumers. |
 | <a id="sourceconfig-checks"></a>`checks` | [GitHubSourceChecksConfig](#githubsourcechecksconfig) | no | Optional hosting-platform checks required for the selected source revision. Component-owned same-run test jobs remain workflow concerns. |
 
@@ -1147,6 +1213,7 @@ Reference to one machine-readable verification result.
 | <a id="verificationresultreference-kind"></a>`kind` | str | yes | Verification result kind. |
 | <a id="verificationresultreference-uri"></a>`uri` | str | yes | URI of the verification result. |
 | <a id="verificationresultreference-digest"></a>`digest` | str | no | Optional result document digest. |
+| <a id="verificationresultreference-claims"></a>`claims` | dict[str, str] | no | Verified identity or subject claims bound to the result document. |
 
 <a id="verifygithubcandidateresult"></a>
 ### VerifyGitHubCandidateResult
@@ -1417,5 +1484,5 @@ Optional voting materials bound cryptographically to one exact candidate manifes
 | <a id="votepackagev1-result-template"></a>`result_template` | str | yes | Rendered or renderable vote-result text. |
 | <a id="votepackagev1-authenticity"></a>`authenticity` | list[[AuthenticityReference](#authenticityreference)] | no | Optional signatures or attestations. |
 | <a id="votepackagev1-extensions"></a>`extensions` | list[[AsfVoteExtension](#asfvoteextension)] | no | Typed foundation vote extensions. |
-| <a id="votepackagev1-created-at"></a>`created_at` | str | yes | UTC creation timestamp in RFC 3339 form. |
+| <a id="votepackagev1-created-at"></a>`created_at` | UtcRfc3339Timestamp | yes | UTC creation timestamp in RFC 3339 form. |
 

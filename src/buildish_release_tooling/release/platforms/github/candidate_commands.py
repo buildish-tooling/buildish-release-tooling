@@ -37,6 +37,9 @@ from buildish_release_tooling.release.core.state import CandidateReleaseState
 from buildish_release_tooling.release.git_repo import GitRepository
 from buildish_release_tooling.release.manifest import write_manifest
 from buildish_release_tooling.release.manifests import CandidateManifestV1
+from buildish_release_tooling.release.release_notes import (
+    validate_release_notes_binding,
+)
 from buildish_release_tooling.release.platforms.github.candidate import (
     CANDIDATE_MANIFEST_ASSET_NAME,
     candidate_release_name,
@@ -102,6 +105,11 @@ def _validated_candidate_context(
         raise ValueError(
             "candidate state component does not match release configuration"
         )
+    validate_release_notes_binding(
+        context.release_config,
+        state.release_notes,
+        version=state.release.version,
+    )
     target = require_github_authoritative_publication(context.release_config)
     repo = GitRepository.from_current_worktree()
     repository = target.repository or resolve_repository_slug(repo.path)
@@ -275,6 +283,10 @@ def _validate_manifest_for_state(
         raise ValueError("candidate manifest release does not match candidate state")
     if manifest.candidate != state.candidate or manifest.source != state.source:
         raise ValueError("candidate manifest identity does not match candidate state")
+    if manifest.release_notes != state.release_notes:
+        raise ValueError(
+            "candidate manifest release notes do not match candidate state"
+        )
     if manifest.candidate_tag != state.candidate.tag:
         raise ValueError("candidate manifest tag does not match candidate state")
 
@@ -318,6 +330,7 @@ def _validate_manifest_publication(
         extension.repository != publication.repository
         or extension.release_id != publication.release_id
         or extension.release_url != publication.release_url
+        or extension.created_at != publication.created_at
         or extension.tag != publication.tag
         or extension.assets != build_assets
     ):
@@ -485,6 +498,7 @@ def _verified_remote_candidate(
     state = CandidateReleaseState(
         release=manifest.release,
         source=manifest.source,
+        release_notes=manifest.release_notes,
         source_date_epoch=manifest.source_date_epoch,
         candidate=manifest.candidate,
         final_tag_identity=TagIdentity(

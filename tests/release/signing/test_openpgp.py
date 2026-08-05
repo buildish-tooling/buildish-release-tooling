@@ -96,6 +96,59 @@ def _generate_fixture_key(home: Path, *, identity: str, passphrase: str) -> str:
     ).stdout
 
 
+def _generate_fixture_signing_subkey(home: Path, *, identity: str) -> tuple[str, str]:
+    _run_fixture_gpg(
+        home,
+        [
+            "--pinentry-mode",
+            "loopback",
+            "--passphrase",
+            "",
+            "--quick-gen-key",
+            identity,
+            "ed25519",
+            "cert",
+            "1d",
+        ],
+    )
+    primary_fingerprint = secret_key_fingerprint(home)
+    _run_fixture_gpg(
+        home,
+        [
+            "--pinentry-mode",
+            "loopback",
+            "--passphrase",
+            "",
+            "--quick-add-key",
+            primary_fingerprint,
+            "ed25519",
+            "sign",
+            "1d",
+        ],
+    )
+    listing = _run_fixture_gpg(
+        home,
+        ["--with-colons", "--with-subkey-fingerprint", "--list-secret-keys"],
+    ).stdout
+    signing_subkey_fingerprint = ""
+    awaiting_subkey_fingerprint = False
+    for line in listing.splitlines():
+        parts = line.split(":")
+        if parts[0] == "ssb":
+            capabilities = parts[11].lower() if len(parts) > 11 else ""
+            awaiting_subkey_fingerprint = "s" in capabilities
+        elif parts[0] == "fpr" and awaiting_subkey_fingerprint:
+            signing_subkey_fingerprint = parts[9].upper()
+            break
+    if not signing_subkey_fingerprint:
+        raise AssertionError("fixture signing subkey fingerprint was not found")
+    secret_key = _run_fixture_gpg(
+        home,
+        ["--armor", "--export-secret-keys", primary_fingerprint],
+    ).stdout
+    return secret_key, signing_subkey_fingerprint
+
+
 class OpenPgpSigningIntegrationTest(unittest.TestCase):
     """Verify protected and unprotected keys across the signing trust boundary."""
 
@@ -104,6 +157,8 @@ class OpenPgpSigningIntegrationTest(unittest.TestCase):
     unprotected_fingerprint: str
     protected_key: str
     protected_fingerprint: str
+    subkey_secret_key: str
+    signing_subkey_fingerprint: str
 
     @classmethod
     def setUpClass(cls) -> None:
@@ -125,6 +180,13 @@ class OpenPgpSigningIntegrationTest(unittest.TestCase):
             passphrase=_PROTECTED_PASSPHRASE,
         )
         cls.protected_fingerprint = secret_key_fingerprint(protected_home)
+        subkey_home = cls.fixture_root / "subkey-source"
+        cls.subkey_secret_key, cls.signing_subkey_fingerprint = (
+            _generate_fixture_signing_subkey(
+                subkey_home,
+                identity="Signing Subkey Test <subkey@example.invalid>",
+            )
+        )
 
     def _sandbox(self) -> Path:
         sandbox_dir = create_build_test_sandbox()
@@ -226,6 +288,23 @@ class OpenPgpSigningIntegrationTest(unittest.TestCase):
         self.assertEqual(self.protected_fingerprint, signer.fingerprint)
         self.assertNotIn(_PROTECTED_PASSPHRASE, repr(signer))
         self.assertNotIn(self.protected_key, repr(signer))
+
+    def test_expected_signing_subkey_is_selected_exactly(self) -> None:
+        sandbox_dir = self._sandbox()
+        environment = self._controlled_environment(
+            TEST_OPENPGP_PRIVATE_KEY=self.subkey_secret_key
+        )
+
+        with mock.patch.dict(os.environ, environment, clear=True):
+            signer = self._sign(
+                sandbox_dir,
+                OpenPgpSigningInput(
+                    private_key_env=_PRIVATE_KEY_ENV,
+                    expected_fingerprint=self.signing_subkey_fingerprint,
+                ),
+            )
+
+        self.assertEqual(self.signing_subkey_fingerprint, signer.fingerprint)
 
     def test_protected_key_reports_missing_passphrase_configuration(self) -> None:
         sandbox_dir = self._sandbox()

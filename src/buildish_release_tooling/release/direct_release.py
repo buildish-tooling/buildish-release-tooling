@@ -30,6 +30,7 @@ from buildish_release_tooling.release.core.naming import (
 )
 from buildish_release_tooling.release.core.state import DirectReleaseState, SourceArtifactPlan
 from buildish_release_tooling.release.git_repo import GitRepository
+from buildish_release_tooling.release.release_notes import resolve_release_notes
 
 
 def selected_source_ref(
@@ -55,6 +56,25 @@ def selected_source_ref(
     return repo.resolve_release_branch_for_version(version)
 
 
+def require_authorized_source_commit(
+    repo: GitRepository,
+    config: ReleaseConfig,
+    resolved_commit: str,
+) -> None:
+    """Enforce optional ancestry authorization for a selected source commit."""
+
+    if not config.source.require_default_branch_ancestor:
+        return
+    default_branch = config.source.default_branch
+    if default_branch is None:
+        raise ValueError("source.default_branch is required by the configured source policy")
+    if not repo.is_ancestor(resolved_commit, default_branch):
+        raise ValueError(
+            f"selected source commit is not reachable from default branch {default_branch}: "
+            f"{resolved_commit}"
+        )
+
+
 def resolve_direct_release_state(
     repo: GitRepository,
     config: ReleaseConfig,
@@ -68,6 +88,7 @@ def resolve_direct_release_state(
     normalized_version = require_semantic_version(version)
     selected_ref = selected_source_ref(repo, config, normalized_version, source_ref)
     resolved_commit = repo.resolve_commit(selected_ref)
+    require_authorized_source_commit(repo, config, resolved_commit)
     snapshot = config.source.snapshot
     source_artifact = None
     if isinstance(snapshot, BuiltSourceSnapshotConfig):
@@ -98,6 +119,12 @@ def resolve_direct_release_state(
             repository=repo.remote_url(),
             commit_sha=resolved_commit,
             source_ref=selected_ref,
+        ),
+        release_notes=resolve_release_notes(
+            repo,
+            config,
+            version=normalized_version,
+            commit_sha=resolved_commit,
         ),
         source_date_epoch=repo.commit_timestamp_epoch(resolved_commit),
         final_tag=TagIdentity(

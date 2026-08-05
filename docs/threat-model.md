@@ -78,18 +78,29 @@ A workflow dispatch supplies a version and optionally a source ref. Resolution v
 selection policy, resolves the ref to an exact commit, and persists typed state. Later jobs use that
 commit rather than re-resolving a moving branch.
 
+Components may require the resolved commit to be reachable from the configured default branch.
+Buildish self-release enables this for protected `main`. Privileged self-release jobs execute the
+workflow revision rather than the selected source checkout; selected source code executes only in
+the unprivileged distribution-build job.
+
 The component is responsible for branch protection, review policy, CI definitions, and deciding who
 may dispatch a release. When `source.checks.platform` is `github`,
 `verify-source-ref-checks` requires the configured exact GitHub check-run or legacy status-context
 names to be successful or intentionally skipped and ignores unrelated observations, including the
-release workflow's own jobs. Omitting the block applies no external platform-status gate. The CLI
-does not prove the quality of required or same-run component tests.
+release workflow's own jobs. A configured trusted workflow path additionally binds check runs to
+the GitHub Actions check suite for that workflow and optional event/branch; legacy statuses cannot
+satisfy that stronger form. Omitting the block applies no external platform-status gate. The CLI does not
+prove the quality of required or same-run component tests.
 
 ### Same-run job handoff
 
 Complete state moves between jobs as JSON in GitHub workflow artifacts. A producer emits its
 SHA-256, and every release-mutating consumer checks the downloaded bytes before acting. Small scalar
 identities pass through job outputs.
+
+Built distribution and prepared-candidate bundles use producer-emitted SHA-256 inventories as well.
+Signing and external publication jobs validate both the inventory digest and every listed file
+before using those bytes.
 
 This protects against accidental or unauthorized substitution relative to the producing job's
 digest. It still trusts the workflow run, GitHub Actions control plane, selected action revisions,
@@ -119,10 +130,10 @@ artifacts require an immutable ecosystem identity.
 ### Signing
 
 OpenPGP private-key material and an optional passphrase enter through environment variables named in
-config. The signer imports exactly one primary secret key into an isolated temporary GnuPG home,
-optionally enforces a full fingerprint, removes secret variables from the signing subprocess
-environment, supplies a passphrase through loopback input, and sanitizes known secret values from
-errors.
+config. The signer imports exactly one primary secret key and its subkeys into an isolated temporary
+GnuPG home, optionally enforces the full primary or signing-subkey fingerprint, removes secret
+variables from the signing subprocess environment, supplies a passphrase through loopback input,
+and sanitizes known secret values from errors.
 
 The component controls key generation, custody, rotation, secret-store policy, job placement, and
 public trust distribution. A compromised authorized runner or workflow with access to the signing
@@ -137,6 +148,8 @@ job can use the key during that job; process isolation cannot eliminate that pla
 | Wrong candidate is promoted | Require exact candidate tag and manifest SHA-256; never discover latest | External gate must retain and authenticate both values |
 | Candidate asset is replaced | Re-download and verify declared size and SHA-256 before promotion | An attacker controlling both the publication and the gate's digest channel can replace both |
 | Same-run state is substituted | Verify producer-emitted SHA-256 before every privileged consumer | Workflow run and Actions infrastructure remain trusted |
+| Selected source executes with release credentials | Privileged self-release jobs check out `github.workflow_sha`; selected source executes only in the unprivileged build job | Environment deployment restrictions and workflow-branch protection remain deployment responsibilities |
+| Same-name CI result comes from another producer | Optional trusted workflow/event binding plus default-branch ancestry policy | Components that omit these controls accept their configured weaker policy |
 | Existing release asset is overwritten | No-clobber upload and exact inventory validation | Authorized manual mutation outside the CLI remains possible |
 | Partial failure creates ambiguous state | Bounded commands revalidate identical state and fail on conflicts | Public final release can temporarily lack its final manifest if the last job fails |
 | Two releases race for one version | Non-canceling repository/version workflow concurrency | Custom workflows and maintainer-shell commands must provide equivalent serialization |

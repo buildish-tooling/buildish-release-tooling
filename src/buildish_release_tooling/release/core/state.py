@@ -30,6 +30,7 @@ from buildish_release_tooling.release.core.models import (
     CandidateIdentity,
     PublicationReference,
     ReleaseIdentity,
+    ReleaseNotes,
     SourceRevision,
     TagIdentity,
     ToolingInvocationProvenance,
@@ -55,6 +56,10 @@ class DirectReleaseState(RuntimeDerivedModel):
 
     release: ReleaseIdentity = Field(description="Exact component release identity.")
     source: SourceRevision = Field(description="Exact selected source revision.")
+    release_notes: ReleaseNotes | None = Field(
+        default=None,
+        description="Optional exact release notes read from the selected source revision.",
+    )
     final_tag: TagIdentity = Field(description="Exact immutable final tag.")
     source_date_epoch: int | None = Field(
         default=None, ge=0, description="Optional canonical source timestamp."
@@ -89,6 +94,10 @@ class CandidateReleaseState(RuntimeDerivedModel):
 
     release: ReleaseIdentity = Field(description="Exact component release identity.")
     source: SourceRevision = Field(description="Exact selected source revision.")
+    release_notes: ReleaseNotes | None = Field(
+        default=None,
+        description="Optional exact release notes read from the selected source revision.",
+    )
     source_date_epoch: int = Field(ge=0, description="Canonical selected-source timestamp.")
     candidate: CandidateIdentity = Field(description="Exact candidate identity.")
     final_tag_identity: TagIdentity = Field(description="Intended immutable final tag.")
@@ -172,6 +181,14 @@ class PromotionState(RuntimeDerivedModel):
 
     release: ReleaseIdentity = Field(description="Exact component release identity.")
     source: SourceRevision = Field(description="Exact source revision proven by the candidate.")
+    release_notes: ReleaseNotes | None = Field(
+        default=None,
+        description="Optional exact release notes inherited from the candidate manifest.",
+    )
+    source_date_epoch: int = Field(
+        ge=0,
+        description="Canonical timestamp inherited from the promoted candidate.",
+    )
     candidate: CandidateIdentity = Field(description="Exact candidate selected for promotion.")
     candidate_manifest_digest: str = Field(
         description="Lowercase SHA-256 or SHA-512 digest of the exact candidate manifest."

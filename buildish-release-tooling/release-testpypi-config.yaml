@@ -1,0 +1,63 @@
+# Copyright 2026 The Buildish Authors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+component:
+  id: buildish-release-tooling
+  display_name: Buildish Release Tooling
+versioning:
+  scheme: semver
+  final_tag_template: "v{version}"
+source:
+  selection: explicit-ref-or-default-branch
+  default_branch: main
+  # The rehearsal accepts the same protected source set as production release.
+  require_default_branch_ancestor: true
+  snapshot:
+    mode: platform-generated
+  checks:
+    platform: github
+    trusted_workflow_path: .github/workflows/ci.yml
+    trusted_event: push
+    trusted_branch: main
+    required:
+      - Required Checks
+# The workflow uses this direct state for TestPyPI only; it does not publish the
+# configured authoritative GitHub target.
+lifecycle:
+  mode: direct
+artifacts:
+  produced:
+    - python-wheel
+    - python-sdist
+  checksums: []
+publication:
+  authoritative:
+    kind: github-release
+    repository: buildish-tooling/buildish-release-tooling
+  convenience: []
+  secondary:
+    - kind: pypi
+      project_name: buildish-release-tooling
+      repository_api_url: https://test.pypi.org/pypi
+      project_url_template: https://test.pypi.org/project/{project}/{version}/
+      integrity_api_url: https://test.pypi.org/integrity
+      trusted_publisher:
+        kind: GitHub
+        repository: buildish-tooling/buildish-release-tooling
+        workflow: release-testpypi.yml
+        environment: testpypi
+tags:
+  final_mode: exact-source-commit
+  moving: []
+policy_profiles: {}

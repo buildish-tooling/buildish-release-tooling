@@ -50,6 +50,9 @@ source:
       - Required Checks
 lifecycle:
   mode: candidate
+# Optional. Omit this block to publish without custom notes.
+release_notes:
+  path_template: release-notes/{version}.md
 candidate:
   label: rc
   start_number: 1
@@ -69,7 +72,11 @@ policy_profiles: {}
 ```
 
 The default candidate number is one. With this configuration, version `1.2.3` starts at
-`v1.2.3-rc1`.
+`v1.2.3-rc1`. Configured notes are required: resolution reads the rendered path from the exact
+selected source commit and rejects a missing, empty, invalid UTF-8, or oversized file. The notes,
+source path, and SHA-256 are carried in candidate state and `candidate-manifest.json`; promotion
+reuses those exact bytes and rejects a configured path change. Omit `release_notes` when a component
+does not publish custom notes.
 
 ## Create candidates
 
@@ -127,8 +134,9 @@ After the external gate accepts a candidate, run `.github/workflows/release-prom
 
 Promotion never discovers "the latest RC". It downloads and verifies the named candidate manifest,
 downloads each candidate asset named by that manifest, verifies the bytes, and creates
-`PromotionState`. The remaining jobs create the final tag, stage and verify the final release,
-publish it, and attach `release-manifest-v1.json`.
+`PromotionState`, including any candidate-bound release notes. The remaining jobs create the final
+tag, stage and verify the final release using those exact notes, publish it, and attach
+`release-manifest-v1.json`.
 
 The final manifest records the promoted candidate and its manifest digest. Per-artifact promotion
 evidence distinguishes byte-identical assets, immutable registry identities, and hosting-platform

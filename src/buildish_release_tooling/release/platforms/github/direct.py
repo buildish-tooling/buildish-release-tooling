@@ -16,7 +16,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from pathlib import Path
 
 from buildish_release_tooling.release.core.models import ArtifactReference
@@ -126,19 +126,30 @@ def validate_final_release(
     *,
     expected_body: str,
     allow_attached_manifest: bool = False,
+    recoverable_orphan_assets: Collection[str] = (),
+    additional_assets: Mapping[str, ArtifactReference] | None = None,
 ) -> GitHubFinalPublication:
     """Validate exact GitHub release metadata and asset identities or fail closed."""
 
-    release_id, draft, release_url = _validate_release_metadata(
-        state,
-        release_payload,
-        expected_body=expected_body,
+    release_id, draft, release_url, created_at, published_at = (
+        _validate_release_metadata(
+            state,
+            release_payload,
+            expected_body=expected_body,
+        )
     )
     expected = expected_release_artifacts(state)
+    for name, artifact in (additional_assets or {}).items():
+        if name in expected or name != artifact.logical_name:
+            raise ValueError(f"invalid additional GitHub Release asset: {name}")
+        expected[name] = artifact
     observed = observed_release_assets(release_payload)
     manifest_asset = observed.pop(FINAL_RELEASE_MANIFEST_ASSET_NAME, None)
     if manifest_asset is not None and not allow_attached_manifest:
         observed[FINAL_RELEASE_MANIFEST_ASSET_NAME] = manifest_asset
+    for name in recoverable_orphan_assets:
+        if name not in expected:
+            observed.pop(name, None)
     missing = validate_observed_release_assets(expected, observed)
     if missing:
         raise ValueError(
@@ -149,10 +160,12 @@ def validate_final_release(
         repository=repository,
         release_id=release_id,
         release_url=release_url,
+        created_at=created_at,
+        published_at=published_at,
         tag=state.final_tag.name,
         draft=draft,
         prerelease=False,
-        assets=[observed[name] for name in expected],
+        assets=[observed[name] for name in expected_release_artifacts(state)],
     )
 
 
@@ -175,11 +188,15 @@ def observe_final_release(
     release_url = asset_release_url(dict(release_payload))
     if not release_url:
         raise ValueError("GitHub final release does not include a release URL")
+    created_at = _release_created_at(release_payload)
+    published_at = _release_published_at(release_payload, required=not draft)
     observed = observed_release_assets(release_payload)
     return GitHubFinalPublication(
         repository=repository,
         release_id=release_id,
         release_url=release_url,
+        created_at=created_at,
+        published_at=published_at,
         tag=state.final_tag.name,
         draft=draft,
         prerelease=prerelease,
@@ -193,6 +210,8 @@ def missing_final_release_assets(
     *,
     expected_body: str,
     allow_attached_manifest: bool = False,
+    recoverable_orphan_assets: Collection[str] = (),
+    additional_assets: Mapping[str, ArtifactReference] | None = None,
 ) -> list[str]:
     """Validate existing metadata/assets and return only absent expected asset names."""
 
@@ -201,7 +220,12 @@ def missing_final_release_assets(
     manifest_asset = observed.pop(FINAL_RELEASE_MANIFEST_ASSET_NAME, None)
     if manifest_asset is not None and not allow_attached_manifest:
         observed[FINAL_RELEASE_MANIFEST_ASSET_NAME] = manifest_asset
-    return validate_observed_release_assets(expected_release_artifacts(state), observed)
+    expected = expected_release_artifacts(state)
+    expected.update(additional_assets or {})
+    for name in recoverable_orphan_assets:
+        if name not in expected:
+            observed.pop(name, None)
+    return validate_observed_release_assets(expected, observed)
 
 
 def _validate_release_metadata(
@@ -209,7 +233,7 @@ def _validate_release_metadata(
     release_payload: Mapping[str, object],
     *,
     expected_body: str,
-) -> tuple[int, bool, str]:
+) -> tuple[int, bool, str, str, str | None]:
     release_id = release_payload.get("id")
     if not isinstance(release_id, int) or release_id < 1:
         raise ValueError("GitHub final release does not include a valid numeric id")
@@ -230,7 +254,33 @@ def _validate_release_metadata(
     release_url = asset_release_url(dict(release_payload))
     if not release_url:
         raise ValueError("GitHub final release does not include a release URL")
-    return release_id, draft, release_url
+    return (
+        release_id,
+        draft,
+        release_url,
+        _release_created_at(release_payload),
+        _release_published_at(release_payload, required=not draft),
+    )
+
+
+def _release_created_at(release_payload: Mapping[str, object]) -> str:
+    created_at = release_payload.get("created_at")
+    if not isinstance(created_at, str) or not created_at.endswith("Z"):
+        raise ValueError("GitHub release does not include a UTC creation timestamp")
+    return created_at
+
+
+def _release_published_at(
+    release_payload: Mapping[str, object], *, required: bool
+) -> str | None:
+    published_at = release_payload.get("published_at")
+    if published_at is None and not required:
+        return None
+    if not isinstance(published_at, str) or not published_at.endswith("Z"):
+        raise ValueError(
+            "published GitHub release does not include a UTC publication timestamp"
+        )
+    return published_at
 
 
 def observed_release_assets(

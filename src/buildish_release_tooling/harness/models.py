@@ -343,6 +343,14 @@ class HarnessBuiltinGhRelease(RuntimeDerivedModel):
     prerelease: bool = Field(description="Whether the release is a prerelease.")
     html_url: str = Field(description="Synthetic browser-facing release URL.")
     url: str = Field(description="Synthetic API-facing release URL.")
+    created_at: str = Field(
+        default="2026-01-01T00:00:00Z",
+        description="Deterministic UTC creation timestamp for the synthetic release.",
+    )
+    published_at: str | None = Field(
+        default=None,
+        description="Deterministic UTC publication timestamp once the release is public.",
+    )
     assets: list[HarnessBuiltinGhReleaseAsset] = Field(
         default_factory=list,
         description="Synthetic assets currently attached to the retained GitHub Release.",

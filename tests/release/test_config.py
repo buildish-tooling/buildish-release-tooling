@@ -93,7 +93,18 @@ class ReleaseConfigTest(unittest.TestCase):
         self.assertIsNone(loaded.vote_materials)
         validate_selected_release_targets(loaded, allow_test_targets=False)
 
-    def test_self_release_config_is_direct_and_github_authoritative(self) -> None:
+    def test_secondary_publication_target_kinds_must_be_unique(self) -> None:
+        payload = _direct_github_payload()
+        publication = cast(dict[str, object], payload["publication"])
+        publication["secondary"] = [
+            {"kind": "dockerhub"},
+            {"kind": "dockerhub"},
+        ]
+
+        with self.assertRaisesRegex(ValueError, "one target per kind"):
+            ReleaseConfig.model_validate(payload)
+
+    def test_self_release_config_is_candidate_based_and_github_authoritative(self) -> None:
         loaded = load_release_config(
             str(
                 component_root()
@@ -103,17 +114,47 @@ class ReleaseConfigTest(unittest.TestCase):
         )
 
         self.assertEqual("buildish-release-tooling", loaded.component.id)
-        self.assertEqual("direct", loaded.lifecycle.mode)
+        self.assertEqual("candidate", loaded.lifecycle.mode)
         self.assertEqual("platform-generated", loaded.source.snapshot.mode)
         checks = loaded.source.checks
         if checks is None:
             self.fail("self-release config must select the GitHub source-check gate")
         self.assertEqual("github", checks.platform)
         self.assertEqual(["Required Checks"], checks.required)
+        self.assertEqual(".github/workflows/ci.yml", checks.trusted_workflow_path)
+        self.assertEqual("push", checks.trusted_event)
+        self.assertEqual("main", checks.trusted_branch)
+        self.assertTrue(loaded.source.require_default_branch_ancestor)
         self.assertEqual("github-release", loaded.publication.authoritative.kind)
-        self.assertIsNone(loaded.candidate)
+        if loaded.release_notes is None:
+            self.fail("self-release config must require version-specific release notes")
+        self.assertEqual(
+            "buildish-release-tooling/release-notes/{version}.md",
+            loaded.release_notes.path_template,
+        )
+        self.assertIsNotNone(loaded.candidate)
         self.assertIsNone(loaded.vote_materials)
         self.assertIsNone(loaded.policy_profiles.asf)
+
+    def test_self_testpypi_config_uses_direct_lifecycle_with_same_source_trust(self) -> None:
+        loaded = load_release_config(
+            str(
+                component_root()
+                / "buildish-release-tooling"
+                / "release-testpypi-config.yaml"
+            )
+        )
+
+        self.assertEqual("direct", loaded.lifecycle.mode)
+        self.assertTrue(loaded.source.require_default_branch_ancestor)
+        checks = loaded.source.checks
+        if checks is None:
+            self.fail("TestPyPI config must select the GitHub source-check gate")
+        self.assertEqual(".github/workflows/ci.yml", checks.trusted_workflow_path)
+        self.assertEqual("push", checks.trusted_event)
+        self.assertEqual("main", checks.trusted_branch)
+        self.assertEqual(["python-wheel", "python-sdist"], loaded.artifacts.produced)
+        self.assertEqual(["pypi"], [target.kind for target in loaded.publication.secondary])
 
     def test_source_checks_are_optional_and_platform_specific(self) -> None:
         payload = _direct_github_payload()
@@ -124,6 +165,16 @@ class ReleaseConfigTest(unittest.TestCase):
         source = cast(dict[str, object], payload["source"])
         source["checks"] = {"platform": "gitlab", "required": ["ci"]}
         with self.assertRaisesRegex(ValueError, "github"):
+            ReleaseConfig.model_validate(payload)
+
+    def test_default_branch_ancestry_policy_requires_default_branch(self) -> None:
+        payload = _direct_github_payload()
+        source = cast(dict[str, object], payload["source"])
+        source["selection"] = "explicit-ref"
+        source.pop("default_branch")
+        source["require_default_branch_ancestor"] = True
+
+        with self.assertRaisesRegex(ValueError, "default_branch is required"):
             ReleaseConfig.model_validate(payload)
 
     def test_required_external_check_names_are_normalized_and_unique(self) -> None:

@@ -40,8 +40,15 @@ from buildish_release_tooling.release.core.state import (
     SourceArtifactPlan,
 )
 from buildish_release_tooling.release.manifests import CandidateManifestV1
-from buildish_release_tooling.release.direct_release import selected_source_ref
+from buildish_release_tooling.release.direct_release import (
+    require_authorized_source_commit,
+    selected_source_ref,
+)
 from buildish_release_tooling.release.git_repo import GitRepository
+from buildish_release_tooling.release.release_notes import (
+    resolve_release_notes,
+    validate_release_notes_binding,
+)
 
 
 def resolve_candidate_release_state(
@@ -59,6 +66,7 @@ def resolve_candidate_release_state(
     normalized_version = require_semantic_version(version)
     selected_ref = selected_source_ref(repo, config, normalized_version, source_ref)
     resolved_commit = repo.resolve_commit(selected_ref)
+    require_authorized_source_commit(repo, config, resolved_commit)
     label = require_candidate_label(candidate_label or candidate_config.label)
     number = repo.next_matching_candidate_number(
         normalized_version,
@@ -101,6 +109,12 @@ def resolve_candidate_release_state(
             commit_sha=resolved_commit,
             source_ref=selected_ref,
         ),
+        release_notes=resolve_release_notes(
+            repo,
+            config,
+            version=normalized_version,
+            commit_sha=resolved_commit,
+        ),
         source_date_epoch=repo.commit_timestamp_epoch(resolved_commit),
         candidate=CandidateIdentity(
             release=release,
@@ -136,6 +150,13 @@ def resolve_promotion_state(
         raise ValueError("candidate manifest version does not match requested promotion")
     if manifest.candidate.tag.name != candidate_tag:
         raise ValueError("candidate manifest does not match selected candidate tag")
+    if manifest.source_date_epoch is None:
+        raise ValueError("candidate manifest requires source_date_epoch for promotion")
+    validate_release_notes_binding(
+        config,
+        manifest.release_notes,
+        version=normalized_version,
+    )
     final_tag = TagIdentity(
         name=config.versioning.final_tag_template.format(version=normalized_version),
         target_commit=manifest.source.commit_sha,
@@ -144,6 +165,8 @@ def resolve_promotion_state(
     return PromotionState(
         release=manifest.release,
         source=manifest.source,
+        release_notes=manifest.release_notes,
+        source_date_epoch=manifest.source_date_epoch,
         candidate=manifest.candidate,
         candidate_manifest_digest=candidate_manifest_digest,
         final_tag=final_tag,

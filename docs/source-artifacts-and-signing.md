@@ -102,11 +102,20 @@ signing:
   expected_fingerprint: 0123456789ABCDEF0123456789ABCDEF01234567
 ```
 
-The signer imports exactly one primary secret key into an isolated temporary GnuPG home. When
-configured, the full fingerprint must match. A protected-key passphrase is supplied through GnuPG
-loopback input rather than command arguments. Signing subprocesses receive a constructed environment
-with the configured key and passphrase variables removed, and errors are sanitized against secret
-values.
+The signer imports exactly one primary secret key and its subkeys into an isolated temporary GnuPG
+home. When configured, the full fingerprint must identify either that primary key or one
+signing-capable subkey. Selecting a subkey forces GnuPG to use that exact subkey. A protected-key
+passphrase is supplied through GnuPG loopback input rather than command arguments. Signing
+subprocesses receive a constructed environment with the configured key and passphrase variables
+removed, and errors are sanitized against secret values.
+
+## Reproducible Python distributions
+
+Buildish Release Tooling's package build derives `SOURCE_DATE_EPOCH` from the selected source
+commit. Its setuptools hooks normalize wheel metadata and sdist tar ownership, modes, timestamps,
+PAX headers, and gzip headers. The release build requires two clean builds to be byte-identical and
+requires a wheel rebuilt from the sdist to match the wheel built from the repository. Exact build
+backend versions are pinned in `pyproject.toml`.
 
 `expected_fingerprint` is optional in the schema but recommended for a production signing identity.
 

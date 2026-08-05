@@ -18,7 +18,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-BUILDISH_COMPONENT_CONFIG_PATH="$SCRIPT_DIR/release-config.yaml"
+BUILDISH_COMPONENT_CONFIG_PATH="${BUILDISH_COMPONENT_CONFIG_PATH:-$SCRIPT_DIR/release-config.yaml}"
 
 fail() {
   printf '%s\n' "$1" >&2
@@ -78,13 +78,17 @@ shift
 
 TOOLING_DIR="$(resolve_tooling_dir)"
 extra_args=()
+uv_args=(run --project "$TOOLING_DIR" --frozen)
+if [[ "$COMMAND_NAME" == "verify-pypi-attestations" ]]; then
+  uv_args+=(--group release-attestation)
+fi
 case "${BUILDISH_ALLOW_NON_PRODUCTION_RELEASE_TARGETS:-}" in
   1|true|TRUE|yes|YES)
     extra_args+=(--test-target-mode)
     ;;
 esac
 
-exec uv run --project "$TOOLING_DIR" --frozen buildish-release-tooling \
+exec uv "${uv_args[@]}" buildish-release-tooling \
   "$COMMAND_NAME" \
   "${extra_args[@]}" \
   --component-config "$BUILDISH_COMPONENT_CONFIG_PATH" \

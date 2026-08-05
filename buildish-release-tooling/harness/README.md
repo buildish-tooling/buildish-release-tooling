@@ -214,12 +214,26 @@ To run multiple workflows in order, with each run seeded from the previous works
 ```bash
 uv run --frozen buildish-release-harness run-sequence \
   buildish-release-tooling/harness/scenarios/release-candidate.yaml \
-  buildish-release-tooling/harness/scenarios/release-candidate.yaml \
   buildish-release-tooling/harness/scenarios/release-promote.yaml
 ```
 
-This sequence publishes retained `rc1` and `rc2` candidates, then promotes the explicitly selected
-`rc2` candidate and its exact manifest digest.
+This sequence reads the version from the checked-out `pyproject.toml`, builds and signs the real
+wheel and sdist, publishes the next candidate, then promotes that exact retained candidate and
+manifest digest. The harness replaces PyPI publication with a
+workspace-local immutable file store and creates deterministic provenance evidence so the complete
+cross-job and cross-run composition remains isolated from publication services. Synthetic package
+and Integrity references use explicit `.invalid` service hosts, and a successful promotion run
+validates the retained `release-manifest-v1.json` against the stable release-manifest contract.
+The runner may
+still need network access to acquire actions, tools, and container images. Unit tests separately
+exercise the pinned PEP 740 parser and cryptographic verifier; the local evidence is not a
+substitute for the live TestPyPI gate.
+
+The repository exposes the same sequence as:
+
+```bash
+make release-integration-check
+```
 
 That requires:
 
@@ -289,6 +303,18 @@ When a run uses `--seed-from` or `run-sequence`, the harness applies SVN directo
 - missing fixture paths are still created
 
 That lets one scenario stay runnable both standalone and as part of a multi-workflow chain.
+
+Workflow inputs may use these harness-only placeholders:
+
+- `harness:project-version` reads the static `[project].version` from the disposable checkout's
+  `pyproject.toml`
+- `harness:seeded-candidate-tag` requires exactly one finalized prerelease with one
+  `candidate-manifest.json` asset for the resolved version in retained provider state
+- `harness:seeded-release-asset-sha256:<asset-name>` reads that exact retained candidate asset's
+  SHA-256 digest
+
+The production-shaped candidate-to-promotion sequence uses all three placeholders. Candidate-tag
+selection deliberately rejects zero or multiple matches instead of guessing by recency.
 
 ## Inspecting a workspace
 
@@ -583,6 +609,13 @@ The self-checkout case with `repository` omitted is not rewritten. The `act` bac
 materializes the workflow repository under test into the workspace before `act` starts, so the
 workflow still operates on local repository state and does not depend on the repository having been
 pushed to a remote.
+
+When that source worktree and any scenario source fixtures reproduce `HEAD`, the disposable checkout
+retains the original commit. When they introduce tracked changes, tracked deletions, or non-ignored
+untracked files, the harness creates a deterministic commit in the disposable checkout and its
+staged local Git sources. The configured source branch therefore resolves to the same source
+snapshot whose bytes the rehearsal builds, while the developer's repository remains untouched.
+Harness scratch and cache directories remain excluded from the overlay.
 
 ### Local checkout semantics
 

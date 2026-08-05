@@ -82,6 +82,7 @@ class ReleaseStateTest(unittest.TestCase):
             PromotionState(
                 release=self.release,
                 source=self.source,
+                source_date_epoch=1714032000,
                 candidate=self.candidate,
                 candidate_manifest_digest="pending",
                 final_tag=TagIdentity(
@@ -94,6 +95,7 @@ class ReleaseStateTest(unittest.TestCase):
         promoted = PromotionState(
             release=self.release,
             source=self.source,
+            source_date_epoch=1714032000,
             candidate=self.candidate,
             candidate_manifest_digest="a" * 64,
             final_tag=TagIdentity(

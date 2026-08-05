@@ -48,9 +48,27 @@ does not mean that a Buildish release has already been published.
 
 ## Getting started
 
-Release Tooling requires Python 3.11 or newer, Git, and
-[`uv`](https://docs.astral.sh/uv/). Until an immutable release is available, inspect and check out an
-exact reviewed commit instead of running the moving `main` branch:
+Release Tooling requires Python 3.11 or newer. Install a published release by exact version:
+
+```bash
+uv tool install buildish-release-tooling==0.1.0
+buildish-release-tooling --help
+buildish-release-harness --help
+```
+
+The base installation includes the provider-neutral lifecycle and PyPI publication-state client.
+Install the adapter's optional cryptographic verifier when using
+`verify-pypi-attestations`:
+
+```bash
+uv tool install 'buildish-release-tooling[pypi]==0.1.0'
+```
+
+That extra is not required for components that do not select a PyPI secondary target.
+
+Before the first production package is available, or when reviewing unreleased development, use
+Git and [`uv`](https://docs.astral.sh/uv/) to inspect and check out an exact commit instead of
+running the moving `main` branch:
 
 ```bash
 git clone https://github.com/buildish-tooling/buildish-release-tooling.git
@@ -66,16 +84,19 @@ services.
 
 ## Workflows
 
-The repository contains four GitHub workflows:
+The repository contains four live GitHub release workflows:
 
-- `.github/workflows/release-direct.yml`;
 - `.github/workflows/release-candidate.yml`;
 - `.github/workflows/release-promote.yml`;
+- `.github/workflows/release-testpypi.yml`;
 - `.github/workflows/release-verify-candidate.yml`.
 
-The direct workflow is the one-dispatch release path. The candidate and promotion workflows form a
-separate RC-based path. Promotion requires the exact version, candidate tag, and candidate-manifest
-SHA-256 selected by the external approval or voting process.
+Buildish Release Tooling itself uses the candidate and promotion workflows for production releases.
+Promotion requires the exact version, candidate tag, and candidate-manifest SHA-256 selected by the
+external approval process, and publishes the candidate's exact wheel and sdist to PyPI. The
+TestPyPI workflow is a manually dispatched direct-lifecycle package-index rehearsal: it resolves and
+retains `DirectReleaseState`, safely recovers matching partial or complete uploads, and creates no
+GitHub release. A generic direct GitHub release workflow remains covered as a local harness fixture.
 
 ## Development
 
@@ -89,19 +110,20 @@ inspectable workspace-local Git and GitHub Release state.
 ## Documentation
 
 - [Component website](https://buildish.org/components/release-tooling/)
-- [Documentation index](docs/_index.md)
-- [Direct release walkthrough](docs/direct-release.md)
-- [Candidate and promotion walkthrough](docs/candidate-release.md)
-- [Workflow composition](docs/release-workflows.md)
-- [Source artifacts and OpenPGP signing](docs/source-artifacts-and-signing.md)
-- [Optional ASF profile](docs/asf-profile.md)
-- [Threat model](docs/threat-model.md)
-- [Generated reference](docs/reference/_index.md)
+- [Buildish Release Tooling documentation](https://buildish.org/components/release-tooling/)
+- [Direct release walkthrough](https://github.com/buildish-tooling/buildish-release-tooling/blob/main/docs/direct-release.md)
+- [Candidate and promotion walkthrough](https://github.com/buildish-tooling/buildish-release-tooling/blob/main/docs/candidate-release.md)
+- [Workflow composition](https://github.com/buildish-tooling/buildish-release-tooling/blob/main/docs/release-workflows.md)
+- [How Release Tooling releases itself](https://github.com/buildish-tooling/buildish-release-tooling/blob/main/docs/self-release.md)
+- [Source artifacts and OpenPGP signing](https://github.com/buildish-tooling/buildish-release-tooling/blob/main/docs/source-artifacts-and-signing.md)
+- [Optional ASF profile](https://github.com/buildish-tooling/buildish-release-tooling/blob/main/docs/asf-profile.md)
+- [Threat model](https://github.com/buildish-tooling/buildish-release-tooling/blob/main/docs/threat-model.md)
+- [Unreleased generated reference](https://buildish.org/components/release-tooling/development/reference/)
 
 ## Community
 
-- [Contributing](CONTRIBUTING.md)
-- [Security policy](SECURITY.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md)
-- [License](LICENSE)
+- [Contributing](https://github.com/buildish-tooling/buildish-release-tooling/blob/main/CONTRIBUTING.md)
+- [Security policy](https://github.com/buildish-tooling/buildish-release-tooling/security/policy)
+- [Code of Conduct](https://github.com/buildish-tooling/buildish-release-tooling/blob/main/CODE_OF_CONDUCT.md)
+- [License](https://github.com/buildish-tooling/buildish-release-tooling/blob/main/LICENSE)
 - [Issue tracker](https://github.com/buildish-tooling/buildish-release-tooling/issues)

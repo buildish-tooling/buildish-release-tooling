@@ -1,0 +1,113 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$defs": {
+    "PyPiAttestationPublisher": {
+      "additionalProperties": false,
+      "description": "Expected GitHub Trusted Publisher identity verified for PyPI attestations.",
+      "properties": {
+        "environment": {
+          "description": "GitHub Environment identity.",
+          "minLength": 1,
+          "title": "Environment",
+          "type": "string"
+        },
+        "kind": {
+          "const": "GitHub",
+          "description": "Trusted Publisher kind.",
+          "title": "Kind",
+          "type": "string"
+        },
+        "repository": {
+          "description": "GitHub repository owner/name identity.",
+          "minLength": 1,
+          "title": "Repository",
+          "type": "string"
+        },
+        "workflow": {
+          "description": "GitHub Actions workflow filename identity.",
+          "minLength": 1,
+          "title": "Workflow",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "repository",
+        "workflow",
+        "environment"
+      ],
+      "title": "PyPiAttestationPublisher",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
+      }
+    }
+  },
+  "$id": "https://buildish.org/components/release-tooling/schemas/pypi-publish-attestation-evidence.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Exact selected PyPI Publish Attestations retained as release evidence.",
+  "properties": {
+    "attestations": {
+      "description": "Exact cryptographically verified PyPI Publish Attestation objects.",
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "minItems": 1,
+      "title": "Attestations",
+      "type": "array"
+    },
+    "distribution_filename": {
+      "description": "Exact verified distribution filename.",
+      "minLength": 1,
+      "title": "Distribution Filename",
+      "type": "string"
+    },
+    "distribution_sha256": {
+      "description": "SHA-256 of the verified distribution bytes.",
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Distribution Sha256",
+      "type": "string"
+    },
+    "kind": {
+      "const": "pypi-publish-attestation-evidence",
+      "default": "pypi-publish-attestation-evidence",
+      "description": "Evidence-document discriminator.",
+      "title": "Kind",
+      "type": "string"
+    },
+    "publisher": {
+      "$ref": "#/$defs/PyPiAttestationPublisher",
+      "description": "Exact verified Trusted Publisher identity."
+    },
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "description": "Evidence schema version.",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_provenance_url": {
+      "description": "Mutable PyPI provenance URL from which attestations were selected.",
+      "minLength": 1,
+      "title": "Source Provenance Url",
+      "type": "string"
+    }
+  },
+  "required": [
+    "publisher",
+    "distribution_filename",
+    "distribution_sha256",
+    "source_provenance_url",
+    "attestations"
+  ],
+  "title": "Buildish Release Tooling PyPiPublishAttestationEvidence",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Stable exact PyPI Publish Attestation evidence retained with a release."
+  }
+}

@@ -13,6 +13,8 @@
 # limitations under the License.
 """Secondary-target command integration tests."""
 
+from pathlib import Path
+
 from tests.release.commands.support import (
     ReleaseCommandsIntegrationTestSupport,
     cleanup_sandbox,
@@ -24,6 +26,7 @@ from tests.release.commands.support import (
     fetch_git_origin_refs,
     git_create_branch,
     git_rev_parse,
+    hashlib,
     init_git_origin_and_clone,
     json,
     os,
@@ -268,6 +271,35 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
                     "html_url": "https://github.com/apache/example-project/releases/tag/v1.2.3",
                 }
             ],
+            list_responses=[
+                [
+                    {
+                        "id": 42,
+                        "draft": True,
+                        "tag_name": "v1.2.3",
+                        "name": "Apache Example Project 1.2.3",
+                        "html_url": "https://github.com/apache/example-project/releases/tag/v1.2.3",
+                    }
+                ],
+                [
+                    {
+                        "id": 42,
+                        "draft": True,
+                        "tag_name": "v1.2.3",
+                        "name": "Apache Example Project 1.2.3",
+                        "html_url": "https://github.com/apache/example-project/releases/tag/v1.2.3",
+                        "assets": [
+                            {
+                                "id": 91,
+                                "name": asset_path.name,
+                                "size": asset_path.stat().st_size,
+                                "digest": "sha256:"
+                                + hashlib.sha256(asset_path.read_bytes()).hexdigest(),
+                            }
+                        ],
+                    }
+                ],
+            ],
         )
 
         run_quiet(
@@ -378,3 +410,143 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         self.assertIn("Attach GitHub Release assets", summary_text)
         self.assertIn("example-project.zip.sha512", summary_text)
         self.assertIn("example-project.zip.asc", summary_text)
+
+        prepared_dir = sandbox_dir / "prepared-assets"
+        prepared_manifest_path = sandbox_dir / "prepare-release-assets.json"
+        completed = run_cli(
+            [
+                "prepare-release-assets",
+                "--component-config",
+                str(config_path),
+                "--output-dir",
+                str(prepared_dir),
+                str(asset_path),
+            ],
+            cwd=clone_dir,
+            env=cli_env(
+                prepared_manifest_path,
+                extra_env={"BUILDISH_GPG_PRIVATE_KEY": secret_key},
+            ),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        prepared_manifest = json.loads(
+            prepared_manifest_path.read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            [
+                "example-project.zip",
+                "example-project.zip.sha512",
+                "example-project.zip.asc",
+            ],
+            prepared_manifest["prepared_asset_names"],
+        )
+        self.assertEqual(
+            b"release-asset\n", (prepared_dir / asset_path.name).read_bytes()
+        )
+        self.assertTrue((prepared_dir / "example-project.zip.sha512").is_file())
+        self.assertTrue((prepared_dir / "example-project.zip.asc").is_file())
+
+    def test_immutable_evidence_attachment_reuses_exact_assets(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
+        config_path = sandbox_dir / "component.yaml"
+        git_create_branch(origin_dir, "release/1.x")
+        git_create_branch(origin_dir, "release/1.2.x")
+        fetch_git_origin_refs(clone_dir)
+        set_github_origin_url(clone_dir, "apache/example-project")
+        self._write_component_config(
+            config_path,
+            component_id="example-project",
+            dev_base_url=(
+                "https://dist.apache.org/repos/dist/dev/incubator/example/example-project"
+            ),
+            release_base_url=(
+                "https://dist.apache.org/repos/dist/release/incubator/example/example-project"
+            ),
+            secondary_targets=("github-release-assets",),
+        )
+        first = sandbox_dir / "buildish-verification-evidence--first.json"
+        second = sandbox_dir / "buildish-verification-evidence--second.json"
+        first.write_bytes(b"first evidence\n")
+        second.write_bytes(b"second evidence\n")
+
+        def asset(asset_id: int, path: object) -> dict[str, object]:
+            asset_path = Path(str(path))
+            return {
+                "id": asset_id,
+                "name": asset_path.name,
+                "size": asset_path.stat().st_size,
+                "digest": "sha256:"
+                + hashlib.sha256(asset_path.read_bytes()).hexdigest(),
+            }
+
+        def release(assets: list[dict[str, object]]) -> dict[str, object]:
+            return {
+                "id": 42,
+                "draft": False,
+                "tag_name": "v1.2.3",
+                "name": "Example Project 1.2.3",
+                "html_url": (
+                    "https://github.com/apache/example-project/releases/tag/v1.2.3"
+                ),
+                "assets": assets,
+            }
+
+        partial_release = release([asset(91, first)])
+        complete_release = release([asset(91, first), asset(92, second)])
+        gh_path, gh_state_dir = create_fake_gh_launcher(
+            sandbox_dir,
+            list_response=partial_release,
+            list_responses=[[partial_release], [complete_release]],
+        )
+        first_manifest = sandbox_dir / "immutable-attachment-first.json"
+        command = [
+            "attach-github-release-assets",
+            "--component-config",
+            str(config_path),
+            "--immutable",
+            "1.2.3",
+            str(first),
+            str(second),
+        ]
+        completed = run_cli(
+            command,
+            cwd=clone_dir,
+            env=cli_env(
+                first_manifest,
+                extra_env={"FAKE_GH_STATE_DIR": str(gh_state_dir)},
+                prepend_dirs=(gh_path.parent,),
+            ),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        first_result = json.loads(first_manifest.read_text(encoding="utf-8"))
+        self.assertEqual([second.name], first_result["uploaded_asset_names"])
+        self.assertEqual(
+            [str(second)],
+            (gh_state_dir / "release-upload-files.log")
+            .read_text(encoding="utf-8")
+            .splitlines(),
+        )
+        self.assertEqual(
+            "false",
+            (gh_state_dir / "release-upload-clobber.txt")
+            .read_text(encoding="utf-8")
+            .strip(),
+        )
+
+        (gh_state_dir / "release-upload-files.log").unlink()
+        second_manifest = sandbox_dir / "immutable-attachment-second.json"
+        completed = run_cli(
+            command,
+            cwd=clone_dir,
+            env=cli_env(
+                second_manifest,
+                extra_env={"FAKE_GH_STATE_DIR": str(gh_state_dir)},
+                prepend_dirs=(gh_path.parent,),
+            ),
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        second_result = json.loads(second_manifest.read_text(encoding="utf-8"))
+        self.assertEqual([], second_result["uploaded_asset_names"])
+        self.assertFalse((gh_state_dir / "release-upload-files.log").exists())

@@ -17,14 +17,18 @@
 from __future__ import annotations
 
 from argparse import Namespace
+import hashlib
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote, urlparse
 
 from buildish_release_tooling.release.commands._shared import _context, _manifest_path
 from buildish_release_tooling.release.config import (
+    ReleaseConfig,
     require_github_authoritative_publication,
 )
 from buildish_release_tooling.release.core.manifests import ManifestDigestReference
+from buildish_release_tooling.release.core.models import ArtifactReference
 from buildish_release_tooling.release.core.state import (
     DirectReleaseState,
     PromotionState,
@@ -61,6 +65,7 @@ from buildish_release_tooling.release.platforms.github.refs import (
 from buildish_release_tooling.release.platforms.github.releases import (
     create_draft_release,
     list_releases,
+    download_release_asset_text,
     release_by_tag,
     release_by_tag_or_none,
     update_release,
@@ -68,6 +73,13 @@ from buildish_release_tooling.release.platforms.github.releases import (
 )
 from buildish_release_tooling.release.platforms.github.text import (
     render_direct_final_release_body,
+)
+from buildish_release_tooling.release.publications.evidence import (
+    configured_recoverable_evidence_asset_names,
+    validate_secondary_release_evidence,
+)
+from buildish_release_tooling.release.release_notes import (
+    validate_release_notes_binding,
 )
 from buildish_release_tooling.release.summary import SummaryWriter
 from buildish_release_tooling.release.source_artifact import checksum
@@ -91,7 +103,7 @@ def _load_final_release_state(path_text: str) -> FinalReleaseState:
 
 def _validated_inputs(
     args: Namespace,
-) -> tuple[FinalReleaseState, GitRepository, str, str]:
+) -> tuple[FinalReleaseState, GitRepository, str, str, ReleaseConfig]:
     context = _context(args)
     state = _load_final_release_state(args.release_state)
     expected_lifecycle = "candidate" if isinstance(state, PromotionState) else "direct"
@@ -103,6 +115,11 @@ def _validated_inputs(
         raise ValueError(
             "direct-release state component does not match release configuration"
         )
+    validate_release_notes_binding(
+        context.release_config,
+        state.release_notes,
+        version=state.release.version,
+    )
     if (
         state.final_tag.name
         != context.release_config.versioning.final_tag_template.format(
@@ -128,11 +145,126 @@ def _validated_inputs(
             tag_name=state.final_tag.name,
         ),
     )
-    return state, repo, repository, render_direct_final_release_body(state)
+    return (
+        state,
+        repo,
+        repository,
+        render_direct_final_release_body(state),
+        context.release_config,
+    )
 
 
 def _release_payload(repository: str, tag_name: str) -> dict[str, object]:
     return release_by_tag(list_releases(repository), tag_name=tag_name)
+
+
+def _durable_evidence_assets(
+    manifest: ReleaseManifestV1,
+    *,
+    repository: str,
+    final_tag: str,
+) -> dict[str, ArtifactReference]:
+    """Resolve exact post-publication evidence assets named by the stable manifest."""
+
+    expected_path_prefix = (
+        f"/{repository}/releases/download/{quote(final_tag, safe='')}/"
+    )
+    assets: dict[str, ArtifactReference] = {}
+    for result in manifest.verification_results:
+        asset_name = result.claims.get("evidence_asset_name")
+        size_text = result.claims.get("evidence_size_bytes")
+        if asset_name is None and size_text is None:
+            continue
+        if asset_name is None or size_text is None or result.digest is None:
+            raise ValueError("release manifest has incomplete durable evidence claims")
+        parsed = urlparse(result.uri)
+        if (
+            parsed.scheme != "https"
+            or parsed.hostname != "github.com"
+            or parsed.path != expected_path_prefix + quote(asset_name, safe="")
+        ):
+            raise ValueError("release manifest durable evidence URI is unexpected")
+        try:
+            size_bytes = int(size_text)
+        except ValueError as exc:
+            raise ValueError(
+                "release manifest durable evidence size is invalid"
+            ) from exc
+        if size_bytes < 1 or asset_name in assets:
+            raise ValueError("release manifest durable evidence identity is invalid")
+        assets[asset_name] = ArtifactReference(
+            kind="verification-evidence",
+            logical_name=asset_name,
+            digests={"sha256": result.digest},
+            size_bytes=size_bytes,
+        )
+    return assets
+
+
+def _attached_release_manifest(
+    repository: str,
+    release_payload: dict[str, object],
+) -> ReleaseManifestV1 | None:
+    manifest_asset = observed_release_assets(release_payload).get(
+        FINAL_RELEASE_MANIFEST_ASSET_NAME
+    )
+    if manifest_asset is None:
+        return None
+    manifest_text = download_release_asset_text(repository, manifest_asset.asset_id)
+    manifest_bytes = manifest_text.encode("utf-8")
+    if len(manifest_bytes) > DEFAULT_MANIFEST_PARSE_MAX_BYTES:
+        raise ValueError("downloaded final release manifest exceeds the maximum size")
+    if not manifest_asset.digest.startswith("sha256:") or (
+        hashlib.sha256(manifest_bytes).hexdigest()
+        != manifest_asset.digest.removeprefix("sha256:")
+    ):
+        raise ValueError("downloaded final release manifest digest mismatch")
+    return ReleaseManifestV1.model_validate_json(manifest_text)
+
+
+def _validate_with_attached_manifest(
+    state: FinalReleaseState,
+    repository: str,
+    release_payload: dict[str, object],
+    *,
+    expected_body: str,
+    release_config: ReleaseConfig,
+    test_target_mode: bool,
+) -> GitHubFinalPublication:
+    manifest = _attached_release_manifest(repository, release_payload)
+    additional_assets = (
+        _durable_evidence_assets(
+            manifest, repository=repository, final_tag=state.final_tag.name
+        )
+        if manifest is not None
+        else {}
+    )
+    recoverable_orphans = (
+        configured_recoverable_evidence_asset_names(
+            state,
+            tuple(release_config.publication.secondary),
+        )
+        if manifest is None
+        else frozenset()
+    )
+    publication = validate_final_release(
+        state,
+        repository,
+        release_payload,
+        expected_body=expected_body,
+        allow_attached_manifest=True,
+        recoverable_orphan_assets=recoverable_orphans,
+        additional_assets=additional_assets,
+    )
+    if manifest is not None:
+        _validate_release_manifest(
+            manifest,
+            state,
+            publication,
+            release_config,
+            test_target_mode=test_target_mode,
+        )
+    return publication
 
 
 def _append_result_summary(
@@ -177,7 +309,7 @@ def run_resolve_direct_release(args: Namespace) -> Path:
 def run_read_github_final_release(args: Namespace) -> Path:
     """Read one exact-tag GitHub final release without applying desired-state policy."""
 
-    state, _repo, repository, _expected_body = _validated_inputs(args)
+    state, _repo, repository, _expected_body, _config = _validated_inputs(args)
     publication = observe_final_release(
         state,
         repository,
@@ -204,7 +336,7 @@ def run_read_github_final_release(args: Namespace) -> Path:
 def run_stage_github_final_release(args: Namespace) -> Path:
     """Create or complete an exact draft GitHub final release without overwrites."""
 
-    state, _repo, repository, expected_body = _validated_inputs(args)
+    state, _repo, repository, expected_body, release_config = _validated_inputs(args)
     local_assets = validate_local_release_assets(
         state,
         [Path(path) for path in args.assets],
@@ -224,11 +356,31 @@ def run_stage_github_final_release(args: Namespace) -> Path:
         )
     else:
         release_payload = existing
+    attached_manifest = _attached_release_manifest(repository, release_payload)
+    additional_assets = (
+        _durable_evidence_assets(
+            attached_manifest,
+            repository=repository,
+            final_tag=state.final_tag.name,
+        )
+        if attached_manifest is not None
+        else {}
+    )
+    recoverable_orphans = (
+        configured_recoverable_evidence_asset_names(
+            state,
+            tuple(release_config.publication.secondary),
+        )
+        if attached_manifest is None
+        else frozenset()
+    )
     missing_names = missing_final_release_assets(
         state,
         release_payload,
         expected_body=expected_body,
         allow_attached_manifest=True,
+        recoverable_orphan_assets=recoverable_orphans,
+        additional_assets=additional_assets,
     )
     if missing_names:
         if release_payload.get("draft") is not True:
@@ -243,12 +395,13 @@ def run_stage_github_final_release(args: Namespace) -> Path:
             clobber=False,
         )
         release_payload = _release_payload(repository, state.final_tag.name)
-    publication = validate_final_release(
+    publication = _validate_with_attached_manifest(
         state,
         repository,
         release_payload,
         expected_body=expected_body,
-        allow_attached_manifest=True,
+        release_config=release_config,
+        test_target_mode=args.test_target_mode,
     )
     outcome: Literal["created", "completed", "already-complete"] = (
         "created" if created else ("completed" if missing_names else "already-complete")
@@ -275,13 +428,14 @@ def run_stage_github_final_release(args: Namespace) -> Path:
 def run_verify_github_final_release(args: Namespace) -> Path:
     """Verify exact GitHub metadata and assets for one direct final release."""
 
-    state, _repo, repository, expected_body = _validated_inputs(args)
-    publication = validate_final_release(
+    state, _repo, repository, expected_body, release_config = _validated_inputs(args)
+    publication = _validate_with_attached_manifest(
         state,
         repository,
         _release_payload(repository, state.final_tag.name),
         expected_body=expected_body,
-        allow_attached_manifest=True,
+        release_config=release_config,
+        test_target_mode=args.test_target_mode,
     )
     result = VerifyGitHubFinalReleaseResult(
         component=state.release.component.id,
@@ -304,14 +458,15 @@ def run_verify_github_final_release(args: Namespace) -> Path:
 def run_publish_github_final_release(args: Namespace) -> Path:
     """Publish an exact verified GitHub final release or validate an identical rerun."""
 
-    state, _repo, repository, expected_body = _validated_inputs(args)
+    state, _repo, repository, expected_body, release_config = _validated_inputs(args)
     release_payload = _release_payload(repository, state.final_tag.name)
-    publication = validate_final_release(
+    publication = _validate_with_attached_manifest(
         state,
         repository,
         release_payload,
         expected_body=expected_body,
-        allow_attached_manifest=True,
+        release_config=release_config,
+        test_target_mode=args.test_target_mode,
     )
     if publication.draft:
         update_release(
@@ -326,12 +481,13 @@ def run_publish_github_final_release(args: Namespace) -> Path:
                 "prerelease": False,
             },
         )
-        publication = validate_final_release(
+        publication = _validate_with_attached_manifest(
             state,
             repository,
             _release_payload(repository, state.final_tag.name),
             expected_body=expected_body,
-            allow_attached_manifest=True,
+            release_config=release_config,
+            test_target_mode=args.test_target_mode,
         )
         if publication.draft:
             raise ValueError("GitHub final release remained a draft after publication")
@@ -361,15 +517,29 @@ def _validate_release_manifest(
     manifest: ReleaseManifestV1,
     state: FinalReleaseState,
     publication: GitHubFinalPublication,
+    release_config: ReleaseConfig,
+    *,
+    test_target_mode: bool,
 ) -> None:
+    if manifest.release_notes != state.release_notes:
+        raise ValueError(
+            "release manifest release notes do not match final-release state"
+        )
     if (
         manifest.release != state.release
         or manifest.source != state.source
         or manifest.final_tag != state.final_tag
         or manifest.artifacts != state.artifacts
-        or manifest.verification_results != state.verification_results
+        or manifest.verification_results[: len(state.verification_results)]
+        != state.verification_results
     ):
         raise ValueError("release manifest identity does not match final-release state")
+    validate_secondary_release_evidence(
+        manifest,
+        state,
+        tuple(release_config.publication.secondary),
+        test_target_mode=test_target_mode,
+    )
     if isinstance(state, DirectReleaseState):
         if manifest.promoted_candidate is not None or manifest.promotion_evidence:
             raise ValueError(
@@ -394,6 +564,10 @@ def _validate_release_manifest(
         raise ValueError(
             "release manifest GitHub publication does not match observed release"
         )
+    if manifest.created_at != publication.published_at:
+        raise ValueError(
+            "release manifest timestamp does not match observed GitHub publication"
+        )
     references = [
         reference
         for reference in manifest.publications
@@ -415,7 +589,7 @@ def _validate_release_manifest(
 def run_attach_github_release_manifest(args: Namespace) -> Path:
     """Attach and revalidate one exact final release manifest without clobbering."""
 
-    state, _repo, repository, expected_body = _validated_inputs(args)
+    state, _repo, repository, expected_body, release_config = _validated_inputs(args)
     manifest_path = Path(args.release_manifest)
     if manifest_path.name != FINAL_RELEASE_MANIFEST_ASSET_NAME:
         raise ValueError(
@@ -427,18 +601,30 @@ def run_attach_github_release_manifest(args: Namespace) -> Path:
         max_bytes=DEFAULT_MANIFEST_PARSE_MAX_BYTES,
     )
     release_payload = _release_payload(repository, state.final_tag.name)
+    additional_assets = _durable_evidence_assets(
+        manifest,
+        repository=repository,
+        final_tag=state.final_tag.name,
+    )
     publication = validate_final_release(
         state,
         repository,
         release_payload,
         expected_body=expected_body,
         allow_attached_manifest=True,
+        additional_assets=additional_assets,
     )
     if publication.draft:
         raise ValueError(
             "GitHub final release must be published before attaching its manifest"
         )
-    _validate_release_manifest(manifest, state, publication)
+    _validate_release_manifest(
+        manifest,
+        state,
+        publication,
+        release_config,
+        test_target_mode=args.test_target_mode,
+    )
     digest = checksum(manifest_path, "sha256")
     reference = ManifestDigestReference(
         uri=f"{publication.release_url}#{FINAL_RELEASE_MANIFEST_ASSET_NAME}",
@@ -472,6 +658,7 @@ def run_attach_github_release_manifest(args: Namespace) -> Path:
         release_payload,
         expected_body=expected_body,
         allow_attached_manifest=True,
+        additional_assets=additional_assets,
     )
     outcome: Literal["attached", "already-complete"] = (
         "already-complete" if attached else "attached"

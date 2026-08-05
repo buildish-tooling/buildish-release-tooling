@@ -129,6 +129,12 @@
           "title": "Assets",
           "type": "array"
         },
+        "created_at": {
+          "description": "UTC creation timestamp reported by GitHub for the candidate Release.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
+          "title": "Created At",
+          "type": "string"
+        },
         "draft": {
           "description": "Whether GitHub reports the release as a draft.",
           "title": "Draft",
@@ -172,6 +178,7 @@
         "repository",
         "release_id",
         "release_url",
+        "created_at",
         "tag",
         "draft",
         "prerelease"

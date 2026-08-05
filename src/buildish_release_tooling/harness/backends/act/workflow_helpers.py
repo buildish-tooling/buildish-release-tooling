@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import re
+from urllib.parse import urlparse
 
 import yaml
 
@@ -30,6 +31,11 @@ from buildish_release_tooling.harness.models import (
     validate_harness_identifier,
 )
 from buildish_release_tooling.harness.runtime import HarnessWorkspace
+from buildish_release_tooling.release.manifests import ReleaseManifestV1
+from buildish_release_tooling.shared.parsing import (
+    DEFAULT_MANIFEST_PARSE_MAX_BYTES,
+    read_pydantic_json_file_bounded,
+)
 from buildish_release_tooling.harness.uv_shim import (
     render_uv_shim_script,
     uv_shim_config,
@@ -115,10 +121,25 @@ def _rewrite_step(
         rewritten = dict(step_payload)
         rewritten["uses"] = generated_action_references["local-download-artifact"]
         return rewritten
+    if isinstance(uses, str) and uses.startswith("pypa/gh-action-pypi-publish@"):
+        rewritten = dict(step_payload)
+        rewritten["uses"] = generated_action_references["local-pypi-publish"]
+        return rewritten
     if "run" not in step_payload:
         return dict(step_payload)
     step_id = _step_identifier(step_payload, step_index)
     rewritten = dict(step_payload)
+    raw_run = rewritten.get("run")
+    if isinstance(raw_run, str):
+        rewritten_run = _rewrite_pypi_commands(raw_run)
+        if generated_gpg_fixture:
+            rewritten_run = re.sub(
+                r'^\s*--expected-signing-fingerprint "\$EXPECTED_SIGNING_FINGERPRINT" \\\n',
+                "",
+                rewritten_run,
+                flags=re.MULTILINE,
+            )
+        rewritten["run"] = rewritten_run
     env = _optional_step_mapping(
         rewritten.get("env"),
         source=f"workflow step {step_id} env",
@@ -181,8 +202,108 @@ def _generated_action_references() -> dict[str, str]:
         "local-checkout": "./.buildish-release-harness/actions/local-checkout",
         "local-download-artifact": "./.buildish-release-harness/actions/local-download-artifact",
         "local-upload-artifact": "./.buildish-release-harness/actions/local-upload-artifact",
+        "local-pypi-publish": "./.buildish-release-harness/actions/local-pypi-publish",
         "setup-uv-noop": "./.buildish-release-harness/actions/setup-uv-noop",
     }
+
+
+def _rewrite_pypi_commands(script: str) -> str:
+    """Route package-index reads and provenance generation to harness-local fixtures."""
+
+    integrity_base_url = "https://integrity.buildish-release-harness.invalid/integrity"
+    repository_argument = (
+        "--repository-api-url "
+        '"file://$GITHUB_WORKSPACE/.buildish-release-harness/pypi-index/api"'
+    )
+    project_url_argument = (
+        "--project-url-template "
+        "'https://packages.buildish-release-harness.invalid/project/{project}/{version}/'"
+    )
+    rewritten = re.sub(
+        r"--repository-api-url\s+\S+",
+        repository_argument,
+        script,
+    )
+    rewritten = re.sub(
+        r"--project-url-template\s+\S+",
+        project_url_argument,
+        rewritten,
+    )
+    rewritten = re.sub(
+        r"https://(?:test\.)?pypi\.org/integrity",
+        integrity_base_url,
+        rewritten,
+    )
+    command_marker = (
+        "bash buildish-release-tooling/release-tooling.sh verify-pypi-publication \\\n"
+    )
+    if command_marker in rewritten and repository_argument not in rewritten:
+        rewritten = rewritten.replace(
+            command_marker,
+            (
+                f"{command_marker}  {repository_argument} \\\n"
+                f"  {project_url_argument} \\\n"
+            ),
+        )
+    return rewritten.replace(
+        "bash buildish-release-tooling/release-tooling.sh verify-pypi-attestations",
+        ".buildish-release-harness/tools/verify-pypi-attestations.sh",
+    )
+
+
+def _validate_retained_release_manifest_artifacts(
+    workspace: HarnessWorkspace,
+    *,
+    require_promoted_manifest: bool = False,
+) -> None:
+    """Validate retained promoted manifests and their service-isolated evidence."""
+
+    artifact_root = workspace.harness_dir / "workflow-artifacts"
+    artifact_dirs = sorted(artifact_root.glob("promoted-release-manifest-*"))
+    if require_promoted_manifest and not artifact_dirs:
+        raise ValueError(
+            "successful promotion must retain a promoted release manifest artifact"
+        )
+    for artifact_dir in artifact_dirs:
+        manifest_path = artifact_dir / "release-manifest-v1.json"
+        manifest = read_pydantic_json_file_bounded(
+            ReleaseManifestV1,
+            manifest_path,
+            max_bytes=DEFAULT_MANIFEST_PARSE_MAX_BYTES,
+        )
+        serialized = manifest_path.read_text(encoding="utf-8")
+        if "pypi.org" in serialized or "test.pypi.org" in serialized:
+            raise ValueError(
+                "retained harness release manifest references a production PyPI service"
+            )
+        synthetic_publication_urls = [
+            publication.uri
+            for publication in manifest.secondary_publications
+            if publication.target_kind == "pypi"
+        ]
+        if synthetic_publication_urls and any(
+            not (urlparse(url).hostname or "").endswith(".invalid")
+            for url in synthetic_publication_urls
+        ):
+            raise ValueError(
+                "retained harness PyPI publication must use an explicit .invalid service host"
+            )
+        attestation_results = [
+            result
+            for result in manifest.verification_results
+            if result.kind == "pypi-publish-attestation"
+        ]
+        if attestation_results and any(
+            urlparse(result.uri).hostname != "github.com"
+            or "/releases/download/" not in urlparse(result.uri).path
+            or not (
+                urlparse(result.claims.get("integrity_base_url", "")).hostname or ""
+            ).endswith(".invalid")
+            for result in attestation_results
+        ):
+            raise ValueError(
+                "retained harness PyPI evidence must bind a .invalid source to a GitHub Release asset"
+            )
 
 
 def _step_identifier(step_payload: YamlMapping, step_index: int) -> str:
@@ -333,11 +454,18 @@ def _write_local_artifact_actions(workspace: HarnessWorkspace) -> None:
         script=(
             'name="${INPUT_NAME:?}"\n'
             'source_path="${INPUT_PATH:?}"\n'
+            'overwrite="${INPUT_OVERWRITE:-false}"\n'
             '[[ "$name" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || '
             "{ printf 'invalid artifact name: %s\\n' \"$name\" >&2; exit 2; }\n"
             'store="$GITHUB_WORKSPACE/.buildish-release-harness/workflow-artifacts/$name"\n'
-            '[[ ! -e "$store" ]] || '
-            "{ printf 'workflow artifact already exists: %s\\n' \"$name\" >&2; exit 2; }\n"
+            'if [[ -e "$store" ]]; then\n'
+            '  if [[ "$overwrite" == "true" ]]; then\n'
+            '    rm -rf "$store"\n'
+            "  else\n"
+            "    printf 'workflow artifact already exists: %s\\n' \"$name\" >&2\n"
+            "    exit 2\n"
+            "  fi\n"
+            "fi\n"
             '[[ -e "$source_path" ]] || '
             "{ printf 'workflow artifact source does not exist: %s\\n' \"$source_path\" >&2; exit 2; }\n"
             'mkdir -p "$store"\n'
@@ -365,6 +493,240 @@ def _write_local_artifact_actions(workspace: HarnessWorkspace) -> None:
     )
 
 
+def _write_local_pypi_publish_action(workspace: HarnessWorkspace) -> None:
+    """Write a local substitute for Trusted Publisher package uploads."""
+
+    action_dir = workspace.actions_dir / "local-pypi-publish"
+    action_dir.mkdir(parents=True, exist_ok=True)
+    script_path = action_dir / "publish.py"
+    script_path.write_text(
+        """from __future__ import annotations
+
+import email
+import hashlib
+import json
+import os
+import re
+import shutil
+import zipfile
+from pathlib import Path
+
+packages_dir = Path(os.environ["INPUT_PACKAGES-DIR"])
+wheel_paths = sorted(packages_dir.glob("*.whl"))
+distribution_paths = sorted(
+    path for path in packages_dir.iterdir()
+    if path.is_file() and path.name.endswith((".whl", ".tar.gz"))
+)
+if len(wheel_paths) != 1 or len(distribution_paths) != 2:
+    raise SystemExit("harness package publication requires exactly one wheel and one sdist")
+with zipfile.ZipFile(wheel_paths[0]) as wheel:
+    metadata_names = [name for name in wheel.namelist() if name.endswith(".dist-info/METADATA")]
+    if len(metadata_names) != 1:
+        raise SystemExit("harness wheel must contain exactly one METADATA file")
+    metadata = email.message_from_bytes(wheel.read(metadata_names[0]))
+project_name = metadata["Name"]
+version = metadata["Version"]
+if not project_name or not version:
+    raise SystemExit("harness wheel metadata lacks project name or version")
+normalized_name = re.sub(r"[-_.]+", "-", project_name).lower()
+workspace = Path(os.environ["GITHUB_WORKSPACE"])
+index_root = workspace / ".buildish-release-harness" / "pypi-index"
+file_root = index_root / "files" / normalized_name / version
+file_root.mkdir(parents=True, exist_ok=True)
+entries = []
+for source in distribution_paths:
+    destination = file_root / source.name
+    if destination.exists() and destination.read_bytes() != source.read_bytes():
+        raise SystemExit(f"conflicting harness package-index file: {source.name}")
+    shutil.copyfile(source, destination)
+    payload = destination.read_bytes()
+    entries.append(
+        {
+            "filename": source.name,
+            "digests": {"sha256": hashlib.sha256(payload).hexdigest()},
+            "size": len(payload),
+            "url": f"https://files.pythonhosted.invalid/{normalized_name}/{version}/{source.name}",
+        }
+    )
+endpoint = index_root / "api" / normalized_name / version / "json"
+endpoint.parent.mkdir(parents=True, exist_ok=True)
+endpoint.write_text(
+    json.dumps(
+        {"info": {"name": project_name, "version": version}, "urls": entries},
+        indent=2,
+        sort_keys=True,
+    )
+    + "\\n",
+    encoding="utf-8",
+)
+""",
+        encoding="utf-8",
+    )
+    (action_dir / "action.yml").write_text(
+        yaml.safe_dump(
+            {
+                "name": "Buildish harness local Python package publish",
+                "inputs": {
+                    "packages-dir": {"required": True},
+                    "repository-url": {"required": False},
+                    "skip-existing": {"required": False},
+                },
+                "runs": {
+                    "using": "composite",
+                    "steps": [
+                        {
+                            "shell": "bash",
+                            "run": 'python3 "$GITHUB_ACTION_PATH/publish.py"',
+                        }
+                    ],
+                },
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_local_package_attestation_verifier(workspace: HarnessWorkspace) -> None:
+    """Write deterministic package provenance for service-isolated composition tests."""
+
+    tool_dir = workspace.harness_dir / "tools"
+    tool_dir.mkdir(parents=True, exist_ok=True)
+    script_path = tool_dir / "verify-pypi-attestations.sh"
+    script_path.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+provenance_dir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --provenance-dir)
+      provenance_dir="$2"
+      shift 2
+      ;;
+    --attempts|--retry-delay|--total-timeout|--integrity-api-url)
+      shift 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+version="${1:?missing version}"
+shift
+shim_python="python3"
+if [[ -n "${GITHUB_WORKSPACE:-}" && -x "$GITHUB_WORKSPACE/.venv/bin/python" ]]; then
+  shim_python="$GITHUB_WORKSPACE/.venv/bin/python"
+fi
+"$shim_python" - "$version" "$provenance_dir" "$MANIFEST_PATH" "$@" <<'PY'
+import hashlib
+import json
+import os
+import sys
+from pathlib import Path
+
+from buildish_release_tooling.release.config import load_release_config
+from buildish_release_tooling.release.publications.pypi.config import PyPiPublicationConfig
+from buildish_release_tooling.release.publications.pypi.distributions import normalized_pypi_version
+
+version, provenance_dir_text, manifest_path_text, *distributions = sys.argv[1:]
+pypi_version = normalized_pypi_version(version)
+integrity_base_url = "https://integrity.buildish-release-harness.invalid/integrity"
+workspace = Path(os.environ["GITHUB_WORKSPACE"])
+config_path = Path(
+    os.environ.get(
+        "BUILDISH_COMPONENT_CONFIG_PATH",
+        workspace / "buildish-release-tooling" / "release-config.yaml",
+    )
+)
+config = load_release_config(config_path)
+targets = [
+    target
+    for target in config.publication.secondary
+    if isinstance(target, PyPiPublicationConfig)
+]
+if len(targets) != 1:
+    raise SystemExit("harness attestation verification requires one configured PyPI target")
+target = targets[0]
+component = config.component.id
+project = target.project_name
+repository = target.trusted_publisher.repository
+workflow = target.trusted_publisher.workflow
+environment = target.trusted_publisher.environment
+provenance_dir = Path(provenance_dir_text)
+provenance_dir.mkdir(parents=True, exist_ok=True)
+files = []
+for distribution_text in distributions:
+    distribution = Path(distribution_text)
+    distribution_sha256 = hashlib.sha256(distribution.read_bytes()).hexdigest()
+    source_provenance_url = f"{integrity_base_url.rstrip('/')}/{project}/{pypi_version}/{distribution.name}/provenance"
+    evidence_path = provenance_dir / (
+        "buildish-verification-evidence--"
+        f"{distribution.name}.publish-attestations.json"
+    )
+    evidence_path.write_text(
+        json.dumps(
+            {
+                "kind": "pypi-publish-attestation-evidence",
+                "schema_version": "1",
+                "publisher": {
+                    "kind": "GitHub",
+                    "repository": repository,
+                    "workflow": workflow,
+                    "environment": environment,
+                },
+                "distribution_filename": distribution.name,
+                "distribution_sha256": distribution_sha256,
+                "source_provenance_url": source_provenance_url,
+                "attestations": [{"harness": "synthetic-pypi-publish-attestation"}],
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\\n",
+        encoding="utf-8",
+    )
+    files.append(
+        {
+            "filename": distribution.name,
+            "distribution_sha256": distribution_sha256,
+            "evidence_filename": evidence_path.name,
+            "evidence_sha256": hashlib.sha256(evidence_path.read_bytes()).hexdigest(),
+            "evidence_size_bytes": evidence_path.stat().st_size,
+            "source_provenance_url": source_provenance_url,
+            "publish_attestation_count": 1,
+        }
+    )
+Path(manifest_path_text).write_text(
+    json.dumps(
+        {
+            "schema_version": "1",
+            "kind": "pypi-attestation-verification",
+            "component": component,
+            "action": "verify-pypi-attestations",
+            "project_name": project,
+            "version": version,
+            "integrity_base_url": integrity_base_url.rstrip("/"),
+            "publisher": {
+                "kind": "GitHub",
+                "repository": repository,
+                "workflow": workflow,
+                "environment": environment,
+            },
+            "files": sorted(files, key=lambda item: item["filename"]),
+        },
+        indent=2,
+        sort_keys=True,
+    )
+    + "\\n",
+    encoding="utf-8",
+)
+PY
+""",
+        encoding="utf-8",
+    )
+    script_path.chmod(script_path.stat().st_mode | 0o111)
+
+
 def _write_local_artifact_action(
     workspace: HarnessWorkspace,
     *,
@@ -390,6 +752,7 @@ def _write_local_artifact_action(
                     "path": {"required": True},
                     "retention-days": {"required": False},
                     "if-no-files-found": {"required": False},
+                    "overwrite": {"required": False},
                 },
                 "runs": {
                     "using": "composite",
@@ -464,8 +827,16 @@ def _write_generic_tool_shims(
                 [
                     "#!/usr/bin/env bash",
                     "set -euo pipefail",
+                    'shim_python="python3"',
                     (
-                        "exec python3 -m buildish_release_tooling.harness.shim_entrypoint "
+                        'if [[ -n "${GITHUB_WORKSPACE:-}" '
+                        '&& -x "$GITHUB_WORKSPACE/.venv/bin/python" ]]; then'
+                    ),
+                    '  shim_python="$GITHUB_WORKSPACE/.venv/bin/python"',
+                    "fi",
+                    (
+                        'exec "$shim_python" -m '
+                        "buildish_release_tooling.harness.shim_entrypoint "
                         f'{json.dumps(tool)} "$@"'
                     ),
                 ]

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Small setuptools wheel hook for final legal-file layout tweaks.
+"""Setuptools hooks for deterministic archives and legal-file layout tweaks.
 
 The project now relies on standard ``project.license-files`` metadata so
 setuptools handles nearly all of the legal-file work for sdists and wheels.
@@ -37,8 +37,13 @@ archive layout.
 
 from __future__ import annotations
 
+import copy
+import gzip
+import io
+import os
 from pathlib import Path
 import shutil
+import tarfile
 import tempfile
 
 try:
@@ -53,10 +58,117 @@ except ModuleNotFoundError:
                 "FlattenedLicenseFilesBdistWheel"
             )
 
+try:
+    from setuptools.command.sdist import sdist as _sdist
+except ModuleNotFoundError:
+    class _sdist:  # type: ignore[no-redef]
+        """Import-time fallback when setuptools is unavailable."""
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            raise ModuleNotFoundError(
+                "setuptools is required to build source distributions with "
+                "ReproducibleSdist"
+            )
+
 _FLATTENED_LICENSE_PATHS = {
     "dist-release-legal/LICENSE": "LICENSE",
     "dist-release-legal/NOTICE": "NOTICE",
 }
+_MAX_GZIP_TIMESTAMP = (1 << 32) - 1
+
+
+def _source_date_epoch() -> int | None:
+    """Return a validated reproducible-build timestamp when one is configured."""
+
+    raw_value = os.environ.get("SOURCE_DATE_EPOCH")
+    if raw_value is None:
+        return None
+    try:
+        epoch = int(raw_value)
+    except ValueError as exc:
+        raise ValueError("SOURCE_DATE_EPOCH must be an integer") from exc
+    if not 0 <= epoch <= _MAX_GZIP_TIMESTAMP:
+        raise ValueError(
+            f"SOURCE_DATE_EPOCH must be between 0 and {_MAX_GZIP_TIMESTAMP}"
+        )
+    return epoch
+
+
+def _normalized_tar_member(member: tarfile.TarInfo, epoch: int) -> tarfile.TarInfo:
+    """Return deterministic metadata for one source-distribution member."""
+
+    normalized = copy.copy(member)
+    normalized.mtime = epoch
+    normalized.uid = 0
+    normalized.gid = 0
+    normalized.uname = ""
+    normalized.gname = ""
+    normalized.pax_headers = {}
+    if normalized.isdir():
+        normalized.mode = 0o755
+    elif normalized.isfile():
+        normalized.mode = 0o755 if member.mode & 0o111 else 0o644
+    return normalized
+
+
+def _rewrite_reproducible_tar_gz(archive_path: Path, epoch: int) -> None:
+    """Normalize tar metadata and the gzip header for one completed sdist."""
+
+    tar_buffer = io.BytesIO()
+    with tarfile.open(archive_path, mode="r:gz") as source_tar:
+        with tarfile.open(
+            fileobj=tar_buffer,
+            mode="w",
+            format=tarfile.PAX_FORMAT,
+        ) as target_tar:
+            for source_member in source_tar:
+                content = (
+                    source_tar.extractfile(source_member)
+                    if source_member.isfile()
+                    else None
+                )
+                target_tar.addfile(
+                    _normalized_tar_member(source_member, epoch),
+                    content,
+                )
+
+    with archive_path.open("wb") as archive_file:
+        with gzip.GzipFile(
+            filename="",
+            mode="wb",
+            compresslevel=9,
+            fileobj=archive_file,
+            mtime=epoch,
+        ) as gzip_file:
+            gzip_file.write(tar_buffer.getvalue())
+
+
+class ReproducibleSdist(_sdist):
+    """Normalize ``.tar.gz`` source archives when ``SOURCE_DATE_EPOCH`` is set."""
+
+    def make_archive(
+        self,
+        base_name: str | os.PathLike[str],
+        format: str,  # noqa: A002 - setuptools override uses this parameter name
+        root_dir: str | os.PathLike[str] | bytes | os.PathLike[bytes] | None = None,
+        base_dir: str | None = None,
+        owner: str | None = None,
+        group: str | None = None,
+    ) -> str:
+        """Build normally, then make gzip and tar metadata deterministic."""
+
+        archive_name = super().make_archive(
+            base_name,
+            format,
+            root_dir,
+            base_dir,
+            owner,
+            group,
+        )
+        epoch = _source_date_epoch()
+        if epoch is not None and format == "gztar":
+            _rewrite_reproducible_tar_gz(Path(archive_name), epoch)
+        return archive_name
 
 
 class FlattenedLicenseFilesBdistWheel(_bdist_wheel):

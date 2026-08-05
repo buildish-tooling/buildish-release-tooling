@@ -42,14 +42,21 @@ versioning:
 source:
   selection: explicit-ref-or-default-branch
   default_branch: main
+  require_default_branch_ancestor: true
   snapshot:
     mode: platform-generated
   checks:
     platform: github
+    trusted_workflow_path: .github/workflows/ci.yml
+    trusted_event: push
+    trusted_branch: main
     required:
       - Required Checks
 lifecycle:
   mode: direct
+# Optional. Omit this block to publish without custom notes.
+release_notes:
+  path_template: release-notes/{version}.md
 artifacts:
   produced: []
   checksums: []
@@ -64,11 +71,16 @@ policy_profiles: {}
 ```
 
 This example treats GitHub as authoritative and relies on the source archives GitHub generates from
-the immutable final tag. It publishes no separately built source artifact.
+the immutable final tag. It publishes no separately built source artifact. Because `release_notes`
+is configured, the selected source commit must contain a non-empty UTF-8 Markdown fragment at the
+rendered path. If the block is omitted, the release body contains only generated identity and asset
+information.
 
 ## Dispatch
 
-Run `.github/workflows/release-direct.yml` with:
+The repository's generic reference workflow lives at
+`buildish-release-tooling/harness/workflows/release-direct.yml`. A component can copy that fixture
+into its own `.github/workflows/release-direct.yml` and dispatch it with:
 
 - `version`: the exact final version, for example `1.2.3`;
 - `source_ref`: an optional exact branch, tag, or commit allowed by the configured source-selection
@@ -76,11 +88,14 @@ Run `.github/workflows/release-direct.yml` with:
 
 When `source_ref` is omitted, the example configuration resolves `main`. Resolution records the
 exact commit; later jobs use that commit identity rather than re-resolving a moving branch.
+With the ancestry policy above, an explicitly supplied commit must also already be reachable from
+`main`. The trusted-workflow fields prevent a same-name check from another workflow or event from
+satisfying the source gate.
 
 ## Workflow phases
 
 1. `resolve` creates `DirectReleaseState` with the release identity, exact source commit, final tag,
-   and artifact policy.
+   artifact policy, and any configured release notes read from that commit.
 2. `verify-source` checks the configured GitHub check-run/status requirement on that exact commit.
 3. `create-final-tag` creates or revalidates the immutable final tag.
 4. `stage` creates or completes the draft final GitHub Release.
@@ -116,3 +131,8 @@ instead of cancelling a run that may already have changed external release state
   release lines. The direct lifecycle itself does not require one.
 - Use the [candidate lifecycle](../candidate-release/) when publication must wait for an external
   approval or vote over an exact candidate.
+
+The repository's `release-testpypi.yml` is another direct-lifecycle composition. It resolves and
+retains `DirectReleaseState`, but deliberately exercises only the secondary TestPyPI publication:
+it creates no final tag or GitHub Release. It is a package-publication rehearsal, not a substitute
+for the generic direct GitHub workflow's final-tag and final-manifest phases.

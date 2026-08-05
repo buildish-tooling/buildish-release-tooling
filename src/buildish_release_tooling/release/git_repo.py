@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import subprocess
 
 from buildish_release_tooling.release.process import run_logged_command
 from buildish_release_tooling.release.core.naming import (
@@ -173,6 +174,75 @@ class GitRepository:
         if remote_ref is not None:
             return self._run("rev-parse", f"{remote_ref}^{{commit}}")
         raise ValueError(f"unable to resolve Git ref: {ref}")
+
+    def read_regular_file_at_commit(
+        self,
+        commit_sha: str,
+        source_path: str,
+        *,
+        max_bytes: int,
+    ) -> bytes:
+        """Read bounded bytes from one regular file in an exact Git commit."""
+
+        if max_bytes < 0:
+            raise ValueError("max_bytes must be non-negative")
+        resolved_commit = self.resolve_commit(commit_sha)
+        tree_entry = self._run(
+            "ls-tree",
+            "-z",
+            resolved_commit,
+            "--",
+            f":(literal){source_path}",
+        )
+        if not tree_entry:
+            raise ValueError(
+                f"configured file does not exist in selected source commit: {source_path}"
+            )
+        metadata, separator, actual_path = tree_entry.removesuffix("\x00").partition("\t")
+        mode, object_type, object_sha = metadata.split(" ", 2)
+        if not separator or actual_path != source_path or object_type != "blob" or mode not in {
+            "100644",
+            "100755",
+        }:
+            raise ValueError(
+                f"configured path is not a regular file in selected source commit: {source_path}"
+            )
+        size_text = self._run("cat-file", "-s", object_sha)
+        if not size_text.isdigit():
+            raise ValueError(f"unable to determine selected file size: {source_path}")
+        size = int(size_text)
+        if size > max_bytes:
+            raise ValueError(
+                f"configured file exceeds the {max_bytes}-byte limit: {source_path}"
+            )
+        completed = subprocess.run(  # noqa: S603
+            ["git", "-C", str(self.path), "cat-file", "blob", object_sha],
+            capture_output=True,
+            check=False,
+            timeout=60,
+        )
+        if completed.returncode != 0:
+            raise ValueError(f"unable to read selected file: {source_path}")
+        if len(completed.stdout) != size:
+            raise ValueError(f"selected file size changed while reading: {source_path}")
+        return completed.stdout
+
+    def is_ancestor(self, ancestor_ref: str, descendant_ref: str) -> bool:
+        """Return whether one resolved commit is an ancestor of another."""
+
+        ancestor = self.resolve_commit(ancestor_ref)
+        descendant = self.resolve_commit(descendant_ref)
+        try:
+            self._run(
+                "merge-base",
+                "--is-ancestor",
+                ancestor,
+                descendant,
+                check=True,
+            )
+        except Exception:  # noqa: BLE001 - nonzero is the Git predicate result.
+            return False
+        return True
 
     def create_branch(self, branch_name: str, source_ref: str) -> None:
         """Create a local branch from a source ref when it does not already exist."""

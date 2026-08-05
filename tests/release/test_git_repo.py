@@ -74,3 +74,24 @@ class GitRepositoryIntegrationTest(unittest.TestCase):
             check=True,
         ).stdout.strip()
         self.assertEqual(source_commit, created_commit)
+
+    def test_git_repo_reports_commit_ancestry(self) -> None:
+        sandbox_dir = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox_dir)
+        _origin_dir, clone_dir = init_git_origin_and_clone(sandbox_dir)
+        repo = GitRepository(clone_dir)
+        main_commit = repo.resolve_commit("main")
+        run_quiet(
+            ["git", "-C", str(clone_dir), "switch", "-c", "unmerged"],
+            check=True,
+        )
+        (clone_dir / "unmerged.txt").write_text("unmerged\n", encoding="utf-8")
+        run_quiet(["git", "-C", str(clone_dir), "add", "unmerged.txt"], check=True)
+        run_quiet(
+            ["git", "-C", str(clone_dir), "commit", "-m", "unmerged"],
+            check=True,
+        )
+        unmerged_commit = repo.resolve_commit("HEAD")
+
+        self.assertTrue(repo.is_ancestor(main_commit, unmerged_commit))
+        self.assertFalse(repo.is_ancestor(unmerged_commit, "main"))

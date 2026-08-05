@@ -148,9 +148,10 @@ class DirectGitHubReleaseCommandIntegrationTest(unittest.TestCase):
             "draft": draft,
             "prerelease": False,
             "html_url": (
-                "https://github.com/apache/example-project/"
-                "releases/tag/v1.2.3"
+                "https://github.com/apache/example-project/releases/tag/v1.2.3"
             ),
+            "created_at": "2026-08-05T09:00:00Z",
+            "published_at": None if draft else "2026-08-05T09:05:00Z",
             "assets": assets or [],
         }
 
@@ -257,6 +258,7 @@ class DirectGitHubReleaseCommandIntegrationTest(unittest.TestCase):
         release_manifest = json.loads(release_manifest_path.read_text(encoding="utf-8"))
         self.assertNotIn("promoted_candidate", release_manifest)
         self.assertEqual([], release_manifest["promotion_evidence"])
+        self.assertEqual("2026-08-05T09:05:00Z", release_manifest["created_at"])
 
         durable_manifest_path = self.sandbox_dir / "release-manifest-v1.json"
         durable_manifest_path.write_bytes(release_manifest_path.read_bytes())
@@ -268,6 +270,41 @@ class DirectGitHubReleaseCommandIntegrationTest(unittest.TestCase):
             "digest": f"sha256:{manifest_digest}",
         }
         public_with_manifest = self._release(draft=False, assets=[manifest_asset])
+        mismatched_manifest = json.loads(
+            durable_manifest_path.read_text(encoding="utf-8")
+        )
+        mismatched_markdown = "Different release notes.\n"
+        mismatched_manifest["release_notes"] = {
+            "source_path": "release-notes/1.2.3.md",
+            "sha256": hashlib.sha256(mismatched_markdown.encode("utf-8")).hexdigest(),
+            "markdown": mismatched_markdown,
+        }
+        mismatched_manifest_path = (
+            self.sandbox_dir / "mismatched-manifest" / "release-manifest-v1.json"
+        )
+        mismatched_manifest_path.parent.mkdir()
+        mismatched_manifest_path.write_text(
+            json.dumps(mismatched_manifest) + "\n", encoding="utf-8"
+        )
+        gh_path, gh_state_dir = self._fake_gh(list_response=[public])
+        completed = self._run(
+            [
+                "attach-github-release-manifest",
+                "--release-state",
+                str(self.state_path),
+                "--release-manifest",
+                str(mismatched_manifest_path),
+            ],
+            manifest_path=self.sandbox_dir / "mismatched-manifest-attach-result.json",
+            gh_path=gh_path,
+            gh_state_dir=gh_state_dir,
+        )
+        self.assertNotEqual(0, completed.returncode)
+        self.assertIn(
+            "release manifest release notes do not match final-release state",
+            completed.stderr,
+        )
+
         gh_path, gh_state_dir = self._fake_gh(
             list_response=[public],
             list_responses=([public], [public_with_manifest]),

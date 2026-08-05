@@ -35,9 +35,11 @@ from buildish_release_tooling.release.core.models import (
     CandidateIdentity,
     PublicationReference,
     ReleaseIdentity,
+    ReleaseNotes,
     SourceRevision,
     TagIdentity,
     ToolingInvocationProvenance,
+    UtcRfc3339Timestamp,
     VerificationResultReference,
 )
 from buildish_release_tooling.release.foundations.asf.manifests import (
@@ -70,6 +72,10 @@ class CandidateManifestV1(ToolingDerivedModel):
     release: ReleaseIdentity = Field(description="Exact component release identity.")
     candidate: CandidateIdentity = Field(description="Exact candidate identity.")
     source: SourceRevision = Field(description="Exact selected source revision.")
+    release_notes: ReleaseNotes | None = Field(
+        default=None,
+        description="Optional exact release notes bound to the candidate.",
+    )
     candidate_tag: TagIdentity = Field(description="Exact immutable candidate tag identity.")
     source_date_epoch: int | None = Field(
         default=None, ge=0, description="Optional canonical selected-source timestamp."
@@ -89,7 +95,7 @@ class CandidateManifestV1(ToolingDerivedModel):
     tooling: ToolingInvocationProvenance = Field(
         description="Tooling revision and invocation provenance."
     )
-    created_at: str = Field(description="UTC creation timestamp in RFC 3339 form.")
+    created_at: UtcRfc3339Timestamp = Field(description="UTC timestamp of the authoritative candidate publication in RFC 3339 form.")
     extensions: list[CandidateExtension] = Field(
         default_factory=list, description="Typed platform or foundation candidate extensions."
     )
@@ -102,6 +108,14 @@ class CandidateManifestV1(ToolingDerivedModel):
             raise ValueError("candidate_tag must equal the exact candidate identity tag")
         if self.candidate_tag.target_commit != self.source.commit_sha:
             raise ValueError("candidate tag must target the selected source revision")
+        if any(
+            isinstance(extension, GitHubCandidatePublication)
+            and extension.created_at != self.created_at
+            for extension in self.extensions
+        ):
+            raise ValueError(
+                "candidate manifest created_at must equal its GitHub publication timestamp"
+            )
         return self
 
 
@@ -131,7 +145,7 @@ class VotePackageV1(ToolingDerivedModel):
     extensions: list[AsfVoteExtension] = Field(
         default_factory=list, description="Typed foundation vote extensions."
     )
-    created_at: str = Field(description="UTC creation timestamp in RFC 3339 form.")
+    created_at: UtcRfc3339Timestamp = Field(description="UTC creation timestamp in RFC 3339 form.")
 
 
 class ReleaseManifestV1(ToolingDerivedModel):
@@ -143,6 +157,10 @@ class ReleaseManifestV1(ToolingDerivedModel):
     )
     release: ReleaseIdentity = Field(description="Exact component release identity.")
     source: SourceRevision = Field(description="Exact final release source revision.")
+    release_notes: ReleaseNotes | None = Field(
+        default=None,
+        description="Optional exact release notes published for the final release.",
+    )
     final_tag: TagIdentity = Field(description="Exact immutable final tag identity.")
     artifacts: list[ArtifactReference] = Field(
         default_factory=list, description="Immutable final artifact inventory."
@@ -168,7 +186,7 @@ class ReleaseManifestV1(ToolingDerivedModel):
     tooling: ToolingInvocationProvenance = Field(
         description="Tooling revision and invocation provenance."
     )
-    created_at: str = Field(description="UTC creation timestamp in RFC 3339 form.")
+    created_at: UtcRfc3339Timestamp = Field(description="UTC timestamp of the authoritative final publication in RFC 3339 form.")
     extensions: list[ReleaseExtension] = Field(
         default_factory=list, description="Typed platform or foundation final extensions."
     )
@@ -186,6 +204,14 @@ class ReleaseManifestV1(ToolingDerivedModel):
             and self.promoted_candidate.candidate.release != self.release
         ):
             raise ValueError("promoted candidate must refer to the same release")
+        if any(
+            isinstance(extension, GitHubFinalPublication)
+            and extension.published_at != self.created_at
+            for extension in self.extensions
+        ):
+            raise ValueError(
+                "release manifest created_at must equal its GitHub publication timestamp"
+            )
         return self
 
     @model_serializer(mode="wrap")

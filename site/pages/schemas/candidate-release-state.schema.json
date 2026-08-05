@@ -197,6 +197,38 @@
         "ownership": "runtime-derived"
       }
     },
+    "ReleaseNotes": {
+      "additionalProperties": false,
+      "description": "Exact human-readable notes selected from one release source revision.",
+      "properties": {
+        "markdown": {
+          "description": "Exact non-empty UTF-8 Markdown fragment.",
+          "title": "Markdown",
+          "type": "string"
+        },
+        "sha256": {
+          "description": "Lowercase SHA-256 of the exact UTF-8 Markdown bytes.",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "source_path": {
+          "description": "Repository-relative path of the notes in the selected source revision.",
+          "title": "Source Path",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_path",
+        "sha256",
+        "markdown"
+      ],
+      "title": "ReleaseNotes",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
     "SourceArtifactPlan": {
       "additionalProperties": false,
       "description": "Resolved built-source archive names for one release run.",
@@ -354,6 +386,14 @@
       "additionalProperties": false,
       "description": "Reference to one machine-readable verification result.",
       "properties": {
+        "claims": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Verified identity or subject claims bound to the result document.",
+          "title": "Claims",
+          "type": "object"
+        },
         "digest": {
           "anyOf": [
             {
@@ -422,6 +462,18 @@
     "release": {
       "$ref": "#/$defs/ReleaseIdentity",
       "description": "Exact component release identity."
+    },
+    "release_notes": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReleaseNotes"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional exact release notes read from the selected source revision."
     },
     "source": {
       "$ref": "#/$defs/SourceRevision",

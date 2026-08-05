@@ -1,0 +1,95 @@
+{
+  "$comment": "Generated from the Buildish Release Tooling Pydantic models. Do not edit by hand; regenerate with `make schemas`.",
+  "$id": "https://buildish.org/components/release-tooling/schemas/prepare-release-assets-manifest.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Action manifest emitted after preparing checksummed and signed release assets. This command manifest is internal Buildish workflow I/O and is not a supported external API.",
+  "properties": {
+    "action": {
+      "const": "prepare-release-assets",
+      "default": "prepare-release-assets",
+      "description": "Stable command action identifier written by one Buildish command manifest.",
+      "title": "Action",
+      "type": "string"
+    },
+    "checksum_algorithms": {
+      "description": "Checksum algorithms applied to each primary asset.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Checksum Algorithms",
+      "type": "array"
+    },
+    "component": {
+      "description": "Component identifier for the Buildish command manifest or emitted action record.",
+      "minLength": 1,
+      "title": "Component",
+      "type": "string"
+    },
+    "generated_checksum_asset_names": {
+      "description": "Generated checksum sidecar names.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Generated Checksum Asset Names",
+      "type": "array"
+    },
+    "generated_signature_asset_names": {
+      "description": "Generated detached OpenPGP signature names.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Generated Signature Asset Names",
+      "type": "array"
+    },
+    "gpg_fingerprint": {
+      "description": "OpenPGP fingerprint selected for signing, or an empty string when signing is disabled.",
+      "title": "Gpg Fingerprint",
+      "type": "string"
+    },
+    "output_directory": {
+      "description": "Directory containing the complete prepared release-asset set.",
+      "minLength": 1,
+      "title": "Output Directory",
+      "type": "string"
+    },
+    "prepared_asset_names": {
+      "description": "Complete prepared asset inventory including checksum and signature sidecars.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Prepared Asset Names",
+      "type": "array"
+    },
+    "primary_asset_names": {
+      "description": "Primary release assets copied into the prepared output directory.",
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Primary Asset Names",
+      "type": "array"
+    }
+  },
+  "required": [
+    "component",
+    "output_directory",
+    "primary_asset_names",
+    "prepared_asset_names",
+    "generated_checksum_asset_names",
+    "generated_signature_asset_names",
+    "checksum_algorithms",
+    "gpg_fingerprint"
+  ],
+  "title": "Buildish Release Tooling PrepareReleaseAssetsManifest",
+  "type": "object",
+  "x-buildish-contract": {
+    "category": "emitted",
+    "ownership": "tooling-derived",
+    "summary": "Internal unstable JSON action manifest emitted by `prepare-release-assets`."
+  }
+}

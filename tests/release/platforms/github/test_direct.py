@@ -86,10 +86,9 @@ def _release_payload(
         "body": render_direct_final_release_body(state),
         "draft": draft,
         "prerelease": False,
-        "html_url": (
-            "https://github.com/apache/example-project/"
-            "releases/tag/v1.2.3"
-        ),
+        "html_url": ("https://github.com/apache/example-project/releases/tag/v1.2.3"),
+        "created_at": "2026-08-05T09:00:00Z",
+        "published_at": None if draft else "2026-08-05T09:05:00Z",
         "assets": assets or [],
     }
 
@@ -109,6 +108,20 @@ class DirectGitHubReleaseTest(unittest.TestCase):
 
         self.assertEqual([], publication.assets)
         self.assertTrue(publication.draft)
+        self.assertIsNone(publication.published_at)
+
+    def test_published_release_requires_publication_timestamp(self) -> None:
+        state = _state()
+        payload = _release_payload(state, draft=False)
+        payload.pop("published_at")
+
+        with self.assertRaisesRegex(ValueError, "publication timestamp"):
+            validate_final_release(
+                state,
+                "apache/example-project",
+                payload,
+                expected_body=render_direct_final_release_body(state),
+            )
 
     def test_local_and_remote_asset_bytes_must_match_state(self) -> None:
         artifact_bytes = b"release asset\n"
@@ -188,6 +201,100 @@ class DirectGitHubReleaseTest(unittest.TestCase):
                 "apache/example-project",
                 payload,
                 expected_body=render_direct_final_release_body(state),
+            )
+
+    def test_reserved_orphan_evidence_is_tolerated_only_for_recovery(self) -> None:
+        state = _state()
+        evidence_name = (
+            "buildish-verification-evidence--example.whl.publish-attestations.json"
+        )
+        payload = _release_payload(
+            state,
+            assets=[
+                {
+                    "id": 101,
+                    "name": evidence_name,
+                    "size": 1,
+                    "digest": f"sha256:{'a' * 64}",
+                }
+            ],
+        )
+
+        with self.assertRaisesRegex(ValueError, "unexpected"):
+            validate_final_release(
+                state,
+                "apache/example-project",
+                payload,
+                expected_body=render_direct_final_release_body(state),
+            )
+        publication = validate_final_release(
+            state,
+            "apache/example-project",
+            payload,
+            expected_body=render_direct_final_release_body(state),
+            recoverable_orphan_assets={evidence_name},
+        )
+        self.assertEqual([], publication.assets)
+        self.assertEqual(
+            [],
+            missing_final_release_assets(
+                state,
+                payload,
+                expected_body=render_direct_final_release_body(state),
+                recoverable_orphan_assets={evidence_name},
+            ),
+        )
+
+        unrelated = _release_payload(
+            state,
+            assets=[
+                {
+                    "id": 102,
+                    "name": "buildish-verification-evidence--unrelated.json",
+                    "size": 1,
+                    "digest": f"sha256:{'b' * 64}",
+                }
+            ],
+        )
+        with self.assertRaisesRegex(ValueError, "unexpected"):
+            validate_final_release(
+                state,
+                "apache/example-project",
+                unrelated,
+                expected_body=render_direct_final_release_body(state),
+                recoverable_orphan_assets={evidence_name},
+            )
+
+        ordinary_state = state.model_copy(
+            update={
+                "artifacts": [
+                    ArtifactReference(
+                        kind="generic-file",
+                        logical_name=evidence_name,
+                        digests={"sha256": "c" * 64},
+                        size_bytes=2,
+                    )
+                ]
+            }
+        )
+        ordinary_payload = _release_payload(
+            ordinary_state,
+            assets=[
+                {
+                    "id": 103,
+                    "name": evidence_name,
+                    "size": 1,
+                    "digest": f"sha256:{'a' * 64}",
+                }
+            ],
+        )
+        with self.assertRaisesRegex(ValueError, "asset size mismatch"):
+            validate_final_release(
+                ordinary_state,
+                "apache/example-project",
+                ordinary_payload,
+                expected_body=render_direct_final_release_body(ordinary_state),
+                recoverable_orphan_assets={evidence_name},
             )
 
     def test_malformed_remote_asset_metadata_is_rejected(self) -> None:

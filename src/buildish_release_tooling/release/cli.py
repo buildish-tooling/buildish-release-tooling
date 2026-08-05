@@ -522,6 +522,24 @@ def _register_publication_commands(
     )
     create_release_manifest.add_argument("--release-state", required=True)
     create_release_manifest.add_argument("--publication-result", required=True)
+    create_release_manifest.add_argument(
+        "--secondary-publication-result",
+        action="append",
+        default=[],
+        help="Typed verified secondary-publication result to include in the final manifest.",
+    )
+    create_release_manifest.add_argument(
+        "--secondary-verification-result",
+        action="append",
+        default=[],
+        help="Typed secondary verification evidence to bind into the final manifest.",
+    )
+    create_release_manifest.add_argument(
+        "--verification-evidence-publication-result",
+        action="append",
+        default=[],
+        help="Exact durable publication result for retained verification-evidence assets.",
+    )
 
     attach_release_manifest = _add_command_parser(
         subparsers,
@@ -785,6 +803,11 @@ def _register_release_metadata_commands(
         help="Generate and attach detached ASCII-armored signatures for each asset.",
     )
     attach_github_release_assets.add_argument(
+        "--immutable",
+        action="store_true",
+        help="Reuse byte-identical existing assets and reject conflicting assets without clobbering.",
+    )
+    attach_github_release_assets.add_argument(
         "--checksum",
         dest="checksum_algorithms",
         action="append",
@@ -794,6 +817,83 @@ def _register_release_metadata_commands(
     )
     _add_version_argument(attach_github_release_assets)
     attach_github_release_assets.add_argument("assets", nargs="+")
+
+    prepare_release_assets = _add_command_parser(
+        subparsers,
+        common,
+        "prepare-release-assets",
+        help_text="Copy primary assets and create configured checksum and signature sidecars.",
+        handler=commands.run_prepare_release_assets,
+    )
+    prepare_release_assets.add_argument("--output-dir", required=True)
+    prepare_release_assets.add_argument(
+        "--expected-signing-fingerprint",
+        help="Runtime-provided public signing fingerprint that must match the authored configuration.",
+    )
+    prepare_release_assets.add_argument("assets", nargs="+")
+
+    verify_pypi_publication = _add_command_parser(
+        subparsers,
+        common,
+        "verify-pypi-publication",
+        help_text="Verify exact Python distributions published through the PyPI JSON API.",
+        handler=commands.run_verify_pypi_publication,
+    )
+    verify_pypi_publication.add_argument(
+        "--repository-api-url",
+        help="Test-target-only override for the configured PyPI JSON API URL.",
+    )
+    verify_pypi_publication.add_argument(
+        "--project-url-template",
+        help="Test-target-only override for the configured project-version URL template.",
+    )
+    verify_pypi_publication.add_argument("--attempts", type=int, default=1)
+    verify_pypi_publication.add_argument("--retry-delay", type=float, default=0)
+    verify_pypi_publication.add_argument(
+        "--total-timeout",
+        type=float,
+        default=300,
+        help="Total polling deadline in seconds across all requests and delays.",
+    )
+    verify_pypi_publication.add_argument(
+        "--allow-incomplete",
+        action="store_true",
+        help="Report an absent or matching partial publication instead of requiring completeness.",
+    )
+    verify_pypi_publication.add_argument(
+        "--release-state",
+        required=True,
+        help="Exact DirectReleaseState or PromotionState JSON authorizing this publication.",
+    )
+    _add_version_argument(verify_pypi_publication)
+    verify_pypi_publication.add_argument("distributions", nargs="+")
+
+    verify_pypi_attestations = _add_command_parser(
+        subparsers,
+        common,
+        "verify-pypi-attestations",
+        help_text="Verify PEP 740 provenance for configured PyPI distributions.",
+        handler=commands.run_verify_pypi_attestations,
+    )
+    verify_pypi_attestations.add_argument(
+        "--integrity-api-url",
+        help="Test-target-only override for the configured PyPI Integrity API URL.",
+    )
+    verify_pypi_attestations.add_argument("--attempts", type=int, default=12)
+    verify_pypi_attestations.add_argument("--retry-delay", type=float, default=5)
+    verify_pypi_attestations.add_argument(
+        "--total-timeout",
+        type=float,
+        default=300,
+        help="Total deadline in seconds for provenance downloads and verification.",
+    )
+    verify_pypi_attestations.add_argument(
+        "--provenance-dir",
+        required=True,
+        help="Directory for exact downloaded provenance documents.",
+    )
+    _add_version_argument(verify_pypi_attestations)
+    verify_pypi_attestations.add_argument("distributions", nargs="+")
 
     release_version = _add_command_parser(
         subparsers,

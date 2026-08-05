@@ -50,6 +50,8 @@ from buildish_release_tooling.release.foundations.asf import config as asf_confi
 from buildish_release_tooling.release.foundations.asf import manifests as asf_manifest_models
 from buildish_release_tooling.release.platforms.github import config as github_config_models
 from buildish_release_tooling.release.platforms.github import manifests as github_manifest_models
+from buildish_release_tooling.release.publications.pypi import config as pypi_config_models
+from buildish_release_tooling.release.publications.pypi import manifests as pypi_manifest_models
 
 _TRANSITIONAL_UNEXPORTED_MODELS = {
     "AsfKeysTrustRoot",
@@ -80,6 +82,8 @@ def _reference_model_roots() -> tuple[type[DocumentedContractModel], ...]:
         asf_manifest_models,
         github_config_models,
         github_manifest_models,
+        pypi_config_models,
+        pypi_manifest_models,
         release_manifest_models,
         release_models,
         release_contracts,

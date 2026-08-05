@@ -180,6 +180,7 @@ def _create_builtin_gh_release(
         prerelease=payload.get("prerelease") is True,
         html_url=f"https://github.com/{repository}/releases/tag/{tag_name}",
         url=f"https://api.github.com/repos/{repository}/releases/{release_id}",
+        created_at="2026-01-01T00:00:00Z",
     )
     state.gh_releases[tag_name] = release
     return ToolBehaviorResult(stdout=json.dumps(_release_api_payload(release)))
@@ -214,6 +215,14 @@ def _update_builtin_gh_release(
             "body": str(payload.get("body", release.body)),
             "draft": bool(payload.get("draft", release.draft)),
             "prerelease": bool(payload.get("prerelease", release.prerelease)),
+            "published_at": (
+                release.published_at
+                or (
+                    "2026-01-01T00:01:00Z"
+                    if payload.get("draft", release.draft) is False
+                    else None
+                )
+            ),
             "html_url": f"https://github.com/{release.repository}/releases/tag/{new_tag}",
         }
     )
@@ -371,6 +380,8 @@ def _release_api_payload(release: HarnessBuiltinGhRelease) -> dict[str, object]:
         "prerelease": release.prerelease,
         "html_url": release.html_url,
         "url": release.url,
+        "created_at": release.created_at,
+        "published_at": release.published_at,
         "assets": [
             {
                 "id": asset.id,
