@@ -55,7 +55,7 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       - run: uv python install 3.11
       - run: git fetch --force --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
       - id: state
@@ -102,7 +102,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ needs.resolve.outputs.source_commit }}
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       - run: uv python install 3.11
       - env:
           GH_TOKEN: ${{ github.token }}
@@ -126,7 +126,7 @@ jobs:
         with:
           name: candidate-state-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/candidate-state
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       - run: uv python install 3.11
       - id: publish
         env:
@@ -176,7 +176,7 @@ jobs:
         with:
           name: candidate-manifest-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/candidate-manifest
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       - run: uv python install 3.11
       - env:
           EXPECTED_DIGEST: ${{ needs.publish-candidate.outputs.manifest_digest }}
