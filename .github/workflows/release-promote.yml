@@ -282,6 +282,8 @@ jobs:
           persist-credentials: false
           ref: ${{ github.workflow_sha }}
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: 'false'
       - run: uv python install 3.11
       - name: Download exact promoted candidate assets
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -292,6 +294,7 @@ jobs:
       - name: Isolate Python distributions
         env:
           EXPECTED_STATE_DIGEST: ${{ needs.resolve-promotion.outputs.promotion_digest }}
+          VERSION: ${{ inputs.version }}
         run: |
           state="$RUNNER_TEMP/promotion-input/promotion-state.json"
           printf '%s  %s\n' "$EXPECTED_STATE_DIGEST" "$state" | sha256sum --check --strict
@@ -299,7 +302,7 @@ jobs:
             "$state" \
             "$RUNNER_TEMP/promotion-input/assets" \
             "$RUNNER_TEMP/distributions" \
-            "${{ inputs.version }}" <<'PY'
+            "$VERSION" <<'PY'
           import hashlib
           import json
           import shutil
