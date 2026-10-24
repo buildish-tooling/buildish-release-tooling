@@ -146,6 +146,10 @@ def init_git_origin_repo(sandbox_dir: Path, *, dir_name: str = "origin") -> Path
 
     origin_dir = sandbox_dir / dir_name
     run_quiet(["git", "init", "--initial-branch=main", str(origin_dir)], check=True)
+    # Cached fixtures are copied immediately after commits; background maintenance
+    # can remove lock files or rewrite objects while copytree is reading them.
+    for name, value in (("maintenance.auto", "false"), ("gc.auto", "0")):
+        run_quiet(["git", "-C", str(origin_dir), "config", name, value], check=True)
     run_quiet(
         ["git", "-C", str(origin_dir), "config", "user.name", "Release Tooling Tests"], check=True
     )
@@ -169,7 +173,17 @@ def init_git_origin_repo(sandbox_dir: Path, *, dir_name: str = "origin") -> Path
 def clone_git_origin(origin_dir: Path, clone_dir: Path) -> Path:
     """Clone one disposable Git origin and configure the clone identity."""
 
-    run_quiet(["git", "clone", str(origin_dir), str(clone_dir)], check=True)
+    run_quiet(
+        [
+            "git",
+            "clone",
+            "--config", "maintenance.auto=false",
+            "--config", "gc.auto=0",
+            str(origin_dir),
+            str(clone_dir),
+        ],
+        check=True,
+    )
     run_quiet(
         ["git", "-C", str(clone_dir), "config", "user.name", "Release Tooling Tests"], check=True
     )

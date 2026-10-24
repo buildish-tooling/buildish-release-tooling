@@ -416,6 +416,9 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         payload = (
             yaml.safe_load(rewritten_workflow_path.read_text(encoding="utf-8")) or {}
         )
+        original_payload = (
+            yaml.safe_load(original_copy_path.read_text(encoding="utf-8")) or {}
+        )
         steps = payload["jobs"]["resolve"]["steps"]
         self.assertEqual("Harness bootstrap environment", steps[0]["name"])
         self.assertEqual(
@@ -423,7 +426,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             steps[1]["uses"],
         )
         self.assertEqual(
-            "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
+            original_payload["jobs"]["resolve"]["steps"][1]["uses"],
             steps[2]["uses"],
         )
         self.assertEqual("local-upload-artifact", steps[-2]["uses"].rsplit("/", 1)[-1])
