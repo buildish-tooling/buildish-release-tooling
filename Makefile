@@ -33,7 +33,7 @@ lint: ## Run Ruff checks for the Python sources and tests.
 	$(UV_RUN) ruff check src tests
 
 typecheck: ## Run Mypy across the repository.
-	$(UV_RUN) python -m mypy
+	$(UV_RUN) --group release-attestation python -m mypy
 
 rat: ## Run Apache RAT license checks.
 	tools/rat/rat-check.sh

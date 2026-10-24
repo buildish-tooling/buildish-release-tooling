@@ -219,6 +219,14 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             capture_output=True,
             text=True,
         ).stdout.strip()
+        # Pull-request checkouts have a detached HEAD, so their clones need not
+        # have a local default branch.
+        subprocess.run(
+            ["git", "-C", str(source), "checkout", "--detach", source_head],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
 
         clean_checkout = self.sandbox_dir / "clean-checkout"
         act_fixtures.materialize_git_checkout(source, clean_checkout)
@@ -238,7 +246,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
             checkout = self.sandbox_dir / name
             act_fixtures.materialize_git_checkout(source, checkout)
             snapshot_head = subprocess.run(
-                ["git", "-C", str(checkout), "rev-parse", "main"],
+                ["git", "-C", str(checkout), "rev-parse", "HEAD"],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -487,7 +495,7 @@ class ActHarnessIntegrationTest(unittest.TestCase):
         )
         source_commits = {
             subprocess.run(
-                ["git", "-C", str(source_root), "rev-parse", "main"],
+                ["git", "-C", str(source_root), "rev-parse", "HEAD"],
                 check=True,
                 capture_output=True,
                 text=True,
