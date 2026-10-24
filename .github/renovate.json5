@@ -49,13 +49,8 @@
       automerge: false,
     },
     {
-      matchDatasources: [
-        'pip_requirements',
-        'pip_setup',
-        'poetry',
-        'setup-cfg',
-      ],
-      minimumReleaseAge: '3 days',
+      matchDatasources: ['pypi'],
+      minimumReleaseAge: '5 days',
     },
   ],
 
