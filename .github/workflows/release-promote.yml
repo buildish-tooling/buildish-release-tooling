@@ -114,7 +114,7 @@ jobs:
           payload = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
           print(f"source_commit={payload['source']['commit_sha']}")
           PY
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: promotion-input-${{ github.run_id }}
           path: ${{ runner.temp }}/promotion-input
@@ -229,7 +229,7 @@ jobs:
           mkdir -p "$(dirname "$MANIFEST_PATH")"
           bash buildish-release-tooling/release-tooling.sh publish-github-final-release --release-state "$STATE_PATH"
           printf 'publication_digest=%s\n' "$(sha256sum "$MANIFEST_PATH" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: promotion-publication-${{ github.run_id }}
           path: ${{ runner.temp }}/publication
@@ -404,7 +404,7 @@ jobs:
             | xargs -0 sha256sum \
             > publication-evidence.sha256
           printf 'publication_digest=%s\n' "$(sha256sum publication-evidence.sha256 | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pypi-publication-${{ github.run_id }}
           path: ${{ runner.temp }}/pypi-publication
@@ -478,7 +478,7 @@ jobs:
             bash buildish-release-tooling/release-tooling.sh attach-github-release-manifest \
             --release-state "$STATE_PATH" \
             --release-manifest "$MANIFEST_PATH"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: promoted-release-manifest-${{ github.run_id }}
           path: ${{ runner.temp }}/release-manifest
