@@ -58,7 +58,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.workflow_sha }}
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: uv python install 3.11
       - run: git fetch --force --prune --tags origin '+refs/heads/*:refs/remotes/origin/*'
       - id: state
@@ -107,7 +107,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ github.workflow_sha }}
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: uv python install 3.11
       - run: git fetch --force --prune origin '+refs/heads/*:refs/remotes/origin/*'
       - env:
@@ -127,7 +127,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ needs.resolve.outputs.source_commit }}
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           enable-cache: false
       - run: uv python install 3.11
@@ -172,7 +172,7 @@ jobs:
         with:
           name: candidate-distributions-${{ github.run_id }}
           path: ${{ runner.temp }}/distribution-bundle
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: uv python install 3.11
       - name: Verify distribution producer binding
         env:
@@ -231,7 +231,7 @@ jobs:
         with:
           name: candidate-assets-${{ github.run_id }}
           path: ${{ runner.temp }}/candidate-asset-bundle
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: uv python install 3.11
       - id: publish
         env:
@@ -290,7 +290,7 @@ jobs:
         with:
           name: candidate-manifest-${{ github.run_id }}
           path: ${{ runner.temp }}/candidate-manifest
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: uv python install 3.11
       - env:
           EXPECTED_DIGEST: ${{ needs.publish-candidate.outputs.manifest_digest }}
