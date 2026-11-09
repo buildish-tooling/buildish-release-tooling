@@ -37,7 +37,7 @@ concurrency:
 # only its secondary TestPyPI publication, without creating a tag or Release.
 jobs:
   resolve:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       source_commit: ${{ steps.state.outputs.source_commit }}
       state_digest: ${{ steps.state.outputs.state_digest }}
@@ -85,7 +85,7 @@ jobs:
 
   verify-source:
     needs: resolve
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       actions: read
       checks: read
@@ -112,7 +112,7 @@ jobs:
 
   build:
     needs: [resolve, verify-source]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       bundle_digest: ${{ steps.bundle.outputs.bundle_digest }}
     steps:
@@ -153,7 +153,7 @@ jobs:
 
   inspect:
     needs: [resolve, build]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       publication_state: ${{ steps.inspect.outputs.publication_state }}
     steps:
@@ -197,7 +197,7 @@ jobs:
   publish:
     if: ${{ needs.inspect.outputs.publication_state != 'complete' }}
     needs: [resolve, build, inspect]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment:
       name: testpypi
       url: https://test.pypi.org/p/buildish-release-tooling/${{ inputs.version }}
@@ -231,7 +231,7 @@ jobs:
           && needs.inspect.result == 'success'
           && (needs.publish.result == 'success' || needs.publish.result == 'skipped') }}
     needs: [resolve, build, inspect, publish]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
