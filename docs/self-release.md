@@ -22,6 +22,10 @@ limitations under the License.
 
 # Self-Releasing Buildish Release Tooling
 
+For operator steps, use [First self-release](../first-self-release/) or
+[Follow-up self-releases](../follow-up-releases/). This page describes the shared deployment,
+workflow architecture, and trust model.
+
 Buildish Release Tooling uses its own release state, commands, and workflows to publish itself.
 This is the project's reference deployment of Buildish rather than a configuration that every
 component must copy unchanged. Components can use different artifacts, approval policy, signing
