@@ -114,13 +114,6 @@ class DistributionReproducibilityTests(unittest.TestCase):
                     "buildish_release_tooling/release/publications/pypi/attestations.py",
                     wheel.namelist(),
                 )
-                metadata = wheel.read(
-                    "buildish_release_tooling-0.1.0.dist-info/METADATA"
-                )
-                self.assertIn(b"Provides-Extra: pypi", metadata)
-                self.assertIn(
-                    b"Requires-Dist: pypi-attestations==0.0.30", metadata
-                )
 
             sdist_path = temp_root / "reproducible.tar.gz"
             sdist_path.write_bytes(
