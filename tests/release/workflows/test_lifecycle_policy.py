@@ -16,15 +16,24 @@
 
 from __future__ import annotations
 
+import os
 import re
 import unittest
 from pathlib import Path
 from typing import cast
+from unittest import mock
 
 from buildish_release_tooling.harness.backends.act.workflow_yaml import (
     _load_github_actions_yaml,
 )
 from buildish_release_tooling.harness.yaml_types import YamlMapping
+from buildish_release_tooling.release.git_repo import GitRepository
+from tests.support import (
+    cleanup_sandbox,
+    create_build_test_sandbox,
+    init_git_origin_and_clone,
+    run_quiet,
+)
 
 
 class ReleaseWorkflowPolicyTest(unittest.TestCase):
@@ -56,6 +65,47 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
         for name in self.workflow_names:
             with self.subTest(workflow=name):
                 self.assertEqual({"contents": "read"}, self._load(name)["permissions"])
+
+    def test_tag_creation_jobs_work_without_configured_git_identity(self) -> None:
+        sandbox = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox)
+        _origin, clone = init_git_origin_and_clone(sandbox)
+        repo = GitRepository(clone)
+        source_commit = repo.current_head_commit()
+        for workflow_name, job_name, tag_name in (
+            ("release-candidate.yml", "publish-candidate", "v1.2.3-rc1"),
+            ("release-promote.yml", "create-final-tag", "v1.2.3"),
+        ):
+            with self.subTest(workflow=workflow_name, job=job_name):
+                jobs = cast(YamlMapping, self._load(workflow_name)["jobs"])
+                job = cast(YamlMapping, jobs[job_name])
+                job_env = cast(dict[str, str], job.get("env", {}))
+                # Hide both fixture/global configuration and inherited committer identity.
+                env = {
+                    "GIT_CONFIG_COUNT": "2",
+                    "GIT_CONFIG_KEY_0": "user.name",
+                    "GIT_CONFIG_VALUE_0": "",
+                    "GIT_CONFIG_KEY_1": "user.email",
+                    "GIT_CONFIG_VALUE_1": "",
+                    "GIT_COMMITTER_NAME": "",
+                    "GIT_COMMITTER_EMAIL": "",
+                    **job_env,
+                }
+                with mock.patch.dict(os.environ, env):
+                    repo.create_annotated_tag(tag_name, source_commit, "Release test")
+                self.assertEqual(source_commit, repo.resolve_commit(tag_name))
+                tagger = run_quiet(
+                    [
+                        "git", "-C", str(clone), "for-each-ref",
+                        "--format=%(taggername) <%(taggeremail:trim)>",
+                        f"refs/tags/{tag_name}",
+                    ],
+                    check=True,
+                ).stdout.strip()
+                self.assertEqual(
+                    f"{job_env['GIT_COMMITTER_NAME']} <{job_env['GIT_COMMITTER_EMAIL']}>",
+                    tagger,
+                )
 
     def test_mutation_workflows_share_non_canceling_version_concurrency(self) -> None:
         expected = {

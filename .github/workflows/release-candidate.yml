@@ -213,6 +213,10 @@ jobs:
     needs: [resolve, verify-source, prepare-assets]
     runs-on: ubuntu-latest
     environment: release-candidate
+    # The CLI also creates a local annotated tag after publishing the remote tag.
+    env:
+      GIT_COMMITTER_NAME: Buildish Release Tooling
+      GIT_COMMITTER_EMAIL: dev@buildish.org
     permissions:
       contents: write
     outputs:

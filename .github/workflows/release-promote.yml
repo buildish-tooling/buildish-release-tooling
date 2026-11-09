@@ -125,6 +125,10 @@ jobs:
   create-final-tag:
     needs: resolve-promotion
     runs-on: ubuntu-latest
+    # The CLI also creates a local annotated tag after publishing the remote tag.
+    env:
+      GIT_COMMITTER_NAME: Buildish Release Tooling
+      GIT_COMMITTER_EMAIL: dev@buildish.org
     permissions:
       contents: write
     steps:
