@@ -183,6 +183,9 @@ jobs:
   verify-final:
     needs: [resolve-promotion, stage]
     runs-on: ubuntu-26.04
+    # GitHub lists draft releases only for credentials with push access.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

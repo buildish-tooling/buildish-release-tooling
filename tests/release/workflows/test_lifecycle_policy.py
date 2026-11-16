@@ -119,10 +119,12 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
             with self.subTest(workflow=name):
                 self.assertEqual(expected, self._load(name)["concurrency"])
 
-    def test_only_explicit_publication_jobs_receive_contents_write(self) -> None:
+    def test_only_jobs_requiring_push_access_receive_contents_write(self) -> None:
         expected = {
             "release-candidate.yml": {"publish-candidate"},
-            "release-promote.yml": {"create-final-tag", "stage", "publish", "manifest"},
+            "release-promote.yml": {
+                "create-final-tag", "stage", "verify-final", "publish", "manifest",
+            },
             "release-testpypi.yml": set(),
             "release-verify-candidate.yml": set(),
         }
@@ -136,6 +138,21 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
                 and job.get("permissions") == {"contents": "write"}
             }
             self.assertEqual(expected_jobs, actual_jobs)
+
+    def test_final_verifier_can_read_drafts_using_trusted_workflow_code(self) -> None:
+        jobs = cast(YamlMapping, self._load("release-promote.yml")["jobs"])
+        job = cast(YamlMapping, jobs["verify-final"])
+        self.assertIn("stage", cast(list[str], job["needs"]))
+        # GitHub omits draft releases from listings without push access.
+        self.assertEqual({"contents": "write"}, job.get("permissions"))
+        steps = cast(list[YamlMapping], job["steps"])
+        checkout = next(
+            step for step in steps
+            if str(step.get("uses", "")).startswith("actions/checkout@")
+        )
+        checkout_inputs = cast(YamlMapping, checkout["with"])
+        self.assertEqual("${{ github.workflow_sha }}", checkout_inputs["ref"])
+        self.assertFalse(checkout_inputs["persist-credentials"])
 
     def test_all_external_actions_use_immutable_sha_pins(self) -> None:
         action_pattern = re.compile(r"^[^@]+@[0-9a-f]{40}$")
