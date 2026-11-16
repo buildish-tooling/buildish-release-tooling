@@ -445,6 +445,14 @@ class SecondaryTargetCommandsIntegrationTest(ReleaseCommandsIntegrationTestSuppo
         )
         self.assertTrue((prepared_dir / "example-project.zip.sha512").is_file())
         self.assertTrue((prepared_dir / "example-project.zip.asc").is_file())
+        prepared_summary = prepared_manifest_path.with_suffix(".summary.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("Output directory", prepared_summary)
+        self.assertNotIn(str(prepared_dir), prepared_summary)
+        for asset_name in prepared_manifest["prepared_asset_names"]:
+            self.assertIn(asset_name, prepared_summary)
+        self.assertIn(prepared_manifest["gpg_fingerprint"], prepared_summary)
 
     def test_immutable_evidence_attachment_reuses_exact_assets(self) -> None:
         sandbox_dir = create_build_test_sandbox()

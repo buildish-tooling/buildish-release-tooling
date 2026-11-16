@@ -290,6 +290,19 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
             canonical_url, json.loads(manifest_text)["publications"][0]["uri"]
         )
         manifest_digest = hashlib.sha256(manifest_text.encode("utf-8")).hexdigest()
+        summary_text = candidate_manifest_path.with_suffix(".summary.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(
+            f"### Candidate manifest\n\n```json\n{manifest_text}```\n",
+            summary_text,
+        )
+        self.assertIn(
+            "### Candidate manifest SHA-256 (candidate_manifest_digest input)\n\n"
+            f"```text\n{manifest_digest}\n```",
+            summary_text,
+        )
+        self.assertNotIn(str(candidate_manifest_path), summary_text)
         manifest_asset = {
             "id": 202,
             "name": "candidate-manifest.json",

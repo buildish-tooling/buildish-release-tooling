@@ -255,7 +255,6 @@ def run_prepare_release_assets(args: Namespace) -> Path:
     write_manifest(result_path, result)
     summary = SummaryWriter.from_environment()
     summary.append_heading("Prepare release assets")
-    summary.append_plaintext_block("Output directory", str(output_dir.resolve()))
     summary.append_plaintext_block(
         "Prepared assets",
         "\n".join(path.name for path in prepared.upload_paths),

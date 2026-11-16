@@ -192,7 +192,14 @@ def run_create_candidate_manifest(args: Namespace) -> Path:
     summary.append_heading("Create candidate manifest")
     summary.append_plaintext_block("Candidate", state.candidate.tag.name)
     summary.append_plaintext_block("GitHub Release", stage.publication.release_url)
-    summary.append_plaintext_block("Candidate manifest", str(result_path))
+    manifest_bytes = result_path.read_bytes()
+    summary.append_code_block(
+        "Candidate manifest", "json", manifest_bytes.decode("utf-8").rstrip("\n")
+    )
+    summary.append_plaintext_block(
+        "Candidate manifest SHA-256 (candidate_manifest_digest input)",
+        hashlib.sha256(manifest_bytes).hexdigest(),
+    )
     return result_path
 
 
