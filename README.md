@@ -36,22 +36,22 @@ The supported integration surface is:
 - stable candidate, vote-package, and final release manifests;
 - thin component workflows that call the CLI.
 
-The Python module layout is internal. Release-critical consumers should pin an exact immutable Git
-revision of this component and invoke the CLI from a checked-out copy.
+The Python module layout is internal. Release-critical consumers should pin an exact package version
+or immutable Git revision and invoke the CLI.
 
 ## Status
 
-Buildish has not published a Release Tooling release yet. The repository and its
-`development/` documentation describe unreleased development work, and interfaces may change before
-the first release. A document described as a stable contract has a defined compatibility policy; it
-does not mean that a Buildish release has already been published.
+The `main` branch and `development/` documentation describe ongoing development and may include
+changes beyond published releases. For release-specific behavior and contracts, consult the
+documentation at the corresponding immutable release tag.
 
 ## Getting started
 
-Release Tooling requires Python 3.11 or newer. Install a published release by exact version:
+Release Tooling requires Python 3.11 or newer. Install a published release by exact version,
+replacing `<version>` with the selected published version:
 
 ```bash
-uv tool install buildish-release-tooling==0.1.0
+uv tool install 'buildish-release-tooling==<version>'
 buildish-release-tooling --help
 buildish-release-harness --help
 ```
@@ -61,14 +61,13 @@ Install the adapter's optional cryptographic verifier when using
 `verify-pypi-attestations`:
 
 ```bash
-uv tool install 'buildish-release-tooling[pypi]==0.1.0'
+uv tool install 'buildish-release-tooling[pypi]==<version>'
 ```
 
 That extra is not required for components that do not select a PyPI secondary target.
 
-Before the first production package is available, or when reviewing unreleased development, use
-Git and [`uv`](https://docs.astral.sh/uv/) to inspect and check out an exact commit instead of
-running the moving `main` branch:
+To inspect a source revision or review unreleased development, use Git and
+[`uv`](https://docs.astral.sh/uv/) to check out an exact commit:
 
 ```bash
 git clone https://github.com/buildish-tooling/buildish-release-tooling.git

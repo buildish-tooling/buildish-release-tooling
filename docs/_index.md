@@ -72,10 +72,23 @@ The supported contract consists of:
 - supported JSON schemas and emitted manifest shapes;
 - exit status, manifest-path output, and GitHub step summaries documented for a command.
 
-The Python package layout is not a public API. Component workflows should invoke the CLI from an
-exact immutable tooling revision.
+The Python package layout is not a public API. Component workflows should pin an exact published
+package version or immutable Git revision and invoke the CLI.
 
-The standard invocation shape is:
+For a published package, replace `<version>` with the selected published version, install it, and
+invoke the CLI from the component worktree:
+
+```bash
+uv tool install 'buildish-release-tooling==<version>'
+buildish-release-tooling <command> \
+  --component-config /path/to/release-config.yaml \
+  [command arguments...]
+```
+
+Install `buildish-release-tooling[pypi]==<version>` instead when using
+`verify-pypi-attestations`; the extra supplies its cryptographic verifier.
+
+For a source checkout at a reviewed immutable Git revision, use:
 
 ```bash
 uv run --project /path/to/buildish-release-tooling --frozen \

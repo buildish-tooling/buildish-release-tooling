@@ -18,8 +18,8 @@ limitations under the License.
 
 ## Supported Versions
 
-Buildish has not published a release yet. Security reports affecting the current
-development branches are welcome.
+Security reports affecting published Release Tooling versions or current development branches are
+welcome. Include the affected package version or exact Git revision when reporting an issue.
 
 ## Reporting a Vulnerability
 
