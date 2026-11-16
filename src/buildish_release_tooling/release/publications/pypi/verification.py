@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import re
+import sys
 import time
 from argparse import Namespace
 from pathlib import Path
@@ -210,6 +211,10 @@ def verify_pypi_publication(
         project_name=config.project_name,
         version=version,
     )
+    local_identities = {
+        name: (hash_file(path, algorithm="sha256"), path.stat().st_size)
+        for name, path in local_files.items()
+    }
     if args.attempts < 1:
         raise ValueError("PyPI verification attempts must be at least one")
     if args.retry_delay < 0:
@@ -261,6 +266,10 @@ def verify_pypi_publication(
                     raise RuntimeError(
                         "PyPI verification exhausted its transient-failure retry budget"
                     ) from exc
+                sys.stderr.write(
+                    f"PyPI request temporarily failed (attempt {attempt + 1}/{args.attempts}); "
+                    f"retrying in {args.retry_delay:g}s: {exc}\n"
+                )
                 _wait_for_retry(
                     deadline_monotonic=deadline_monotonic,
                     retry_delay=args.retry_delay,
@@ -275,10 +284,21 @@ def verify_pypi_publication(
                 remote_files = _remote_files(payload)
             else:
                 remote_files = {}
+            unexpected = sorted(set(remote_files) - set(local_files))
+            if unexpected:
+                raise ValueError("PyPI release contains unexpected files: " + ", ".join(unexpected))
+            for name in set(remote_files) & set(local_files):
+                remote_digest, remote_size, _ = remote_files[name]
+                if (remote_digest, remote_size) != local_identities[name]:
+                    raise ValueError(f"PyPI release file differs from candidate: {name}")
             missing = sorted(set(local_files) - set(remote_files))
             if not missing or args.allow_incomplete:
                 break
             if attempt + 1 < args.attempts:
+                sys.stderr.write(
+                    f"PyPI files not yet visible (attempt {attempt + 1}/{args.attempts}): "
+                    f"{', '.join(missing)}; retrying in {args.retry_delay:g}s\n"
+                )
                 _wait_for_retry(
                     deadline_monotonic=deadline_monotonic,
                     retry_delay=args.retry_delay,
@@ -288,20 +308,12 @@ def verify_pypi_publication(
                 "PyPI release is missing expected files: " + ", ".join(missing)
             )
 
-    unexpected = sorted(set(remote_files) - set(local_files))
-    if unexpected:
-        raise ValueError(
-            "PyPI release contains unexpected files: " + ", ".join(unexpected)
-        )
-
     published_files: list[ArtifactReference] = []
-    for filename, path in sorted(local_files.items()):
+    for filename in sorted(local_files):
         if filename not in remote_files:
             continue
-        local_digest = hash_file(path, algorithm="sha256")
-        remote_digest, remote_size, remote_url = remote_files[filename]
-        if remote_digest != local_digest or remote_size != path.stat().st_size:
-            raise ValueError(f"PyPI release file differs from candidate: {filename}")
+        local_digest = local_identities[filename][0]
+        _remote_digest, remote_size, remote_url = remote_files[filename]
         published_files.append(
             ArtifactReference(
                 kind="python-distribution",

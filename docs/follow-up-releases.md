@@ -81,6 +81,7 @@ digests before taking recovery action.
 | --- | --- |
 | Failure before publication | Correct operational prerequisites and rerun failed jobs with retained inputs; changed source requires a new candidate. |
 | PyPI published, GitHub still draft | Keep the same candidate identity. Rerun with retained state; package preflight accepts only matching files and skips duplicate upload, then evidence/manifest sealing completes before GitHub publication. |
+| Upload succeeded but index/provenance visibility timed out | Check the visible files against the candidate, then rerun failed verification jobs with retained inputs. Post-upload polling is bounded; do not choose a new version solely for a visibility delay. |
 | PyPI exact file set already complete | Upload is skipped; exact-set and attestation verification must still succeed. |
 | Unexpected filename, size, digest, tag target, or publisher | Stop and investigate the conflict. Do not overwrite assets or delete index files to bypass validation. |
 | Draft has evidence, final manifest missing | Rerun the complete promotion with the same version, tag, and candidate-manifest digest. Exact configured reserved evidence assets are reused; attach the sealed manifest before publication. |

@@ -308,6 +308,20 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
         self.assertIn("needs.manifest.outputs.manifest_digest", text)
         self.assertNotIn("attach-github", text)
 
+    def test_post_upload_checks_allow_bounded_index_propagation(self) -> None:
+        for workflow, verification, preflight in (
+            ("release-promote.yml", "verify-pypi", "inspect-pypi"),
+            ("release-testpypi.yml", "verify", "inspect"),
+        ):
+            with self.subTest(workflow=workflow):
+                jobs = cast(YamlMapping, self._load(workflow)["jobs"])
+                checks = str(cast(YamlMapping, jobs[verification])["steps"])
+                for flag in ("--attempts 91", "--retry-delay 10", "--total-timeout 960"):
+                    self.assertEqual(2, checks.count(flag))
+                inspect = str(cast(YamlMapping, jobs[preflight])["steps"])
+                self.assertIn("--allow-incomplete", inspect)
+                self.assertNotIn("--attempts", inspect)
+
     def test_only_package_publish_jobs_receive_oidc_permission(self) -> None:
         expected = {
             "release-candidate.yml": set(),

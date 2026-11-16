@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import multiprocessing
+import sys
 import time
 from argparse import Namespace
 from multiprocessing.connection import Connection
@@ -289,6 +290,10 @@ def _download_with_retries(
                 raise RuntimeError(
                     "PyPI attestation verification exceeded its total timeout"
                 ) from exc
+            sys.stderr.write(
+                f"PyPI provenance temporarily unavailable (attempt {attempt + 1}/{attempts}); "
+                f"retrying in {retry_delay:g}s: {exc}\n"
+            )
             if retry_delay:
                 time.sleep(retry_delay)
     raise AssertionError("unreachable PyPI attestation retry state")

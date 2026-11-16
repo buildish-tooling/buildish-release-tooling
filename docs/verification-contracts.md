@@ -55,6 +55,24 @@ promoted artifact:
 
 The generated field-by-field contracts are in the [Reference](../reference/).
 
+## Package-index visibility delays
+
+A successful upload can precede visibility in PyPI's cached metadata and provenance APIs. Production
+and TestPyPI post-upload jobs poll each check up to 91 times, 10 seconds apart, with a total deadline
+of 960 seconds per command (roughly 15 minutes of visibility polling, bounded to 16 minutes including
+requests and verification). Retry logs identify missing files or transient provenance/request errors.
+The provenance deadline is shared across all distributions, not reset for each file.
+
+Only missing data and transient request failures are retried. Wrong project/version, unexpected
+files, mismatched file hashes/sizes, malformed responses, and invalid attestations fail immediately,
+including when another expected file is still missing. Pre-upload `--allow-incomplete` inspection
+remains immediate; an absent version does not incur a polling delay.
+
+If the bounded window expires after a successful upload, inspect the index and compare the visible
+files with the candidate, then rerun failed jobs using the retained inputs. Do not create a new
+version or repeat upload merely because metadata was temporarily unavailable. Workflow edits apply
+to new dispatches; retrying an existing run retains its original workflow revision and polling budget.
+
 ## GitHub candidate verification
 
 `verify-github-candidate` accepts the exact candidate tag and expected lowercase SHA-256. It

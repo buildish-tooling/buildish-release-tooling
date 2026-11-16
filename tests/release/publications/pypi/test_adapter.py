@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import hashlib
+from io import StringIO
 import json
 import multiprocessing
 import time
@@ -57,6 +58,8 @@ from buildish_release_tooling.release.publications.pypi.verification import (
 )
 from buildish_release_tooling.release.publications.pypi.attestations import (
     AttestationType,
+    _download_with_retries,
+    _RetryableProvenanceError,
     _verified_publish_attestations,
     _verified_publish_attestations_with_deadline,
 )
@@ -488,75 +491,159 @@ class PyPiPublicationTest(ReleaseCommandsIntegrationTestSupport):
             with self.assertRaisesRegex(ValueError, "differs from candidate"):
                 run_verify_pypi_publication(args)
 
-    def test_reuses_one_pooled_session_across_polling_attempts(self) -> None:
-        sandbox_dir = create_build_test_sandbox()
-        self.addCleanup(cleanup_sandbox, sandbox_dir)
-        config_path = sandbox_dir / "component.yaml"
-        manifest_path = sandbox_dir / "pypi-result.json"
-        wheel = sandbox_dir / "example_project-1.2.3-py3-none-any.whl"
-        wheel.write_bytes(b"wheel\n")
+    def _polling_fixture(self) -> tuple[Path, Namespace, dict[str, Any]]:
+        sandbox = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox)
+        config_path = sandbox / "component.yaml"
         self._write_component_config(
-            config_path,
-            component_id="example-project",
+            config_path, component_id="example-project",
             dev_base_url="https://dist.apache.org/repos/dist/dev/example",
             release_base_url="https://dist.apache.org/repos/dist/release/example",
             secondary_targets=("pypi",),
         )
+        files = [sandbox / "example_project-1.2.3-py3-none-any.whl",
+                 sandbox / "example_project-1.2.3.tar.gz"]
+        for path in files:
+            path.write_bytes(path.name.encode())
         args = Namespace(
-            component_config=str(config_path),
-            test_target_mode=True,
-            version="1.2.3",
-            project_name="example-project",
+            component_config=str(config_path), test_target_mode=True, version="1.2.3",
             repository_api_url="https://pypi.org/pypi",
             project_url_template="https://pypi.org/project/{project}/{version}/",
-            attempts=2,
-            retry_delay=0,
-            allow_incomplete=False,
-            release_state=self._write_direct_state(sandbox_dir),
-            distributions=[str(wheel)],
+            attempts=91, retry_delay=10, total_timeout=960, allow_incomplete=False,
+            release_state=self._write_direct_state(sandbox),
+            distributions=[str(path) for path in files],
         )
-        payload = {
-            "info": {"name": "example-project", "version": "1.2.3"},
-            "urls": [
-                {
-                    "filename": wheel.name,
-                    "digests": {
-                        "sha256": hashlib.sha256(wheel.read_bytes()).hexdigest()
-                    },
-                    "size": wheel.stat().st_size,
-                    "url": f"https://files.pythonhosted.org/{wheel.name}",
-                }
-            ],
-        }
+        payload = {"info": {"name": "example-project", "version": "1.2.3"}, "urls": [
+            {"filename": path.name, "digests": {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()},
+             "size": path.stat().st_size, "url": f"https://files.pythonhosted.org/{path.name}"}
+            for path in files
+        ]}
+        return sandbox, args, payload
+
+    def test_reuses_one_pooled_session_across_delayed_visibility(self) -> None:
+        sandbox, args, payload = self._polling_fixture()
+        args.attempts, args.retry_delay = 4, 30
+        clock = [0.0]
+        def advance(seconds: float) -> None:
+            clock[0] += seconds
         session = object()
         session_context = mock.MagicMock()
         session_context.__enter__.return_value = session
-
+        prefix = "buildish_release_tooling.release.publications.pypi.verification."
+        partial = {**payload, "urls": payload["urls"][:1]}
+        progress = StringIO()
         with (
-            mock.patch(
-                "buildish_release_tooling.release.publications.pypi.verification.DownloadSession.harness",
-                return_value=session_context,
-            ) as session_factory,
-            mock.patch(
-                "buildish_release_tooling.release.publications.pypi.verification._read_pypi_release",
-                side_effect=(None, payload),
-            ) as read_release,
-            mock.patch.dict(
-                "os.environ",
-                {
-                    "GITHUB_STEP_SUMMARY": str(sandbox_dir / "summary.md"),
-                    "MANIFEST_PATH": str(manifest_path),
-                },
-            ),
+            mock.patch(prefix + "DownloadSession.harness", return_value=session_context) as factory,
+            mock.patch(prefix + "_read_pypi_release", side_effect=(None, None, partial, payload)) as read,
+            mock.patch(prefix + "time.monotonic", side_effect=lambda: clock[0]),
+            mock.patch(prefix + "time.sleep", side_effect=advance) as sleep,
+            mock.patch("sys.stderr", progress),
+            mock.patch.dict("os.environ", {
+                "GITHUB_STEP_SUMMARY": str(sandbox / "summary.md"),
+                "MANIFEST_PATH": str(sandbox / "result.json"),
+            }),
         ):
             run_verify_pypi_publication(args)
-
-        session_factory.assert_called_once()
-        self.assertEqual(2, read_release.call_count)
-        self.assertTrue(
-            all(call.args[0] is session for call in read_release.call_args_list)
-        )
+        self.assertEqual(90, clock[0])
+        self.assertEqual([mock.call(30)] * 3, sleep.call_args_list)
+        self.assertEqual(4, read.call_count)
+        self.assertTrue(all(call.args[0] is session for call in read.call_args_list))
+        self.assertIn("attempt 1/4", progress.getvalue())
+        self.assertIn("retrying in 30s", progress.getvalue())
+        factory.assert_called_once()
         session_context.__exit__.assert_called_once()
+
+    def test_partial_publication_conflicts_fail_without_waiting(self) -> None:
+        _sandbox, args, payload = self._polling_fixture()
+        cases = (("hash", "differs from candidate"), ("size", "differs from candidate"),
+                 ("extra", "unexpected files"), ("name", "project name"), ("version", "version"))
+        prefix = "buildish_release_tooling.release.publications.pypi.verification."
+        for case, message in cases:
+            partial = json.loads(json.dumps(payload))
+            partial["urls"] = partial["urls"][:1]
+            if case == "hash":
+                partial["urls"][0]["digests"]["sha256"] = "0" * 64
+            elif case == "size":
+                partial["urls"][0]["size"] += 1
+            elif case == "extra":
+                partial["urls"][0]["filename"] = "unexpected-9.9.9.tar.gz"
+            else:
+                partial["info"][case] = "other" if case == "name" else "9.9.9"
+            with (
+                self.subTest(case=case),
+                mock.patch(prefix + "DownloadSession.harness"),
+                mock.patch(prefix + "_read_pypi_release", return_value=partial) as read,
+                mock.patch(prefix + "time.sleep") as sleep,
+                self.assertRaisesRegex(ValueError, message),
+            ):
+                run_verify_pypi_publication(args)
+            self.assertEqual(1, read.call_count)
+            sleep.assert_not_called()
+
+    def test_visibility_polling_respects_deadline_and_preflight_is_immediate(self) -> None:
+        sandbox, args, _payload = self._polling_fixture()
+        args.total_timeout = 25
+        clock = [0.0]
+        def advance(seconds: float) -> None:
+            clock[0] += seconds
+        prefix = "buildish_release_tooling.release.publications.pypi.verification."
+        with (
+            mock.patch(prefix + "DownloadSession.harness"),
+            mock.patch(prefix + "_read_pypi_release", return_value=None) as read,
+            mock.patch(prefix + "time.monotonic", side_effect=lambda: clock[0]),
+            mock.patch(prefix + "time.sleep", side_effect=advance) as sleep,
+            self.assertRaisesRegex(RuntimeError, "total timeout"),
+        ):
+            run_verify_pypi_publication(args)
+        self.assertEqual(3, read.call_count)
+        self.assertEqual(20, clock[0])
+        self.assertEqual([mock.call(10)] * 2, sleep.call_args_list)
+        args.allow_incomplete = True
+        with (
+            mock.patch(prefix + "DownloadSession.harness"),
+            mock.patch(prefix + "_read_pypi_release", return_value=None) as read,
+            mock.patch(prefix + "time.sleep") as sleep,
+            mock.patch.dict("os.environ", {
+                "GITHUB_STEP_SUMMARY": str(sandbox / "summary.md"),
+                "MANIFEST_PATH": str(sandbox / "result.json"),
+            }),
+        ):
+            run_verify_pypi_publication(args)
+        self.assertEqual(1, read.call_count)
+        sleep.assert_not_called()
+
+    def test_provenance_polling_tolerates_visibility_delay_but_not_invalid_data(self) -> None:
+        clock = [0.0]
+        def advance(seconds: float) -> None:
+            clock[0] += seconds
+        prefix = "buildish_release_tooling.release.publications.pypi.attestations."
+        with (
+            mock.patch(prefix + "_read_provenance", side_effect=[
+                *[_RetryableProvenanceError("not yet visible") for _ in range(7)], b"provenance",
+            ]) as read,
+            mock.patch(prefix + "time.monotonic", side_effect=lambda: clock[0]),
+            mock.patch(prefix + "time.sleep", side_effect=advance),
+            mock.patch("sys.stderr", StringIO()) as progress,
+        ):
+            data = _download_with_retries(
+                mock.Mock(), "https://pypi.org/integrity/example/1.2.3/file/provenance",
+                attempts=91, retry_delay=10, deadline_monotonic=960,
+            )
+        self.assertEqual(b"provenance", data)
+        self.assertEqual(70, clock[0])
+        self.assertEqual(8, read.call_count)
+        self.assertIn("attempt 7/91", progress.getvalue())
+        with (
+            mock.patch(prefix + "_read_provenance", side_effect=ValueError("invalid provenance")) as read,
+            mock.patch(prefix + "time.sleep") as sleep,
+            self.assertRaisesRegex(ValueError, "invalid provenance"),
+        ):
+            _download_with_retries(
+                mock.Mock(), "https://pypi.org/integrity/example/1.2.3/file/provenance",
+                attempts=91, retry_delay=10, deadline_monotonic=time.monotonic() + 960,
+            )
+        self.assertEqual(1, read.call_count)
+        sleep.assert_not_called()
 
     def test_retries_transient_transport_failure_within_one_session(self) -> None:
         sandbox_dir = create_build_test_sandbox()
