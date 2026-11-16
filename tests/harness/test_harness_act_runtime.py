@@ -703,6 +703,59 @@ class ActHarnessIntegrationTest(unittest.TestCase):
                 require_promoted_manifest=True,
             )
 
+    def test_runner_images_cover_release_workflow_labels(self) -> None:
+        args = act_backend._runner_image_args()
+        mappings = dict(value.split("=", 1) for value in args[1::2])
+        workflow_paths = sorted((component_root() / ".github/workflows").glob("release-*.yml"))
+        self.assertTrue(workflow_paths)
+        for path in workflow_paths:
+            payload = act_backend.workflow._load_github_actions_yaml(path)
+            jobs = payload["jobs"]
+            if not isinstance(jobs, dict):
+                self.fail(f"workflow has no jobs: {path}")
+            for job_id, job in jobs.items():
+                if not isinstance(job, dict):
+                    self.fail(f"workflow job must be a mapping: {job_id}")
+                self.assertIn(job["runs-on"], mappings, f"{path.name}:{job_id}")
+
+    def test_sequence_stops_when_act_succeeds_without_running_jobs(self) -> None:
+        stderr = StringIO()
+        with (
+            mock.patch.object(act_backend, "_run_act", return_value=0) as run_act,
+            mock.patch("sys.stderr", stderr),
+            mock.patch("sys.stdout", StringIO()),
+        ):
+            with self.assertRaises(SystemExit) as exc_info:
+                harness_main([
+                    "run-sequence",
+                    str(self._scenario_path("release-candidate.yaml")),
+                    str(self._scenario_path("release-promote.yaml")),
+                    "--workspace-root", str(self.sandbox_dir),
+                ])
+
+        self.assertEqual(2, exc_info.exception.code)
+        self.assertIn("no selected workflow jobs recorded a status", stderr.getvalue())
+        run_act.assert_called_once()
+
+    def test_unselected_job_status_cannot_hide_a_skipped_rerun(self) -> None:
+        workspace = runtime.create_workspace(self.sandbox_dir)
+        (workspace.job_statuses_dir / "previous.status").write_text(
+            "success\n", encoding="utf-8"
+        )
+        definitions = [
+            act_backend.workflow.WorkflowJobDefinition(id="previous", needs=[]),
+            act_backend.workflow.WorkflowJobDefinition(id="selected", needs=["previous"]),
+        ]
+        with self.assertRaisesRegex(
+            HarnessExternalToolError, "no selected workflow jobs recorded a status"
+        ):
+            act_backend._result_from_recorded_statuses(
+                workspace=workspace,
+                selected_job_ids=["selected"],
+                job_definitions=definitions,
+                act_exit_code=0,
+            )
+
     def test_local_pypi_publish_action_publishes_exact_wheel_and_sdist(self) -> None:
         """The local publisher should expose exact distribution metadata to later jobs."""
 

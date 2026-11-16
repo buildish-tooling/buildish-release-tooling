@@ -387,6 +387,10 @@ def _runner_image_args() -> list[str]:
         "-P",
         "ubuntu-latest=catthehacker/ubuntu:act-latest",
         "-P",
+        "ubuntu-26.04=ghcr.io/catthehacker/ubuntu:act-26.04",
+        "-P",
+        "ubuntu-24.04=ghcr.io/catthehacker/ubuntu:act-24.04",
+        "-P",
         "ubuntu-22.04=catthehacker/ubuntu:act-22.04",
         "-P",
         "ubuntu-20.04=catthehacker/ubuntu:act-20.04",
@@ -491,6 +495,12 @@ def _result_from_recorded_statuses(
     all_statuses = load_job_statuses(workspace)
     all_statuses.update(recorded_statuses)
     selected_set = set(selected_job_ids)
+    if act_exit_code == 0 and selected_set and not selected_set.intersection(recorded_statuses):
+        raise HarnessExternalToolError(
+            "act exited successfully but no selected workflow jobs recorded a status; "
+            "check the runner-image mappings and "
+            f"{workspace.harness_dir / 'act-stderr.log'}"
+        )
     failed_job_ids: list[str] = []
     blocked_job_ids: list[str] = []
     pending_failure = act_exit_code != 0 and not recorded_statuses

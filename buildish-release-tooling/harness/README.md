@@ -246,7 +246,10 @@ falls back to the installed `gh-act` extension binary itself instead of invoking
 outer `gh` wrapper is not part of the long-running process chain.
 
 The harness also passes explicit medium runner-image mappings for Ubuntu runners so `act` does not
-stop on its first-run interactive image-selection prompt. It passes `--rm` so failed runs do not
+stop on its first-run interactive image-selection prompt. Ubuntu 24.04 and 26.04 use the matching
+`ghcr.io/catthehacker/ubuntu:act-<version>` images. A zero exit status from `act` with no recorded
+status for any selected job is an error, including when an unsupported runner label skips all jobs.
+It passes `--rm` so failed runs do not
 leave `act` job containers behind, and `--bind` so generated harness files such as local composite
 checkout actions are visible inside the runner workspace.
 
