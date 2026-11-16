@@ -344,7 +344,7 @@ jobs:
 
   verify-pypi:
     if: >-
-      ${{ always()
+      ${{ !cancelled()
           && needs.resolve-promotion.result == 'success'
           && needs.inspect-pypi.result == 'success'
           && (needs.publish-pypi.result == 'success' || needs.publish-pypi.result == 'skipped') }}
@@ -401,6 +401,12 @@ jobs:
 
   manifest:
     needs: [resolve-promotion, stage, verify-pypi]
+    # A matching existing PyPI release intentionally skips an upstream upload job.
+    if: >-
+      ${{ !cancelled()
+          && needs.resolve-promotion.result == 'success'
+          && needs.stage.result == 'success'
+          && needs.verify-pypi.result == 'success' }}
     runs-on: ubuntu-26.04
     permissions:
       contents: write
@@ -493,6 +499,10 @@ jobs:
 
   publish:
     needs: [resolve-promotion, manifest]
+    if: >-
+      ${{ !cancelled()
+          && needs.resolve-promotion.result == 'success'
+          && needs.manifest.result == 'success' }}
     runs-on: ubuntu-26.04
     permissions:
       contents: write

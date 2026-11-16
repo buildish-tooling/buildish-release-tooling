@@ -89,6 +89,12 @@ digests before taking recovery action.
 | Immutable GitHub Release is public but lacks evidence/manifest | Stop: uploading cannot repair a locked release. Preserve workflow artifacts before expiry and document the incomplete record; any separately hosted completion record needs explicit review. Do not delete/recreate the Release or disable immutability as a retry strategy. |
 | Retained run artifacts expired or unusable | Review a new complete promotion run with the same immutable candidate inputs. Do not substitute a different candidate for an already-published version. |
 
+When the exact PyPI files already exist, skipping `publish-pypi` is expected. Verification,
+manifest sealing, and GitHub publication must still execute successfully. Their explicit status
+conditions override GitHub's skipped-ancestor propagation while requiring successful prerequisites
+and honoring cancellation. An overall successful run with skipped finalization jobs is incomplete;
+a workflow-condition fix requires a fresh dispatch to use the updated revision.
+
 For ordinary transient failures, prefer rerunning failed jobs while their state remains available.
 Full promotion reruns are supported while completing an exact draft or revalidating a complete
 immutable publication. A sealed manifest uses the stable Release creation time so an identical rerun

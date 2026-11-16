@@ -361,6 +361,21 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
         self.assertIn("needs.manifest.outputs.manifest_digest", text)
         self.assertNotIn("attach-github", text)
 
+    def test_promotion_finalization_overrides_skipped_ancestors_but_requires_success(self) -> None:
+        jobs = cast(YamlMapping, self._load("release-promote.yml")["jobs"])
+        for name in ("manifest", "publish"):
+            with self.subTest(job=name):
+                job = cast(YamlMapping, jobs[name])
+                condition = " ".join(str(job.get("if", "")).split())
+                # A status function disables GitHub's implicit success() skip propagation;
+                # every actual prerequisite still has to succeed, and cancellation stops work.
+                guards = [f"needs.{dependency}.result == 'success'" for dependency in cast(list[str], job["needs"])]
+                self.assertEqual("${{ !cancelled() && " + " && ".join(guards) + " }}", condition)
+        verification = " ".join(str(cast(YamlMapping, jobs["verify-pypi"])["if"]).split())
+        self.assertIn("!cancelled()", verification)
+        self.assertIn("needs.publish-pypi.result == 'success' || needs.publish-pypi.result == 'skipped'", verification)
+        self.assertNotIn("always()", verification)
+
     def test_post_upload_checks_allow_bounded_index_propagation(self) -> None:
         for workflow, verification, preflight in (
             ("release-promote.yml", "verify-pypi", "inspect-pypi"),
