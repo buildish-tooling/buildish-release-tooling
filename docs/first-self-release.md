@@ -55,7 +55,7 @@ cannot establish that the package index trusts the workflow.
 
 ## Prepare an exact source
 
-1. Choose a final version matching `pyproject.toml`, currently `0.1.1`.
+1. Choose a final version matching `pyproject.toml`, currently `0.1.2`.
    Review `buildish-release-tooling/release-notes/<version>.md` at the selected source commit.
 2. Run `make check`. Run `make release-integration-check` if no successful rehearsal exists or
    release behavior/workflows changed since it. Documentation-only edits or a version bump can
@@ -73,7 +73,7 @@ Set these shell values to reviewed identities before using the later examples:
 
 ```bash
 release_repo=buildish-tooling/buildish-release-tooling
-release_version=0.1.1
+release_version=0.1.2
 release_source=REPLACE_WITH_FULL_REVIEWED_SOURCE_SHA
 ```
 
