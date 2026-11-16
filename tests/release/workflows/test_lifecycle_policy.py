@@ -281,7 +281,7 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
         self.assertIn("verify-github-candidate", text)
         self.assertIn("--candidate-manifest-output", text)
 
-    def test_final_manifest_is_attached_once_after_publication(self) -> None:
+    def test_final_manifest_is_sealed_before_immutable_publication(self) -> None:
         for name in ("release-promote.yml",):
             text = (self.workflow_dir / name).read_text(encoding="utf-8")
             with self.subTest(workflow=name):
@@ -290,13 +290,23 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
                 self.assertIn('MANIFEST_PATH="$ATTACH_RESULT_PATH"', text)
                 self.assertIn("release-manifest-attachment/attach-result.json", text)
                 self.assertIn("attach-github-release-manifest", text)
-                self.assertIn("needs.publish.outputs.publication_digest", text)
+                self.assertIn("needs.stage.outputs.publication_digest", text)
                 self.assertIn("EXPECTED_STATE_DIGEST", text)
                 self.assertIn("EXPECTED_PUBLICATION_DIGEST", text)
                 self.assertLess(
-                    text.index("publish-github-final-release"),
                     text.index("attach-github-release-manifest"),
+                    text.index("publish-github-final-release"),
                 )
+
+    def test_promotion_publishes_github_only_after_pypi_and_manifest_sealing(self) -> None:
+        jobs = cast(YamlMapping, self._load("release-promote.yml")["jobs"])
+        self.assertEqual(["resolve-promotion", "manifest"], cast(YamlMapping, jobs["publish"])["needs"])
+        self.assertEqual(["resolve-promotion", "stage", "verify-pypi"], cast(YamlMapping, jobs["manifest"])["needs"])
+        self.assertNotIn("publish", cast(list[str], cast(YamlMapping, jobs["publish-pypi"])["needs"]))
+        text = str(cast(YamlMapping, jobs["publish"])["steps"])
+        self.assertIn("--require-manifest-digest", text)
+        self.assertIn("needs.manifest.outputs.manifest_digest", text)
+        self.assertNotIn("attach-github", text)
 
     def test_only_package_publish_jobs_receive_oidc_permission(self) -> None:
         expected = {

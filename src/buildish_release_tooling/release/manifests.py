@@ -186,7 +186,7 @@ class ReleaseManifestV1(ToolingDerivedModel):
     tooling: ToolingInvocationProvenance = Field(
         description="Tooling revision and invocation provenance."
     )
-    created_at: UtcRfc3339Timestamp = Field(description="UTC timestamp of the authoritative final publication in RFC 3339 form.")
+    created_at: UtcRfc3339Timestamp = Field(description="UTC timestamp of the authoritative final snapshot: Release creation time for a sealed draft, or publication time for a legacy published snapshot.")
     extensions: list[ReleaseExtension] = Field(
         default_factory=list, description="Typed platform or foundation final extensions."
     )
@@ -206,11 +206,11 @@ class ReleaseManifestV1(ToolingDerivedModel):
             raise ValueError("promoted candidate must refer to the same release")
         if any(
             isinstance(extension, GitHubFinalPublication)
-            and extension.published_at != self.created_at
+            and (extension.created_at if extension.draft else extension.published_at) != self.created_at
             for extension in self.extensions
         ):
             raise ValueError(
-                "release manifest created_at must equal its GitHub publication timestamp"
+                "release manifest created_at must equal its GitHub snapshot timestamp"
             )
         return self
 

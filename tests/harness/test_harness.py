@@ -229,11 +229,24 @@ class HarnessIntegrationTest(unittest.TestCase):
                 ),
             )
         public_release = json.loads(published.stdout)
+        self.assertTrue(public_release["immutable"])
         self.assertEqual(release["id"], public_release["id"])
         self.assertEqual(release["assets"], public_release["assets"])
         self.assertEqual(
             "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc1",
             public_release["html_url"],
+        )
+        extra_path = self.sandbox_dir / "late-evidence.json"
+        extra_path.write_text('{}\n', encoding="utf-8")
+        for asset_path, clobber in ((manifest_path, []), (manifest_path, ["--clobber"]), (extra_path, [])):
+            rejected = cast(ToolBehaviorResult, handle_builtin_tool(
+                "gh", ["release", "upload", public_release["tag_name"], str(asset_path), *clobber], state
+            ))
+            self.assertNotEqual(0, rejected.exit_code)
+            self.assertIn("immutable release", rejected.stderr)
+        self.assertEqual(
+            [(asset["name"], asset["digest"]) for asset in public_release["assets"]],
+            [(asset.name, asset.digest) for asset in state.gh_releases[public_release["tag_name"]].assets],
         )
 
     def test_scenario_rejects_unsafe_tool_job_and_step_identifiers(self) -> None:

@@ -75,10 +75,17 @@ Final verification compares the exact resolved direct or promotion state with th
 or public GitHub Release, expected body, and asset inventory. Publication revalidates that same state
 instead of assuming an earlier job's observation remains valid.
 
-The final manifest is attached without clobbering. Attachment then verifies the downloaded bytes,
-size, and digest and rechecks the final release. If attachment fails after publication, the release
-may be public without its final manifest until a convergent rerun completes; workflows and monitors
-should treat that as an incomplete release operation.
+The sealed final manifest and all durable evidence are attached to the draft without clobbering.
+Attachment checks exact bytes, size, digest and Release identity. GitHub publication is gated on
+the producer's sealed manifest SHA-256, then revalidates the published inventory and evidence.
+The manifest remains the original draft snapshot: publication changes visibility and adds the
+observed publication timestamp, without rewriting the sealed manifest. Older manifests created after publication bind the actual publication timestamp and remain
+supported for reading/verification.
+
+Once an immutable Release is public, missing evidence or a missing manifest cannot be repaired by
+uploading. Preserve the published record and retained workflow evidence; retries must not claim
+completion or replace assets to bypass the conflict. See the
+[recovery guide](../follow-up-releases/#failure-and-recovery).
 
 ## Workflow handoff integrity
 

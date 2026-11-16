@@ -79,6 +79,9 @@ def asset_release_url(release_payload: dict[str, object]) -> str:
 
     html_url = release_payload.get("html_url")
     if isinstance(html_url, str) and html_url:
+        tag = release_payload.get("tag_name")
+        if release_payload.get("draft") is True and isinstance(tag, str) and "/releases/tag/untagged-" in html_url:
+            return html_url.rsplit("/releases/tag/", 1)[0] + "/releases/tag/" + tag
         return html_url
     api_url = release_payload.get("url")
     if isinstance(api_url, str):

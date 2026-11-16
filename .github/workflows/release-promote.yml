@@ -157,6 +157,8 @@ jobs:
     runs-on: ubuntu-26.04
     permissions:
       contents: write
+    outputs:
+      publication_digest: ${{ steps.stage.outputs.publication_digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -169,16 +171,28 @@ jobs:
           path: ${{ runner.temp }}/promotion-input
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: uv python install 3.11
-      - env:
+      - id: stage
+        env:
           EXPECTED_DIGEST: ${{ needs.resolve-promotion.outputs.promotion_digest }}
+          MANIFEST_PATH: ${{ runner.temp }}/staging/stage-result.json
           GH_TOKEN: ${{ github.token }}
           STATE_PATH: ${{ runner.temp }}/promotion-input/promotion-state.json
         run: |
           printf '%s  %s\n' "$EXPECTED_DIGEST" "$STATE_PATH" | sha256sum --check --strict
+          mkdir -p "$(dirname "$MANIFEST_PATH")"
           args=(--release-state "$STATE_PATH")
           while IFS= read -r -d '' asset; do args+=(--asset "$asset"); done \
             < <(find "$RUNNER_TEMP/promotion-input/assets" -maxdepth 1 -type f -print0 | sort -z)
           bash buildish-release-tooling/release-tooling.sh stage-github-final-release "${args[@]}"
+
+          printf 'publication_digest=%s\n' "$(sha256sum "$MANIFEST_PATH" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: promotion-stage-${{ github.run_id }}
+          path: ${{ runner.temp }}/staging
+          retention-days: 30
+          if-no-files-found: error
+          overwrite: true
 
   verify-final:
     needs: [resolve-promotion, stage]
@@ -205,44 +219,6 @@ jobs:
         run: |
           printf '%s  %s\n' "$EXPECTED_DIGEST" "$STATE_PATH" | sha256sum --check --strict
           bash buildish-release-tooling/release-tooling.sh verify-github-final-release --release-state "$STATE_PATH"
-
-  publish:
-    needs: [resolve-promotion, verify-final, inspect-pypi]
-    runs-on: ubuntu-26.04
-    permissions:
-      contents: write
-    outputs:
-      publication_digest: ${{ steps.publish.outputs.publication_digest }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-          ref: ${{ github.workflow_sha }}
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: promotion-input-${{ github.run_id }}
-          path: ${{ runner.temp }}/promotion-input
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-      - run: uv python install 3.11
-      - id: publish
-        env:
-          EXPECTED_DIGEST: ${{ needs.resolve-promotion.outputs.promotion_digest }}
-          GH_TOKEN: ${{ github.token }}
-          MANIFEST_PATH: ${{ runner.temp }}/publication/publication-result.json
-          STATE_PATH: ${{ runner.temp }}/promotion-input/promotion-state.json
-        run: |
-          printf '%s  %s\n' "$EXPECTED_DIGEST" "$STATE_PATH" | sha256sum --check --strict
-          mkdir -p "$(dirname "$MANIFEST_PATH")"
-          bash buildish-release-tooling/release-tooling.sh publish-github-final-release --release-state "$STATE_PATH"
-          printf 'publication_digest=%s\n' "$(sha256sum "$MANIFEST_PATH" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: promotion-publication-${{ github.run_id }}
-          path: ${{ runner.temp }}/publication
-          retention-days: 30
-          if-no-files-found: error
-          overwrite: true
 
   inspect-pypi:
     needs: [resolve-promotion, verify-final]
@@ -276,7 +252,7 @@ jobs:
 
   publish-pypi:
     if: ${{ needs.inspect-pypi.outputs.publication_state != 'complete' }}
-    needs: [resolve-promotion, publish, inspect-pypi]
+    needs: [resolve-promotion, verify-final, inspect-pypi]
     runs-on: ubuntu-26.04
     environment:
       name: pypi
@@ -420,10 +396,12 @@ jobs:
           overwrite: true
 
   manifest:
-    needs: [resolve-promotion, publish, verify-pypi]
+    needs: [resolve-promotion, stage, verify-pypi]
     runs-on: ubuntu-26.04
     permissions:
       contents: write
+    outputs:
+      manifest_digest: ${{ steps.seal.outputs.manifest_digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -435,7 +413,7 @@ jobs:
           path: ${{ runner.temp }}/promotion-input
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: promotion-publication-${{ github.run_id }}
+          name: promotion-stage-${{ github.run_id }}
           path: ${{ runner.temp }}/publication
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -443,15 +421,16 @@ jobs:
           path: ${{ runner.temp }}/pypi-publication
       - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: uv python install 3.11
-      - env:
-          EXPECTED_PUBLICATION_DIGEST: ${{ needs.publish.outputs.publication_digest }}
+      - id: seal
+        env:
+          EXPECTED_PUBLICATION_DIGEST: ${{ needs.stage.outputs.publication_digest }}
           EXPECTED_PYPI_PUBLICATION_DIGEST: ${{ needs.verify-pypi.outputs.publication_digest }}
           EXPECTED_STATE_DIGEST: ${{ needs.resolve-promotion.outputs.promotion_digest }}
           GH_TOKEN: ${{ github.token }}
           ATTACH_RESULT_PATH: ${{ runner.temp }}/release-manifest-attachment/attach-result.json
           EVIDENCE_ATTACHMENT_PATH: ${{ runner.temp }}/pypi-publication/attestations/evidence-attachment.json
           MANIFEST_PATH: ${{ runner.temp }}/release-manifest/release-manifest-v1.json
-          PUBLICATION_PATH: ${{ runner.temp }}/publication/publication-result.json
+          PUBLICATION_PATH: ${{ runner.temp }}/publication/stage-result.json
           PYPI_PUBLICATION_PATH: ${{ runner.temp }}/pypi-publication/pypi-publication-result.json
           PYPI_VERIFICATION_PATH: ${{ runner.temp }}/pypi-publication/attestations/attestation-evidence.json
           RELEASE_VERSION: ${{ inputs.version }}
@@ -485,9 +464,53 @@ jobs:
             bash buildish-release-tooling/release-tooling.sh attach-github-release-manifest \
             --release-state "$STATE_PATH" \
             --release-manifest "$MANIFEST_PATH"
+          printf 'manifest_digest=%s\n' "$(sha256sum "$MANIFEST_PATH" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: promoted-release-manifest-${{ github.run_id }}
           path: ${{ runner.temp }}/release-manifest
           retention-days: 30
           if-no-files-found: error
+
+  publish:
+    needs: [resolve-promotion, manifest]
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    outputs:
+      publication_digest: ${{ steps.publish.outputs.publication_digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.workflow_sha }}
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: promotion-input-${{ github.run_id }}
+          path: ${{ runner.temp }}/promotion-input
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - run: uv python install 3.11
+      - id: publish
+        env:
+          SEALED_MANIFEST_DIGEST: ${{ needs.manifest.outputs.manifest_digest }}
+          EXPECTED_DIGEST: ${{ needs.resolve-promotion.outputs.promotion_digest }}
+          GH_TOKEN: ${{ github.token }}
+          MANIFEST_PATH: ${{ runner.temp }}/publication/publication-result.json
+          STATE_PATH: ${{ runner.temp }}/promotion-input/promotion-state.json
+        run: |
+          printf '%s  %s\n' "$EXPECTED_DIGEST" "$STATE_PATH" | sha256sum --check --strict
+          mkdir -p "$(dirname "$MANIFEST_PATH")"
+          bash buildish-release-tooling/release-tooling.sh publish-github-final-release \
+            --release-state "$STATE_PATH" \
+            --require-manifest-digest "$SEALED_MANIFEST_DIGEST"
+          MANIFEST_PATH="$RUNNER_TEMP/publication/verification-result.json" \
+            bash buildish-release-tooling/release-tooling.sh verify-github-final-release --release-state "$STATE_PATH"
+          printf 'publication_digest=%s\n' "$(sha256sum "$MANIFEST_PATH" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: promotion-publication-${{ github.run_id }}
+          path: ${{ runner.temp }}/publication
+          retention-days: 30
+          if-no-files-found: error
+          overwrite: true

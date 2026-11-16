@@ -30,6 +30,7 @@ workflow:
     - publish-github-final-release
     - verify-pypi-publication
     - create-release-manifest
+    - attach-github-release-assets
     - attach-github-release-manifest
   release_config:
     component:

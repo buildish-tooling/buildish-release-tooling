@@ -642,7 +642,7 @@ GitHub Release publication evidence for one exact candidate.
 | <a id="githubcandidatepublication-repository"></a>`repository` | <class 'str'> | yes | GitHub repository in owner/name form. |
 | <a id="githubcandidatepublication-release-id"></a>`release_id` | <class 'int'> | yes | GitHub Release numeric identifier. |
 | <a id="githubcandidatepublication-release-url"></a>`release_url` | <class 'str'> | yes | User-facing GitHub Release URL. |
-| <a id="githubcandidatepublication-created-at"></a>`created_at` | typing.Annotated[str, StringConstraints(strip_whitespace=None, to_upper=None, to_lower=None, strict=None, min_length=None, max_length=None, pattern='^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$', ascii_only=None), AfterValidator(func=<function _validate_utc_rfc3339_timestamp at 0x7aed583a6020>)] | yes | UTC creation timestamp reported by GitHub for the candidate Release. |
+| <a id="githubcandidatepublication-created-at"></a>`created_at` | typing.Annotated[str, StringConstraints(strip_whitespace=None, to_upper=None, to_lower=None, strict=None, min_length=None, max_length=None, pattern='^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$', ascii_only=None), AfterValidator(func=<function _validate_utc_rfc3339_timestamp at 0x7557fca9fb00>)] | yes | UTC creation timestamp reported by GitHub for the candidate Release. |
 | <a id="githubcandidatepublication-tag"></a>`tag` | <class 'str'> | yes | Exact candidate tag attached to the release. |
 | <a id="githubcandidatepublication-draft"></a>`draft` | <class 'bool'> | yes | Whether GitHub reports the release as a draft. |
 | <a id="githubcandidatepublication-prerelease"></a>`prerelease` | <class 'bool'> | yes | Whether GitHub reports a pre-release. |
@@ -663,8 +663,8 @@ GitHub Release publication evidence for one final release.
 | <a id="githubfinalpublication-repository"></a>`repository` | <class 'str'> | yes | GitHub repository in owner/name form. |
 | <a id="githubfinalpublication-release-id"></a>`release_id` | <class 'int'> | yes | GitHub Release numeric identifier. |
 | <a id="githubfinalpublication-release-url"></a>`release_url` | <class 'str'> | yes | User-facing GitHub Release URL. |
-| <a id="githubfinalpublication-created-at"></a>`created_at` | typing.Annotated[str, StringConstraints(strip_whitespace=None, to_upper=None, to_lower=None, strict=None, min_length=None, max_length=None, pattern='^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$', ascii_only=None), AfterValidator(func=<function _validate_utc_rfc3339_timestamp at 0x7aed583a6020>)] | yes | UTC creation timestamp reported by GitHub for the final Release. |
-| <a id="githubfinalpublication-published-at"></a>`published_at` | typing.Annotated[str, StringConstraints(strip_whitespace=None, to_upper=None, to_lower=None, strict=None, min_length=None, max_length=None, pattern='^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$', ascii_only=None), AfterValidator(func=<function _validate_utc_rfc3339_timestamp at 0x7aed583a6020>)] | no | UTC publication timestamp reported by GitHub, absent while the Release is a draft. |
+| <a id="githubfinalpublication-created-at"></a>`created_at` | typing.Annotated[str, StringConstraints(strip_whitespace=None, to_upper=None, to_lower=None, strict=None, min_length=None, max_length=None, pattern='^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$', ascii_only=None), AfterValidator(func=<function _validate_utc_rfc3339_timestamp at 0x7557fca9fb00>)] | yes | UTC creation timestamp reported by GitHub for the final Release. |
+| <a id="githubfinalpublication-published-at"></a>`published_at` | typing.Annotated[str, StringConstraints(strip_whitespace=None, to_upper=None, to_lower=None, strict=None, min_length=None, max_length=None, pattern='^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$', ascii_only=None), AfterValidator(func=<function _validate_utc_rfc3339_timestamp at 0x7557fca9fb00>)] | no | UTC publication timestamp reported by GitHub, absent while the Release is a draft. |
 | <a id="githubfinalpublication-tag"></a>`tag` | <class 'str'> | yes | Exact immutable final tag attached to the release. |
 | <a id="githubfinalpublication-draft"></a>`draft` | <class 'bool'> | yes | Whether GitHub reports the release as a draft. |
 | <a id="githubfinalpublication-prerelease"></a>`prerelease` | <class 'bool'> | yes | Whether GitHub reports a pre-release. |
@@ -1016,7 +1016,7 @@ Stable final release manifest for either direct publication or exact promotion.
 | <a id="releasemanifestv1-secondary-publications"></a>`secondary_publications` | list[[PublicationReference](#publicationreference)] | no | Secondary package or registry publication results. |
 | <a id="releasemanifestv1-moving-alias-results"></a>`moving_alias_results` | list[[PublicationReference](#publicationreference)] | no | Moving tag or alias update results. |
 | <a id="releasemanifestv1-tooling"></a>`tooling` | [ToolingInvocationProvenance](#toolinginvocationprovenance) | yes | Tooling revision and invocation provenance. |
-| <a id="releasemanifestv1-created-at"></a>`created_at` | UtcRfc3339Timestamp | yes | UTC timestamp of the authoritative final publication in RFC 3339 form. |
+| <a id="releasemanifestv1-created-at"></a>`created_at` | UtcRfc3339Timestamp | yes | UTC timestamp of the authoritative final snapshot: Release creation time for a sealed draft, or publication time for a legacy published snapshot. |
 | <a id="releasemanifestv1-extensions"></a>`extensions` | list[ReleaseExtension] | no | Typed platform or foundation final extensions. |
 
 <a id="releasenotes"></a>

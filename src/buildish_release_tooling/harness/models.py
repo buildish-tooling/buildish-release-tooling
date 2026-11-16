@@ -340,6 +340,9 @@ class HarnessBuiltinGhRelease(RuntimeDerivedModel):
     name: str = Field(description="Release title.")
     body: str = Field(description="Release body.")
     draft: bool = Field(description="Whether the release remains a draft.")
+    immutable: bool = Field(
+        default=False, description="Whether publication has locked release assets and its tag."
+    )
     prerelease: bool = Field(description="Whether the release is a prerelease.")
     html_url: str = Field(description="Synthetic browser-facing release URL.")
     url: str = Field(description="Synthetic API-facing release URL.")

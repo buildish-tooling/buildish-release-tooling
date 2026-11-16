@@ -58,10 +58,12 @@ from buildish_release_tooling.release.foundations.asf.manifests import AsfVoteEx
 from buildish_release_tooling.release.platforms.github.candidate import (
     CANDIDATE_MANIFEST_ASSET_NAME,
 )
+from buildish_release_tooling.release.platforms.github.commands import verified_sealed_final_snapshot
 from buildish_release_tooling.release.platforms.github.manifests import (
     GitHubCandidatePublication,
     PublishGitHubFinalReleaseResult,
     StageGitHubCandidateResult,
+    StageGitHubFinalReleaseResult,
 )
 from buildish_release_tooling.release.publications.evidence import (
     compose_secondary_release_evidence,
@@ -363,11 +365,17 @@ def run_create_release_manifest(args: Namespace) -> Path:
 
     context = _context(args)
     state = _load_final_state(Path(args.release_state))
-    publication_result = read_pydantic_json_file_bounded(
-        PublishGitHubFinalReleaseResult,
-        Path(args.publication_result),
-        max_bytes=DEFAULT_MANIFEST_PARSE_MAX_BYTES,
+    publication_payload = read_json_object_file_bounded(
+        Path(args.publication_result), max_bytes=DEFAULT_MANIFEST_PARSE_MAX_BYTES
     )
+    action = publication_payload.get("action")
+    publication_result: StageGitHubFinalReleaseResult | PublishGitHubFinalReleaseResult
+    if action == "stage-github-final-release":
+        publication_result = StageGitHubFinalReleaseResult.model_validate(publication_payload)
+    elif action == "publish-github-final-release":
+        publication_result = PublishGitHubFinalReleaseResult.model_validate(publication_payload)
+    else:
+        raise ValueError("unsupported final publication result action")
     secondary_evidence = compose_secondary_release_evidence(
         state,
         Path(args.release_state),
@@ -437,8 +445,14 @@ def run_create_release_manifest(args: Namespace) -> Path:
                     source_commit_sha=state.source.commit_sha,
                 )
             )
-    published_at = publication_result.publication.published_at
-    if published_at is None:
+    publication = publication_result.publication
+    if not publication.draft and action != "publish-github-final-release":
+        publication = verified_sealed_final_snapshot(
+            state, publication.repository, context.release_config,
+            test_target_mode=args.test_target_mode,
+        )
+    snapshot_at = publication.created_at if publication.draft else publication.published_at
+    if snapshot_at is None:
         raise ValueError("final publication result has no publication timestamp")
     manifest = ReleaseManifestV1(
         release=state.release,
@@ -449,8 +463,8 @@ def run_create_release_manifest(args: Namespace) -> Path:
         publications=[
             PublicationReference(
                 target_kind="github-release-final",
-                uri=publication_result.publication.release_url,
-                immutable_id=str(publication_result.publication.release_id),
+                uri=publication.release_url,
+                immutable_id=str(publication.release_id),
             )
         ],
         verification_results=[
@@ -461,8 +475,8 @@ def run_create_release_manifest(args: Namespace) -> Path:
         promotion_evidence=promotion_evidence,
         secondary_publications=list(secondary_evidence.publications),
         tooling=state.tooling or ToolingInvocationProvenance(),
-        created_at=published_at,
-        extensions=[publication_result.publication],
+        created_at=snapshot_at,
+        extensions=[publication],
     )
     result_path = _manifest_path(state.release.component.id, "create-release-manifest")
     write_manifest(result_path, manifest, exclude_none=True)

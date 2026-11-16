@@ -41,7 +41,8 @@ GitHub Environment names belong to the component workflow, not this authored con
 ## Direct releases
 
 The direct path creates an immutable final tag, prepares a draft release, verifies it, publishes it
-with `prerelease=false`, and attaches `release-manifest-v1.json`. An existing tag or release is
+with `prerelease=false`. For immutable releases, attach evidence and the sealed
+`release-manifest-v1.json` before publication, then verify without uploading. An existing tag or release is
 accepted only when it represents the same resolved state; conflicting state fails closed.
 
 See [Direct release](../direct-release/) for the complete workflow.
@@ -66,7 +67,9 @@ Finalization revalidates the manifest against the published Release before repor
 
 Promotion names the exact candidate tag and candidate-manifest SHA-256. It does not select the most
 recent tag. The adapter re-reads the candidate Release, verifies its manifest and every declared
-asset, then stages and publishes the final Release.
+asset, then stages the final Release as a draft. Configured secondary packages are published and
+verified before evidence and the sealed manifest are attached to that draft. Finalization requires
+the producer-emitted manifest SHA-256 and publishes GitHub last.
 
 The final tag is unsuffixed by default. The final Release is a separate publication; promoting a
 candidate does not rename a prerelease or mutate the candidate tag.
@@ -97,3 +100,27 @@ GitHub-specific config, API models, release text, refs, and commands live under 
 A future GitLab or Forgejo adapter should implement the same core lifecycle boundaries with its own
 publication records and workflow integration. It must not reinterpret GitHub Release identifiers
 as provider-neutral identities.
+
+## Immutable release sealing
+
+GitHub locks release assets when an immutable release is published. All assets, including durable
+verification evidence and the final manifest, must be attached while the Release is a draft.
+The CLI's `attach-github-release-assets --immutable` flag means exact, no-clobber attachment; it
+cannot add assets to a GitHub Release that is already locked.
+
+`create-release-manifest` accepts a staging result and emits `ReleaseManifestV1` for a draft.
+The manifest binds its canonical tag URL, Release ID and creation timestamp, exact artifact
+identities, and configured secondary verification evidence. Its GitHub extension records the
+observed draft snapshot, with `draft=true` and no `published_at`; its `created_at` is the Release
+creation time. Publication time is observed later in the publication command result, never predicted
+or written back into sealed bytes. Readback permits only the expected visibility/publication-time
+transition; source, Release identity, URL, artifact inventory and evidence remain checked.
+
+Use `publish-github-final-release --require-manifest-digest SHA256` to require the attached sealed
+manifest's exact digest before and after finalization. The checked-in promotion workflow always
+uses that gate. Existing `ReleaseManifestV1` files created after publication retain their original
+publication-timestamp semantics and remain readable. Creating from a published result retains
+those semantics; creating from a draft result records the sealed draft snapshot. Consumers that
+assumed every manifest describes an already-published Release must update that assumption.
+
+For GitHub's lifecycle restrictions, see [immutable releases](https://docs.github.com/en/code-security/concepts/supply-chain-security/immutable-releases).

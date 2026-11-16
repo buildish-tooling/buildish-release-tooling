@@ -87,7 +87,6 @@ from buildish_release_tooling.release.source_artifact import checksum
 from buildish_release_tooling.shared.parsing import (
     DEFAULT_MANIFEST_PARSE_MAX_BYTES,
     read_json_object_file_bounded,
-    read_pydantic_json_file_bounded,
 )
 
 
@@ -206,9 +205,7 @@ def _attached_release_manifest(
     repository: str,
     release_payload: dict[str, object],
 ) -> ReleaseManifestV1 | None:
-    manifest_asset = observed_release_assets(release_payload).get(
-        FINAL_RELEASE_MANIFEST_ASSET_NAME
-    )
+    manifest_asset = observed_release_assets(release_payload).get(FINAL_RELEASE_MANIFEST_ASSET_NAME)
     if manifest_asset is None:
         return None
     manifest_text = download_release_asset_text(repository, manifest_asset.asset_id)
@@ -283,6 +280,28 @@ def _append_result_summary(
     summary.append_plaintext_block("Final tag", state.final_tag.name)
     summary.append_plaintext_block("Source commit", state.source.commit_sha)
     summary.append_plaintext_block("GitHub Release", release_url)
+
+
+def verified_sealed_final_snapshot(
+    state: FinalReleaseState,
+    repository: str,
+    release_config: ReleaseConfig,
+    *,
+    test_target_mode: bool,
+) -> GitHubFinalPublication:
+    """Recover the actual sealed snapshot for an already-published promotion rerun."""
+
+    payload = _release_payload(repository, state.final_tag.name)
+    publication = _validate_with_attached_manifest(
+        state, repository, payload,
+        expected_body=render_direct_final_release_body(state),
+        release_config=release_config, test_target_mode=test_target_mode,
+    )
+    manifest = _attached_release_manifest(repository, payload)
+    if manifest is None or not any(isinstance(extension, GitHubFinalPublication) and extension.draft and extension.published_at is None for extension in manifest.extensions):
+        raise ValueError("published Release has no sealed draft manifest to reuse")
+    _validate_release_manifest(manifest, state, publication, release_config, test_target_mode=test_target_mode)
+    return next(extension for extension in manifest.extensions if isinstance(extension, GitHubFinalPublication))
 
 
 def run_resolve_direct_release(args: Namespace) -> Path:
@@ -462,6 +481,9 @@ def run_publish_github_final_release(args: Namespace) -> Path:
 
     state, _repo, repository, expected_body, release_config = _validated_inputs(args)
     release_payload = _release_payload(repository, state.final_tag.name)
+    required_digest = getattr(args, "require_manifest_digest", None)
+    if required_digest is not None:
+        _require_sealed_manifest(release_payload, required_digest)
     publication = _validate_with_attached_manifest(
         state,
         repository,
@@ -484,10 +506,13 @@ def run_publish_github_final_release(args: Namespace) -> Path:
                 "prerelease": False,
             },
         )
+        release_payload = _release_payload(repository, state.final_tag.name)
+        if required_digest is not None:
+            _require_sealed_manifest(release_payload, required_digest)
         publication = _validate_with_attached_manifest(
             state,
             repository,
-            _release_payload(repository, state.final_tag.name),
+            release_payload,
             expected_body=expected_body,
             release_config=release_config,
             test_target_mode=args.test_target_mode,
@@ -514,6 +539,14 @@ def run_publish_github_final_release(args: Namespace) -> Path:
         release_url=publication.release_url,
     )
     return result_path
+
+
+def _require_sealed_manifest(release_payload: dict[str, object], digest: str) -> None:
+    """Bind finalization to the producer's exact attached manifest bytes."""
+
+    asset = observed_release_assets(release_payload).get(FINAL_RELEASE_MANIFEST_ASSET_NAME)
+    if asset is None or asset.digest != f"sha256:{digest.lower()}":
+        raise ValueError("sealed release manifest is missing or differs from required SHA-256")
 
 
 def _validate_release_manifest(
@@ -563,11 +596,17 @@ def _validate_release_manifest(
         for extension in manifest.extensions
         if isinstance(extension, GitHubFinalPublication)
     ]
-    if len(extensions) != 1 or extensions[0] != publication:
+    snapshot = extensions[0] if len(extensions) == 1 else None
+    observed = publication
+    if snapshot is not None and snapshot.draft and snapshot.published_at is None:
+        # A sealed draft snapshot stays unchanged when visibility and published_at change.
+        observed = publication.model_copy(update={"draft": True, "published_at": None})
+    if snapshot != observed:
         raise ValueError(
             "release manifest GitHub publication does not match observed release"
         )
-    if manifest.created_at != publication.published_at:
+    snapshot_at = publication.created_at if snapshot is not None and snapshot.draft else publication.published_at
+    if manifest.created_at != snapshot_at:
         raise ValueError(
             "release manifest timestamp does not match observed GitHub publication"
         )
@@ -595,13 +634,9 @@ def run_attach_github_release_manifest(args: Namespace) -> Path:
     state, _repo, repository, expected_body, release_config = _validated_inputs(args)
     manifest_path = Path(args.release_manifest)
     if manifest_path.name != FINAL_RELEASE_MANIFEST_ASSET_NAME:
-        raise ValueError(
-            f"release manifest must be named {FINAL_RELEASE_MANIFEST_ASSET_NAME}"
-        )
-    manifest = read_pydantic_json_file_bounded(
-        ReleaseManifestV1,
-        manifest_path,
-        max_bytes=DEFAULT_MANIFEST_PARSE_MAX_BYTES,
+        raise ValueError("release manifest must be named release-manifest-v1.json")
+    manifest: ReleaseManifestV1 = ReleaseManifestV1.model_validate(
+        read_json_object_file_bounded(manifest_path, max_bytes=DEFAULT_MANIFEST_PARSE_MAX_BYTES)
     )
     release_payload = _release_payload(repository, state.final_tag.name)
     additional_assets = _durable_evidence_assets(
@@ -617,10 +652,6 @@ def run_attach_github_release_manifest(args: Namespace) -> Path:
         allow_attached_manifest=True,
         additional_assets=additional_assets,
     )
-    if publication.draft:
-        raise ValueError(
-            "GitHub final release must be published before attaching its manifest"
-        )
     _validate_release_manifest(
         manifest,
         state,
@@ -630,15 +661,15 @@ def run_attach_github_release_manifest(args: Namespace) -> Path:
     )
     digest = checksum(manifest_path, "sha256")
     reference = ManifestDigestReference(
-        uri=f"{publication.release_url}#{FINAL_RELEASE_MANIFEST_ASSET_NAME}",
+        uri=f"{publication.release_url}#{manifest_path.name}",
         algorithm="sha256",
         digest=digest,
     )
-    manifest_asset = observed_release_assets(release_payload).get(
-        FINAL_RELEASE_MANIFEST_ASSET_NAME
-    )
+    manifest_asset = observed_release_assets(release_payload).get(FINAL_RELEASE_MANIFEST_ASSET_NAME)
     attached = manifest_asset is not None
     if manifest_asset is None:
+        if release_payload.get("immutable") is True:
+            raise ValueError("immutable GitHub Release is missing its sealed manifest; publication cannot be repaired by uploading")
         upload_release_assets(
             repository,
             tag_name=state.final_tag.name,
@@ -646,9 +677,7 @@ def run_attach_github_release_manifest(args: Namespace) -> Path:
             clobber=False,
         )
         release_payload = _release_payload(repository, state.final_tag.name)
-        manifest_asset = observed_release_assets(release_payload).get(
-            FINAL_RELEASE_MANIFEST_ASSET_NAME
-        )
+        manifest_asset = observed_release_assets(release_payload).get(FINAL_RELEASE_MANIFEST_ASSET_NAME)
     if manifest_asset is None:
         raise ValueError("GitHub final release manifest is absent after upload")
     if manifest_asset.size_bytes != manifest_path.stat().st_size:

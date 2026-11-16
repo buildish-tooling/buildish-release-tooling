@@ -213,13 +213,15 @@ with the final version, exact candidate tag, and retained candidate-manifest SHA
 
 - downloads and verifies the candidate manifest and every candidate asset;
 - creates the final tag at the candidate's exact source commit;
-- stages, verifies, and publishes the GitHub Release;
+- stages and verifies the final GitHub Release as a draft;
 - publishes only the retained wheel and sdist to PyPI through the `pypi` environment;
 - reads back and verifies the PyPI files and PEP 740 provenance;
 - selects the verified PyPI Publish Attestations from the configured Trusted Publisher, retains
   those exact evidence documents as GitHub Release assets, and binds their asset URLs, SHA-256
   digests, distribution digests, and publisher claims into the final release manifest;
-- attaches that final release manifest after both publication channels verify successfully.
+- seals and attaches `release-manifest-v1.json` while GitHub is still a draft;
+- publishes GitHub last, requiring the exact producer-emitted manifest SHA-256, then revalidates
+  the published release without uploading any further assets.
 
 The external approval process is intentionally outside Release Tooling. It selects one immutable
 candidate identity; the promotion workflow does not discover or substitute the "latest" candidate.

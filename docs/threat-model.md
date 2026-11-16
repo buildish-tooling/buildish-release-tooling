@@ -151,7 +151,7 @@ job can use the key during that job; process isolation cannot eliminate that pla
 | Selected source executes with release credentials | Privileged self-release jobs check out `github.workflow_sha`; selected source executes only in the unprivileged build job | Environment deployment restrictions and workflow-branch protection remain deployment responsibilities |
 | Same-name CI result comes from another producer | Optional trusted workflow/event binding plus default-branch ancestry policy | Components that omit these controls accept their configured weaker policy |
 | Existing release asset is overwritten | No-clobber upload and exact inventory validation | Authorized manual mutation outside the CLI remains possible |
-| Partial failure creates ambiguous state | Bounded commands revalidate identical state and fail on conflicts | Public final release can temporarily lack its final manifest if the last job fails |
+| Partial failure creates ambiguous state | Bounded commands revalidate identical state and fail on conflicts | PyPI can be public while GitHub remains draft; an older prematurely published immutable Release cannot accept missing evidence |
 | Two releases race for one version | Non-canceling repository/version workflow concurrency | Custom workflows and maintainer-shell commands must provide equivalent serialization |
 | Untrusted filename escapes staging directory | Validate artifact names and project-relative paths | New adapters must preserve the same path discipline |
 | Secret appears in logs or child environment | Secret values stay out of config; constructed environments and error sanitization | Third-party tools and runners must also handle secrets correctly |
@@ -159,10 +159,20 @@ job can use the key during that job; process isolation cannot eliminate that pla
 | Foundation policy leaks into generic use | Explicit `policy_profiles.asf`, ASF types, and target discriminators | Each project remains responsible for current policy compliance |
 | Harness result is mistaken for production assurance | Harness is documented and tested as a local simulation | Deployment settings and live services require separate review |
 
+## Immutable release boundary
+
+The promotion workflow stages a draft, publishes/verifies secondary packages, and attaches durable
+evidence plus a sealed manifest before publishing GitHub. Finalization binds the producer's exact
+manifest digest and checks the observed publication afterward. The sealed manifest records a
+truthful draft snapshot and stable creation timestamp, not a predicted future publication time.
+The harness rejects asset uploads after publication to exercise this boundary. GitHub and PyPI
+remain non-atomic: a failure can leave a package public while GitHub is still draft.
+
 ## Workflow permissions
 
 Checked-in workflows default to `contents: read`. Only jobs that create tags, stage or publish
-Releases, or attach manifests receive `contents: write`; source-check jobs receive read access to
+Releases, attach manifests, or verify draft Releases receive `contents: write` (GitHub requires
+push access to list drafts); source-check jobs receive read access to
 checks and statuses. Checkout credentials are not persisted.
 
 All third-party workflow actions are referenced by immutable commits. This reduces unintended

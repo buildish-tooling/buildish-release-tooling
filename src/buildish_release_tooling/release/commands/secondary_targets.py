@@ -496,6 +496,8 @@ def run_attach_github_release_assets(args: Namespace) -> Path:
                     f"immutable GitHub Release asset already differs: {asset.logical_name}"
                 )
         if uploaded_paths:
+            if release_payload.get("immutable") is True:
+                raise ValueError("immutable GitHub Release is missing verification evidence; attach all assets before publication")
             upload_release_assets(
                 repository_slug,
                 tag_name=final_tag,

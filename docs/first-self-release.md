@@ -157,8 +157,10 @@ gh workflow run release-promote.yml --repo "$release_repo" --ref main \
   -f candidate_manifest_digest="$release_candidate_digest"
 ```
 
-This creates the final tag and GitHub Release and publishes the candidate's retained wheel and
-sdist to production PyPI. Require the entire workflow to succeed, including verification and final
+This creates the final tag and a draft GitHub Release, publishes and verifies the candidate's
+retained wheel and sdist on production PyPI, and attaches durable evidence and the sealed
+manifest to the draft. GitHub is published last, locking all release assets when immutable releases
+are enabled. Require the entire workflow to succeed, including verification and final
 manifest attachment. A visible GitHub Release alone is not completion.
 
 Accept the release only when:

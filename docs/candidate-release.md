@@ -135,8 +135,9 @@ After the external gate accepts a candidate, run `.github/workflows/release-prom
 Promotion never discovers "the latest RC". It downloads and verifies the named candidate manifest,
 downloads each candidate asset named by that manifest, verifies the bytes, and creates
 `PromotionState`, including any candidate-bound release notes. The remaining jobs create the final
-tag, stage and verify the final release using those exact notes, publish it, and attach
-`release-manifest-v1.json`.
+tag, stage and verify a draft using those exact notes, publish and verify configured secondary
+packages, attach evidence and `release-manifest-v1.json` to the draft, and publish GitHub last.
+No asset upload follows GitHub publication, so immutable releases are supported.
 
 The final manifest records the promoted candidate and its manifest digest. Per-artifact promotion
 evidence distinguishes byte-identical assets, immutable registry identities, and hosting-platform

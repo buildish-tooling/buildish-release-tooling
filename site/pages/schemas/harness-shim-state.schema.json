@@ -72,6 +72,12 @@
           "title": "Id",
           "type": "integer"
         },
+        "immutable": {
+          "default": false,
+          "description": "Whether publication has locked release assets and its tag.",
+          "title": "Immutable",
+          "type": "boolean"
+        },
         "name": {
           "description": "Release title.",
           "title": "Name",

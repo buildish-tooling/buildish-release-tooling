@@ -100,10 +100,15 @@ satisfying the source gate.
 3. `create-final-tag` creates or revalidates the immutable final tag.
 4. `stage` creates or completes the draft final GitHub Release.
 5. `verify-final` compares the observed tag, release metadata, and assets with the resolved state.
-6. `publish` makes the exact release public or confirms that an identical publication already
-   exists.
-7. `manifest` creates `release-manifest-v1.json`, validates both workflow handoff digests, attaches
-   the manifest without clobbering an existing asset, and revalidates the release.
+6. Publish and verify configured secondary packages and attach all durable verification evidence
+   while GitHub remains a draft. Create `release-manifest-v1.json` from the stage result, validate
+   producer handoff digests, and attach it without clobbering.
+7. `publish` requires the sealed manifest SHA-256, makes the exact release public, and revalidates
+   the locked inventory without uploading. On a rerun, identical attached bytes are reused.
+
+The direct CLI still supports reading and verifying v1 manifests created after publication on
+mutable releases. For immutable releases, follow the draft-sealing sequence above; do not use
+post-publication attachment.
 
 Same-run JSON files move through GitHub workflow artifacts. Every privilege-bearing consumer checks
 the SHA-256 emitted by the producing job before acting.

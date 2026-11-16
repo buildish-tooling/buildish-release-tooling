@@ -97,6 +97,7 @@ Synthetic GitHub Release retained by the stateful harness shim.
 | <a id="harnessbuiltinghrelease-name"></a>`name` | str | yes | Release title. |
 | <a id="harnessbuiltinghrelease-body"></a>`body` | str | yes | Release body. |
 | <a id="harnessbuiltinghrelease-draft"></a>`draft` | bool | yes | Whether the release remains a draft. |
+| <a id="harnessbuiltinghrelease-immutable"></a>`immutable` | bool | no | Whether publication has locked release assets and its tag. |
 | <a id="harnessbuiltinghrelease-prerelease"></a>`prerelease` | bool | yes | Whether the release is a prerelease. |
 | <a id="harnessbuiltinghrelease-html-url"></a>`html_url` | str | yes | Synthetic browser-facing release URL. |
 | <a id="harnessbuiltinghrelease-url"></a>`url` | str | yes | Synthetic API-facing release URL. |

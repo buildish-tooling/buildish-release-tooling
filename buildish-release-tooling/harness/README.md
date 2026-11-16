@@ -223,7 +223,10 @@ manifest digest. The harness replaces PyPI publication with a
 workspace-local immutable file store and creates deterministic provenance evidence so the complete
 cross-job and cross-run composition remains isolated from publication services. Synthetic package
 and Integrity references use explicit `.invalid` service hosts, and a successful promotion run
-validates the retained `release-manifest-v1.json` against the stable release-manifest contract.
+validates the retained `release-manifest-v1.json` against the sealed release-manifest contract.
+The built-in GitHub service locks published releases and rejects later asset uploads, including
+new assets and clobber attempts. Evidence and the manifest must be attached to the draft before
+publication. Older retained manifests created after publication remain readable.
 The runner may
 still need network access to acquire actions, tools, and container images. Unit tests separately
 exercise the pinned PEP 740 parser and cryptographic verifier; the local evidence is not a

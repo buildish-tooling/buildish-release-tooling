@@ -768,7 +768,7 @@
       "type": "array"
     },
     "created_at": {
-      "description": "UTC timestamp of the authoritative final publication in RFC 3339 form.",
+      "description": "UTC timestamp of the authoritative final snapshot: Release creation time for a sealed draft, or publication time for a legacy published snapshot.",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$",
       "title": "Created At",
       "type": "string"

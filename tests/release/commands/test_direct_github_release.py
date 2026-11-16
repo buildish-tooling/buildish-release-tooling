@@ -363,6 +363,131 @@ class DirectGitHubReleaseCommandIntegrationTest(unittest.TestCase):
             (gh_state_dir / "release-upload-files.log").read_text(encoding="utf-8"),
         )
 
+    def test_manifest_is_sealed_on_draft_and_survives_immutable_publication(self) -> None:
+        draft = self._release(draft=True)
+        draft["html_url"] = "https://github.com/apache/example-project/releases/tag/untagged-temporary"
+        gh_path, gh_state_dir = self._fake_gh(list_response=[draft])
+        stage_path = self.sandbox_dir / "sealed-stage.json"
+        completed = self._run(
+            ["stage-github-final-release", "--release-state", str(self.state_path)],
+            manifest_path=stage_path, gh_path=gh_path, gh_state_dir=gh_state_dir,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        manifest_path = self.sandbox_dir / "release-manifest-v1.json"
+        completed = self._run(
+            ["create-release-manifest", "--release-state", str(self.state_path),
+             "--publication-result", str(stage_path)], manifest_path=manifest_path,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        manifest_text = manifest_path.read_text(encoding="utf-8")
+        manifest = json.loads(manifest_text)
+        digest = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+        self.assertEqual(draft["created_at"], manifest["created_at"])
+        self.assertTrue(manifest["extensions"][0]["draft"])
+        self.assertNotIn("published_at", manifest["extensions"][0])
+        self.assertTrue(manifest["publications"][0]["uri"].endswith("/releases/tag/v1.2.3"))
+        asset = {"id": 102, "name": manifest_path.name, "size": manifest_path.stat().st_size,
+                 "digest": f"sha256:{digest}"}
+        sealed_draft = {**draft, "assets": [asset]}
+        public = {**self._release(draft=False, assets=[asset]), "immutable": True}
+        gh_path, gh_state_dir = self._fake_gh(
+            list_response=[draft], list_responses=([draft], [sealed_draft]),
+        )
+        completed = self._run(
+            ["attach-github-release-manifest", "--release-state", str(self.state_path),
+             "--release-manifest", str(manifest_path)],
+            manifest_path=self.sandbox_dir / "sealed-attachment.json",
+            gh_path=gh_path, gh_state_dir=gh_state_dir,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        # The publication gate rejects a missing or substituted manifest before any PATCH.
+        for observed, expected_digest in ((draft, digest), (sealed_draft, "0" * 64)):
+            gh_path, gh_state_dir = self._fake_gh(list_response=[observed])
+            completed = self._run(
+                ["publish-github-final-release", "--release-state", str(self.state_path),
+                 "--require-manifest-digest", expected_digest],
+                manifest_path=self.sandbox_dir / "rejected-finalization.json",
+                gh_path=gh_path, gh_state_dir=gh_state_dir,
+            )
+            self.assertNotEqual(0, completed.returncode)
+            self.assertIn("sealed release manifest", completed.stderr)
+            self.assertFalse((gh_state_dir / "update-release-request.json").exists())
+        gh_path, gh_state_dir = self._fake_gh(
+            list_response=[sealed_draft], list_responses=([sealed_draft], [public]),
+            update_release_response=public, release_asset_text_by_id={102: manifest_text},
+        )
+        completed = self._run(
+            ["publish-github-final-release", "--release-state", str(self.state_path),
+             "--require-manifest-digest", digest],
+            manifest_path=self.sandbox_dir / "sealed-publish.json",
+            gh_path=gh_path, gh_state_dir=gh_state_dir,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        # Validation and idempotent attachment must never upload to the now-locked Release.
+        for command in (
+            ["verify-github-final-release", "--release-state", str(self.state_path)],
+            ["publish-github-final-release", "--release-state", str(self.state_path),
+             "--require-manifest-digest", digest],
+            ["attach-github-release-manifest", "--release-state", str(self.state_path),
+             "--release-manifest", str(manifest_path)],
+        ):
+            gh_path, gh_state_dir = self._fake_gh(
+                list_response=[public], release_asset_text_by_id={102: manifest_text},
+            )
+            tracked = [gh_state_dir / "release-upload-files.log", gh_state_dir / "update-release-request.json"]
+            before = [path.read_bytes() if path.exists() else None for path in tracked]
+            request_log = gh_state_dir / "requests.log"
+            prior_requests = request_log.read_text() if request_log.exists() else ""
+            completed = self._run(command, manifest_path=self.sandbox_dir / "sealed-rerun.json",
+                                  gh_path=gh_path, gh_state_dir=gh_state_dir)
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            self.assertEqual(before, [path.read_bytes() if path.exists() else None for path in tracked])
+            self.assertNotIn("PATCH", request_log.read_text()[len(prior_requests):])
+        # A complete promotion rerun reuses the real sealed snapshot, including its timestamp.
+        gh_path, gh_state_dir = self._fake_gh(
+            list_response=[public], release_asset_text_by_id={102: manifest_text},
+        )
+        completed = self._run(
+            ["stage-github-final-release", "--release-state", str(self.state_path)],
+            manifest_path=stage_path, gh_path=gh_path, gh_state_dir=gh_state_dir,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        regenerated_path = self.sandbox_dir / "regenerated-manifest.json"
+        completed = self._run(
+            ["create-release-manifest", "--release-state", str(self.state_path),
+             "--publication-result", str(stage_path)], manifest_path=regenerated_path,
+            gh_path=gh_path, gh_state_dir=gh_state_dir,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual(manifest_path.read_bytes(), regenerated_path.read_bytes())
+        # A prematurely published immutable release cannot be repaired with an upload.
+        gh_path, gh_state_dir = self._fake_gh(
+            list_response=[{**self._release(draft=False), "immutable": True}],
+        )
+        upload_log = gh_state_dir / "release-upload-files.log"
+        prior_uploads = upload_log.read_bytes() if upload_log.exists() else None
+        completed = self._run(
+            ["attach-github-release-manifest", "--release-state", str(self.state_path),
+             "--release-manifest", str(manifest_path)],
+            manifest_path=self.sandbox_dir / "locked-missing-manifest.json",
+            gh_path=gh_path, gh_state_dir=gh_state_dir,
+        )
+        self.assertNotEqual(0, completed.returncode)
+        self.assertIn("missing its sealed manifest", completed.stderr)
+        self.assertEqual(prior_uploads, upload_log.read_bytes() if upload_log.exists() else None)
+        # Only visibility/publication time can change; a different Release identity fails.
+        for changed in ({"id": 43}, {"created_at": "2026-08-05T08:00:00Z"},
+                        {"html_url": "https://github.com/other/repo/releases/tag/v1.2.3"}):
+            gh_path, gh_state_dir = self._fake_gh(
+                list_response=[{**public, **changed}], release_asset_text_by_id={102: manifest_text},
+            )
+            completed = self._run(
+                ["verify-github-final-release", "--release-state", str(self.state_path)],
+                manifest_path=self.sandbox_dir / "rejected-snapshot.json",
+                gh_path=gh_path, gh_state_dir=gh_state_dir,
+            )
+            self.assertNotEqual(0, completed.returncode)
+
     def test_built_asset_is_uploaded_without_clobber_and_revalidated(self) -> None:
         asset_bytes = b"direct release asset\n"
         digest = hashlib.sha256(asset_bytes).hexdigest()

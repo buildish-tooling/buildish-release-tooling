@@ -128,6 +128,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      publication_digest: ${{ steps.stage.outputs.publication_digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -139,7 +141,8 @@ jobs:
           path: ${{ runner.temp }}/direct-state
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - run: uv python install 3.11
-      - env:
+      - id: stage
+        env:
           EXPECTED_DIGEST: ${{ needs.resolve.outputs.state_digest }}
           GH_TOKEN: ${{ github.token }}
           MANIFEST_PATH: ${{ runner.temp }}/stage-result/stage-result.json
@@ -148,6 +151,7 @@ jobs:
           printf '%s  %s\n' "$EXPECTED_DIGEST" "$STATE_PATH" | sha256sum --check --strict
           mkdir -p "$(dirname "$MANIFEST_PATH")"
           bash buildish-release-tooling/release-tooling.sh stage-github-final-release --release-state "$STATE_PATH"
+          printf 'publication_digest=%s\n' "$(sha256sum "$MANIFEST_PATH" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: direct-stage-${{ github.run_id }}
@@ -159,6 +163,8 @@ jobs:
   verify-final:
     needs: [resolve, stage]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -178,8 +184,57 @@ jobs:
           printf '%s  %s\n' "$EXPECTED_DIGEST" "$STATE_PATH" | sha256sum --check --strict
           bash buildish-release-tooling/release-tooling.sh verify-github-final-release --release-state "$STATE_PATH"
 
+  manifest:
+    needs: [resolve, stage, verify-final]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      manifest_digest: ${{ steps.seal.outputs.manifest_digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: direct-state-${{ github.run_id }}
+          path: ${{ runner.temp }}/direct-state
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: direct-stage-${{ github.run_id }}
+          path: ${{ runner.temp }}/publication
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - run: uv python install 3.11
+      - id: seal
+        env:
+          EXPECTED_PUBLICATION_DIGEST: ${{ needs.stage.outputs.publication_digest }}
+          EXPECTED_STATE_DIGEST: ${{ needs.resolve.outputs.state_digest }}
+          GH_TOKEN: ${{ github.token }}
+          MANIFEST_PATH: ${{ runner.temp }}/release-manifest/release-manifest-v1.json
+          PUBLICATION_PATH: ${{ runner.temp }}/publication/stage-result.json
+          STATE_PATH: ${{ runner.temp }}/direct-state/release-state.json
+        run: |
+          printf '%s  %s\n' "$EXPECTED_STATE_DIGEST" "$STATE_PATH" | sha256sum --check --strict
+          printf '%s  %s\n' "$EXPECTED_PUBLICATION_DIGEST" "$PUBLICATION_PATH" | sha256sum --check --strict
+          mkdir -p "$(dirname "$MANIFEST_PATH")"
+          bash buildish-release-tooling/release-tooling.sh create-release-manifest \
+            --release-state "$STATE_PATH" \
+            --publication-result "$PUBLICATION_PATH"
+          MANIFEST_PATH="$RUNNER_TEMP/manifest-attachment.json" \
+            bash buildish-release-tooling/release-tooling.sh attach-github-release-manifest \
+            --release-state "$STATE_PATH" \
+            --release-manifest "$MANIFEST_PATH"
+          printf 'manifest_digest=%s\n' "$(sha256sum "$MANIFEST_PATH" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: direct-release-manifest-${{ github.run_id }}
+          path: ${{ runner.temp }}/release-manifest
+          retention-days: 30
+          if-no-files-found: error
+          overwrite: true
+
   publish:
-    needs: [resolve, verify-final]
+    needs: [resolve, manifest]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -198,6 +253,7 @@ jobs:
       - run: uv python install 3.11
       - id: publish
         env:
+          SEALED_MANIFEST_DIGEST: ${{ needs.manifest.outputs.manifest_digest }}
           EXPECTED_DIGEST: ${{ needs.resolve.outputs.state_digest }}
           GH_TOKEN: ${{ github.token }}
           MANIFEST_PATH: ${{ runner.temp }}/publication/publication-result.json
@@ -205,56 +261,13 @@ jobs:
         run: |
           printf '%s  %s\n' "$EXPECTED_DIGEST" "$STATE_PATH" | sha256sum --check --strict
           mkdir -p "$(dirname "$MANIFEST_PATH")"
-          bash buildish-release-tooling/release-tooling.sh publish-github-final-release --release-state "$STATE_PATH"
+          bash buildish-release-tooling/release-tooling.sh publish-github-final-release --release-state "$STATE_PATH" \
+            --require-manifest-digest "$SEALED_MANIFEST_DIGEST"
           printf 'publication_digest=%s\n' "$(sha256sum "$MANIFEST_PATH" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: direct-publication-${{ github.run_id }}
           path: ${{ runner.temp }}/publication
-          retention-days: 30
-          if-no-files-found: error
-          overwrite: true
-
-  manifest:
-    needs: [resolve, publish]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: direct-state-${{ github.run_id }}
-          path: ${{ runner.temp }}/direct-state
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: direct-publication-${{ github.run_id }}
-          path: ${{ runner.temp }}/publication
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
-      - run: uv python install 3.11
-      - env:
-          EXPECTED_PUBLICATION_DIGEST: ${{ needs.publish.outputs.publication_digest }}
-          EXPECTED_STATE_DIGEST: ${{ needs.resolve.outputs.state_digest }}
-          GH_TOKEN: ${{ github.token }}
-          MANIFEST_PATH: ${{ runner.temp }}/release-manifest/release-manifest-v1.json
-          PUBLICATION_PATH: ${{ runner.temp }}/publication/publication-result.json
-          STATE_PATH: ${{ runner.temp }}/direct-state/release-state.json
-        run: |
-          printf '%s  %s\n' "$EXPECTED_STATE_DIGEST" "$STATE_PATH" | sha256sum --check --strict
-          printf '%s  %s\n' "$EXPECTED_PUBLICATION_DIGEST" "$PUBLICATION_PATH" | sha256sum --check --strict
-          mkdir -p "$(dirname "$MANIFEST_PATH")"
-          bash buildish-release-tooling/release-tooling.sh create-release-manifest \
-            --release-state "$STATE_PATH" \
-            --publication-result "$PUBLICATION_PATH"
-          bash buildish-release-tooling/release-tooling.sh attach-github-release-manifest \
-            --release-state "$STATE_PATH" \
-            --release-manifest "$MANIFEST_PATH"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: direct-release-manifest-${{ github.run_id }}
-          path: ${{ runner.temp }}/release-manifest
           retention-days: 30
           if-no-files-found: error
           overwrite: true

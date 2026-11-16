@@ -80,14 +80,18 @@ digests before taking recovery action.
 | Failure state | Recovery |
 | --- | --- |
 | Failure before publication | Correct operational prerequisites and rerun failed jobs with retained inputs; changed source requires a new candidate. |
-| GitHub published, PyPI incomplete | Keep the same candidate identity. Rerun with retained state; package preflight accepts only matching existing files and uploads missing files. |
+| PyPI published, GitHub still draft | Keep the same candidate identity. Rerun with retained state; package preflight accepts only matching files and skips duplicate upload, then evidence/manifest sealing completes before GitHub publication. |
 | PyPI exact file set already complete | Upload is skipped; exact-set and attestation verification must still succeed. |
 | Unexpected filename, size, digest, tag target, or publisher | Stop and investigate the conflict. Do not overwrite assets or delete index files to bypass validation. |
-| Evidence attached, final manifest missing | Rerun the complete promotion with the same version, tag, and manifest digest. Only the exact configured reserved evidence assets are accepted and reused when byte-identical. |
+| Draft has evidence, final manifest missing | Rerun the complete promotion with the same version, tag, and candidate-manifest digest. Exact configured reserved evidence assets are reused; attach the sealed manifest before publication. |
+| Sealed draft, publication failed | Rerun finalization with the retained sealed-manifest digest, or review a complete promotion rerun. Identical existing evidence/manifest assets are reused without upload. |
+| Immutable GitHub Release is public but lacks evidence/manifest | Stop: uploading cannot repair a locked release. Preserve workflow artifacts before expiry and document the incomplete record; any separately hosted completion record needs explicit review. Do not delete/recreate the Release or disable immutability as a retry strategy. |
 | Retained run artifacts expired or unusable | Review a new complete promotion run with the same immutable candidate inputs. Do not substitute a different candidate for an already-published version. |
 
 For ordinary transient failures, prefer rerunning failed jobs while their state remains available.
-Full promotion reruns are supported for the documented interrupted-evidence case. A fresh candidate
+Full promotion reruns are supported while completing an exact draft or revalidating a complete
+immutable publication. A sealed manifest uses the stable Release creation time so an identical rerun
+seals the same bytes rather than inventing a publication time. A fresh candidate
 dispatch resolves another candidate number; it is not a substitute for resuming a failed candidate
 run. Never infer an approved candidate by recency.
 
@@ -95,3 +99,8 @@ An already-published defective package has no safe rollback that removes its imm
 Document the defect, consider a separately approved PyPI yank, and release a corrected higher
 version through the full sequence. Preserve tags, candidates, manifests, and evidence as the release
 record unless the project's security-response process requires restricted handling.
+
+The first `0.1.2` promotion published GitHub and PyPI before durable evidence/manifest attachment.
+Its GitHub Release became immutable, leaving that record incomplete despite successful package
+and attestation verification. Preserve its tags and published distributions. A corrected later
+release uses draft sealing and publication last; a fresh version alone cannot repair the old record.

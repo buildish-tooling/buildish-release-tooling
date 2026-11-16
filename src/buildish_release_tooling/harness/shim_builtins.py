@@ -93,6 +93,9 @@ def _handle_builtin_gh(
         _apply_builtin_gh_tag_ref(state, endpoint, ref_payload, force=False)
         return ToolBehaviorResult(stdout=json.dumps({"ref": ref_payload.ref or ""}))
     if method == "PATCH" and "/git/refs/tags/" in endpoint:
+        tag = endpoint.rsplit("/", 1)[-1]
+        if any(release.tag_name == tag and release.immutable for release in state.gh_releases.values()):
+            return ToolBehaviorResult(exit_code=1, stderr="cannot update an immutable release tag\n")
         ref_payload = _load_ref_mutation_payload()
         _apply_builtin_gh_tag_ref(state, endpoint, ref_payload, force=True)
         return ToolBehaviorResult(
@@ -181,6 +184,7 @@ def _create_builtin_gh_release(
         name=str(payload.get("name") or ""),
         body=str(payload.get("body") or ""),
         draft=draft,
+        immutable=not draft,
         prerelease=payload.get("prerelease") is True,
         html_url=f"https://github.com/{repository}/releases/tag/{url_tag}",
         url=f"https://api.github.com/repos/{repository}/releases/{release_id}",
@@ -213,6 +217,8 @@ def _update_builtin_gh_release(
     old_tag = release.tag_name
     new_tag = str(payload.get("tag_name", old_tag))
     draft = bool(payload.get("draft", release.draft))
+    if release.immutable and (draft or new_tag != old_tag):
+        return ToolBehaviorResult(exit_code=1, stderr="cannot change an immutable release tag or draft status\n")
     url_tag = f"untagged-{release.id:020x}" if draft else new_tag
     updated = release.model_copy(
         update={
@@ -220,6 +226,7 @@ def _update_builtin_gh_release(
             "name": str(payload.get("name", release.name)),
             "body": str(payload.get("body", release.body)),
             "draft": draft,
+            "immutable": release.immutable or not draft,
             "prerelease": bool(payload.get("prerelease", release.prerelease)),
             "published_at": (
                 release.published_at
@@ -252,6 +259,8 @@ def _handle_release_upload(
     release = state.gh_releases.get(tag_name)
     if release is None:
         return ToolBehaviorResult(exit_code=1, stderr="GitHub Release does not exist\n")
+    if release.immutable:
+        return ToolBehaviorResult(exit_code=1, stderr="HTTP 422: Cannot upload assets to an immutable release\n")
     clobber = "--clobber" in argv
     paths: list[Path] = []
     index = 3
@@ -383,6 +392,7 @@ def _release_api_payload(release: HarnessBuiltinGhRelease) -> dict[str, object]:
         "name": release.name,
         "body": release.body,
         "draft": release.draft,
+        "immutable": release.immutable,
         "prerelease": release.prerelease,
         "html_url": release.html_url,
         "url": release.url,

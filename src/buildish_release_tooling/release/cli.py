@@ -517,7 +517,7 @@ def _register_publication_commands(
         subparsers,
         common,
         "create-release-manifest",
-        help_text="Create the stable manifest for a published final release.",
+        help_text="Seal the stable manifest from a staged or published final release snapshot.",
         handler=commands.run_create_release_manifest,
     )
     create_release_manifest.add_argument("--release-state", required=True)
@@ -629,6 +629,11 @@ def _register_publication_commands(
                 action="append",
                 default=[],
                 help="Local release asset path. Repeat once for every artifact in release state.",
+            )
+        if command_name == "publish-github-final-release":
+            direct_github_command.add_argument(
+                "--require-manifest-digest",
+                help="Require this exact attached manifest SHA-256 before and after publication.",
             )
 
     publish_atr_candidate = _add_command_parser(

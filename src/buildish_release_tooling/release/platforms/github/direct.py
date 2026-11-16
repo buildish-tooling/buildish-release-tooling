@@ -138,6 +138,8 @@ def validate_final_release(
             expected_body=expected_body,
         )
     )
+    if draft and "/releases/tag/untagged-" in release_url:
+        release_url = release_url.rsplit("/releases/tag/", 1)[0] + "/releases/tag/" + state.final_tag.name
     expected = expected_release_artifacts(state)
     for name, artifact in (additional_assets or {}).items():
         if name in expected or name != artifact.logical_name:
