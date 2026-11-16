@@ -14,6 +14,8 @@
 # limitations under the License.
 
 .git/**
+# Released docs live in an independently maintained Git worktree.
+docs/releases/**
 .idea/**
 CODE_OF_CONDUCT.md
 build/**

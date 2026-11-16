@@ -106,6 +106,9 @@ make check
 The local harness runs the checked-in workflows through `act` while replacing GitHub mutations with
 inspectable workspace-local Git and GitHub Release state.
 
+See the [versioned documentation scripts](tools/versioned-docs/README.md) for creating a docs
+worktree and importing released documentation from Git tags.
+
 ## Documentation
 
 - [Component website](https://buildish.org/components/release-tooling/)

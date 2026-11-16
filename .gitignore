@@ -22,4 +22,6 @@ __pycache__/
 build/
 dist/
 
+docs/releases/
+
 site/components.local.yaml
