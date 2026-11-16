@@ -21,6 +21,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import tomllib
 import unittest
 import zipfile
 
@@ -32,6 +33,11 @@ class DistributionReproducibilityTests(unittest.TestCase):
 
     def test_wheel_and_sdist_are_byte_reproducible(self) -> None:
         project_root = Path(__file__).resolve().parents[1]
+        project_version = tomllib.loads(
+            (project_root / "pyproject.toml").read_text(encoding="utf-8")
+        )["project"]["version"]
+        wheel_name = f"buildish_release_tooling-{project_version}-py3-none-any.whl"
+        sdist_name = f"buildish_release_tooling-{project_version}.tar.gz"
         uv_executable = shutil.which("uv")
         if uv_executable is None:
             self.fail("Expected 'uv' to be available on PATH for package builds.")
@@ -99,15 +105,15 @@ class DistributionReproducibilityTests(unittest.TestCase):
             self.assertEqual(distributions[0], distributions[1])
             self.assertEqual(
                 {
-                    "buildish_release_tooling-0.1.0-py3-none-any.whl",
-                    "buildish_release_tooling-0.1.0.tar.gz",
+                    wheel_name,
+                    sdist_name,
                 },
                 set(distributions[0]),
             )
 
             wheel_path = temp_root / "reproducible.whl"
             wheel_path.write_bytes(
-                distributions[0]["buildish_release_tooling-0.1.0-py3-none-any.whl"]
+                distributions[0][wheel_name]
             )
             with zipfile.ZipFile(wheel_path) as wheel:
                 self.assertIn(
@@ -117,7 +123,7 @@ class DistributionReproducibilityTests(unittest.TestCase):
 
             sdist_path = temp_root / "reproducible.tar.gz"
             sdist_path.write_bytes(
-                distributions[0]["buildish_release_tooling-0.1.0.tar.gz"]
+                distributions[0][sdist_name]
             )
             with sdist_path.open("rb") as archive_file:
                 archive_file.seek(4)

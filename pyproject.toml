@@ -14,7 +14,7 @@
 
 [project]
 name = "buildish-release-tooling"
-version = "0.1.0"
+version = "0.1.1"
 description = "Shared release orchestration tooling for Buildish components"
 authors = [{ name = "Buildish", email = "dev@buildish.org" }]
 readme = "README.md"

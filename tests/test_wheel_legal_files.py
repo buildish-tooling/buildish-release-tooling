@@ -18,6 +18,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import tomllib
 import unittest
 import zipfile
 
@@ -25,6 +26,10 @@ import zipfile
 class WheelLegalFilesTests(unittest.TestCase):
     def test_built_wheel_includes_dist_info_legal_files_only(self) -> None:
         project_root = Path(__file__).resolve().parents[1]
+        project_version = tomllib.loads(
+            (project_root / "pyproject.toml").read_text(encoding="utf-8")
+        )["project"]["version"]
+        distribution_prefix = f"buildish_release_tooling-{project_version}"
         uv_executable = shutil.which("uv")
         if uv_executable is None:
             self.fail("Expected 'uv' to be available on PATH for the wheel build test.")
@@ -93,7 +98,7 @@ class WheelLegalFilesTests(unittest.TestCase):
                     if not root.endswith((".dist-info", ".data"))
                 }
                 metadata_path = (
-                    "buildish_release_tooling-0.1.0.dist-info/METADATA"
+                    f"{distribution_prefix}.dist-info/METADATA"
                 )
                 metadata_text = wheel_zip.read(metadata_path).decode("utf-8")
                 self.assertEqual(
@@ -104,24 +109,24 @@ class WheelLegalFilesTests(unittest.TestCase):
                 self.assertNotIn("NOTICE", names)
                 self.assertNotIn("DISCLAIMER", names)
                 self.assertNotIn(
-                    "buildish_release_tooling-0.1.0.data/data/LICENSE",
+                    f"{distribution_prefix}.data/data/LICENSE",
                     names,
                 )
                 self.assertNotIn(
-                    "buildish_release_tooling-0.1.0.data/data/NOTICE",
+                    f"{distribution_prefix}.data/data/NOTICE",
                     names,
                 )
                 self.assertNotIn(
-                    "buildish_release_tooling-0.1.0.dist-info/licenses/dist-release-legal/LICENSE",
+                    f"{distribution_prefix}.dist-info/licenses/dist-release-legal/LICENSE",
                     names,
                 )
                 self.assertNotIn(
-                    "buildish_release_tooling-0.1.0.dist-info/licenses/dist-release-legal/NOTICE",
+                    f"{distribution_prefix}.dist-info/licenses/dist-release-legal/NOTICE",
                     names,
                 )
                 for relative_source_path, source_path in expected_paths.items():
                     wheel_member_path = (
-                        "buildish_release_tooling-0.1.0.dist-info/licenses/"
+                        f"{distribution_prefix}.dist-info/licenses/"
                         f"{relative_source_path}"
                     )
                     self.assertIn(wheel_member_path, names)

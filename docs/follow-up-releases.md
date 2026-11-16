@@ -33,9 +33,8 @@ checks. This page covers recurring preparation and recovery; deployment identiti
    entry in `uv.lock` with the repository's normal lock-maintenance process. Review the diff.
 2. Add reviewed notes at `buildish-release-tooling/release-notes/<version>.md`. Describe user-visible
    changes and compatibility implications for CLI arguments, configuration, and manifest consumers.
-3. Update packaging tests that currently hard-code `0.1.0`: `tests/test_wheel_legal_files.py` and
-   `tests/test_distribution_reproducibility.py`. Until those tests derive the version from project
-   metadata, a version bump alone makes their expected archive names and metadata paths stale.
+3. Confirm wheel and sdist metadata carries the selected version. The packaging tests derive
+   expected archive names and metadata paths from `pyproject.toml`.
 4. If dependencies or legal inputs changed, regenerate the preliminary legal artifacts with
    `make release-legal-preliminary`, review them, and verify the actual distribution legal files.
    If model contracts changed, run `make schemas` and review the generated contract changes.
@@ -55,7 +54,9 @@ release notes, and workflow revision must be reviewed together.
 
 Follow the commands and evidence checks in the [first-release sequence](../first-self-release/):
 
-1. Run TestPyPI for the exact final version and source SHA. Verify files and attestations.
+1. Repeat TestPyPI when publication, authentication, dependencies, or packaging behavior changes.
+   For documentation-only edits or a version bump after a successful rehearsal, another upload is
+   optional. When running it, select the exact final version/source and verify files and attestations.
 2. Create a signed production candidate with candidate label `rc` and vote profile `none`.
 3. Capture the resolved tag and exact `candidate-manifest.json` SHA-256. Independently verify the
    candidate, including its signatures and installability.

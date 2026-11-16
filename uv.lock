@@ -81,7 +81,7 @@ wheels = [
 
 [[package]]
 name = "buildish-release-tooling"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "mistletoe" },

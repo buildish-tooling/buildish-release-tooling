@@ -55,10 +55,12 @@ cannot establish that the package index trusts the workflow.
 
 ## Prepare an exact source
 
-1. Choose a final version matching `pyproject.toml`, initially `0.1.0` unless changed deliberately.
+1. Choose a final version matching `pyproject.toml`, currently `0.1.1`.
    Review `buildish-release-tooling/release-notes/<version>.md` at the selected source commit.
-2. Run `make check`. Run `make release-integration-check` to execute the checked-in candidate and
-   promotion workflows with isolated service substitutes. It needs the existing `act` runner
+2. Run `make check`. Run `make release-integration-check` if no successful rehearsal exists or
+   release behavior/workflows changed since it. Documentation-only edits or a version bump can
+   reuse the prior successful rehearsal. This executes candidate and promotion workflows with
+   isolated service substitutes. It needs the existing `act` runner
    (or `gh act` extension) and Docker; it does not establish live signing or OIDC readiness.
    If those tools are unavailable, record the gap and run the rehearsal on a prepared machine.
 3. After review and merge, choose a clean, pushed source commit reachable from protected `main`.
@@ -71,7 +73,7 @@ Set these shell values to reviewed identities before using the later examples:
 
 ```bash
 release_repo=buildish-tooling/buildish-release-tooling
-release_version=0.1.0
+release_version=0.1.1
 release_source=REPLACE_WITH_FULL_REVIEWED_SOURCE_SHA
 ```
 
@@ -79,6 +81,12 @@ Inspect existing tags, releases, and both indexes for conflicts. Do not assume t
 used version is reusable, and do not remove published state to make the checks pass.
 
 ## Rehearse with the real TestPyPI service
+
+Use this stage to establish live publication before the first production release, and repeat it
+when publication, authentication, dependencies, or packaging behavior changes. After a successful
+rehearsal, documentation-only edits or a version bump can use normal CI and the candidate workflow's
+reproducibility and installation checks; another TestPyPI upload is optional. Record which source
+and version the earlier rehearsal covered.
 
 Dispatch the TestPyPI workflow:
 
