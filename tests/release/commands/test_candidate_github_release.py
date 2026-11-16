@@ -184,7 +184,11 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
             "prerelease": prerelease,
             "html_url": (
                 "https://github.com/apache/example-project/releases/tag/"
-                f"{state.candidate.tag.name}"
+                + (
+                    f"untagged-{42 + state.candidate.number:020x}"
+                    if draft
+                    else state.candidate.tag.name
+                )
             ),
             "created_at": "2026-08-05T08:00:00Z",
             "assets": assets,
@@ -275,6 +279,16 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
         manifest_text = candidate_manifest_path.read_text(encoding="utf-8")
+        canonical_url = (
+            "https://github.com/apache/example-project/releases/tag/"
+            f"{state.candidate.tag.name}"
+        )
+        self.assertEqual(
+            canonical_url, json.loads(manifest_text)["extensions"][0]["release_url"]
+        )
+        self.assertEqual(
+            canonical_url, json.loads(manifest_text)["publications"][0]["uri"]
+        )
         manifest_digest = hashlib.sha256(manifest_text.encode("utf-8")).hexdigest()
         manifest_asset = {
             "id": 202,
@@ -412,6 +426,32 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
             prerelease=True,
             assets=[asset_payload, manifest_asset],
         )
+        wrong_url_candidate = {
+            **public_candidate_one,
+            "html_url": "https://github.com/other/repository/releases/tag/v1.2.3-rc1",
+        }
+        gh_path, gh_state_dir = self._fake_gh(
+            state,
+            list_response=[draft_with_manifest],
+            list_responses=([draft_with_manifest], [wrong_url_candidate]),
+            update_release_response=wrong_url_candidate,
+            release_asset_text_by_id={202: manifest_text},
+        )
+        completed = self._run(
+            [
+                "finalize-github-candidate",
+                "--candidate-tag", state.candidate.tag.name,
+                "--candidate-manifest-digest", manifest_digest,
+            ],
+            result_path=self.sandbox_dir / "wrong-url-candidate-finalize.json",
+            gh_path=gh_path,
+            gh_state_dir=gh_state_dir,
+        )
+        self.assertNotEqual(0, completed.returncode)
+        self.assertIn(
+            "candidate manifest GitHub publication does not match observed release",
+            completed.stderr,
+        )
         gh_path, gh_state_dir = self._fake_gh(
             state,
             list_response=[draft_with_manifest],
@@ -436,6 +476,44 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
         self.assertEqual(
             "published",
             json.loads(finalize_result_path.read_text(encoding="utf-8"))["outcome"],
+        )
+
+        gh_path, gh_state_dir = self._fake_gh(
+            state,
+            list_response=[public_candidate_one],
+            release_asset_text_by_id={202: manifest_text},
+        )
+        completed = self._run(
+            [
+                "verify-github-candidate",
+                "--candidate-tag", state.candidate.tag.name,
+                "--candidate-manifest-digest", manifest_digest,
+            ],
+            result_path=self.sandbox_dir / "published-candidate-verify.json",
+            gh_path=gh_path,
+            gh_state_dir=gh_state_dir,
+        )
+        self.assertEqual(0, completed.returncode, msg=completed.stderr)
+
+        gh_path, gh_state_dir = self._fake_gh(
+            state,
+            list_response=[wrong_url_candidate],
+            release_asset_text_by_id={202: manifest_text},
+        )
+        completed = self._run(
+            [
+                "verify-github-candidate",
+                "--candidate-tag", state.candidate.tag.name,
+                "--candidate-manifest-digest", manifest_digest,
+            ],
+            result_path=self.sandbox_dir / "wrong-url-candidate-verify.json",
+            gh_path=gh_path,
+            gh_state_dir=gh_state_dir,
+        )
+        self.assertNotEqual(0, completed.returncode)
+        self.assertIn(
+            "candidate manifest GitHub publication does not match observed release",
+            completed.stderr,
         )
 
         state_two_path, state_two = self._resolve("candidate-2-state.json")

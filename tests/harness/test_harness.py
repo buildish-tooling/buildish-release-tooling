@@ -146,6 +146,7 @@ class HarnessIntegrationTest(unittest.TestCase):
             )
         self.assertIsNotNone(created)
         self.assertTrue(json.loads(created.stdout)["draft"])
+        self.assertIn("/releases/tag/untagged-", json.loads(created.stdout)["html_url"])
 
         manifest_path = self.sandbox_dir / "candidate-manifest.json"
         manifest_path.write_text('{"kind":"candidate-manifest"}\n', encoding="utf-8")
@@ -214,6 +215,26 @@ class HarnessIntegrationTest(unittest.TestCase):
         )
         self.assertIsNotNone(downloaded)
         self.assertEqual(manifest_path.read_text(encoding="utf-8"), downloaded.stdout)
+
+        with mock.patch("sys.stdin", StringIO(json.dumps({"draft": False, "prerelease": True}))):
+            published = cast(
+                ToolBehaviorResult,
+                handle_builtin_tool(
+                    "gh",
+                    [
+                        "api", "-X", "PATCH",
+                        f"repos/buildish-tooling/buildish-example/releases/{release['id']}",
+                    ],
+                    state,
+                ),
+            )
+        public_release = json.loads(published.stdout)
+        self.assertEqual(release["id"], public_release["id"])
+        self.assertEqual(release["assets"], public_release["assets"])
+        self.assertEqual(
+            "https://github.com/buildish-tooling/buildish-example/releases/tag/v1.2.3-rc1",
+            public_release["html_url"],
+        )
 
     def test_scenario_rejects_unsafe_tool_job_and_step_identifiers(self) -> None:
         with self.assertRaisesRegex(ValueError, "tool behavior name"):

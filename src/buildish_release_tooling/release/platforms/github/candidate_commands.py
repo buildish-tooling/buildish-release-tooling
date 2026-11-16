@@ -571,7 +571,7 @@ def run_verify_github_candidate(args: Namespace) -> Path:
 def run_finalize_github_candidate(args: Namespace) -> Path:
     """Apply configured candidate visibility after exact manifest verification."""
 
-    _manifest, state, publication, reference, repository, _manifest_text = (
+    manifest, state, publication, reference, repository, _manifest_text = (
         _verified_remote_candidate(args)
     )
     candidate_config = require_candidate_config(_context(args).release_config)
@@ -608,6 +608,7 @@ def run_finalize_github_candidate(args: Namespace) -> Path:
             raise ValueError(
                 "GitHub candidate visibility did not converge after publication"
             )
+        _validate_manifest_publication(manifest, publication)
         outcome = "published"
     else:
         outcome = "already-complete"

@@ -104,6 +104,10 @@ def validate_candidate_release(
         state,
         release_payload,
     )
+    release_base, separator, url_tag = release_url.rpartition("/releases/tag/")
+    if draft and separator and url_tag.startswith("untagged-"):
+        # GitHub's temporary draft URL changes when the candidate is published.
+        release_url = f"{release_base}{separator}{state.candidate.tag.name}"
     observed = observed_release_assets(release_payload)
     manifest_asset = observed.pop(CANDIDATE_MANIFEST_ASSET_NAME, None)
     if manifest_asset is not None and not allow_attached_manifest:

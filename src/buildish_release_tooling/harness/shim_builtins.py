@@ -170,15 +170,17 @@ def _create_builtin_gh_release(
         return ToolBehaviorResult(exit_code=1, stderr="GitHub Release already exists\n")
     release_id = state.gh_next_release_id
     state.gh_next_release_id += 1
+    draft = payload.get("draft") is True
+    url_tag = f"untagged-{release_id:020x}" if draft else tag_name
     release = HarnessBuiltinGhRelease(
         id=release_id,
         repository=repository,
         tag_name=tag_name,
         name=str(payload.get("name") or ""),
         body=str(payload.get("body") or ""),
-        draft=payload.get("draft") is True,
+        draft=draft,
         prerelease=payload.get("prerelease") is True,
-        html_url=f"https://github.com/{repository}/releases/tag/{tag_name}",
+        html_url=f"https://github.com/{repository}/releases/tag/{url_tag}",
         url=f"https://api.github.com/repos/{repository}/releases/{release_id}",
         created_at="2026-01-01T00:00:00Z",
     )
@@ -208,12 +210,14 @@ def _update_builtin_gh_release(
     payload = json.loads(sys.stdin.read() or "{}")
     old_tag = release.tag_name
     new_tag = str(payload.get("tag_name", old_tag))
+    draft = bool(payload.get("draft", release.draft))
+    url_tag = f"untagged-{release.id:020x}" if draft else new_tag
     updated = release.model_copy(
         update={
             "tag_name": new_tag,
             "name": str(payload.get("name", release.name)),
             "body": str(payload.get("body", release.body)),
-            "draft": bool(payload.get("draft", release.draft)),
+            "draft": draft,
             "prerelease": bool(payload.get("prerelease", release.prerelease)),
             "published_at": (
                 release.published_at
@@ -223,7 +227,7 @@ def _update_builtin_gh_release(
                     else None
                 )
             ),
-            "html_url": f"https://github.com/{release.repository}/releases/tag/{new_tag}",
+            "html_url": f"https://github.com/{release.repository}/releases/tag/{url_tag}",
         }
     )
     if new_tag != old_tag:

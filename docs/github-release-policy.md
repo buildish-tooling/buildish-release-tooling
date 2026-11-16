@@ -58,6 +58,10 @@ The candidate body identifies it as a candidate. `candidate-manifest.json` is a 
 asset and records the exact source revision, publication, and artifact inventory. Candidate
 numbering defaults to one and can be configured to start at zero.
 
+Candidate manifests record the canonical tag URL rather than GitHub's temporary `untagged-*`
+draft URL. That publication reference remains stable when the draft becomes a public prerelease.
+Finalization revalidates the manifest against the published Release before reporting success.
+
 ## Promotion
 
 Promotion names the exact candidate tag and candidate-manifest SHA-256. It does not select the most
