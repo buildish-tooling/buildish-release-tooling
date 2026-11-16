@@ -277,6 +277,19 @@ def download_release_asset_text(repository_slug: str, asset_id: int) -> str:
     return completed.stdout
 
 
+def repository_default_branch(repository_slug: str) -> str:
+    """Read the default branch used for existing-tag release metadata."""
+
+    completed = run_logged_command(
+        ["gh", "api", "-H", "Accept: application/vnd.github+json", f"repos/{repository_slug}"]
+    )
+    payload = json.loads(completed.stdout)
+    branch = payload.get("default_branch") if isinstance(payload, dict) else None
+    if not isinstance(branch, str) or not branch.strip():
+        raise ValueError("GitHub repository has no valid default branch")
+    return branch
+
+
 def create_draft_release(
     repository_slug: str,
     *,

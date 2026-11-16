@@ -180,7 +180,7 @@ class DirectGitHubReleaseCommandIntegrationTest(unittest.TestCase):
             (gh_state_dir / "create-release-request.json").read_text(encoding="utf-8")
         )
         self.assertEqual(
-            self.state.source.commit_sha, create_request["target_commitish"]
+            "main", create_request["target_commitish"]
         )
         self.assertTrue(create_request["draft"])
         self.assertFalse(create_request["prerelease"])
@@ -222,6 +222,8 @@ class DirectGitHubReleaseCommandIntegrationTest(unittest.TestCase):
             (gh_state_dir / "update-release-request.json").read_text(encoding="utf-8")
         )
         self.assertFalse(update_request["draft"])
+        self.assertEqual("main", update_request["target_commitish"])
+        self.assertEqual(self.state.final_tag.name, update_request["tag_name"])
 
         gh_path, gh_state_dir = self._fake_gh(
             list_response=[public],

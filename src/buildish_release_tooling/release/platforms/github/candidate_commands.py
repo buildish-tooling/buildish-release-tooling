@@ -69,6 +69,7 @@ from buildish_release_tooling.release.platforms.github.releases import (
     create_draft_release,
     download_release_asset_text,
     list_releases,
+    repository_default_branch,
     release_by_tag,
     release_by_tag_or_none,
     update_release,
@@ -224,7 +225,8 @@ def run_stage_github_candidate(args: Namespace) -> Path:
         release_payload = create_draft_release(
             repository,
             tag_name=state.candidate.tag.name,
-            target_commitish=state.source.commit_sha,
+            # The validated existing tag fixes source; this field is API metadata.
+            target_commitish=repository_default_branch(repository),
             release_name=candidate_release_name(state),
             release_body=body,
         )
@@ -587,7 +589,8 @@ def run_finalize_github_candidate(args: Namespace) -> Path:
             publication.release_id,
             payload={
                 "tag_name": state.candidate.tag.name,
-                "target_commitish": state.source.commit_sha,
+                # Resending an old source SHA can require workflow-write permission.
+                "target_commitish": repository_default_branch(repository),
                 "name": candidate_release_name(state),
                 "body": render_candidate_release_body(state, state.artifacts),
                 "draft": False,

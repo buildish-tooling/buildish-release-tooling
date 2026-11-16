@@ -279,6 +279,11 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
         manifest_text = candidate_manifest_path.read_text(encoding="utf-8")
+        create_request = json.loads(
+            (gh_state_dir / "create-release-request.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual("main", create_request["target_commitish"])
+        self.assertEqual(state.candidate.tag.name, create_request["tag_name"])
         canonical_url = (
             "https://github.com/apache/example-project/releases/tag/"
             f"{state.candidate.tag.name}"
@@ -490,6 +495,11 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
             "published",
             json.loads(finalize_result_path.read_text(encoding="utf-8"))["outcome"],
         )
+        update_request = json.loads(
+            (gh_state_dir / "update-release-request.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual("main", update_request["target_commitish"])
+        self.assertEqual(state.candidate.tag.name, update_request["tag_name"])
 
         gh_path, gh_state_dir = self._fake_gh(
             state,

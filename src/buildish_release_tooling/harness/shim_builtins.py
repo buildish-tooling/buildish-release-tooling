@@ -75,6 +75,8 @@ def _handle_builtin_gh(
     if parsed is None:
         return None
     method, endpoint = parsed
+    if method == "GET" and len(endpoint.split("/")) == 3:
+        return ToolBehaviorResult(stdout=json.dumps({"default_branch": "main"}))
     if method == "GET" and "/git/ref/tags/" in endpoint:
         return _read_builtin_gh_tag_ref(state, endpoint)
     if method == "GET" and "/git/tags/" in endpoint:

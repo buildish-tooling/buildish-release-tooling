@@ -28,6 +28,33 @@ from buildish_release_tooling.release.platforms.github import releases as github
 class GitHubReleasesTest(unittest.TestCase):
     """Verify GitHub Release helper behavior without invoking the real GitHub CLI."""
 
+    def test_repository_default_branch_is_read_from_the_selected_repository(self) -> None:
+        with mock.patch.object(
+            github_releases, "run_logged_command",
+            return_value=subprocess.CompletedProcess(
+                [], 0, json.dumps({"default_branch": "trunk"}), ""
+            ),
+        ) as command:
+            self.assertEqual(
+                "trunk", github_releases.repository_default_branch("apache/example-project")
+            )
+        self.assertEqual(
+            "repos/apache/example-project", command.call_args.args[0][-1]
+        )
+
+    def test_repository_default_branch_rejects_missing_or_malformed_values(self) -> None:
+        payloads: tuple[object, ...] = (
+            {}, {"default_branch": None}, {"default_branch": 7},
+            {"default_branch": " "}, [],
+        )
+        for payload in payloads:
+            with self.subTest(payload=payload), mock.patch.object(
+                github_releases, "run_logged_command",
+                return_value=subprocess.CompletedProcess([], 0, json.dumps(payload), ""),
+            ):
+                with self.assertRaisesRegex(ValueError, "no valid default branch"):
+                    github_releases.repository_default_branch("apache/example-project")
+
     def test_list_releases_filters_to_object_entries(self) -> None:
         with mock.patch(
             "buildish_release_tooling.release.platforms.github.releases.run_logged_command",
