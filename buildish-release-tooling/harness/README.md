@@ -227,6 +227,8 @@ validates the retained `release-manifest-v1.json` against the sealed release-man
 The built-in GitHub service locks published releases and rejects later asset uploads, including
 new assets and clobber attempts. Evidence and the manifest must be attached to the draft before
 publication. Older retained manifests created after publication remain readable.
+The checkout substitute keeps local Git refs; separate workflow policy tests execute the exact
+final-tag fetch in independent shallow clones without tags.
 The runner may
 still need network access to acquire actions, tools, and container images. Unit tests separately
 exercise the pinned PEP 740 parser and cryptographic verifier; the local evidence is not a

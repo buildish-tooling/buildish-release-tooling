@@ -16,6 +16,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 import unittest
@@ -106,6 +108,57 @@ class ReleaseWorkflowPolicyTest(unittest.TestCase):
                     f"{job_env['GIT_COMMITTER_NAME']} <{job_env['GIT_COMMITTER_EMAIL']}>",
                     tagger,
                 )
+
+    def test_manifest_fetches_only_the_bound_tag_into_a_shallow_checkout(self) -> None:
+        sandbox = create_build_test_sandbox()
+        self.addCleanup(cleanup_sandbox, sandbox)
+        origin, _clone = init_git_origin_and_clone(sandbox)
+        repo = GitRepository(origin)
+        source_commit = repo.current_head_commit()
+        tag = "v1.2.3"
+        repo.create_annotated_tag(tag, source_commit, "Release candidate source")
+        repo.create_annotated_tag("v1.2.2", source_commit, "Unrelated release")
+        run_quiet(["git", "-C", str(origin), "commit", "--allow-empty", "-m", "New workflow revision"], check=True)
+        workflow_commit = repo.current_head_commit()
+        state_path = sandbox / "state.json"
+        state_path.write_text(json.dumps({"final_tag": {"name": tag}}) + "\n", encoding="utf-8")
+        digest = hashlib.sha256(state_path.read_bytes()).hexdigest()
+        workflow_paths = (
+            self.workflow_dir / "release-promote.yml",
+            self.workflow_dir.parents[1] / "buildish-release-tooling/harness/workflows/release-direct.yml",
+        )
+        for index, workflow_path in enumerate(workflow_paths):
+            with self.subTest(workflow=str(workflow_path)):
+                jobs = cast(YamlMapping, _load_github_actions_yaml(workflow_path)["jobs"])
+                job = cast(YamlMapping, jobs["manifest"])
+                steps = cast(list[YamlMapping], job["steps"])
+                fetch = next(step for step in steps if step.get("name") == "Fetch exact final tag")
+                checkout = next(
+                    step for step in steps
+                    if str(step.get("uses", "")).startswith("actions/checkout@")
+                )
+                inputs = cast(YamlMapping, checkout["with"])
+                self.assertEqual(1, int(str(inputs.get("fetch-depth", 1))))
+                self.assertFalse(inputs["persist-credentials"])
+                clone_dir = sandbox / f"manifest-checkout-{index}"
+                run_quiet([
+                    "git", "clone", "--no-checkout", "--depth=1", "--no-tags",
+                    origin.resolve().as_uri(), str(clone_dir),
+                ], check=True)
+                run_quiet(["git", "-C", str(clone_dir), "checkout", "--detach", workflow_commit], check=True)
+                checkout_repo = GitRepository(clone_dir)
+                self.assertFalse(checkout_repo.tag_exists(tag))
+                env = {**os.environ, "STATE_PATH": str(state_path), "EXPECTED_STATE_DIGEST": "0" * 64}
+                script = str(fetch["run"])
+                rejected = run_quiet(["bash", "-e", "-c", script], cwd=clone_dir, env=env)
+                self.assertNotEqual(0, rejected.returncode)
+                self.assertFalse(checkout_repo.tag_exists(tag))
+                env["EXPECTED_STATE_DIGEST"] = digest
+                run_quiet(["bash", "-e", "-c", script], cwd=clone_dir, env=env, check=True)
+                self.assertTrue(checkout_repo.tag_exists(tag))
+                self.assertEqual(source_commit, checkout_repo.resolve_commit(tag))
+                self.assertEqual(workflow_commit, checkout_repo.current_head_commit())
+                self.assertEqual(tag, run_quiet(["git", "-C", str(clone_dir), "tag"], check=True).stdout.strip())
 
     def test_mutation_workflows_share_non_canceling_version_concurrency(self) -> None:
         expected = {

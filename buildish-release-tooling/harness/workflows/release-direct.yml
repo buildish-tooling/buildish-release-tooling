@@ -203,6 +203,21 @@ jobs:
         with:
           name: direct-stage-${{ github.run_id }}
           path: ${{ runner.temp }}/publication
+      - name: Fetch exact final tag
+        env:
+          EXPECTED_STATE_DIGEST: ${{ needs.resolve.outputs.state_digest }}
+          STATE_PATH: ${{ runner.temp }}/direct-state/release-state.json
+        run: |
+          printf '%s  %s\n' "$EXPECTED_STATE_DIGEST" "$STATE_PATH" | sha256sum --check --strict
+          final_tag="$(python3 - "$STATE_PATH" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          print(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))["final_tag"]["name"])
+          PY
+          )"
+          git fetch --no-tags --depth=1 origin "refs/tags/$final_tag:refs/tags/$final_tag"
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
       - run: uv python install 3.11
       - id: seal
