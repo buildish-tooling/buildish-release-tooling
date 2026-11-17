@@ -37,6 +37,9 @@ Pipeline's v1 provider snapshot format and artifact key `release-tooling`.
 Provider type `git-tags` identifies the actual source; this is not a live GitHub
 API response. It records the version, tag, resolved commit and GitHub release URL.
 It deliberately does not claim publication timestamps or verified release assets.
+New exports also record `docsSource` with the original repository, `docs` root
+and exact exported commit. Site Pipeline can then link to original released source
+without treating the storage branch as its origin; released edit links stay omitted.
 
 ## First checkout
 
@@ -106,8 +109,10 @@ separately using your normal Git process. Consider verified publication inventor
 as a future enhancement rather than silently treating this inventory as proof.
 
 Incremental import adds missing versions and retains previous inventory entries,
-including manually curated metadata. Existing docs are left byte-for-byte
-unchanged. Both import modes reject a moved tag for an existing selected version.
+including manually curated record and artifact metadata. Existing docs are left
+byte-for-byte unchanged. New records have no automatically inferred primary release
+line or latest designation. Use `--release-line LINE` to assign selected records
+to an already declared primary line; a conflicting existing assignment is rejected. Both import modes reject a moved tag for an existing selected version.
 Repeating a no-op incremental import does not change timestamps.
 
 For a retracted release, edit its existing record in `provider-snapshot.json` to
@@ -124,6 +129,65 @@ directories, symbolic links in imported docs, and tags without `docs/_index.md`.
 All selected docs exports are prepared successfully before existing files change.
 Filesystem failures during final writes can still leave partial changes: inspect
 `git diff` and recover with ordinary Git commands after preserving wanted work.
+
+## Component-owned release policy
+
+`site/component.yaml` defines the artifact identity and static content layout.
+The snapshot's `artifacts[]` entry owns release lines and latest recommendations.
+Initial imports create only the scoped identity; they do not promote whichever Git
+tag sorts highest. Curate these decisions after reviewing completed publication.
+For example, this is the Release Tooling artifact entry for the completed 0.1.3
+release:
+
+```json
+{
+  "componentSlug": "release-tooling",
+  "artifactKey": "release-tooling",
+  "latestStable": "0.1.3",
+  "releaseLines": [{"key": "0.1", "latest": "0.1.3"}]
+}
+```
+
+The corresponding release record must name its canonical primary
+`"releaseLine": "0.1"`. Parent lines, when used, belong in the same curated line
+graph. Each line's latest target must belong to it or a descendant. Site Pipeline
+validates the graph and release targets; the standard-library importer checks its
+own ownership and preservation rules, not the complete consumer schema.
+
+Once that line is declared and committed, import newly discovered versions with:
+
+```sh
+tools/versioned-docs/import.sh --release-line 0.1
+```
+
+This assigns the primary line but preserves all latest recommendations, hidden or
+withdrawn records, lifecycle facts and parent relationships. Advance a line's
+`latest`, and `latestStable` when appropriate, explicitly after review. An unused
+prepared version or final-looking Git tag is not publication evidence. Nothing
+needs to be copied into the aggregate catalog. Optional aggregate artifact entries
+may still bind sources or publication policy without owning release versions.
+
+## Migrating an older inventory
+
+On a clean worktree, explicitly select the retained versions to audit:
+
+```sh
+tools/versioned-docs/import.sh --migrate --version 0.1.3
+```
+
+Repeat `--version` for other retained records. Migration adds a missing scoped
+artifact entry without inventing policy. Before adding `docsSource` to an existing
+record, it compares every retained file and path with an export of that record's
+resolved tag commit. Changed or extra files and symlinks fail before metadata or
+docs are written. No docs are replaced, existing record fields and provider
+fetch timestamps are retained, and repeated migration is a no-op. Existing source
+mappings are preserved. A full rebuild rejects replacing a conflicting curated
+source mapping rather than silently attaching it to different exported bytes.
+
+After the audit, curate primary lines and latest recommendations in the snapshot,
+validate the component and inventory with Site Pipeline, then commit the branch.
+Keep its existing orphan history. Review docs directory hashes as well as the JSON
+diff; migration does not require resetting or recreating the branch.
 
 ## Full rebuild
 

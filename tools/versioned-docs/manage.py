@@ -103,7 +103,7 @@ def update(args: argparse.Namespace) -> None:
 
 
 def version_key(value: str) -> tuple[int, ...]:
-    if not VERSION.fullmatch(value):
+    if not isinstance(value, str) or not VERSION.fullmatch(value):
         raise ValueError(f"Expected a stable X.Y.Z version: {value}")
     return tuple(int(part) for part in value.split("."))
 
@@ -114,8 +114,11 @@ def load_snapshot(path: Path) -> dict:
     if path.is_symlink():
         raise ValueError("Snapshot must not be a symlink")
     data = json.loads(path.read_text())
-    if data.get("schemaVersion") != 1 or not isinstance(data.get("records"), list):
+    if not isinstance(data, dict) or data.get("schemaVersion") != 1:
         raise ValueError("Unsupported provider snapshot")
+    for key in ("providers", "records"):
+        if not isinstance(data.setdefault(key, []), list):
+            raise ValueError("Unsupported provider snapshot")
     versions = set()
     for record in data["records"]:
         version = record["version"]
@@ -134,6 +137,45 @@ def load_snapshot(path: Path) -> dict:
     ]:
         raise ValueError("Snapshot contains foreign providers")
     return data
+
+
+def artifact_facts(snapshot: dict) -> dict:
+    """Retain operator decisions; an initial import makes no latest recommendation."""
+    artifacts = snapshot.setdefault("artifacts", [])
+    if not isinstance(artifacts, list) or len(artifacts) > 1:
+        raise ValueError("Snapshot must contain only the release-tooling artifact")
+    if not artifacts:
+        artifacts.append(
+            {"componentSlug": "release-tooling", "artifactKey": "release-tooling"}
+        )
+    artifact = artifacts[0]
+    if not isinstance(artifact, dict) or (
+        artifact.get("componentSlug") != "release-tooling"
+        or artifact.get("artifactKey") != "release-tooling"
+    ):
+        raise ValueError("Snapshot contains a foreign artifact")
+    return artifact
+
+
+def docs_source(commit: str) -> dict[str, str]:
+    return {
+        "repository": DEFAULT_REMOTE.removesuffix(".git"),
+        "root": "docs",
+        "ref": commit,
+    }
+
+
+def docs_bytes(root: Path) -> dict[Path, bytes]:
+    """Compare retained files before asserting their original source mapping."""
+    if root.is_symlink():
+        raise ValueError(f"Docs directory must not be a symlink: {root}")
+    files = {}
+    for path in root.rglob("*"):
+        if path.is_symlink():
+            raise ValueError(f"Docs entry must not be a symlink: {path}")
+        if path.is_file():
+            files[path.relative_to(root)] = path.read_bytes()
+    return files
 
 
 def export_docs(source: Path, tag: str, destination: Path) -> None:
@@ -179,6 +221,14 @@ def import_docs(args: argparse.Namespace) -> None:
     worktree = checked_worktree(args)
     snapshot_path = worktree / "provider-snapshot.json"
     snapshot = load_snapshot(snapshot_path)
+    original = json.dumps(snapshot, sort_keys=True)
+    artifact = artifact_facts(snapshot)
+    if args.release_line and args.release_line not in {
+        line["key"] for line in (artifact.get("releaseLines") or [])
+    }:
+        raise ValueError(
+            "--release-line must name an explicitly curated artifact release line"
+        )
     previous = {record["version"]: record for record in snapshot["records"]}
     minimum = version_key(args.minimum_version) if args.minimum_version else None
     if args.version:
@@ -198,50 +248,70 @@ def import_docs(args: argparse.Namespace) -> None:
         raise ValueError(
             "No matching local stable tags; fetch tags or use --version X.Y.Z"
         )
-    records = previous.copy()
+    records = {version: dict(record) for version, record in previous.items()}
     exports = []
+    migrations = []
+    commits = {}
     for version in selected:
         tag = f"v{version}"
         commit = git(
             args.source, "rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}"
         )
+        commits[version] = commit
         old = previous.get(version)
-        if old:
-            if old.get("commitSha") != commit or old.get("tag") != tag:
-                raise ValueError(
-                    f"Tag changed for existing snapshot {version}; investigate before rebuilding"
-                )
-        if old and not args.full_rebuild:
-            if not (worktree / version / "_index.md").is_file():
-                raise ValueError(
-                    f"Missing docs for {version}; use --full-rebuild to restore"
-                )
-            continue
+        if old and (old.get("commitSha") != commit or old.get("tag") != tag):
+            raise ValueError(
+                f"Tag changed for existing snapshot {version}; investigate before rebuilding"
+            )
         target = worktree / version
         if target.is_symlink() or (target.exists() and version not in previous):
             raise ValueError(f"Refusing to replace unowned path: {target}")
-        records[version] = old or {
-            "provider": "release-tooling-tags",
-            "kind": "released",
-            "componentSlug": "release-tooling",
-            "artifactKey": "release-tooling",
-            "version": version,
-            "tag": tag,
-            "commitSha": commit,
-            "externalId": f"git:buildish-release-tooling:{tag}",
-            "externalUrl": f"https://github.com/buildish-tooling/buildish-release-tooling/releases/tag/{tag}",
-        }
+        record = records.setdefault(
+            version,
+            {
+                "provider": "release-tooling-tags",
+                "kind": "released",
+                "componentSlug": "release-tooling",
+                "artifactKey": "release-tooling",
+                "version": version,
+                "tag": tag,
+                "commitSha": commit,
+                "externalId": f"git:buildish-release-tooling:{tag}",
+                "externalUrl": f"https://github.com/buildish-tooling/buildish-release-tooling/releases/tag/{tag}",
+            },
+        )
+        if args.release_line:
+            if record.get("releaseLine") not in (None, args.release_line):
+                raise ValueError(
+                    f"Refusing to replace curated release line for {version}"
+                )
+            record["releaseLine"] = args.release_line
+        if old and not args.full_rebuild:
+            if not (target / "_index.md").is_file():
+                raise ValueError(
+                    f"Missing docs for {version}; use --full-rebuild to restore"
+                )
+            if args.migrate and record.get("docsSource") is None:
+                migrations.append(version)
+                record["docsSource"] = docs_source(commit)
+            continue
+        expected_source = docs_source(commit)
+        if record.get("docsSource") not in (None, expected_source):
+            raise ValueError(f"Rebuild would replace curated docsSource for {version}")
+        record["docsSource"] = expected_source
         exports.append(version)
-    if not exports and not args.full_rebuild:
-        sys.stdout.write("Release docs already up to date\n")
-        return
-    # Validate and export all tags before replacing any existing docs.
+    # Audit/export all selected trees before modifying any retained files or metadata.
     with tempfile.TemporaryDirectory(
         prefix="versioned-docs-", dir=worktree.parent
     ) as temp:
         staging = Path(temp)
-        for version in exports:
-            export_docs(args.source, f"refs/tags/v{version}", staging / version)
+        for version in exports + migrations:
+            export_docs(args.source, commits[version], staging / version)
+        for version in migrations:
+            if docs_bytes(staging / version) != docs_bytes(worktree / version):
+                raise ValueError(
+                    f"Retained docs differ from recorded source for {version}; cannot add docsSource"
+                )
         if args.full_rebuild:
             for version in exports:
                 target = worktree / version
@@ -252,21 +322,21 @@ def import_docs(args: argparse.Namespace) -> None:
                     shutil.rmtree(worktree / version)
         for version in exports:
             (staging / version).rename(worktree / version)
-        snapshot = {
-            **snapshot,
-            "schemaVersion": 1,
-            "providers": [
+        if exports:
+            snapshot["providers"] = [
                 {
                     **(snapshot["providers"][0] if snapshot["providers"] else {}),
                     "key": "release-tooling-tags",
                     "type": "git-tags",
                     "displayName": "Release Tooling Git tags",
-                    "baseUrl": "https://github.com/buildish-tooling/buildish-release-tooling",
+                    "baseUrl": DEFAULT_REMOTE.removesuffix(".git"),
                     "fetchedAt": datetime.now(UTC).isoformat(),
                 }
-            ],
-            "records": [records[v] for v in sorted(records, key=version_key)],
-        }
+            ]
+        snapshot["records"] = [records[v] for v in sorted(records, key=version_key)]
+        if json.dumps(snapshot, sort_keys=True) == original:
+            sys.stdout.write("Release docs already up to date\n")
+            return
         snapshot_path.write_text(json.dumps(snapshot, indent=2) + "\n")
     sys.stdout.write(
         f"Imported {len(exports)} version(s) into {worktree}; review and commit separately\n"
@@ -306,6 +376,15 @@ def main() -> int:
             command.add_argument(
                 "--minimum-version",
                 help="Optional minimum stable version for tag discovery; default scans all stable tags",
+            )
+            command.add_argument(
+                "--migrate",
+                action="store_true",
+                help="Audit retained selected docs before adding missing original-source mappings",
+            )
+            command.add_argument(
+                "--release-line",
+                help="Assign selected records to this already curated primary release line; never changes latest",
             )
             command.add_argument(
                 "--full-rebuild",

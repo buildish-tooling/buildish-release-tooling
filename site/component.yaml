@@ -21,3 +21,8 @@ component:
 content:
   pagesRoot: site/pages
   docsRoot: docs
+artifacts:
+  - key: release-tooling
+    displayName: Release Tooling
+    versioning:
+      developmentRef: main
