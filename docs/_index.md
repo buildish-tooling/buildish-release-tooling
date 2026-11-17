@@ -147,3 +147,6 @@ secret store chosen by the component.
 Release branch creation is available through `create-release-branch`, but neither lifecycle requires
 a maintained release line. Secondary publication adapters, moving aliases, generic voting, ASF
 composition, and reproducibility verification are selected only by components that need them.
+
+For generated GitHub Action payloads, see [materialized Action releases](materialized-actions/)
+(in development; unavailable in the published 0.1.3 package).

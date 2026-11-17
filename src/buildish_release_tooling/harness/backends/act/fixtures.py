@@ -48,6 +48,7 @@ from buildish_release_tooling.harness.backends.act.workflow import (
 
 from .fixtures_git import (
     apply_workflow_repository_fixture,
+    exclude_workflow_repository_tags,
     commit_git_working_tree_snapshot,
     materialize_git_checkout,
     materialize_git_repository_state,
@@ -149,6 +150,7 @@ def _bootstrap_workspace(
         )
     commit_git_working_tree_snapshot(workspace.root)
     synchronize_self_repository_sources(workspace, bindings)
+    exclude_workflow_repository_tags(workspace, scenario, bindings)
     apply_workflow_repository_fixture(workspace, scenario)
     for repository in scenario.git_repositories:
         init_git_repository(workspace.root, repository)

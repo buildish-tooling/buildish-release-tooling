@@ -664,3 +664,28 @@ The current `act` backend is deliberately limited:
 - rerunning failed jobs currently selects failed jobs plus downstream dependents, but still relies
   on `act` job selection semantics rather than a full GitHub rerun emulator
 - it does not try to emulate GitHub environments, permissions, or concurrency perfectly
+
+## Generated Action lifecycle coverage
+
+`make release-integration-check` first runs the custom-backend direct and
+candidate/promotion scenarios in `tests/harness/test_materialized_lifecycle.py`,
+using the driver at `fixtures/materialized-lifecycle.py`. The fixture uses real CLI
+commands in separate preparation/build/publication processes, a producer clone,
+a fresh shallow promotion checkout and a disposable Git remote. GitHub operations
+remain shimmed. It verifies object transport, producer/original-state binding,
+exact candidate/final M, aliases, representative Node main/post execution,
+immutable final publication and identical reruns. It then runs the full existing
+`act` candidate-to-promotion workflow sequence.
+
+Node must be available to execute the representative Action consumers. The custom
+fixtures model process/job composition and handoff checks; they do not create an
+OS security sandbox or execute Mammoth Cache's actual npm bundles. Production
+workflows must supply their own trusted producer identities and job-output digests.
+
+Fresh-release workflow scenarios can declare
+`workflow.repository_fixture.excluded_tag_patterns` (Git tag globs). The harness
+removes matching inherited tags from its disposable self checkout, simulated Git
+origin and checkout source before creating fixture refs. It never changes the
+source repository. The self-release candidate scenario excludes `v*` because its
+simulated release store starts empty; promotion retains the seeded candidate and
+final tags so retry and conflict checks remain effective.

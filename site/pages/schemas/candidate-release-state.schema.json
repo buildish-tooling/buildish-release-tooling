@@ -133,6 +133,53 @@
         "ownership": "runtime-derived"
       }
     },
+    "MaterializationBinding": {
+      "additionalProperties": false,
+      "description": "Exact generated commit/tree and digest-bound transport, authorized separately by policy.",
+      "properties": {
+        "bundle_sha256": {
+          "description": "SHA-256 of the retained Git bundle carrying M, with S as prerequisite.",
+          "title": "Bundle Sha256",
+          "type": "string"
+        },
+        "commit_sha": {
+          "description": "Exact materialized Action commit M.",
+          "title": "Commit Sha",
+          "type": "string"
+        },
+        "paths": {
+          "description": "Trusted permitted generated paths, validated against component policy.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Paths",
+          "type": "array"
+        },
+        "source_commit_sha": {
+          "description": "Reviewed source S; sole parent of M.",
+          "title": "Source Commit Sha",
+          "type": "string"
+        },
+        "tree_sha": {
+          "description": "Exact Git tree of M.",
+          "title": "Tree Sha",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_commit_sha",
+        "commit_sha",
+        "tree_sha",
+        "paths",
+        "bundle_sha256"
+      ],
+      "title": "MaterializationBinding",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
     "PublicationReference": {
       "additionalProperties": false,
       "description": "Reference to one provider or foundation publication result.",
@@ -450,6 +497,18 @@
     "final_tag_identity": {
       "$ref": "#/$defs/TagIdentity",
       "description": "Intended immutable final tag."
+    },
+    "materialization": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MaterializationBinding"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional generated Git content binding; source authorization remains separate."
     },
     "publications": {
       "description": "Candidate publication results.",

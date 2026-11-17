@@ -25,6 +25,7 @@ from buildish_release_tooling.release.commands.atr import (
 from buildish_release_tooling.release.commands.artifact_registration import (
     run_record_artifact,
 )
+from buildish_release_tooling.release.commands.materialized_content import run_bind_materialization, run_import_materialization
 from buildish_release_tooling.release.commands.materialization import (
     run_create_rc_materialization_tag,
     run_materialize_rc_git_content,
@@ -85,6 +86,8 @@ from buildish_release_tooling.release.platforms.github.candidate_commands import
 )
 
 __all__ = [
+    "run_bind_materialization",
+    "run_import_materialization",
     "run_attach_github_release_manifest",
     "run_attach_github_release_assets",
     "run_attach_github_candidate_manifest",

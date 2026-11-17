@@ -44,6 +44,7 @@ from buildish_release_tooling.release import models as release_models
 from buildish_release_tooling.release import manifests as release_manifest_models
 from buildish_release_tooling.release.core import config as release_core_config_models
 from buildish_release_tooling.release.core import manifests as release_core_manifest_models
+from buildish_release_tooling.release.core import materialization as release_core_materialization_models
 from buildish_release_tooling.release.core import models as release_core_models
 from buildish_release_tooling.release.core import state as release_core_state_models
 from buildish_release_tooling.release.foundations.asf import config as asf_config_models
@@ -76,6 +77,7 @@ def _reference_model_roots() -> tuple[type[DocumentedContractModel], ...]:
         release_config_models,
         release_core_config_models,
         release_core_manifest_models,
+        release_core_materialization_models,
         release_core_models,
         release_core_state_models,
         asf_config_models,

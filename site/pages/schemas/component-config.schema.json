@@ -1017,6 +1017,14 @@
           "title": "Include Final Mode In Summary",
           "type": "boolean"
         },
+        "materialized_paths": {
+          "description": "Literal generated paths allowed in modern detached materialization; required when binding M.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Materialized Paths",
+          "type": "array"
+        },
         "moving": {
           "description": "Explicit moving tag or alias policies enabled for the component.",
           "items": {

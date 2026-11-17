@@ -177,3 +177,7 @@ publication adapter. Provider-neutral state and manifests carry generic identiti
 extension points. A future GitLab, Forgejo, package-index, or registry adapter should add its own
 config, evidence validation, and workflow integration rather than placing provider fields in the
 core models or another adapter.
+
+For components that tag generated executables, see [materialized Action releases](../materialized-actions/)
+for the source/materialized identity contract and credential-separated bundle handoff.
+This path requires the upcoming tooling support described there.

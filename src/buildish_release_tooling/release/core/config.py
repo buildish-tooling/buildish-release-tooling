@@ -23,6 +23,7 @@ from typing import Annotated, Literal
 from pydantic import Field, field_validator
 
 from buildish_release_tooling.docs.documentation import ComponentOwnedAuthoredModel
+from buildish_release_tooling.release.core.materialization import normalized_materialized_paths
 
 _CANDIDATE_LABEL_PATTERN = re.compile(r"[a-z][a-z0-9-]*")
 _ENVIRONMENT_VARIABLE_PATTERN = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
@@ -246,6 +247,11 @@ class TagPolicyConfig(ComponentOwnedAuthoredModel):
         default="exact-source-commit",
         description="Commit policy used for the immutable final tag.",
     )
+    materialized_paths: list[str] = Field(
+        default_factory=list,
+        description="Literal generated paths allowed in modern detached materialization; required when binding M.",
+    )
+
     moving: list[str] = Field(
         default_factory=list,
         description="Explicit moving tag or alias policies enabled for the component.",
@@ -254,6 +260,11 @@ class TagPolicyConfig(ComponentOwnedAuthoredModel):
         default=False,
         description="Whether summaries render the selected final-tag materialization mode.",
     )
+
+    @field_validator("materialized_paths")
+    @classmethod
+    def _materialized_paths(cls, value: list[str]) -> list[str]:
+        return normalized_materialized_paths(value)
 
 
 class GenericVoteMaterialsConfig(ComponentOwnedAuthoredModel):

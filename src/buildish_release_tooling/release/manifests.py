@@ -29,7 +29,9 @@ from buildish_release_tooling.release.core.manifests import (
     ManifestDigestReference,
     PromotedCandidateReference,
     PromotionEvidence,
+    SameMaterializedRevisionPromotionEvidence,
 )
+from buildish_release_tooling.release.core.materialization import MaterializationBinding, validate_tag_binding
 from buildish_release_tooling.release.core.models import (
     ArtifactReference,
     CandidateIdentity,
@@ -71,6 +73,7 @@ class CandidateManifestV1(ToolingDerivedModel):
     )
     release: ReleaseIdentity = Field(description="Exact component release identity.")
     candidate: CandidateIdentity = Field(description="Exact candidate identity.")
+    materialization: MaterializationBinding | None = Field(default=None, description="Optional generated Git content binding; reviewed source remains S.")
     source: SourceRevision = Field(description="Exact selected source revision.")
     release_notes: ReleaseNotes | None = Field(
         default=None,
@@ -106,8 +109,7 @@ class CandidateManifestV1(ToolingDerivedModel):
             raise ValueError("candidate manifest identities refer to different releases")
         if self.candidate.tag != self.candidate_tag:
             raise ValueError("candidate_tag must equal the exact candidate identity tag")
-        if self.candidate_tag.target_commit != self.source.commit_sha:
-            raise ValueError("candidate tag must target the selected source revision")
+        validate_tag_binding(self.source.commit_sha, self.candidate_tag.target_commit, self.materialization)
         if any(
             isinstance(extension, GitHubCandidatePublication)
             and extension.created_at != self.created_at
@@ -156,6 +158,7 @@ class ReleaseManifestV1(ToolingDerivedModel):
         default="release-manifest", description="Manifest kind discriminator."
     )
     release: ReleaseIdentity = Field(description="Exact component release identity.")
+    materialization: MaterializationBinding | None = Field(default=None, description="Optional generated Git content binding; reviewed source remains S.")
     source: SourceRevision = Field(description="Exact final release source revision.")
     release_notes: ReleaseNotes | None = Field(
         default=None,
@@ -195,8 +198,18 @@ class ReleaseManifestV1(ToolingDerivedModel):
     def _validate_release_relations(self) -> ReleaseManifestV1:
         if self.final_tag.purpose != "final":
             raise ValueError("release manifest final_tag purpose must be final")
-        if self.final_tag.target_commit != self.source.commit_sha:
-            raise ValueError("final tag must target the final source revision")
+        validate_tag_binding(self.source.commit_sha, self.final_tag.target_commit, self.materialization)
+        if self.promoted_candidate is not None:
+            validate_tag_binding(self.source.commit_sha, self.promoted_candidate.candidate.tag.target_commit, self.materialization)
+        for evidence in self.promotion_evidence:
+            if isinstance(evidence, SameMaterializedRevisionPromotionEvidence):
+                binding = self.materialization
+                if binding is None or (
+                    evidence.source_commit_sha != self.source.commit_sha
+                    or evidence.materialized_commit_sha != binding.commit_sha
+                    or evidence.materialized_tree_sha != binding.tree_sha
+                ):
+                    raise ValueError("materialized promotion evidence does not match the release binding")
         if self.promoted_candidate is None and self.promotion_evidence:
             raise ValueError("promotion_evidence requires promoted_candidate")
         if (

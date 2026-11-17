@@ -44,6 +44,7 @@ from buildish_release_tooling.release.direct_release import (
     require_authorized_source_commit,
     selected_source_ref,
 )
+from buildish_release_tooling.release.materialized_content import materialized_target, require_materialization_policy
 from buildish_release_tooling.release.git_repo import GitRepository
 from buildish_release_tooling.release.release_notes import (
     resolve_release_notes,
@@ -157,13 +158,18 @@ def resolve_promotion_state(
         manifest.release_notes,
         version=normalized_version,
     )
+    if manifest.materialization is not None:
+        require_materialization_policy(config, manifest.materialization)
+    elif config.tags.final_mode == "detached-materialization-commit":
+        raise ValueError("detached promotion requires candidate materialization evidence")
     final_tag = TagIdentity(
         name=config.versioning.final_tag_template.format(version=normalized_version),
-        target_commit=manifest.source.commit_sha,
+        target_commit=materialized_target(manifest.source.commit_sha, manifest.materialization),
         purpose="final",
     )
     return PromotionState(
         release=manifest.release,
+        materialization=manifest.materialization,
         source=manifest.source,
         release_notes=manifest.release_notes,
         source_date_epoch=manifest.source_date_epoch,

@@ -38,6 +38,7 @@ from buildish_release_tooling.release.email_templates import (
     render_announce_email,
     render_project_vote_result_email,
 )
+from buildish_release_tooling.release.materialized_content import validate_materialized_state, publish_materialized_objects
 from buildish_release_tooling.release.git_repo import GitRepository
 from buildish_release_tooling.release.platforms.github.checks import (
     resolve_repository_slug,
@@ -382,7 +383,8 @@ def run_create_final_tag(args: Namespace) -> Path:
             raise ValueError("final-release state component does not match release configuration")
         version = final_state.release.version
         final_tag = final_state.final_tag.name
-        target_commit = final_state.source.commit_sha
+        validate_materialized_state(repo, context.release_config, final_state)
+        target_commit = final_state.final_tag.target_commit
         expected_final_tag = context.release_config.versioning.final_tag_template.format(
             version=version
         )
@@ -390,10 +392,10 @@ def run_create_final_tag(args: Namespace) -> Path:
             raise ValueError(
                 "direct-release state final tag does not match release configuration"
             )
-        if final_state.final_tag.target_commit != target_commit:
-            raise ValueError("final-release tag does not target its source commit")
         target = require_github_authoritative_publication(context.release_config)
         repository_slug = target.repository or _repository_slug_or_none(repo)
+        if repository_slug is not None:
+            publish_materialized_objects(repo, context.release_config, final_state, repository=repository_slug, tag=final_tag)
     else:
         if args.version is None:
             raise ValueError("version or --release-state is required")

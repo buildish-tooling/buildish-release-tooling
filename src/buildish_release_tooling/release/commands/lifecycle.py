@@ -36,7 +36,10 @@ from buildish_release_tooling.release.core.manifests import (
     PromotionEvidence,
     PromotedCandidateReference,
     SameSourceRevisionPromotionEvidence,
+    SameMaterializedRevisionPromotionEvidence,
 )
+from buildish_release_tooling.release.materialized_content import validate_materialized_state
+from buildish_release_tooling.release.core.config import PlatformGeneratedSourceSnapshotConfig
 from buildish_release_tooling.release.git_repo import GitRepository
 from buildish_release_tooling.release.manifest import write_manifest
 from buildish_release_tooling.release.manifests import (
@@ -166,8 +169,10 @@ def run_create_candidate_manifest(args: Namespace) -> Path:
             raise ValueError(
                 "candidate publication digest does not match artifact inventory"
             )
+    validate_materialized_state(GitRepository.from_current_worktree(), context.release_config, state)
     manifest = CandidateManifestV1(
         release=state.release,
+        materialization=state.materialization,
         candidate=state.candidate,
         source=state.source,
         release_notes=state.release_notes,
@@ -436,7 +441,18 @@ def run_create_release_manifest(args: Namespace) -> Path:
             )
             for artifact in state.artifacts
         )
-        if not state.artifacts:
+        if state.materialization is not None:
+            binding = state.materialization
+            for artifact_name in (
+                ["materialized-git-content", "platform-generated-source-snapshot"]
+                if isinstance(context.release_config.source.snapshot, PlatformGeneratedSourceSnapshotConfig)
+                else ["materialized-git-content"]
+            ):
+                promotion_evidence.append(SameMaterializedRevisionPromotionEvidence(
+                    artifact_name=artifact_name, source_commit_sha=state.source.commit_sha,
+                    materialized_commit_sha=binding.commit_sha, materialized_tree_sha=binding.tree_sha,
+                ))
+        elif isinstance(context.release_config.source.snapshot, PlatformGeneratedSourceSnapshotConfig):
             promotion_evidence.append(
                 SameSourceRevisionPromotionEvidence(
                     artifact_name="platform-generated-source-snapshot",
@@ -454,8 +470,10 @@ def run_create_release_manifest(args: Namespace) -> Path:
     snapshot_at = publication.created_at if publication.draft else publication.published_at
     if snapshot_at is None:
         raise ValueError("final publication result has no publication timestamp")
+    validate_materialized_state(GitRepository.from_current_worktree(), context.release_config, state)
     manifest = ReleaseManifestV1(
         release=state.release,
+        materialization=state.materialization,
         source=state.source,
         release_notes=state.release_notes,
         final_tag=state.final_tag,

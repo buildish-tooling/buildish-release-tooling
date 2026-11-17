@@ -247,3 +247,97 @@ def _git_push_auth_env(push_target: str) -> tuple[Path | None, dict[str, str] | 
         },
         [token],
     )
+
+
+def publish_materialized_ref(
+    repo: GitRepository,
+    *,
+    repository_slug: str,
+    commit_sha: str,
+    tag_name: str | None = None,
+) -> str:
+    """Publish validated M objects for the tag API through an immutable-by-convention ref."""
+    ref = f"refs/heads/buildish-internal/materialized/{commit_sha}"
+    validate_full_ref_name(ref)
+    # Authentication must not choose the publication repository. Reuse SSH only
+    # when it already identifies the configured destination; otherwise use its HTTPS URL.
+    target = f"https://github.com/{repository_slug}.git"
+    if not _github_push_token():
+        origin = repo.remote_url("origin")
+        if origin in {
+            f"git@github.com:{repository_slug}.git", f"git@github.com:{repository_slug}",
+            f"ssh://git@github.com/{repository_slug}.git", f"ssh://git@github.com/{repository_slug}",
+        }:
+            target = origin
+    helper_dir, push_env, secrets = _git_push_auth_env(target)
+    try:
+        if tag_name is not None:
+            tag_ref = validate_full_ref_name(f"refs/tags/{tag_name}")
+            tags = run_logged_command(
+                [
+                    "git",
+                    "--no-replace-objects",
+                    "-C",
+                    str(repo.path),
+                    "ls-remote",
+                    "--tags",
+                    target,
+                    tag_ref,
+                    tag_ref + "^{}",
+                ],
+                cwd=repo.path,
+                env=push_env,
+                extra_secret_values=secrets,
+            ).stdout.splitlines()
+            if tags:
+                values = {
+                    parts[1]: parts[0] for row in tags if len(parts := row.split()) == 2
+                }
+                if (
+                    len(tags) != 2
+                    or set(values) != {tag_ref, tag_ref + "^{}"}
+                    or values.get(tag_ref + "^{}") != commit_sha
+                ):
+                    raise ValueError(
+                        "existing remote tag conflicts with the bound materialized commit or is not annotated"
+                    )
+        observed = run_logged_command(
+            [
+                "git",
+                "--no-replace-objects",
+                "-C",
+                str(repo.path),
+                "ls-remote",
+                "--refs",
+                target,
+                ref,
+            ],
+            cwd=repo.path,
+            env=push_env,
+            extra_secret_values=secrets,
+        ).stdout.splitlines()
+        if observed:
+            if len(observed) != 1 or observed[0].split() != [commit_sha, ref]:
+                raise ValueError(
+                    "remote materialization ref conflicts with the bound commit"
+                )
+            return "already-present"
+        run_logged_command(
+            [
+                "git",
+                "--no-replace-objects",
+                "-C",
+                str(repo.path),
+                "push",
+                f"--force-with-lease={ref}:",
+                target,
+                f"{commit_sha}:{ref}",
+            ],
+            cwd=repo.path,
+            env=push_env,
+            extra_secret_values=secrets,
+        )
+        return "pushed"
+    finally:
+        if helper_dir is not None:
+            shutil.rmtree(helper_dir, ignore_errors=True)

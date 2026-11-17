@@ -99,10 +99,21 @@ class SameSourceRevisionPromotionEvidence(ToolingDerivedModel):
     )
 
 
+class SameMaterializedRevisionPromotionEvidence(ToolingDerivedModel):
+    """Candidate and final Git content retain the approved generated commit/tree."""
+
+    relation: Literal["same-materialized-revision"] = Field(default="same-materialized-revision", description="Promotion evidence discriminator.")
+    artifact_name: str = Field(description="Materialized Git content or platform snapshot covered by this relation.")
+    source_commit_sha: str = Field(description="Reviewed source S.")
+    materialized_commit_sha: str = Field(description="Exact M targeted by both candidate and final tags.")
+    materialized_tree_sha: str = Field(description="Exact tree of M.")
+
+
 PromotionEvidence = Annotated[
     ByteIdenticalPromotionEvidence
     | RegistryIdentityPromotionEvidence
-    | SameSourceRevisionPromotionEvidence,
+    | SameSourceRevisionPromotionEvidence
+    | SameMaterializedRevisionPromotionEvidence,
     Field(discriminator="relation"),
 ]
 

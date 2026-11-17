@@ -34,6 +34,7 @@ from buildish_release_tooling.release.config import (
 from buildish_release_tooling.release.core.manifests import ManifestDigestReference
 from buildish_release_tooling.release.core.models import TagIdentity
 from buildish_release_tooling.release.core.state import CandidateReleaseState
+from buildish_release_tooling.release.materialized_content import validate_materialized_state, materialized_target, publish_materialized_objects
 from buildish_release_tooling.release.git_repo import GitRepository
 from buildish_release_tooling.release.manifest import write_manifest
 from buildish_release_tooling.release.manifests import CandidateManifestV1
@@ -113,6 +114,7 @@ def _validated_candidate_context(
     )
     target = require_github_authoritative_publication(context.release_config)
     repo = GitRepository.from_current_worktree()
+    validate_materialized_state(repo, context.release_config, state)
     repository = target.repository or resolve_repository_slug(repo.path)
     return repo, repository
 
@@ -127,21 +129,21 @@ def _validate_candidate_tags(
         if repo.tag_exists(state.candidate.tag.name)
         else None
     )
-    if local_target != state.source.commit_sha:
+    if local_target != state.candidate.tag.target_commit:
         if local_target is None:
             raise ValueError(
                 f"candidate tag does not exist: {state.candidate.tag.name}"
             )
         raise ValueError(
-            "local candidate tag target does not match candidate source commit"
+            "local candidate tag target does not match bound candidate commit"
         )
     remote_target = resolve_annotated_tag_target_commit(
         repository,
         tag_name=state.candidate.tag.name,
     )
-    if remote_target != state.source.commit_sha:
+    if remote_target != state.candidate.tag.target_commit:
         raise ValueError(
-            "GitHub candidate tag target does not match candidate source commit"
+            "GitHub candidate tag target does not match bound candidate commit"
         )
 
 
@@ -172,18 +174,19 @@ def run_create_candidate_tag(args: Namespace) -> Path:
         f"Release candidate {state.release.component.display_name} "
         f"{state.release.version} ({state.candidate.label}{state.candidate.number})"
     )
+    publish_materialized_objects(repo, _context(args).release_config, state, repository=repository, tag=state.candidate.tag.name)
     mode, _created_ref = _create_or_reuse_annotated_tag(
         repo=repo,
         repository_slug=repository,
         tag_name=state.candidate.tag.name,
-        target_commit=state.source.commit_sha,
+        target_commit=state.candidate.tag.target_commit,
         message=message,
         allow_update=False,
     )
     if not repo.tag_exists(state.candidate.tag.name):
         repo.create_annotated_tag(
             state.candidate.tag.name,
-            state.source.commit_sha,
+            state.candidate.tag.target_commit,
             message,
         )
     _validate_candidate_tags(state, repo, repository)
@@ -285,6 +288,8 @@ def _validate_manifest_for_state(
         raise ValueError("candidate manifest release does not match candidate state")
     if manifest.candidate != state.candidate or manifest.source != state.source:
         raise ValueError("candidate manifest identity does not match candidate state")
+    if manifest.materialization != state.materialization:
+        raise ValueError("candidate manifest materialization does not match candidate state")
     if manifest.release_notes != state.release_notes:
         raise ValueError(
             "candidate manifest release notes do not match candidate state"
@@ -499,6 +504,7 @@ def _verified_remote_candidate(
         raise ValueError("candidate manifest requires source_date_epoch for promotion")
     state = CandidateReleaseState(
         release=manifest.release,
+        materialization=manifest.materialization,
         source=manifest.source,
         release_notes=manifest.release_notes,
         source_date_epoch=manifest.source_date_epoch,
@@ -507,7 +513,7 @@ def _verified_remote_candidate(
             name=context.release_config.versioning.final_tag_template.format(
                 version=manifest.release.version
             ),
-            target_commit=manifest.source.commit_sha,
+            target_commit=materialized_target(manifest.source.commit_sha, manifest.materialization),
             purpose="final",
         ),
         artifacts=manifest.artifacts,
@@ -515,6 +521,7 @@ def _verified_remote_candidate(
         publications=manifest.publications,
         tooling=manifest.tooling,
     )
+    validate_materialized_state(repo, context.release_config, state)
     _validate_candidate_tags(state, repo, repository)
     publication = validate_candidate_release(
         state,

@@ -26,6 +26,7 @@ from buildish_release_tooling.release.platforms.github.text import (
     render_direct_final_release_body,
 )
 
+from tests.release.materialization_support import generated_action_commit, local_materialization_remote
 from tests.support import (
     cleanup_sandbox,
     cli_env,
@@ -46,7 +47,7 @@ class DirectGitHubReleaseCommandIntegrationTest(unittest.TestCase):
     def setUp(self) -> None:
         self.sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, self.sandbox_dir)
-        _origin_dir, self.clone_dir = init_git_origin_and_clone(self.sandbox_dir)
+        self.origin_dir, self.clone_dir = init_git_origin_and_clone(self.sandbox_dir)
         set_github_origin_url(
             self.clone_dir,
             "apache/example-project",
@@ -128,7 +129,7 @@ class DirectGitHubReleaseCommandIntegrationTest(unittest.TestCase):
                 "object": {"sha": tag_object_sha, "type": "tag"},
             },
             read_tag_response={
-                "object": {"sha": self.state.source.commit_sha, "type": "commit"}
+                "object": {"sha": self.state.final_tag.target_commit, "type": "commit"}
             },
             **kwargs,
         )
@@ -364,6 +365,34 @@ class DirectGitHubReleaseCommandIntegrationTest(unittest.TestCase):
         )
 
     def test_manifest_is_sealed_on_draft_and_survives_immutable_publication(self) -> None:
+        self._exercise_sealed_publication()
+
+    def test_materialized_direct_release_is_sealed_and_survives_immutable_publication(self) -> None:
+        self.config_path.write_text(self.config_path.read_text().replace(
+            "final_mode: exact-source-commit", "final_mode: detached-materialization-commit\n  materialized_paths: [dist]"
+        ))
+        local_materialization_remote(self.clone_dir, self.origin_dir)
+        commit = generated_action_commit(self.clone_dir, self.state.source.commit_sha)
+        bound = self.sandbox_dir / "bound-direct.json"
+        completed = self._run(
+            ["bind-materialization", "--release-state", str(self.state_path), "--materialized-commit", commit,
+             "--bundle-output", str(self.sandbox_dir / "direct.bundle")], manifest_path=bound,
+        )
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.state_path = bound
+        self.state = DirectReleaseState.model_validate_json(bound.read_text())
+        run_quiet(["git", "tag", "-d", "v1.2.3"], cwd=self.clone_dir, check=True)
+        gh_path, gh_state_dir = create_fake_gh_launcher(
+            self.sandbox_dir, list_response=[], create_tag_response={"sha": "c" * 40},
+            create_ref_response={"ref": "refs/tags/v1.2.3"},
+        )
+        created = self._run(["create-final-tag", "--release-state", str(bound)],
+                            manifest_path=self.sandbox_dir / "materialized-final-tag.json", gh_path=gh_path, gh_state_dir=gh_state_dir)
+        self.assertEqual(0, created.returncode, created.stderr)
+        self.assertEqual(commit, git_rev_parse(self.clone_dir, "v1.2.3^{commit}"))
+        self._exercise_sealed_publication()
+
+    def _exercise_sealed_publication(self) -> None:
         draft = self._release(draft=True)
         draft["html_url"] = "https://github.com/apache/example-project/releases/tag/untagged-temporary"
         gh_path, gh_state_dir = self._fake_gh(list_response=[draft])

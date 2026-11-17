@@ -375,6 +375,53 @@
         "ownership": "tooling-derived"
       }
     },
+    "MaterializationBinding": {
+      "additionalProperties": false,
+      "description": "Exact generated commit/tree and digest-bound transport, authorized separately by policy.",
+      "properties": {
+        "bundle_sha256": {
+          "description": "SHA-256 of the retained Git bundle carrying M, with S as prerequisite.",
+          "title": "Bundle Sha256",
+          "type": "string"
+        },
+        "commit_sha": {
+          "description": "Exact materialized Action commit M.",
+          "title": "Commit Sha",
+          "type": "string"
+        },
+        "paths": {
+          "description": "Trusted permitted generated paths, validated against component policy.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Paths",
+          "type": "array"
+        },
+        "source_commit_sha": {
+          "description": "Reviewed source S; sole parent of M.",
+          "title": "Source Commit Sha",
+          "type": "string"
+        },
+        "tree_sha": {
+          "description": "Exact Git tree of M.",
+          "title": "Tree Sha",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_commit_sha",
+        "commit_sha",
+        "tree_sha",
+        "paths",
+        "bundle_sha256"
+      ],
+      "title": "MaterializationBinding",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "runtime",
+        "ownership": "runtime-derived"
+      }
+    },
     "PromotedCandidateReference": {
       "additionalProperties": false,
       "description": "Exact candidate identity and manifest selected for final promotion.",
@@ -532,6 +579,51 @@
       "x-buildish-contract": {
         "category": "runtime",
         "ownership": "runtime-derived"
+      }
+    },
+    "SameMaterializedRevisionPromotionEvidence": {
+      "additionalProperties": false,
+      "description": "Candidate and final Git content retain the approved generated commit/tree.",
+      "properties": {
+        "artifact_name": {
+          "description": "Materialized Git content or platform snapshot covered by this relation.",
+          "title": "Artifact Name",
+          "type": "string"
+        },
+        "materialized_commit_sha": {
+          "description": "Exact M targeted by both candidate and final tags.",
+          "title": "Materialized Commit Sha",
+          "type": "string"
+        },
+        "materialized_tree_sha": {
+          "description": "Exact tree of M.",
+          "title": "Materialized Tree Sha",
+          "type": "string"
+        },
+        "relation": {
+          "const": "same-materialized-revision",
+          "default": "same-materialized-revision",
+          "description": "Promotion evidence discriminator.",
+          "title": "Relation",
+          "type": "string"
+        },
+        "source_commit_sha": {
+          "description": "Reviewed source S.",
+          "title": "Source Commit Sha",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_name",
+        "source_commit_sha",
+        "materialized_commit_sha",
+        "materialized_tree_sha"
+      ],
+      "title": "SameMaterializedRevisionPromotionEvidence",
+      "type": "object",
+      "x-buildish-contract": {
+        "category": "emitted",
+        "ownership": "tooling-derived"
       }
     },
     "SameSourceRevisionPromotionEvidence": {
@@ -806,6 +898,18 @@
       "title": "Kind",
       "type": "string"
     },
+    "materialization": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MaterializationBinding"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional generated Git content binding; reviewed source remains S."
+    },
     "moving_alias_results": {
       "description": "Moving tag or alias update results.",
       "items": {
@@ -833,6 +937,7 @@
           "mapping": {
             "byte-identical": "#/$defs/ByteIdenticalPromotionEvidence",
             "registry-identity": "#/$defs/RegistryIdentityPromotionEvidence",
+            "same-materialized-revision": "#/$defs/SameMaterializedRevisionPromotionEvidence",
             "same-source-revision": "#/$defs/SameSourceRevisionPromotionEvidence"
           },
           "propertyName": "relation"
@@ -846,6 +951,9 @@
           },
           {
             "$ref": "#/$defs/SameSourceRevisionPromotionEvidence"
+          },
+          {
+            "$ref": "#/$defs/SameMaterializedRevisionPromotionEvidence"
           }
         ]
       },

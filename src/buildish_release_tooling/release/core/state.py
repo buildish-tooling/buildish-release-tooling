@@ -25,6 +25,7 @@ from buildish_release_tooling.docs.documentation import (
     RuntimeDerivedModel,
     SchemaExportSpecification,
 )
+from buildish_release_tooling.release.core.materialization import MaterializationBinding, validate_tag_binding
 from buildish_release_tooling.release.core.models import (
     ArtifactReference,
     CandidateIdentity,
@@ -55,6 +56,7 @@ class DirectReleaseState(RuntimeDerivedModel):
     """Exact source and final-tag state for a direct release."""
 
     release: ReleaseIdentity = Field(description="Exact component release identity.")
+    materialization: MaterializationBinding | None = Field(default=None, description="Optional generated Git content binding; source authorization remains separate.")
     source: SourceRevision = Field(description="Exact selected source revision.")
     release_notes: ReleaseNotes | None = Field(
         default=None,
@@ -84,8 +86,7 @@ class DirectReleaseState(RuntimeDerivedModel):
     def _validate_final_tag(self) -> DirectReleaseState:
         if self.final_tag.purpose != "final":
             raise ValueError("direct release final_tag purpose must be final")
-        if self.final_tag.target_commit != self.source.commit_sha:
-            raise ValueError("direct release final_tag must target the selected source commit")
+        validate_tag_binding(self.source.commit_sha, self.final_tag.target_commit, self.materialization)
         return self
 
 
@@ -93,6 +94,7 @@ class CandidateReleaseState(RuntimeDerivedModel):
     """Exact source, candidate, artifact naming, and publication state."""
 
     release: ReleaseIdentity = Field(description="Exact component release identity.")
+    materialization: MaterializationBinding | None = Field(default=None, description="Optional generated Git content binding; source authorization remains separate.")
     source: SourceRevision = Field(description="Exact selected source revision.")
     release_notes: ReleaseNotes | None = Field(
         default=None,
@@ -121,8 +123,8 @@ class CandidateReleaseState(RuntimeDerivedModel):
     def _validate_identity_relations(self) -> CandidateReleaseState:
         if self.candidate.release != self.release:
             raise ValueError("candidate identity must refer to the same release")
-        if self.candidate.tag.target_commit != self.source.commit_sha:
-            raise ValueError("candidate tag must target the selected source commit")
+        validate_tag_binding(self.source.commit_sha, self.candidate.tag.target_commit, self.materialization)
+        validate_tag_binding(self.source.commit_sha, self.final_tag_identity.target_commit, self.materialization)
         if self.final_tag_identity.purpose != "final":
             raise ValueError("candidate final_tag purpose must be final")
         return self
@@ -180,6 +182,7 @@ class PromotionState(RuntimeDerivedModel):
     """Exact candidate evidence and final-tag state for promotion."""
 
     release: ReleaseIdentity = Field(description="Exact component release identity.")
+    materialization: MaterializationBinding | None = Field(default=None, description="Optional generated Git content binding; source authorization remains separate.")
     source: SourceRevision = Field(description="Exact source revision proven by the candidate.")
     release_notes: ReleaseNotes | None = Field(
         default=None,
@@ -218,8 +221,8 @@ class PromotionState(RuntimeDerivedModel):
     def _validate_identity_relations(self) -> PromotionState:
         if self.candidate.release != self.release:
             raise ValueError("promoted candidate must refer to the same release")
-        if self.candidate.tag.target_commit != self.source.commit_sha:
-            raise ValueError("promoted candidate must bind the selected source commit")
+        validate_tag_binding(self.source.commit_sha, self.candidate.tag.target_commit, self.materialization)
+        validate_tag_binding(self.source.commit_sha, self.final_tag.target_commit, self.materialization)
         if self.final_tag.purpose != "final":
             raise ValueError("promotion final_tag purpose must be final")
         return self

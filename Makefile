@@ -57,7 +57,9 @@ check: lint typecheck test rat release-legal-preliminary-check ## Run lint, type
 schemas: ## Regenerate checked-in JSON Schema files and the Markdown model reference.
 	$(UV_RUN) python -m buildish_release_tooling.docs.schema_export --output-dir site/pages/schemas
 
-release-integration-check: ## Run the service-isolated production candidate-to-promotion workflow composition.
+release-integration-check: ## Rehearse generated Action lifecycles and the production candidate-to-promotion workflows.
+	@command -v node >/dev/null 2>&1 || { echo 'Node is required to rehearse tagged Action consumers.' >&2; exit 1; }
+	$(UV_RUN) --group release-attestation python -m unittest tests.harness.test_materialized_lifecycle -v
 	$(UV_RUN) --group release-attestation buildish-release-harness run-sequence \
 		buildish-release-tooling/harness/scenarios/release-candidate.yaml \
 		buildish-release-tooling/harness/scenarios/release-promote.yaml

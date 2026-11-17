@@ -106,6 +106,26 @@ This protects against accidental or unauthorized substitution relative to the pr
 digest. It still trusts the workflow run, GitHub Actions control plane, selected action revisions,
 and runner execution environment.
 
+### Generated Git content
+
+Modern detached materialization retains reviewed source S separately from generated
+commit M. Builds execute selected-source code without signing/publication credentials.
+A trusted consumer verifies the original resolution state and producer-bound state
+checksums, compares the bound state against the original, and imports a separately
+digest-bound Git bundle without checking out or executing its content. Component
+policy authorizes the tag mode and literal generated paths; M must be a single child
+of S with the bound tree and no changes outside those paths. These structural checks
+do not prove honest build execution by a compromised authorized producer or runner.
+
+Before creating a tag, the trusted job checks existing tag identities and publishes
+M's objects through a create-only leased internal Git ref. Matching refs are reused;
+conflicting/racing updates fail. The build job does not push this ref. Candidate and
+final manifests retain S and the complete materialization binding; attachment rejects
+any binding substitution. Promotion retains exact M and independently selected
+candidate evidence. Retained Git objects or bundles are recovery inputs, not authority
+to change the approved commit. Branch namespace permissions and job token scopes are
+operator configuration responsibilities.
+
 ### Cross-run candidate promotion
 
 The candidate Release carries `candidate-manifest.json`. An external gate retains the exact

@@ -51,11 +51,15 @@ def stage_repository_sources(
             materialize_git_repository_state(seed_self_origin, self_origin_dir)
         else:
             materialize_git_repository_state(seed_workspace.root, self_origin_dir)
-    self_source_dir = repo_sources_dir / _repository_slug(bindings.self_repository.repository_id)
+    self_source_dir = repo_sources_dir / _repository_slug(
+        bindings.self_repository.repository_id
+    )
     if self_source_dir.exists():
         shutil.rmtree(self_source_dir)
-    materialize_git_checkout(bindings.self_repository.local_path, self_source_dir)
-    github_origin_url = f"https://github.com/{bindings.self_repository.repository_id}.git"
+    materialize_git_checkout(self_origin_dir, self_source_dir)
+    github_origin_url = (
+        f"https://github.com/{bindings.self_repository.repository_id}.git"
+    )
     run_harness_command(
         [
             "git",
@@ -124,6 +128,42 @@ def synchronize_self_repository_sources(
             capture_output=True,
             text=True,
         )
+
+
+def exclude_workflow_repository_tags(
+    workspace: HarnessWorkspace,
+    scenario: HarnessScenario,
+    bindings: ResolvedReleaseHarnessConfig,
+) -> None:
+    """Isolate fresh-release tag state in owned disposable repository copies."""
+    if scenario.workflow is None:
+        raise ValueError("act scenarios must define a workflow block")
+    patterns = scenario.workflow.repository_fixture.excluded_tag_patterns
+    if not patterns:
+        return
+    roots = (
+        workspace.root,
+        workspace.git_origins_dir / "self",
+        workspace.repo_sources_dir
+        / _repository_slug(bindings.self_repository.repository_id),
+    )
+    for root in roots:
+        if not root.resolve().is_relative_to(workspace.root.resolve()):
+            raise ValueError("tag isolation must stay inside the disposable workspace")
+        for pattern in patterns:
+            tags = run_harness_command(
+                ["git", "-C", str(root), "tag", "--list", "--", pattern],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.splitlines()
+            if tags:
+                run_harness_command(
+                    ["git", "-C", str(root), "tag", "--delete", "--", *tags],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
 
 
 def apply_workflow_repository_fixture(
@@ -246,7 +286,14 @@ def _configure_git_identity(repository_root: Path) -> None:
     """Ensure annotated-tag operations have a deterministic local Git identity."""
 
     run_harness_command(
-        ["git", "-C", str(repository_root), "config", "user.name", "Buildish Release Harness"],
+        [
+            "git",
+            "-C",
+            str(repository_root),
+            "config",
+            "user.name",
+            "Buildish Release Harness",
+        ],
         check=True,
         capture_output=True,
         text=True,

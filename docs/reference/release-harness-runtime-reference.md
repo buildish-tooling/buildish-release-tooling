@@ -422,6 +422,7 @@ Git refs that should be created in the workflow repository checkout before execu
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
+| <a id="workflowrepositoryfixture-excluded-tag-patterns"></a>`excluded_tag_patterns` | list[str] | no | Git tag globs to remove from disposable self-repository copies before creating fixture refs; source checkout tags remain untouched. Use only for scenarios simulating a fresh release. |
 | <a id="workflowrepositoryfixture-branches"></a>`branches` | list[[WorkflowRepositoryBranchFixture](#workflowrepositorybranchfixture)] | no | Git branches that the harness should create in the workflow repository fixture before execution begins. |
 | <a id="workflowrepositoryfixture-tags"></a>`tags` | list[[WorkflowRepositoryTagFixture](#workflowrepositorytagfixture)] | no | Git tags that the harness should create in the workflow repository fixture before execution begins. |
 

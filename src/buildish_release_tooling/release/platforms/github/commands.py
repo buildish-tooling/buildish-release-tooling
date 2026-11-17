@@ -34,6 +34,7 @@ from buildish_release_tooling.release.core.state import (
     PromotionState,
 )
 from buildish_release_tooling.release.direct_release import resolve_direct_release_state
+from buildish_release_tooling.release.materialized_content import validate_materialized_state
 from buildish_release_tooling.release.git_repo import GitRepository
 from buildish_release_tooling.release.manifest import write_manifest
 from buildish_release_tooling.release.manifests import ReleaseManifestV1
@@ -131,6 +132,7 @@ def _validated_inputs(
         )
     target = require_github_authoritative_publication(context.release_config)
     repo = GitRepository.from_current_worktree()
+    validate_materialized_state(repo, context.release_config, state)
     repository = target.repository or resolve_repository_slug(repo.path)
     tag_target = (
         repo.resolve_commit(state.final_tag.name)
@@ -564,6 +566,7 @@ def _validate_release_manifest(
     if (
         manifest.release != state.release
         or manifest.source != state.source
+        or manifest.materialization != state.materialization
         or manifest.final_tag != state.final_tag
         or manifest.artifacts != state.artifacts
         or manifest.verification_results[: len(state.verification_results)]

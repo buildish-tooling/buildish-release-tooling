@@ -53,6 +53,7 @@ MODEL_SECTION_DEFINITIONS = (
             "buildish_release_tooling.release.config",
             "buildish_release_tooling.release.core.config",
             "buildish_release_tooling.release.core.manifests",
+            "buildish_release_tooling.release.core.materialization",
             "buildish_release_tooling.release.core.models",
             "buildish_release_tooling.release.core.state",
             "buildish_release_tooling.release.foundations.asf.config",

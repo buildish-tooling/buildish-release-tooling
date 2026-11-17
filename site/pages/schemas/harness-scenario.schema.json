@@ -454,6 +454,14 @@
           "title": "Branches",
           "type": "array"
         },
+        "excluded_tag_patterns": {
+          "description": "Git tag globs to remove from disposable self-repository copies before creating fixture refs; source checkout tags remain untouched. Use only for scenarios simulating a fresh release.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Excluded Tag Patterns",
+          "type": "array"
+        },
         "tags": {
           "description": "Git tags that the harness should create in the workflow repository fixture before execution begins.",
           "items": {

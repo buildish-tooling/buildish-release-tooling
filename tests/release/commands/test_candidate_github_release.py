@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
+import subprocess
 import unittest
 from pathlib import Path
 
@@ -38,6 +40,7 @@ from buildish_release_tooling.release.platforms.github.text import (
     render_direct_final_release_body,
 )
 
+from tests.release.materialization_support import generated_action_commit, ACTION_PATHS, local_materialization_remote
 from tests.support import (
     cleanup_sandbox,
     cli_env,
@@ -56,7 +59,7 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
     def setUp(self) -> None:
         self.sandbox_dir = create_build_test_sandbox()
         self.addCleanup(cleanup_sandbox, self.sandbox_dir)
-        _origin_dir, self.clone_dir = init_git_origin_and_clone(self.sandbox_dir)
+        self.origin_dir, self.clone_dir = init_git_origin_and_clone(self.sandbox_dir)
         set_github_origin_url(self.clone_dir, "apache/example-project")
         self.config_path = self.sandbox_dir / "release-config.yaml"
         self.config_path.write_text(
@@ -142,7 +145,7 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
                 "object": {"sha": tag_object_sha, "type": "tag"},
             },
             read_tag_response={
-                "object": {"sha": state.source.commit_sha, "type": "commit"}
+                "object": {"sha": state.candidate.tag.target_commit, "type": "commit"}
             },
             **kwargs,
         )
@@ -162,7 +165,7 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
                 "object": {"sha": "d" * 40, "type": "tag"},
             },
             read_tag_response={
-                "object": {"sha": promotion.source.commit_sha, "type": "commit"}
+                "object": {"sha": promotion.final_tag.target_commit, "type": "commit"}
             },
             **kwargs,
         )
@@ -770,9 +773,34 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
         )
 
     def test_exact_candidate_two_promotes_to_unsuffixed_final_release(self) -> None:
+        self._exercise_exact_candidate_promotion()
+
+    def test_materialized_candidate_two_promotes_its_exact_action_commit(self) -> None:
+        with self.config_path.open("a") as handle:
+            handle.write("\ntags:\n  final_mode: detached-materialization-commit\n  materialized_paths: [dist]\n")
+        self._exercise_exact_candidate_promotion(materialized=True)
+
+    def test_materialized_promotion_with_no_source_snapshot_has_only_git_content_evidence(self) -> None:
+        self.config_path.write_text(self.config_path.read_text().replace("mode: platform-generated", "mode: none") +
+                                    "\ntags:\n  final_mode: detached-materialization-commit\n  materialized_paths: [dist]\n")
+        self._exercise_exact_candidate_promotion(materialized=True, source_snapshot=False)
+
+    def _exercise_exact_candidate_promotion(self, *, materialized: bool = False, source_snapshot: bool = True) -> None:
         git_create_annotated_tag(self.clone_dir, "v1.2.3-rc1")
         state_path, state = self._resolve("candidate-2-state.json")
         self.assertEqual("v1.2.3-rc2", state.candidate.tag.name)
+        if materialized:
+            local_materialization_remote(self.clone_dir, self.origin_dir)
+            commit = generated_action_commit(self.clone_dir, state.source.commit_sha)
+            bound = self.sandbox_dir / "bound-candidate.json"
+            completed = self._run(
+                ["bind-materialization", "--candidate-state", str(state_path), "--materialized-commit", commit,
+                 "--bundle-output", str(self.sandbox_dir / "candidate.bundle")], result_path=bound,
+            )
+            self.assertEqual(0, completed.returncode, completed.stderr)
+            state_path = bound
+            state = CandidateReleaseState.model_validate_json(bound.read_text())
+            self.assertNotEqual(state.source.commit_sha, state.candidate.tag.target_commit)
         gh_path, gh_state_dir = self._fake_gh(
             state,
             list_response=[],
@@ -814,6 +842,29 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
             result_path=manifest_path,
         )
         self.assertEqual(0, completed.returncode, msg=completed.stderr)
+        if materialized:
+            original = manifest_path.read_bytes()
+            upload_log = gh_state_dir / "release-upload-files.log"
+            uploads_before = upload_log.read_bytes() if upload_log.exists() else None
+            requests = gh_state_dir / "requests.log"
+            requests_before = requests.read_text() if requests.exists() else ""
+            for field, changed in (("bundle_sha256", "e" * 64), ("tree_sha", "e" * 40), ("paths", ["other"])):
+                with self.subTest(changed_binding_field=field):
+                    mismatched = json.loads(original)
+                    mismatched["materialization"][field] = changed
+                    manifest_path.write_text(json.dumps(mismatched))
+                    rejected = self._run(
+                        ["attach-github-candidate-manifest", "--candidate-state", str(state_path),
+                         "--candidate-manifest", str(manifest_path)],
+                        result_path=self.sandbox_dir / "mismatched-binding-attach.json", gh_path=gh_path, gh_state_dir=gh_state_dir,
+                    )
+                    self.assertNotEqual(0, rejected.returncode)
+                    self.assertIn("materialization does not match", rejected.stderr)
+                    self.assertEqual(uploads_before, upload_log.read_bytes() if upload_log.exists() else None)
+            manifest_path.write_bytes(original)
+            new_requests = requests.read_text()[len(requests_before):]
+            for verb in ("POST", "PATCH", "DELETE", "PUT"):
+                self.assertNotIn(verb, new_requests)
         manifest_text = manifest_path.read_text(encoding="utf-8")
         digest = hashlib.sha256(manifest_text.encode("utf-8")).hexdigest()
         vote_package_path = self.sandbox_dir / "vote-package.json"
@@ -995,13 +1046,32 @@ class GitHubCandidateLifecycleIntegrationTest(unittest.TestCase):
             release_manifest["promoted_candidate"]["candidate"]["tag"]["name"],
         )
         self.assertEqual(
-            "same-source-revision",
+            "same-materialized-revision" if materialized else "same-source-revision",
             release_manifest["promotion_evidence"][0]["relation"],
         )
         self.assertEqual(
             "2026-08-05T08:00:00Z", json.loads(manifest_text)["created_at"]
         )
         self.assertEqual("2026-08-05T09:05:00Z", release_manifest["created_at"])
+        if materialized:
+            evidence_names = [item["artifact_name"] for item in release_manifest["promotion_evidence"]]
+            self.assertIn("materialized-git-content", evidence_names)
+            self.assertEqual(source_snapshot, "platform-generated-source-snapshot" in evidence_names)
+            if state.materialization is None:
+                self.fail("missing materialization binding")
+            self.assertEqual(state.materialization.model_dump(), release_manifest["materialization"])
+            target = state.candidate.tag.target_commit
+            for tag in ("v1.2.3-rc2", "v1.2.3"):
+                actual = subprocess.run(["git", "-C", str(self.clone_dir), "rev-parse", f"{tag}^{{commit}}"], check=True, capture_output=True, text=True).stdout.strip()
+                self.assertEqual(target, actual)
+            node = shutil.which("node")
+            if node is None:
+                self.skipTest("Node is required to execute the tagged Action fixtures")
+            for path in ACTION_PATHS:
+                source = subprocess.run(["git", "-C", str(self.clone_dir), "show", f"v1.2.3:{path}"], check=True, capture_output=True, text=True).stdout
+                executed = subprocess.run([node, "--eval", source], check=True, capture_output=True, text=True)
+                self.assertEqual(path, executed.stdout.strip())
+
 
 
 if __name__ == "__main__":

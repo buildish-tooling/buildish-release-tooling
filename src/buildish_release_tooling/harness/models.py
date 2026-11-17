@@ -137,6 +137,10 @@ class WorkflowRepositoryFixture(ConsumerOwnedAuthoredModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    excluded_tag_patterns: list[str] = Field(
+        default_factory=list,
+        description="Git tag globs to remove from disposable self-repository copies before creating fixture refs; source checkout tags remain untouched. Use only for scenarios simulating a fresh release.",
+    )
     branches: list[WorkflowRepositoryBranchFixture] = Field(
         description="Git branches that the harness should create in the workflow repository fixture before execution begins.",
         default_factory=list,

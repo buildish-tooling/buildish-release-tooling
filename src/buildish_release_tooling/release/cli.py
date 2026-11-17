@@ -218,6 +218,20 @@ def _register_materialization_commands(
     subparsers: Subparsers,
     common: argparse.ArgumentParser,
 ) -> None:
+    for name, handler in (("bind-materialization", commands.run_bind_materialization), ("import-materialization", commands.run_import_materialization)):
+        modern = _add_command_parser(subparsers, common, name, help_text="Bind/export or verify/import detached generated Git content without building or pushing.", handler=handler)
+        state_group = modern.add_mutually_exclusive_group(required=True)
+        state_group.add_argument("--release-state")
+        state_group.add_argument("--candidate-state")
+        if name == "import-materialization":
+            state_group.add_argument("--promotion-state")
+            modern.add_argument("--source-state", help="Original trusted resolution state; required for direct/candidate imports, independently checksum-verified by the workflow.")
+            modern.add_argument("--bundle", required=True)
+            modern.add_argument("--bundle-sha256", required=True, help="Independent producer-emitted SHA-256; verify the state digest separately.")
+        else:
+            modern.add_argument("--materialized-commit", required=True)
+            modern.add_argument("--bundle-output", required=True)
+
     materialize_rc_git_content = _add_command_parser(
         subparsers,
         common,
