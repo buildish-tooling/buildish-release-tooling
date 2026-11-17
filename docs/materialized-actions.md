@@ -22,10 +22,10 @@ limitations under the License.
 
 # Releasing generated GitHub Action content
 
-This functionality is in development. It is **not included in the published
-0.1.3 distribution**. Use a distribution that explicitly ships these commands
-before adopting this path in production. The legacy materialization commands
-remain available; this page describes the modern state/manifest lifecycle.
+The modern materialized-commit lifecycle requires **Release Tooling 0.1.4 or
+later**; the 0.1.3 distribution does not include these commands. The legacy
+materialization commands remain available; this page describes the modern
+state/manifest lifecycle.
 
 ## Reviewed source and materialized content
 

@@ -149,4 +149,4 @@ a maintained release line. Secondary publication adapters, moving aliases, gener
 composition, and reproducibility verification are selected only by components that need them.
 
 For generated GitHub Action payloads, see [materialized Action releases](materialized-actions/)
-(in development; unavailable in the published 0.1.3 package).
+(requires Release Tooling 0.1.4 or later).
