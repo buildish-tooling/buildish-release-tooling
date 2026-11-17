@@ -264,6 +264,9 @@ def publish() -> None:
                 str(cwd),
             ]
         )
+        # Clone does not inherit the source repository's local identity.
+        git("config", "user.name", "Fixture", cwd=cwd)
+        git("config", "user.email", "fixture@example.invalid", cwd=cwd)
         git(
             "remote",
             "set-url",

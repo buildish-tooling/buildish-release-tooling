@@ -17,11 +17,13 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from buildish_release_tooling.harness.backend import run_scenario
 from buildish_release_tooling.harness.models import HarnessScenario
@@ -44,6 +46,8 @@ class MaterializedLifecycleHarnessTest(unittest.TestCase):
                 "env": {
                     "MATERIALIZED_LIFECYCLE": mode,
                     "MATERIALIZED_PYTHON": sys.executable,
+                    "GIT_CONFIG_GLOBAL": os.devnull,
+                    "GIT_CONFIG_NOSYSTEM": "1",
                     "GIT_CONFIG_COUNT": "2",
                     "GIT_CONFIG_KEY_0": "commit.gpgsign",
                     "GIT_CONFIG_VALUE_0": "false",
@@ -83,10 +87,28 @@ class MaterializedLifecycleHarnessTest(unittest.TestCase):
                 ],
             }
         )
-        with tempfile.TemporaryDirectory(dir=ROOT / "build") as temporary:
+        with (
+            tempfile.TemporaryDirectory(dir=ROOT / "build") as temporary,
+            mock.patch.dict(os.environ),
+        ):
+            # Require every disposable repository to supply its own Git identity.
+            for name in (
+                "GIT_AUTHOR_NAME",
+                "GIT_AUTHOR_EMAIL",
+                "GIT_COMMITTER_NAME",
+                "GIT_COMMITTER_EMAIL",
+                "EMAIL",
+                "GIT_CONFIG_PARAMETERS",
+                "GIT_CONFIG_COUNT",
+            ):
+                os.environ.pop(name, None)
             result = run_scenario(scenario, workspace_root=Path(temporary))
             errors = result.workspace.harness_dir / "step-stderr.log"
-            detail = errors.read_text()[-14000:] if errors.exists() else str(result.job_statuses)
+            detail = (
+                errors.read_text()[-14000:]
+                if errors.exists()
+                else str(result.job_statuses)
+            )
             self.assertFalse(result.failed_job_ids, detail)
             self.assertFalse(result.blocked_job_ids, result.job_statuses)
             payload = json.loads(
