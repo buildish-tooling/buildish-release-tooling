@@ -23,7 +23,13 @@
       "publicationState": "hidden",
       "urls": {
         "publicationAttempt": "https://github.com/buildish-tooling/buildish-release-tooling/actions/runs/43895401347"
-      }
+      },
+      "docsSource": {
+        "repository": "https://github.com/buildish-tooling/buildish-release-tooling",
+        "root": "docs",
+        "ref": "4f24042465d18b73494f4a2a02349261f45d297d"
+      },
+      "releaseLine": "0.1"
     },
     {
       "provider": "release-tooling-tags",
@@ -39,7 +45,13 @@
       "publishedAt": "2026-11-16T15:44:32Z",
       "urls": {
         "publicationAttempt": "https://github.com/buildish-tooling/buildish-release-tooling/actions/runs/43899338782"
-      }
+      },
+      "docsSource": {
+        "repository": "https://github.com/buildish-tooling/buildish-release-tooling",
+        "root": "docs",
+        "ref": "cfc266b1b7fd5f9c29717275049af90e599a2320"
+      },
+      "releaseLine": "0.1"
     },
     {
       "provider": "release-tooling-tags",
@@ -55,7 +67,26 @@
       "publishedAt": "2026-11-16T17:22:20Z",
       "urls": {
         "publicationAttempt": "https://github.com/buildish-tooling/buildish-release-tooling/actions/runs/43917189837"
-      }
+      },
+      "docsSource": {
+        "repository": "https://github.com/buildish-tooling/buildish-release-tooling",
+        "root": "docs",
+        "ref": "b4542a195705c13c3806ca34fed8e821bedc20c8"
+      },
+      "releaseLine": "0.1"
+    }
+  ],
+  "artifacts": [
+    {
+      "componentSlug": "release-tooling",
+      "artifactKey": "release-tooling",
+      "latestStable": "0.1.3",
+      "releaseLines": [
+        {
+          "key": "0.1",
+          "latest": "0.1.3"
+        }
+      ]
     }
   ]
 }
