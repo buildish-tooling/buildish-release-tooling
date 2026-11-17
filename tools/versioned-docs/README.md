@@ -21,9 +21,11 @@ Creating a new branch requires Git with `worktree add --orphan` support. They ar
 repository maintenance commands, not part of the installed Release Tooling CLI.
 Run them from any directory; defaults are relative to this source checkout.
 
-The `versioned-docs` branch contains only released documentation and its inventory:
+The `versioned-docs` branch contains released documentation, its inventory and
+the workflow that requests aggregate site publication:
 
 ```text
+.github/workflows/publish-site.yml
 provider-snapshot.json
 0.1.3/
   _index.md
@@ -232,3 +234,21 @@ make check
 
 The regression tests exercise local temporary Git repositories and require no
 network, configured Git identity, signing key, or actual `versioned-docs` branch.
+
+## Automatic aggregate site publication
+
+The `versioned-docs` branch owns `.github/workflows/publish-site.yml`. Pushes to
+that branch in `buildish-tooling/buildish-release-tooling` request the aggregate
+repository's `site-publish.yml` workflow on `main`. Branch deletions and pushes in
+forks do not dispatch publication. The workflow runs no checkout or selected-source
+commands and gives its own `GITHUB_TOKEN` no repository permissions.
+
+Supply `BUILDISH_SITE_PUBLISH_TOKEN` as an available repository or organization
+secret with Actions write access to `buildish-tooling/buildish`. The workflow fails
+with a setup message if the secret is unavailable. The aggregate workflow retains
+responsibility for its build checks and Pages deployment.
+
+Commit and push the workflow on `versioned-docs` itself: a copy only on `main`
+would not handle pushes to the independent docs branch. Imports and full rebuilds
+preserve this workflow alongside other non-version branch files. Local imports do
+not publish anything; publication is requested only after the branch is pushed.
